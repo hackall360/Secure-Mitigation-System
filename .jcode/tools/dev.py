@@ -96,11 +96,13 @@ def smoke():
             "/static/favicon.svg",
         ):
             with opener.open(base + path, timeout=3) as response:
-                if response.status != 200 or not response.read():
+                body = response.read()
+                if response.status != 200 or not body:
                     raise RuntimeError(f"Empty or unsuccessful response: {path}")
                 if path == "/api/targets":
-                    # Target contracts are covered by the application tests.
-                    pass
+                    expected = {"node_query_sink", "php_command_sink", "mysql_insecure_conf"}
+                    if set(json.loads(body)) != expected:
+                        raise RuntimeError("Development server returned unexpected fixtures.")
             print(f"PASS: GET {path}")
         print("PASS: real localhost server, key-free health, dashboard and static assets")
     finally:

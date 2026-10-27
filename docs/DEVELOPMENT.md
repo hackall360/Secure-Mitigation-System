@@ -111,3 +111,36 @@ Research references: [uv environments](https://docs.astral.sh/uv/pip/environment
 and [Docker SDK image API](https://docker-py.readthedocs.io/en/stable/images.html).
 The installed SDK source and actual Docker execution, not only current online
 SDK documentation, determine compatibility with this pinned environment.
+
+## Acceptance results on this machine
+
+The completed setup was exercised on 2026-10-27, not only inspected:
+
+| Requirement | Observed result |
+| --- | --- |
+| Isolated dependencies | All 29 packages installed with required hashes into a second, newly created Python 3.12.13 virtual environment; compatibility check passed |
+| Unit and setup regression tests | 68 passed in both the project environment and the fresh environment |
+| Repeatable bootstrap | Re-running `setup` succeeded without replacing the existing `.env` |
+| Tooling quality | Ruff lint/format, Python compilation, both Node syntax checks, local harness, and target-list CLI passed |
+| Real application startup | Real localhost health/dashboard/API/assets checks passed, including helper invocation from outside the repository |
+| Docker target image | `purplebox-target-base:latest`, image ID `sha256:9930d74618e30885fd7dd5d83d9ca44cbc9dd578bead9e39a2128929c97f41b5` |
+| Docker verifier image | `purplebox-verifier-base:latest`, image ID `sha256:47fb182d1cea493bf4228d91b15c4e84227988f301fac6cd8f464906b6547907` |
+| Image ownership | Both images configure `10001:10001`, verified using Docker inspect through the SDK |
+| All three real fixture flows | Node, PHP, and MySQL-config fixtures each passed baseline, unsanitized probe, patched probe, normal-input regression, and target/verifier egress checks |
+| Cleanup | Subsequent SDK queries found zero session-labeled containers/networks and zero `purplebox-clone-cache` snapshot images; reusable base images remain |
+| Private local configuration | `.env` exists with mode 0600 and remains Git-ignored |
+
+The initial image-build plus live-harness command completed successfully in about
+156 seconds. Harness progress messages now flush per fixture/stage to distinguish
+ongoing work from a stall. Five new unit tests cover local-interpreter selection,
+missing prerequisites, template permissions, and preservation of existing config.
+
+### Remaining limits
+
+No real Muse API request or model-generated end-to-end scan has been run. Configure
+a valid account key to test those separately. No visual browser review or
+performance benchmark was performed. Docker's internal bridge blocks the tested
+public TCP paths but is not proof of host isolation. Fixtures remain a development
+scaffold, not a safe execution boundary for arbitrary hostile repositories.
+The original `VALIDATION.md` remains a historical scaffold report; this section
+supersedes its Docker-unavailable statement for this machine only.
