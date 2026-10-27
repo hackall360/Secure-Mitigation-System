@@ -16,3 +16,7 @@ You are an autonomous software engineering agent maintaining **PurpleBox**, a co
 
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
+
+## Repository Map
+See [docs/REPOSITORY.md](docs/REPOSITORY.md) for import provenance, verified local
+validation commands, entry points, and local-state caveats.
