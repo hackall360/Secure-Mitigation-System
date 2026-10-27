@@ -20,3 +20,6 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 ## Repository Map
 See [docs/REPOSITORY.md](docs/REPOSITORY.md) for import provenance, verified local
 validation commands, entry points, and local-state caveats.
+
+For current setup commands, Docker rebuild/cleanup rules, and environment traps,
+see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

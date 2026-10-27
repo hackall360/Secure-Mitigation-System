@@ -11,6 +11,12 @@ baseline checks → Muse analysis → isolated boundary probe → guarded candid
 This is an initial, runnable implementation for **three bundled fixtures**. It is not
 an arbitrary-repository scanner or a production security boundary.
 
+## Development setup
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the reproducible virtual
+environment, hash-locked dependencies, Docker builds, live fixture tests, and
+localhost smoke checks. Start with `python3 .jcode/tools/dev.py setup`.
+
 ## Quick start
 
 Requires Python 3.12+, Docker Engine/Desktop using Linux containers, and a Meta Model
@@ -18,7 +24,7 @@ API account with access to the configured Muse models. Image initialization down
 Alpine packages; scan containers do not install dependencies or publish host ports.
 
 ```bash
-cd purplebox
+cd Secure-Mitigation-System
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt

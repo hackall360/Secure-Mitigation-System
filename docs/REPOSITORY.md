@@ -59,3 +59,8 @@ live checks unless requested. Unit tests are not proof of live integration.
 
 See `README.md` for running the application, `SPEC.md` for design requirements,
 and `AGENT.md` for maintenance constraints.
+
+## Current development setup
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the maintained environment and Docker
+setup guide. Import validation above is historical, not the latest setup status.
