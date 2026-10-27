@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use. -->
+<!-- https://polyformproject.org/licenses/noncommercial/1.0.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PurpleBox · Boundary verification</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="PurpleBox home"><span class="mark">P<span>↗</span></span>PurpleBox<span class="version">0.1</span></a>
+      <div class="local"><span class="dot"></span>LOCAL WORKSPACE</div>
+    </header>
+    <main>
+      <section class="intro">
+        <div><p class="eyebrow">INPUT SANITIZATION / BOUNDARY VERIFICATION</p><h1>Find the boundary.<br><span>Verify the fix.</span></h1>
+          <p class="description">Two Muse agents. Separate sandboxes. One controlled check<br class="desktop"> from a reachable input sink to a reviewed sanitization patch.</p></div>
+        <div class="scope"><span class="scope-label">SESSION SCOPE</span><strong>Local fixtures</strong><span>Source stays unchanged</span><span>Candidate patches run in Docker</span></div>
+      </section>
+      <section class="controls" aria-label="Scan controls">
+        <div class="target-field"><label for="target-select">TARGET FIXTURE</label><select id="target-select" disabled><option>Loading fixtures…</option></select><p id="target-description">Connecting to the local orchestrator.</p></div>
+        <div class="actions"><span id="status" class="status" role="status">Checking setup</span><button id="run-btn" disabled>Run verification <span aria-hidden="true">↗</span></button><button id="stop-btn" class="secondary" hidden>Stop scan</button></div>
+      </section>
+      <div id="setup" class="setup" role="status" hidden></div>
+      <section class="team-grid" aria-label="Agent traces">
+        <article class="panel red">
+          <header class="panel-head"><div><span class="number">01</span><h2>Boundary auditor</h2></div><span class="team-label">RED TEAM</span></header>
+          <div class="panel-meta"><span id="red-model">Muse</span><span>Inspect → probe</span></div>
+          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty">Waiting for a target.<br><span>Analysis and boundary evidence will appear here.</span></p></div>
+        </article>
+        <article class="panel blue">
+          <header class="panel-head"><div><span class="number">02</span><h2>Input sanitizer</h2></div><span class="team-label">BLUE TEAM</span></header>
+          <div class="panel-meta"><span id="blue-model">Muse</span><span>Patch → recheck</span></div>
+          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty">Waiting for a confirmed boundary.<br><span>Sanitization changes and regression results appear here.</span></p></div>
+        </article>
+      </section>
+      <section class="telemetry"><header><h2><span class="dot"></span>Sandbox activity</h2><span id="elapsed">NO ACTIVE SESSION</span></header><div id="sys-log" class="log system-log" role="log" aria-label="Sandbox activity"><p class="empty">Ready when you are. Each scan creates and removes its own Docker resources.</p></div></section>
+      <section id="result-panel" class="result" hidden><div><p class="eyebrow">SCAN RESULT</p><h2 id="result-title"></h2><p id="result-message"></p></div><button id="download-btn" class="secondary">Download report ↓</button></section>
+    </main>
+    <footer><span>POWERED BY META MUSE</span><span>Probe evidence + normal-input checks · Review every candidate patch</span></footer>
+  </div>
+</body>
+</html>
