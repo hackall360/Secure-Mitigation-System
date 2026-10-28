@@ -2,7 +2,8 @@
 // https://polyformproject.org/licenses/noncommercial/1.0.0
 // SMS motion layer: cursor glow + parallax vars, stage data-flow pulses.
 // CSP-safe (external file, WAAPI only, no <style> injection), inserts no text
-// (textContent-only LAW 4), honors prefers-reduced-motion, rAF-throttled,
+// (textContent-only LAW 4), honors prefers-reduced-motion, rAF-throttled with
+// eased trailing (self-terminating), event dedupe, distance-based durations,
 // transform/opacity only (zero layout thrash). Companion CSS lives at the
 // tail of static/app.css under the "fx motion layer" banner.
 'use strict';
@@ -11,12 +12,21 @@
   const root = document.documentElement;
   const MAX_PULSES = 6;
   const PULSE_MS = 1100;
+  const LERP = 0.22; // glow trails the pointer: buttery, then settles
+  const SETTLE_PX = 0.4; // stop the rAF chain once visually settled
+  const DEDUPE_MS = 300; // coalesce identical pulses from log+stage bursts
 
-  let mx = window.innerWidth / 2;
+  let mx = window.innerWidth / 2; // pointer target (client coords)
   let my = window.innerHeight * 0.2;
+  let cx = mx; // eased current position, painted to CSS vars
+  let cy = my;
   let queued = false;
   let active = 0;
   let lastStage = '';
+  let lastSig = '';
+  let lastAt = 0;
+  const dots = new Set();
+  const cache = new Map(); // skip redundant CSS var writes (no style churn)
 
   const $ = (sel) => document.querySelector(sel);
   const RED = '.panel.red';
@@ -26,17 +36,38 @@
 
   /* ---------- (1) reactive background: cursor glow + parallax ---------- */
 
+  function setVar(name, value) {
+    if (cache.get(name) !== value) {
+      cache.set(name, value);
+      root.style.setProperty(name, value);
+    }
+  }
+
+  // Eased trailing: cx/cy chase the pointer, rAF keeps chaining only while
+  // visibly moving, then stops itself. Client coords (no scrollY jitter).
   function paint() {
-    queued = false;
-    if (reduced.matches || document.hidden) return;
-    const vw = window.innerWidth || 1;
-    const vh = window.innerHeight || 1;
-    const nx = Math.max(-0.5, Math.min(0.5, mx / vw - 0.5));
-    const ny = Math.max(-0.5, Math.min(0.5, (my + (window.scrollY || 0) * 0.15) / vh - 0.5));
-    root.style.setProperty('--fx-mx', `${mx.toFixed(1)}px`);
-    root.style.setProperty('--fx-my', `${(my + (window.scrollY || 0) * 0.15).toFixed(1)}px`);
-    root.style.setProperty('--fx-px', nx.toFixed(3));
-    root.style.setProperty('--fx-py', ny.toFixed(3));
+    const dx = mx - cx;
+    const dy = my - cy;
+    const moving = Math.abs(dx) > SETTLE_PX || Math.abs(dy) > SETTLE_PX;
+    if (moving) {
+      cx += dx * LERP;
+      cy += dy * LERP;
+    } else {
+      cx = mx;
+      cy = my;
+    }
+    if (!reduced.matches && !document.hidden) {
+      const vw = window.innerWidth || 1;
+      const vh = window.innerHeight || 1;
+      const nx = Math.max(-0.5, Math.min(0.5, cx / vw - 0.5));
+      const ny = Math.max(-0.5, Math.min(0.5, cy / vh - 0.5));
+      setVar('--fx-mx', `${cx.toFixed(1)}px`);
+      setVar('--fx-my', `${cy.toFixed(1)}px`);
+      setVar('--fx-px', nx.toFixed(3));
+      setVar('--fx-py', ny.toFixed(3));
+    }
+    if (moving && !reduced.matches) requestAnimationFrame(paint);
+    else queued = false;
   }
 
   function schedule() {
@@ -61,8 +92,16 @@
 
   // A 10px dot travels from the middle of fromSel to the middle of toSel
   // along a slight arc (same element = in-place bloom). WAAPI only.
+  // Dedupe: log-line and stage callbacks often fire the same vocabulary
+  // within one frame; identical signatures coalesce instead of stacking.
+  // Duration scales gently with distance so short hops feel snappy.
   function fire(kind, fromSel, toSel) {
-    if (reduced.matches || active >= MAX_PULSES) return;
+    if (reduced.matches || document.hidden || active >= MAX_PULSES) return;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const sig = `${kind}|${fromSel}|${toSel || fromSel}`;
+    if (sig === lastSig && now - lastAt < DEDUPE_MS) return;
+    lastSig = sig;
+    lastAt = now;
     const a = center($(fromSel));
     const b = center($(toSel || fromSel));
     if (!a || !b || !onscreen(a) || !onscreen(b)) return;
@@ -76,6 +115,7 @@
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dist = Math.hypot(dx, dy);
+    const dur = Math.round(Math.max(650, Math.min(PULSE_MS, PULSE_MS * (0.55 + dist / 1400))));
     const hop = dist < 8 ? 0 : Math.min(60, dist * 0.18);
     const at = (x, y, s, o) => ({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${s})`, opacity: o });
     const frames = dist < 8
@@ -83,16 +123,19 @@
       : [at(a.x, a.y, 0.6, 0), { ...at(a.x + dx / 2, a.y + dy / 2 - hop, 1, 1), offset: 0.5 }, at(b.x, b.y, 0.6, 0)];
     let anim = null;
     try {
-      anim = dot.animate(frames, { duration: PULSE_MS, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      anim = dot.animate(frames, { duration: dur, easing: 'cubic-bezier(.2,.8,.2,1)', composite: 'replace' });
     } catch {
       anim = null;
     }
+    dots.add(dot);
     const done = () => {
+      if (!dots.has(dot)) return;
+      dots.delete(dot);
       active -= 1;
       dot.remove();
     };
     if (anim && anim.finished) anim.finished.then(done, done);
-    else window.setTimeout(done, PULSE_MS + 100);
+    else window.setTimeout(done, dur + 100);
   }
 
   // Maps pipeline stage transitions to pulses. Called from setStage.
@@ -159,20 +202,40 @@
 
   /* ---------- (4) perf guards: no listeners at all under reduced motion ---------- */
 
+  // Tear down in-flight dots so a mid-scan reduced-motion switch or a
+  // background tab never leaves orphaned nodes or a stuck rAF chain.
+  function teardown() {
+    dots.forEach((dot) => {
+      try {
+        if (dot.getAnimations) dot.getAnimations().forEach((a) => { try { a.cancel(); } catch { /* noop */ } });
+      } catch { /* noop */ }
+      dot.remove();
+    });
+    dots.clear();
+    active = 0;
+    queued = false;
+  }
+
   function init() {
     if (reduced.matches) return;
-    window.addEventListener('mousemove', (e) => {
+    window.addEventListener('pointermove', (e) => {
       mx = e.clientX;
       my = e.clientY;
       schedule();
     }, { passive: true });
     window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', () => {
+      cx = Math.min(cx, window.innerWidth || cx);
+      cy = Math.min(cy, window.innerHeight || cy);
+      schedule();
+    }, { passive: true });
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) schedule();
+      if (document.hidden) teardown();
+      else schedule();
     });
     try {
       reduced.addEventListener('change', () => {
-        if (reduced.matches) active = 0;
+        if (reduced.matches) teardown();
       });
     } catch {
       /* older browsers: static matchMedia is enough */

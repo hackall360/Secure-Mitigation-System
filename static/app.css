@@ -53,7 +53,7 @@ button, select { font: inherit; color: inherit; }
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
 }
-.orb { position: absolute; width: 620px; height: 620px; border-radius: 50%; filter: blur(110px); opacity: .22; animation: drift 22s var(--ease) infinite alternate; }
+.orb { position: absolute; width: 620px; height: 620px; border-radius: 50%; filter: blur(110px); opacity: .22; animation: drift 22s var(--ease) infinite alternate; will-change: transform; }
 .orb-red { background: #e11d48; top: -260px; left: -180px; }
 .orb-blue { background: #4f46e5; top: -200px; right: -220px; animation-delay: -11s; }
 body.scanning .orb { opacity: .34; animation-duration: 9s; }
@@ -378,7 +378,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 18px
 .mark svg { width: 20px; height: 20px; color: #120b22; }
 .backdrop::after { content: ""; position: absolute; inset: 0; background: radial-gradient(700px circle at 85% 10%, rgba(96,165,250,.08), transparent 60%), radial-gradient(600px circle at 10% 90%, rgba(251,113,133,.07), transparent 60%); animation: nebula 18s ease-in-out infinite alternate; }
 @keyframes nebula { to { opacity: .7; transform: scale(1.05); } }
-.scanline { position: fixed; left: 0; right: 0; height: 120px; top: -140px; z-index: 0; pointer-events: none; background: linear-gradient(180deg, transparent, rgba(167,139,250,.07), transparent); animation: scan 9s linear infinite; }
+.scanline { position: fixed; left: 0; right: 0; height: 120px; top: -140px; z-index: 0; pointer-events: none; background: linear-gradient(180deg, transparent, rgba(167,139,250,.07), transparent); animation: scan 9s linear infinite; will-change: transform; }
 @keyframes scan { to { transform: translateY(120vh); } }
 body.scanning .scanline { animation-duration: 3.5s; }
 .hype-ticker { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
@@ -450,6 +450,7 @@ body.scanning .scanline { animation-duration: 3.5s; }
   border-radius: 50%;
   background: radial-gradient(circle, var(--fx-glow), transparent 65%);
   transform: translate(calc(var(--fx-mx) - 50%), calc(var(--fx-my) - 50%));
+  will-change: transform;
 }
 /* translate (not transform): composes with the existing drift animation. */
 .orb-red { translate: calc(var(--fx-px) * 60px) calc(var(--fx-py) * 40px); }
@@ -474,6 +475,7 @@ body.scanning .scanline { animation-duration: 3.5s; }
   box-shadow: 0 0 14px var(--purple-2);
   opacity: 0;
   will-change: transform, opacity;
+  contain: strict;
 }
 .flow-probe { background: var(--red); box-shadow: 0 0 14px var(--red); }
 .flow-blocked { background: var(--green); box-shadow: 0 0 14px var(--green); }
