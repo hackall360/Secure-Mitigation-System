@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import random
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -28,8 +29,44 @@ USER_AGENT = "Secure-Mitigation-System/0.1 research-sidecar (+https://github.com
 MIN_GAP_SECONDS = 1.0
 DEFAULT_MAX_BYTES = 1 * 1024 * 1024
 
+# Rate-limit graceful: jittered exponential backoff with a cap, and a capped
+# honor of the server's Retry-After on 429. Attempts are always bounded by the
+# caller's `tries` (normalized to >= 1); there is no infinite retry loop.
+BACKOFF_MAX_SECONDS = 30.0
+BACKOFF_JITTER_SECONDS = 1.0
+RETRY_AFTER_MAX_SECONDS = 60.0
+
 # Per-host pacing state: host -> monotonic timestamp of the last request.
 _last_calls: dict[str, float] = {}
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header (delta-seconds only); None when absent/invalid."""
+    if not value:
+        return None
+    try:
+        return max(float(value.strip()), 0.0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _backoff_seconds(attempt: int, retry_after: float | None = None) -> float:
+    """Jittered exponential backoff for retry `attempt` (0-based), capped."""
+    if retry_after is not None:
+        base = min(max(retry_after, 0.0), RETRY_AFTER_MAX_SECONDS)
+    else:
+        base = min(2.0**attempt, BACKOFF_MAX_SECONDS)
+    return base + random.uniform(0, BACKOFF_JITTER_SECONDS)
+
+
+def _retry_after_of(exc: BaseException) -> float | None:
+    """Retry-After seconds from an HTTPError, else None. 429 only."""
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
+        return None
+    try:
+        return _parse_retry_after(exc.headers.get("Retry-After"))
+    except Exception:
+        return None
 
 
 def _host_of(url: str) -> str:
@@ -68,7 +105,8 @@ def paced_request_json(
     data = json.dumps(body).encode() if body is not None else None
     host = _host_of(url)
     last: Exception | None = None
-    for attempt in range(tries):
+    attempts = max(int(tries), 1)  # never zero: one attempt minimum, never unbounded
+    for attempt in range(attempts):
         _pace(host)
         request = urllib.request.Request(url, data=data, headers=heads, method=method)
         try:
@@ -79,8 +117,10 @@ def paced_request_json(
             return json.loads(raw.decode("utf-8"))
         except Exception as exc:  # network, HTTP error, bad JSON: back off
             last = exc
-            time.sleep(2**attempt + random.uniform(0, 1.0))
-    raise RuntimeError(f"intel request failed after {tries} tries: {last}") from last
+            if attempt >= attempts - 1:
+                break  # budget exhausted: surface, never loop forever
+            time.sleep(_backoff_seconds(attempt, _retry_after_of(exc)))
+    raise RuntimeError(f"intel request failed after {attempts} tries: {last}") from last
 
 
 def paced_get_json(
