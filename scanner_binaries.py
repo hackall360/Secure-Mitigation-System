@@ -43,6 +43,14 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
+from sms_scan_parse import (
+    cvss_best as _cvss_from_grype_cvss,
+)
+from sms_scan_parse import (
+    cvss_from_vendor_map as _cvss_from_trivy_cvss,
+)
+from sms_scan_parse import cwe_list, ref_list
+
 MAX_SCAN_BYTES = 8 * 1024 * 1024
 DEFAULT_TIMEOUT = 300.0
 
@@ -96,22 +104,6 @@ def available(binary: str) -> bool:
     return shutil.which(binary) is not None
 
 
-def _cvss_from_trivy_cvss(cvss: dict) -> str:
-    for vendor in ("nvd", "redhat", "ghsa"):
-        entry = cvss.get(vendor) if isinstance(cvss, dict) else None
-        if isinstance(entry, dict):
-            for key in ("V3Score", "V40Score", "V2Score"):
-                if entry.get(key) is not None:
-                    return str(entry[key])
-    if isinstance(cvss, dict):
-        for entry in cvss.values():
-            if isinstance(entry, dict):
-                for key in ("V3Score", "V40Score", "V2Score"):
-                    if entry.get(key) is not None:
-                        return str(entry[key])
-    return ""
-
-
 def parse_trivy_report(payload: dict | list) -> list[ScannerRecord]:
     """Map Trivy JSON (`trivy fs -f json`) to ScannerRecords."""
     if isinstance(payload, dict):
@@ -136,27 +128,11 @@ def parse_trivy_report(payload: dict | list) -> list[ScannerRecord]:
                     cvss=_cvss_from_trivy_cvss(vuln.get("CVSS") or {}),
                     title=str(vuln.get("Title", ""))[:256],
                     summary=str(vuln.get("Description", "")),
-                    cwe=tuple(str(c)[:16] for c in (vuln.get("CweIDs") or [])[:8]),
-                    references=tuple(
-                        str(r)[:256]
-                        for r in (vuln.get("References") or [])[:5]
-                        if isinstance(r, str)
-                    ),
+                    cwe=cwe_list(vuln.get("CweIDs")),
+                    references=ref_list(vuln.get("References")),
                 )
             )
     return out
-
-
-def _cvss_from_grype_cvss(entries: list) -> str:
-    best = ""
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        metrics = entry.get("metrics") or {}
-        score = metrics.get("baseScore") if isinstance(metrics, dict) else None
-        if score is not None and (not best or float(score or 0) > float(best or 0)):
-            best = str(score)
-    return best
 
 
 def parse_grype_report(payload: dict | list) -> list[ScannerRecord]:
@@ -240,12 +216,7 @@ def parse_depcheck_report(payload: dict | list) -> list[ScannerRecord]:
                 continue
             cvss3 = vuln.get("cvssv3") or {}
             score = cvss3.get("baseScore") if isinstance(cvss3, dict) else None
-            cwes: list[str] = []
-            for c in vuln.get("cwes") or []:
-                if isinstance(c, dict) and c.get("name"):
-                    cwes.append(str(c["name"])[:16])
-                elif isinstance(c, str):
-                    cwes.append(c[:16])
+            cwes = list(cwe_list(vuln.get("cwes")))
             out.append(
                 ScannerRecord(
                     scanner="dependency-check",
