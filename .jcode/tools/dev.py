@@ -114,6 +114,39 @@ def smoke():
             process.wait()
 
 
+def doctor():
+    """Preflight that cannot fail out: reports every prerequisite with fix commands."""
+    import shutil as _sh
+
+    checks = []
+    checks.append(("python3", bool(_sh.which("python3"))))
+    checks.append(("uv", bool(_sh.which("uv"))))
+    checks.append(("node", bool(_sh.which("node"))))
+    checks.append((".venv", PYTHON.exists()))
+    try:
+        import docker as _docker
+
+        _docker.from_env(timeout=3).ping()
+        checks.append(("docker-daemon", True))
+    except Exception:
+        checks.append(("docker-daemon", False))
+    try:
+        checks.append((".env", (ROOT / ".env").exists()))
+    except Exception:
+        checks.append((".env", False))
+    all_ok = True
+    for name, ok in checks:
+        print(f"{'OK  ' if ok else 'FAIL'}  {name}", flush=True)
+        all_ok = all_ok and ok
+    if not all_ok:
+        print(
+            "Fix: python3 .jcode/tools/dev.py setup && python3 .jcode/tools/dev.py images",
+            flush=True,
+        )
+        raise RuntimeError("Preflight found missing prerequisites (see FAIL lines above).")
+    print("Doctor: all prerequisites present. Next: python3 .jcode/tools/dev.py smoke", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -126,6 +159,7 @@ def main():
             "docker-status",
             "docker-cleanup",
             "docker-test",
+            "doctor",
             "offline-scan",
             "serve",
             "smoke",
@@ -140,6 +174,9 @@ def main():
         check()
     elif args.command == "images":
         python("main.py", "--init-images")
+        python("main.py", "--docker-status")
+    elif args.command == "doctor":
+        doctor()
     elif args.command == "rebuild-images":
         python("main.py", "--rebuild-images")
     elif args.command == "docker-status":

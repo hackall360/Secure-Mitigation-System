@@ -1263,3 +1263,61 @@ async def execute_project_workflow(
                     pass
     await log("system", result.message)
     return result
+
+
+EXPLOIT_REDACTED = (
+    "[exploit details withheld: available only inside the isolated verification sandbox]"
+)
+
+
+def _redact_cycle_evidence(evidence: "CycleEvidence | dict") -> dict:
+    data = evidence.model_dump() if hasattr(evidence, "model_dump") else dict(evidence)
+    red = data.get("red") or {}
+    for key in ("batch_evidence", "evidence_digests"):
+        items = red.get(key) or []
+        for item in items:
+            for cand in item.get("candidates") or []:
+                cand["verification_script_python"] = EXPLOIT_REDACTED
+                cand["evidence"] = EXPLOIT_REDACTED
+    report = red.get("report") or {}
+    report["verification_script_python"] = EXPLOIT_REDACTED
+    ired = data.get("independent_red") or {}
+    for key in ("batch_evidence", "evidence_digests"):
+        for item in ired.get(key) or []:
+            for cand in item.get("candidates") or []:
+                cand["verification_script_python"] = EXPLOIT_REDACTED
+                cand["evidence"] = EXPLOIT_REDACTED
+    ireport = ired.get("report") or {}
+    if ireport:
+        ireport["verification_script_python"] = EXPLOIT_REDACTED
+    for section in ("pre_verification", "patched_verification", "independent_verification"):
+        ver = data.get(section)
+        if isinstance(ver, dict):
+            probe = ver.get("probe") or {}
+            # Keep exit codes and short status, drop raw probe output that may contain payloads.
+            output = str(probe.get("output", ""))
+            probe["output"] = (
+                (output[:500] + "\n[probe output truncated; full exploit output withheld]")
+                if len(output) > 500
+                else EXPLOIT_REDACTED
+                if output
+                else output
+            )
+    return data
+
+
+def redact_report_for_user(result: "ProjectWorkflowResult") -> dict:
+    """Return a user-safe report: patched code only, no exploit scripts or payloads."""
+    data = result.model_dump()
+    data["cycle_reports"] = [
+        {**cycle, "evidence": _redact_cycle_evidence(cycle["evidence"])}
+        if isinstance(cycle.get("evidence"), dict)
+        else cycle
+        for cycle in data.get("cycle_reports", [])
+    ]
+    # model_dump already expanded cycles alias; keep both consistent.
+    data["cycles"] = data["cycle_reports"]
+    history = []
+    for item in data.get("verified_history", []):
+        history.append({k: v for k, v in item.items()})
+    return data

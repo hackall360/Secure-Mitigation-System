@@ -25,11 +25,11 @@ from docker_manager import (
     remove_stale_resources,
 )
 from profiles import ProfileError, apply_profile, available_profiles, default_profile
-from project_workflow import execute_project_workflow
+from project_workflow import execute_project_workflow, redact_report_for_user
 from projects import ProjectSpec
 from registry import BASE_DIR, TARGETS_REGISTRY
 from scan_profiles import SCAN_PROFILES
-from workflow import execute_purple_workflow
+from workflow import execute_purple_workflow, redact_fixture_result_for_user
 
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
@@ -178,7 +178,18 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 done, _ = await asyncio.wait({run, disconnect}, return_when=asyncio.FIRST_COMPLETED)
                 if run in done:
                     result = await run
-                    await socket.send_json({"type": "result", **result.model_dump()})
+                    safe = result.model_dump()
+                    try:
+                        from project_workflow import redact_report_for_user as _redact_proj
+                        from workflow import redact_fixture_result_for_user as _redact_fixt
+
+                        if target_key is None:
+                            safe = _redact_proj(result)
+                        else:
+                            safe = _redact_fixt(result)
+                    except Exception:
+                        pass
+                    await socket.send_json({"type": "result", **safe})
             except (WebSocketDisconnect, RuntimeError):
                 pass
             finally:
@@ -203,6 +214,76 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+async def ai_demo_runner(
+    output_dir: Path,
+    profile: str | None = None,
+    *,
+    scan_profile: str = "extra_light",
+    red_agents: int = 5,
+    blue_agents: int = 5,
+    intel_theme: str = "input validation SQL injection XSS deserialization",
+    intel_offline: bool = False,
+) -> int:
+    """AI-built demo mode: intel-grounded generation, then evidence-gated red/blue in Docker."""
+    from agents import MetaMuseClient
+    from config import load_config as _load
+    from demo_gen import generate_demo_project, materialize_demo_project
+    from intel_search import intel_for_demo
+    from profiles import apply_profile as _apply
+
+    settings = _apply(_load(), profile)
+
+    async def emit(team: str, message: str):
+        print(f"[{team.upper():6}] {message}", flush=True)
+
+    themes = [w for w in intel_theme.split() if w][:6]
+    if intel_offline:
+        intel: list = []
+        print(
+            "[SYSTEM] AI demo: offline mode, using static flaw patterns (no NVD lookup).",
+            flush=True,
+        )
+    else:
+        print(
+            f"[SYSTEM] AI demo: gathering threat intel for themes: {', '.join(themes)}", flush=True
+        )
+        try:
+            intel = await intel_for_demo(themes, per_theme=4)
+            print(f"[SYSTEM] AI demo: {len(intel)} intel records for generation.", flush=True)
+        except Exception as exc:
+            print(
+                f"[SYSTEM] AI demo: intel unavailable ({type(exc).__name__}); continuing offline.",
+                flush=True,
+            )
+            intel = []
+    print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
+    muse = MetaMuseClient(settings)
+    try:
+        files = await generate_demo_project(muse, intel_context=intel, theme=" ".join(themes))
+    finally:
+        try:
+            await muse.aclose()
+        except Exception:
+            pass
+    print(
+        f"[SYSTEM] AI demo: generated app.py ({len(files.app_py)} chars) inspired by {', '.join(files.cve_inspiration) or 'novel combinations'}.",
+        flush=True,
+    )
+    spec = materialize_demo_project(files)
+    # Enrich ProjectSpec with requested intensity/team sizes.
+    from projects import ProjectSpec as _Spec
+
+    spec = _Spec.model_validate(
+        {
+            **spec.model_dump(mode="json"),
+            "scan_profile": scan_profile,
+            "red_agents": red_agents,
+            "blue_agents": blue_agents,
+        }
+    )
+    return await cli_runner(None, output_dir, profile, project=spec)
 
 
 async def cli_runner(
@@ -230,6 +311,7 @@ async def cli_runner(
             config=settings,
             include_osv=not offline_cve,
             include_deep_assessment=deep_assessment,
+            include_nvd=True,
         )
         print(f"[SYSTEM] {cve_result.message}", flush=True)
         for vuln in cve_result.vulnerabilities[:20]:
@@ -254,8 +336,10 @@ async def cli_runner(
         return 0 if cve_result.success else 1
     if project is None:
         result = await execute_purple_workflow(target_key, emit, config=settings)
+        user_report = redact_fixture_result_for_user(result)
     else:
         result = await execute_project_workflow(project, emit, config=settings)
+        user_report = redact_report_for_user(result)
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
         print(
@@ -271,7 +355,7 @@ async def cli_runner(
         # A fresh per-run directory prevents accidental overwriting of previous results.
         run_dir = output_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
         run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
-        report = {"notice": NOTICE, "license_url": LICENSE_URL, **result.model_dump()}
+        report = {"notice": NOTICE, "license_url": LICENSE_URL, **user_report}
         (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         (run_dir / "report.json").chmod(0o600)
         if result.diff:
@@ -520,6 +604,21 @@ def main() -> int:
         help="Skip OSV network lookup; static signals only",
     )
     parser.add_argument(
+        "--ai-demo",
+        action="store_true",
+        help="AI-built demo mode: Muse designs a novel vulnerable demo project from threat intel, then red/blue teams exercise it in Docker",
+    )
+    parser.add_argument(
+        "--intel-theme",
+        default="input validation SQL injection XSS deserialization",
+        help="Threat-intel themes for AI demo generation (space-separated NVD keywords)",
+    )
+    parser.add_argument(
+        "--intel-offline",
+        action="store_true",
+        help="Generate AI demo without live NVD lookup (uses static flaw patterns)",
+    )
+    parser.add_argument(
         "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
     )
     args = parser.parse_args()
@@ -531,6 +630,8 @@ def main() -> int:
         parser.error("--output-dir requires --scan or --project")
     if args.project and (not args.command or not args.test_command or not args.contract):
         parser.error("--project requires --command, --test-command, and --contract")
+    if args.ai_demo and args.scan:
+        parser.error("--ai-demo cannot be combined with --scan; it generates its own project")
     if not args.project and (
         args.image
         or args.command
@@ -572,6 +673,18 @@ def main() -> int:
             return 0
         if args.scan:
             return asyncio.run(cli_runner(args.scan, args.output_dir, args.profile))
+        if args.ai_demo:
+            return asyncio.run(
+                ai_demo_runner(
+                    args.output_dir or Path("reports"),
+                    args.profile,
+                    scan_profile=args.scan_profile,
+                    red_agents=args.red_agents,
+                    blue_agents=args.blue_agents,
+                    intel_theme=args.intel_theme,
+                    intel_offline=args.intel_offline,
+                )
+            )
         if args.project:
             try:
                 project_values = {

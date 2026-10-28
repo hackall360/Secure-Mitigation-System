@@ -471,6 +471,20 @@ function renderUsage(payload) {
   });
 }
 
+function redactEvidence(value) {
+  if (Array.isArray(value)) return value.map(redactEvidence);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (k === 'verification_script_python') out[k] = '[exploit details withheld]';
+      else if (k === 'output' && typeof v === 'string' && v.length > 500) out[k] = v.slice(0, 500) + '\n[probe output truncated]';
+      else out[k] = redactEvidence(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function renderCycles(cycles) {
   const list = el('cycle-list');
   list.replaceChildren();
@@ -490,7 +504,7 @@ function renderCycles(cycles) {
       const title = document.createElement('strong');
       title.textContent = heading;
       const content = document.createElement(Array.isArray(value) || typeof value === 'object' ? 'pre' : 'p');
-      content.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      content.textContent = typeof value === 'string' ? value : JSON.stringify(redactEvidence(value), null, 2);
       section.append(title, content);
       body.append(section);
     });

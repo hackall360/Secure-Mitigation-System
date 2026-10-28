@@ -216,3 +216,27 @@ async def execute_purple_workflow(
     if sandbox is not None and result.cleanup_ok:
         await log("system", "Session containers, snapshots, and network removed.")
     return result
+
+
+EXPLOIT_REDACTED = (
+    "[exploit details withheld: available only inside the isolated verification sandbox]"
+)
+
+
+def redact_fixture_result_for_user(result: "ScanResult") -> dict:
+    """User-safe fixture report: patch + exit codes only, no probe source or payload output."""
+    data = result.model_dump()
+    finding = data.get("finding")
+    if isinstance(finding, dict):
+        finding["verification_script_python"] = EXPLOIT_REDACTED
+    for key in ("before", "after"):
+        if isinstance(data.get("traces", {}).get(key), str):
+            out = data["traces"][key]
+            data["traces"][key] = (
+                (out[:500] + "\n[probe output truncated; full exploit output withheld]")
+                if len(out) > 500
+                else EXPLOIT_REDACTED
+                if out
+                else out
+            )
+    return data

@@ -60,6 +60,7 @@ async def execute_cve_scan(
     include_osv: bool = True,
     include_deep_assessment: bool = False,
     max_osv_details: int = 25,
+    include_nvd: bool = False,
 ) -> CveScanReport:
     """Run static signals + optional OSV CVE lookup + optional Muse deep triage.
 
@@ -168,6 +169,24 @@ async def execute_cve_scan(
             except Exception:
                 pass
 
+    if include_nvd and summaries:
+        try:
+            from intel_search import nvd_lookup, summarize_nvd_record
+
+            for summary in summaries[:10]:
+                for cve_id in (summary.get("cves") or [])[:2]:
+                    try:
+                        payload = await blocking(nvd_lookup, cve_id)
+                        vulns = (payload or {}).get("vulnerabilities") or []
+                        if vulns:
+                            summary["nvd"] = summarize_nvd_record(vulns[0])
+                            break
+                    except Exception as exc:
+                        summary.setdefault("nvd_error", f"{type(exc).__name__}")
+                        break
+            await log("system", "Deep scan: NVD enrichment complete.")
+        except Exception as exc:
+            errors.append(f"NVD enrichment failed: {type(exc).__name__}")
     cve_count = len(summaries)
     message = (
         f"Deep scan completed: {len(static_findings)} static signals, "

@@ -18,6 +18,42 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the reproducible virtual
 environment, hash-locked dependencies, Docker builds, live fixture tests, and
 localhost smoke checks. Start with `python3 .jcode/tools/dev.py setup`.
 
+## Operating modes
+
+Secure Mitigation System runs Muse red/blue teams in isolated Docker. Red attacks
+offline inside the sandbox, blue defends. You receive only patched code and a
+redacted report — exploit scripts never leave the sandbox.
+
+| Mode | Command | What happens |
+|---|---|---|
+| Bring your own | `main.py --project /path ...` | Snapshot your repo, evidence-gated red/blue cycles |
+| Example | `main.py --scan node_query_sink` | Bundled fixtures, same pipeline |
+| AI-built demo | `main.py --ai-demo` | Muse designs a novel demo from live NVD intel, then red/blue exercise it |
+
+```sh
+# 1. Preflight (cannot fail out, prints fixes)
+python3 .jcode/tools/dev.py doctor
+# 2. Environment + images (two containers: target + verifier)
+python3 .jcode/tools/dev.py setup
+python3 .jcode/tools/dev.py images
+# 3. Key-free smoke test
+python3 .jcode/tools/dev.py smoke
+# 4. AI-built demo (needs META_MUSE_API_KEY exported)
+python3 main.py --ai-demo --scan-profile extra_light --output-dir reports
+# 5. Your own repo (needs --allow-remote-inference for hosted Muse)
+python3 main.py --project /path/to/repo --command '["python3","app.py"]' \
+  --test-command '["python3","-m","unittest"]' --contract '...' --scan-profile light \
+  --allow-remote-inference --output-dir reports
+# 6. Deep CVE scan (no probe/patch; OSV needs network, offline with --offline-cve)
+python3 main.py --project /path/to/repo --command '["python3","app.py"]' \
+  --test-command '["python3","-m","unittest"]' --contract '...' --cve-scan --output-dir reports
+```
+
+Threat intel: OSV (`https://osv.dev`, no key) + NVD API 2.0
+(`https://services.nvd.nist.gov/rest/json/cves/2.0`, optional `NVD_API_KEY`).
+Intel grounds generation and triage only — every fix still requires an isolated
+Docker probe before it is retained.
+
 ## Quick start
 
 Requires Python 3.12+, Docker Engine/Desktop using Linux containers, and a Meta Model
