@@ -321,7 +321,10 @@ function updateScanProfile() {
   const key = el('project-scan-profile').value;
   const cycles = SCAN_PROFILE_CYCLES[key];
   const custom = key === 'custom';
+  const ultra = key === 'ultra_heavy';
   el('project-cycles').readOnly = !custom;
+  el('project-red-agents').disabled = !ultra;
+  el('project-blue-agents').disabled = !ultra;
   if (!custom) el('project-cycles').value = String(cycles);
   const cycleLabel = cycles === 1 ? '1 cycle' : `${cycles} cycles`;
   el('project-scan-description').textContent = custom
@@ -360,6 +363,7 @@ function projectSpec() {
 function lockProjectForm(locked) {
   el('project-form').querySelectorAll('input, textarea, select').forEach((node) => { node.disabled = locked; });
   document.querySelectorAll('.mode').forEach((node) => { node.disabled = locked; });
+  if (!locked) updateScanProfile();
 }
 
 /* ---------- model profiles ---------- */

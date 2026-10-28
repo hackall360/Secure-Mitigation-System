@@ -1,3 +1,6 @@
+<!-- Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use. -->
+<!-- https://polyformproject.org/licenses/noncommercial/1.0.0 -->
+
 # Scan intensity profiles
 
 Secure Mitigation System project scans separate **scan intensity** from **model selection**. The
@@ -68,8 +71,9 @@ does not use named-profile cumulative focus orchestration.
 
 Local-project intake defaults to `extra_light`. The intensity dropdown updates a
 read-only derived cycle field for every named profile. Selecting `custom` makes
-the cycle field editable. Red and Blue team-size controls both default to 5.
-Model selection remains in the separate **Models** control.
+the cycle field editable. Red and Blue team-size controls both default to 5 and
+are enabled only for `ultra_heavy`. Model selection remains in the separate
+**Models** control.
 
 ## CLI
 

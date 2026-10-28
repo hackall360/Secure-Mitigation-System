@@ -106,6 +106,8 @@ fill();
 inferenceMode = 'local';
 updateScanProfile();
 assert.equal(el('project-cycles').readOnly, true);
+assert.equal(el('project-red-agents').disabled, true);
+assert.equal(el('project-blue-agents').disabled, true);
 assert.equal(projectSpec().scan_profile, 'extra_light');
 assert.equal(projectSpec().cycles, 1);
 assert.equal(projectSpec().red_agents, 5);
@@ -113,6 +115,8 @@ assert.equal(projectSpec().blue_agents, 5);
 el('project-scan-profile').value = 'ultra_heavy';
 updateScanProfile();
 assert.equal(el('project-cycles').value, '12');
+assert.equal(el('project-red-agents').disabled, false);
+assert.equal(el('project-blue-agents').disabled, false);
 assert.match(el('project-scan-description').textContent, /Red, Blue, Red, Blue/);
 assert.match(el('project-scan-description').textContent, /bounded automatic discovery/);
 el('project-scan-profile').value = 'custom';
@@ -129,6 +133,7 @@ def test_dashboard_markup_defaults_to_extra_light_and_five_agent_teams():
     assert 'id="project-cycles"' in markup and "readonly" in markup
     assert 'id="project-red-agents"' in markup and 'name="red_agents"' in markup
     assert 'id="project-blue-agents"' in markup and 'name="blue_agents"' in markup
+    assert markup.count("Ultra heavy only") == 2
     assert markup.count('max="12" value="5"') >= 2
 
 
