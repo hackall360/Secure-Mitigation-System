@@ -577,7 +577,11 @@ class ProjectAgentRunner:
                 evidence.append(
                     await self._call(
                         self.config.red_team_model,
-                        RED_WORKER_SYSTEM_PROMPT
+                        (
+                            red_persona_prompt(assignment.agent_index)
+                            + "\n"
+                            + RED_WORKER_SYSTEM_PROMPT
+                        )
                         if assignment is not None
                         else RED_BATCH_SYSTEM_PROMPT,
                         payload,
@@ -799,7 +803,9 @@ class ProjectAgentRunner:
                 worker_proposals.append(
                     await self._call(
                         self.config.blue_team_model,
-                        BLUE_WORKER_SYSTEM_PROMPT,
+                        blue_persona_prompt(assignment.agent_index)
+                        + "\n"
+                        + BLUE_WORKER_SYSTEM_PROMPT,
                         worker_payload,
                         BlueProposal,
                         role=(

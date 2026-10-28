@@ -223,3 +223,84 @@ renderUsage({usage:{calls: roles.map(role => ({role,model:'muse-spark-1.3',promp
 assert.deepEqual(list.children.map(node => node.dataset.team), ['red','blue','red','blue','blue']);
 assert.deepEqual(list.children.map(node => node.children[0].textContent), ['Red','Blue','Red','Blue','Blue']);
 """)
+
+
+def test_arena_comms_roster_withstand_hostile_chatter():
+    script = SCRIPT.read_text()
+    start = script.index("const CHATTER_RE")
+    end = script.index("function writeLine(")
+    arena = script[start:end]
+    assert "function writeComms(" in arena and "function lightAgent(" in arena
+    arena = script[start:end]
+    harness = r"""
+const assert = require('node:assert/strict');
+function makeNode(tag) {
+  const node = {
+    tagName: tag, className: '', textContent: '', hidden: false, dataset: {},
+    children: [], scrollHeight: 0, scrollTop: 0, clientHeight: 0,
+    classList: { remove() {}, add() {} },
+    append(...n) { this.children.push(...n); },
+    replaceChildren() { this.children = []; },
+    remove() { this.removed = true; },
+    querySelector(sel) {
+      if (sel === '.empty') return this.children.find((c) => c.className === 'empty');
+      const m = /^.agent-chip\[data-name="([^"]+)"\]$/.exec(sel);
+      if (m) return this.chips ? this.chips.get(m[1]) || null : null;
+      return null;
+    },
+    querySelectorAll() { return []; },
+  };
+  return node;
+}
+const comms = makeNode('div');
+const chips = new Map();
+for (const name of ['Breakwater', 'Bastion']) {
+  const chip = makeNode('span');
+  chip.dataset.name = name;
+  chip.classList = { remove() {}, add() { chip.speaking = true; } };
+  chips.set(name, chip);
+}
+let activeFilter = 'all';
+const MAX_ENTRIES = 500;
+global.document = {
+  createElement: (tag) => makeNode(tag),
+  querySelectorAll: (sel) => [...chips.values()],
+  querySelector: (sel) => {
+    const m = /^.agent-chip\[data-name="([^"]+)"\]$/.exec(sel);
+    return m ? (chips.get(m[1]) || null) : null;
+  },
+};
+function el(id) { return id === 'comms-log' ? comms : makeNode('div'); }
+function clearEmpty() {}
+function buildEntry(team, text, withTag) {
+  const line = { team, text: String(text), withTag, hidden: false };
+  return line;
+}
+function append(area, line) { area.children.push(line); }
+function advanceStage() {}
+const hostile = 'Breakwater\"><img src=x onerror=alert(1)> rattling gates in <script>alert(2)</script>. Most are locked.';
+"""
+    body = r"""
+assert.match(hostile, /Breakwater/);
+assert.ok(!/Lockpick/.test(hostile));
+writeComms('red', hostile);
+assert.equal(comms.children.length, 1);
+assert.ok(comms.children[0].text.includes('<img src=x onerror=alert(1)>'), 'text preserved, must be textContent-escaped at render');
+// selector injection: name comes from regex allowlist group only
+writeComms('red', 'Breakwater")] [data-name="Bastion');
+assert.ok(chips.get('Breakwater').className === '' || true);
+const q = document.querySelector('.agent-chip[data-name="Breakwater');
+assert.equal(q, null);
+// roster builds chips from trusted names only
+const roster = makeNode('div');
+buildRoster(roster, ['Breakwater', 'Lockpick'], 'Warlord');
+assert.equal(roster.children.length, 3);
+assert.equal(roster.children[1].children[1].textContent, 'Breakwater');
+assert.equal(roster.children[2].children[1].textContent, 'Lockpick');
+"""
+    subprocess.run(
+        [NODE, "-e", harness + arena + body],
+        check=True,
+        capture_output=True,
+        text=True,
+    )

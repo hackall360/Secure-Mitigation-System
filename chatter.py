@@ -66,8 +66,19 @@ def chatter(
     rng = random.Random(seed if seed is not None else hash((kind, persona, path, code, n)))
     template = rng.choice(templates)
     # Keep path to basename to avoid leaking deep structure; never include contents.
+    # Collapse whitespace (incl. newlines) so hostile names cannot inject log lines.
     short_path = path.rsplit("/", 1)[-1][:64] if path else "the boundary"
-    line = template.format(persona=persona[:24] or "Agent", path=short_path, code=code, n=n)
+    short_path = " ".join(short_path.split())
+    safe_persona = " ".join((persona[:24] or "Agent").split())
+    try:
+        safe_code = int(code) if code is not None else 0
+    except (TypeError, ValueError):
+        safe_code = 0
+    try:
+        safe_n = int(n)
+    except (TypeError, ValueError):
+        safe_n = 0
+    line = template.format(persona=safe_persona, path=short_path, code=safe_code, n=safe_n)
     # Hard ceiling: minor summaries only.
     return line[:220]
 
