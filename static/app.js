@@ -38,6 +38,8 @@ const scanProfileCycles = (key) => {
 let targets = {};
 let socket = null;
 let latestResult = null;
+let closeReason = null; // 'invalid' | 'busy' | null — set when the server refuses a scan, so onclose keeps the specific next step instead of overwriting it.
+let userCancelled = false; // set by stopScan so onclose reports "Stopped" instead of a false error.
 let configured = false;
 const RED_NAMES = ['Breakwater', 'Lockpick', 'Bloodhound', 'Sparkler', 'Cartographer', 'Breakwater', 'Lockpick', 'Bloodhound', 'Sparkler', 'Cartographer', 'Breakwater', 'Lockpick'];
 const BLUE_NAMES = ['Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader', 'Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader', 'Bastion', 'Stitch'];
@@ -55,19 +57,23 @@ let inferenceMode = 'hosted';
 /* ---------- small helpers ---------- */
 
 function status(text, state = 'idle') {
-  el('status').textContent = text;
-  el('status').dataset.state = state;
+  const node = el('status');
+  if (!node) return;
+  node.textContent = text;
+  node.dataset.state = state;
 }
 
 function chip(id, state, label) {
   const node = el(id);
+  if (!node) return;
   node.dataset.state = state;
-  if (label) node.lastChild.textContent = label;
+  if (label && node.lastChild) node.lastChild.textContent = label;
 }
 
 let toastTimer = null;
 function toast(text) {
   const node = el('toast');
+  if (!node) return;
   node.textContent = text;
   node.hidden = false;
   node.classList.remove('show');
@@ -83,7 +89,20 @@ async function copyText(text, label) {
     await navigator.clipboard.writeText(text);
     toast(`${label} copied`);
   } catch {
-    toast('Clipboard unavailable in this browser context');
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.append(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      toast(`${label} copied`);
+    } catch {
+      toast('Clipboard unavailable in this browser context');
+    }
   }
 }
 
@@ -96,6 +115,7 @@ function formatElapsed(ms) {
 /* ---------- logs ---------- */
 
 function clearEmpty(area) {
+  if (!area) return;
   const empty = area.querySelector('.empty');
   if (empty) empty.remove();
 }
@@ -123,6 +143,7 @@ function buildEntry(team, text, withTag) {
 }
 
 function append(area, line) {
+  if (!area || !line) return;
   clearEmpty(area);
   const pinned = area.scrollHeight - area.scrollTop - area.clientHeight < 40;
   area.append(line);
@@ -157,6 +178,7 @@ function spawnTerminalPop(team, text) {
 
 const CHATTER_RE = /(Breakwater|Lockpick|Bloodhound|Sparkler|Cartographer|Bastion|Stitch|Librarian|Sentinel|Proofreader|Warlord|Warden|Greenhouse)/;
 function buildRoster(node, names, leader) {
+  if (!node) return;
   node.replaceChildren();
   if (leader) {
     const lead = document.createElement('span');
@@ -212,13 +234,16 @@ function writeLine(team, text) {
   writeComms(known, text);
   if (team !== 'system' || /Cycle|probe|patch|regression|cleanup|Docker|Muse/i.test(String(text))) spawnTerminalPop(team, text);
   eventCount += 1;
-  el('event-count').textContent = String(eventCount);
+  const counter = el('event-count');
+  if (counter) counter.textContent = String(eventCount);
   advanceStage(known, String(text));
   if (window.SMSFx) window.SMSFx.onEvent(known, String(text));
 }
 
 function logText(team) {
-  return [...logs[team].querySelectorAll('.entry')]
+  const area = logs[team];
+  if (!area) return '';
+  return [...area.querySelectorAll('.entry')]
     .filter((entry) => !entry.hidden)
     .map((entry) => entry.innerText.replace(/\n/g, ' '))
     .join('\n');
@@ -240,11 +265,16 @@ function setStage(name, state = 'active') {
   if (state !== 'active') document.querySelector(`#pipeline li[data-stage="${name}"]`).dataset.state = state;
   currentStage = Math.max(currentStage, index);
   const fraction = (index + (state === 'active' ? 0.5 : 1)) / STAGES.length;
-  el('progress').style.setProperty('--value', String(Math.min(1, fraction)));
+  const progress = el('progress');
+  if (progress) progress.style.setProperty('--value', String(Math.min(1, fraction)));
 }
 
 function advanceStage(team, text) {
   const t = text.toLowerCase();
+  // Green builder runs before the sandbox exists: pin its intel/generation
+  // lines to the sandbox node so the pipeline lights up live without
+  // blocking later stages (sandbox index 0 never regresses the guard).
+  if (team === 'green') { setStage('sandbox'); return; }
   if (team === 'research') setStage('analysis');
   if (t.includes('original-project baseline checks')) { setStage('sandbox'); setStage('baseline'); }
   else if (team === 'red' && t.includes('reviewing the cumulative verified snapshot')) { resetPipeline(); setStage('analysis'); }
@@ -264,7 +294,8 @@ function advanceStage(team, text) {
 function resetPipeline() {
   currentStage = -1;
   document.querySelectorAll('#pipeline li').forEach((item) => { delete item.dataset.state; });
-  el('progress').style.setProperty('--value', '0');
+  const progress = el('progress');
+  if (progress) progress.style.setProperty('--value', '0');
 }
 
 function finishPipeline(result) {
@@ -275,9 +306,12 @@ function finishPipeline(result) {
     else if (!item.dataset.state && i < STAGES.length - 1) item.dataset.state = 'skipped';
   });
   const cleanup = items[items.length - 1];
-  cleanup.dataset.state = result.cleanup_ok ? 'done' : 'failed';
-  el('progress').style.setProperty('--value', '1');
-  el('progress').dataset.state = result.status;
+  if (cleanup) cleanup.dataset.state = result.cleanup_ok ? 'done' : 'failed';
+  const progress = el('progress');
+  if (progress) {
+    progress.style.setProperty('--value', '1');
+    progress.dataset.state = result.status;
+  }
   if (window.SMSFx) window.SMSFx.onFinish(result);
 }
 
@@ -299,8 +333,10 @@ const TARGET_ICONS = { node_query_sink: 'JS', php_command_sink: 'PHP', mysql_ins
 
 function renderTargets() {
   const list = el('target-list');
+  const select = el('target-select');
+  if (!list || !select) return;
   list.replaceChildren();
-  el('target-select').replaceChildren();
+  select.replaceChildren();
   Object.entries(targets).forEach(([key, target], index) => {
     const option = document.createElement('option');
     option.value = key;
@@ -365,9 +401,12 @@ function setSourceMode(mode) {
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
-      ? 'Greenhouse grows a novel vulnerable demo from your themes, then red and blue exercise it in Docker.'
+      ? 'Greenhouse grows a fresh demo from your build brief and vulnerabilities below, then red and blue exercise it in Docker.'
       : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
+  // Build-brief affordance: landing on Green build puts the cursor in the
+  // brief field so the Wonder-built flow starts with one keystroke.
+  if (mode === 'demo-build' && el('demo-build-brief')) el('demo-build-brief').focus({ preventScroll: true });
 }
 
 function parseArgv(id, label, errors) {
@@ -622,6 +661,28 @@ function summaryEvidence(payload) {
   };
 }
 
+function renderResultMeta(payload, evidence, cycles) {
+  let meta = el('result-meta');
+  if (!meta) {
+    meta = document.createElement('p');
+    meta.id = 'result-meta';
+    el('result-message').after(meta);
+  }
+  const parts = [];
+  const before = evidence.pre_summary || probeLabel(evidence.pre_exit_code)[0];
+  const after = evidence.post_summary || probeLabel(evidence.post_exit_code)[0];
+  if (before !== 'Not run' || after !== 'Not run') parts.push(`${before} → ${after}`);
+  if (Array.isArray(cycles) && cycles.length) {
+    const kept = cycles.filter((cycle) => cycle && cycle.status === 'retained').length;
+    parts.push(`${kept}/${cycles.length} cycles verified`);
+  } else if (payload.status) {
+    parts.push(payload.status === 'verified' ? '1/1 verified' : '0/1 verified');
+  }
+  if (startedAt) parts.push(`took ${formatElapsed(Date.now() - startedAt)}`);
+  meta.textContent = parts.join(' · ');
+  meta.hidden = parts.length === 0;
+}
+
 function showResult(payload) {
   latestResult = payload;
   const evidence = summaryEvidence(payload);
@@ -633,6 +694,7 @@ function showResult(payload) {
   el('result-panel').dataset.status = payload.status;
   el('result-title').textContent = label;
   el('result-message').textContent = payload.message;
+  renderResultMeta(payload, evidence, cycles);
   fact('fact-baseline', evidence.baseline_passed === undefined ? 'Not reported' : evidence.baseline_passed ? 'Passed' : 'Not passed', evidence.baseline_passed);
   const pre = evidence.pre_summary ? [evidence.pre_summary, evidence.pre_good ? undefined : false] : probeLabel(evidence.pre_exit_code);
   fact('fact-pre', pre[0], evidence.pre_exit_code === 0 ? undefined : pre[1]);
@@ -704,17 +766,25 @@ async function initialize() {
     chip('chip-server', 'error', 'Offline');
     status('Unable to connect', 'error');
     el('setup').hidden = false;
-    el('setup').textContent = error.message;
+    // Keep the technical detail but always end with the one action that fixes it.
+    el('setup').textContent = `${error.message} Start the server with python main.py --serve --port 8000, then reload this page.`;
   }
 }
 
 function startScan() {
   if (socket || !configured) return;
+  closeReason = null;
+  userCancelled = false;
   const key = el('target-select').value;
-  if (sourceMode === 'demo' && !targets[key]) return;
+  if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
-  if (sourceMode === 'project' && !spec) { status('Fix project details', 'warn'); return; }
+  if (sourceMode === 'project' && !spec) {
+    status('Fix the highlighted project fields below, then run again', 'warn');
+    const firstInvalid = el('project-form').querySelector('[aria-invalid="true"]');
+    if (firstInvalid) firstInvalid.focus();
+    return;
+  }
   latestResult = null;
   eventCount = 0;
   el('event-count').textContent = '0';
@@ -743,10 +813,13 @@ function startScan() {
   const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
   socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${query}` : `${base}/ws/combat/${encodeURIComponent(key)}${query}`);
   socket.onmessage = handleSocketMessage;
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleScanClose;
   if (spec) socket.onopen = () => {
-    socket.send(JSON.stringify(spec));
+    try {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(spec));
+      else return;
+    } catch { return; }
     writeLine('system', `Project specification accepted · ${spec.scan_profile} intensity · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} · ${spec.red_agents} red / ${spec.blue_agents} blue agents.`);
   };
 }
@@ -757,13 +830,24 @@ function handleSocketMessage(event) {
     if (payload.type === 'result') {
       showResult(payload);
     } else if (payload.type === 'invalid' || payload.type === 'busy') {
-      status(payload.msg || (payload.type === 'busy' ? 'Another scan is already running.' : 'Invalid request.'), 'error');
-      writeLine(payload.team || 'system', payload.msg || payload.type);
+      // Server refused the scan (bad spec/demo request, or lock held).
+      // Remember which, so the close handler below keeps this specific
+      // next step instead of overwriting it with the generic message.
+      closeReason = payload.type;
+      if (payload.type === 'busy') {
+        status('Another scan is already running — wait for it to finish, then run again', 'error');
+        writeLine(payload.team || 'system', 'Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
+        toast('Server is busy — try again when the current scan finishes');
+      } else {
+        status(payload.msg || 'Server rejected the request — fix the highlighted fields, then run again', 'error');
+        writeLine(payload.team || 'system', `${payload.msg || 'Invalid request.'} Fix the highlighted fields, then run again.`);
+        toast('Request rejected — check the highlighted fields');
+      }
     } else {
       writeLine(payload.team, payload.msg);
     }
   } catch {
-    writeLine('system', 'Received an unreadable server event.');
+    writeLine('system', 'Received an unreadable server event — the scan continues; check the server terminal if this repeats.');
   }
 }
 
@@ -778,22 +862,36 @@ function handleScanClose() {
   lockProjectForm(false);
   el('stop-btn').hidden = true;
   el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
-  if (!latestResult) {
-    status('Session ended without a result', 'error');
-    writeLine('system', 'Connection closed. The server will finish cleanup before accepting another scan.');
+  if (latestResult) { closeReason = null; userCancelled = false; return; }
+  if (userCancelled) {
+    status('Scan stopped — no changes were applied', 'warn');
+    writeLine('system', 'Scan stopped by user. The original fixture is untouched; run again whenever ready.');
+    toast('Scan stopped');
+  } else if (closeReason === 'busy' || closeReason === 'invalid') {
+    // handleSocketMessage already showed the specific next step; the
+    // socket close that follows a refusal must not overwrite it.
+    document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
+  } else {
+    status('Lost connection to the server — start it, then run again', 'error');
+    writeLine('system', 'Lost connection to the server before a result arrived. Start it with python main.py --serve --port 8000, then run again. Cleanup on the server finishes on its own.');
+    toast('Disconnected — restart the server, then run again');
     document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
   }
+  userCancelled = false;
 }
 
 function stopScan() {
   if (!socket) return;
+  userCancelled = true;
   el('stop-btn').disabled = true;
-  status('Stopping scan', 'running');
-  socket.close(1000, 'User cancelled');
+  status('Stopping scan — finishing cleanup', 'running');
+  try { socket.close(1000, 'User cancelled'); } catch { /* socket already gone */ }
 }
 
 function startDemoBuild() {
   // Green builder path: Greenhouse grows a novel demo, then red/blue run it.
+  closeReason = null;
+  userCancelled = false;
   latestResult = null;
   eventCount = 0;
   el('event-count').textContent = '0';
@@ -814,6 +912,9 @@ function startDemoBuild() {
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Greenhouse is building', 'running');
+  // Immediate progress affordance: the first green WS event may take a
+  // while (intel lookups), so light the sandbox node at send time.
+  setStage('sandbox');
   startedAt = Date.now();
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
@@ -822,10 +923,13 @@ function startDemoBuild() {
   sourceMode = 'demo-build';
   socket = new WebSocket(`${base}/ws/demo${socketQuery()}`);
   socket.onmessage = handleSocketMessage;
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleDemoClose;
   socket.onopen = () => {
-    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
+    try {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
+    } catch { return; }
     writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
   };
 }
@@ -836,12 +940,26 @@ function handleDemoClose() {
   if (timer) { clearInterval(timer); timer = null; }
   document.body.classList.remove('scanning');
   socket = null;
-  sourceMode = 'demo';
+  // Restore the Green build mode: startDemoBuild temporarily borrows
+  // sourceMode as a teardown flag; leaving it 'demo-build' keeps the run
+  // label and config visible for the next build.
+  setSourceMode('demo-build');
   el('run-btn').disabled = !configured;
   el('stop-btn').hidden = true;
   lockTargets(false);
   lockProfiles(false);
   lockProjectForm(false);
+  if (latestResult) { closeReason = null; userCancelled = false; return; }
+  if (userCancelled) {
+    status('Build stopped — no changes were applied', 'warn');
+    writeLine('system', 'Demo build stopped by user. Run again whenever ready.');
+  } else if (closeReason !== 'busy' && closeReason !== 'invalid') {
+    status('Lost connection to the server — start it, then run again', 'error');
+    writeLine('system', 'Lost connection to the server before a result arrived. Start it with python main.py --serve --port 8000, then run again.');
+    toast('Disconnected — restart the server, then run again');
+  }
+  // Refusals already showed their specific next step via handleSocketMessage.
+  userCancelled = false;
 }
 
 /* ---------- wiring ---------- */
@@ -867,7 +985,9 @@ el('download-btn').addEventListener('click', () => {
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = `secure-mitigation-${latestResult.target || latestResult.project || 'project'}-report.json`;
+  document.body.append(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');
 });
@@ -875,11 +995,13 @@ el('download-btn').addEventListener('click', () => {
 el('download-patch-btn').addEventListener('click', () => {
   const diff = latestResult && (latestResult.diff || latestResult.cumulative_diff);
   if (!diff) return;
-  const url = URL.createObjectURL(new Blob([diff], { type: 'text/x-diff' }));
+  const url = URL.createObjectURL(new Blob([diff], { type: 'text/x-diff;charset=utf-8' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'candidate.patch';
+  anchor.download = `candidate-${latestResult.target || latestResult.project || 'project'}.patch`;
+  document.body.append(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Candidate patch downloaded');
 });
@@ -893,7 +1015,8 @@ document.querySelectorAll('[data-copy]').forEach((button) => {
 
 el('copy-diff').addEventListener('click', (event) => {
   event.preventDefault();
-  copyText(latestResult && latestResult.diff, 'Diff');
+  const diff = latestResult && (latestResult.diff || latestResult.cumulative_diff);
+  copyText(diff, 'Candidate patch');
 });
 
 document.querySelectorAll('.filter').forEach((button) => {
@@ -922,6 +1045,18 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     startScan();
   }
+});
+
+/* ---------- teardown guards (disconnect + rejected promises only) ---------- */
+
+window.addEventListener('pagehide', () => {
+  try {
+    if (socket && socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) socket.close(1000, 'Page hidden');
+  } catch { /* socket already gone */ }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault();
 });
 
 updateScanProfile();

@@ -28,7 +28,10 @@ def test_disconnect_cancels_workflow_and_another_scan_is_rejected(monkeypatch):
         with client.websocket_connect(
             "ws://localhost/ws/combat/node_query_sink", headers=headers
         ) as first:
-            assert first.receive_json()["msg"] == "Scan started"
+            msg = first.receive_json()
+            if msg.get("msg") != "Scan started":
+                assert msg["team"] == "system"  # hello preamble precedes workflow
+                assert first.receive_json()["msg"] == "Scan started"
             with client.websocket_connect(
                 "ws://localhost/ws/combat/node_query_sink", headers=headers
             ) as second:

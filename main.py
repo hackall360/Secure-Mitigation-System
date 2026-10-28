@@ -7,6 +7,7 @@ import asyncio
 import json
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -152,8 +153,33 @@ async def run_demo_build(
 
 
 def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
+    @asynccontextmanager
+    async def readiness_lifespan(application: FastAPI):
+        try:
+            settings = config or load_config()
+            snapshot = _health_report(settings)
+            print(
+                "[SYSTEM] Secure Mitigation System ready: "
+                f"inference={snapshot['inference_mode']} "
+                f"(ready={snapshot['inference_ready']}), "
+                f"docker={snapshot['docker']['state']}, "
+                f"profile={snapshot['default_profile']}.",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                "[SYSTEM] Secure Mitigation System starting with unvalidated "
+                f"configuration ({type(exc).__name__}); readiness via /api/health.",
+                flush=True,
+            )
+        yield
+
     application = FastAPI(
-        title="Secure Mitigation System", version="0.1.0", docs_url=None, redoc_url=None
+        title="Secure Mitigation System",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=readiness_lifespan,
     )
     application.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
@@ -337,6 +363,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
+            # Connect preamble: the UI renders plain log frames immediately,
+            # so this hello + profile snapshot means it never sits blank
+            # while Docker/Muse warm up. Profiles are fixed keys, never model
+            # IDs; api keys never print. Fixture/demo only: invalid/busy
+            # handlers and project first-frame flow are other owners.
+            if target_key is not None:
+                try:
+                    profile_key = socket.query_params.get("profile") or default_profile(scan_config)
+                    hello_msg = (
+                        "Connected: "
+                        f"{scan_config.red_team_model} vs {scan_config.blue_team_model} "
+                        f"(profile {profile_key}"
+                        + (", research on" if scan_config.research_enabled else "")
+                        + ")."
+                    )
+                except Exception:
+                    hello_msg = "Connected: Secure Mitigation System scan socket ready."
+                await emit("system", hello_msg)
             run = asyncio.create_task(coroutine)
             disconnect = asyncio.create_task(disconnected())
             try:
@@ -579,10 +623,18 @@ async def cli_runner(
         _out(f"Status: {status_color(str(result.status), use_color)}")
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
+        # Per-call transparency: which Muse model is active, which phase
+        # (usage role) it served, and how it reasons — token counts from the
+        # usage payload plus the reasoning share of its output tokens.
+        output_tokens = max(int(getattr(call, "completion_tokens", 0) or 0), 0)
+        reasoning_tokens = max(int(getattr(call, "reasoning_tokens", 0) or 0), 0)
+        reasoning_share = reasoning_tokens / output_tokens if output_tokens > 0 else 0.0
         print(
             f"[USAGE ] {call.role or '?'} {call.model}: {call.prompt_tokens} in, "
-            f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning), "
-            f"{call.seconds:.1f}s, {cost}",
+            f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning, "
+            f"{reasoning_share:.0%} of output), "
+            f"{call.seconds:.1f}s, {cost} "
+            f"[model {call.model} active on {call.role or '?'} phase]",
             flush=True,
             file=sys.stderr,
         )
@@ -697,6 +749,21 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
         except Exception:
             cleanup_ok = None
     lines.append(f"- Cleanup verified: `{bool(cleanup_ok)}`")
+    baseline = getattr(result, "baseline_passed", None)
+    regression = getattr(result, "regression_passed", None)
+    if baseline is not None or regression is not None:
+        lines.append(
+            f"- Checks: baseline `{'passed' if baseline else 'failed'}` / "
+            f"regression `{'passed' if regression else 'failed'}`"
+        )
+    cycle_reports = getattr(result, "cycle_reports", None) or []
+    if cycle_reports:
+        counts: dict[str, int] = {}
+        for cycle in cycle_reports:
+            key = str(getattr(cycle, "status", "unknown"))
+            counts[key] = counts.get(key, 0) + 1
+        breakdown = ", ".join(f"{num} {name}" for name, num in sorted(counts.items()))
+        lines.append(f"- Cycles: `{len(cycle_reports)}` total ({breakdown})")
     lines.append("")
     lines.append("## Token and cost breakdown")
     lines.append("")
@@ -720,8 +787,12 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     total_tokens = getattr(result, "total_tokens", 0)
     total_cost = getattr(result, "cost_usd", getattr(result, "total_cost_usd", None))
     total_str = "unknown" if total_cost is None else f"${total_cost:.4f}"
-    lines.append(f"| total |  |  |  |  |  |  | {total_str} |")
-    lines.append(f"Total tokens: {total_tokens}, estimated cost: {total_str}")
+    total_seconds = sum(float(getattr(call, "seconds", 0.0) or 0.0) for call in calls)
+    lines.append(f"| total |  |  |  |  |  | {total_seconds:.1f} | {total_str} |")
+    lines.append(
+        f"Total tokens: {total_tokens}, model latency: {total_seconds:.1f}s, "
+        f"estimated cost: {total_str}"
+    )
     lines.append("")
     lines.append("## Red team findings")
     lines.append("")
@@ -746,6 +817,9 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     post = getattr(result, "post_exit_code", None)
     if pre is not None or post is not None:
         lines.append(f"- Pre/post probe exit codes: {pre} / {post}")
+        lines.append(
+            "- Before/after: `0` boundary reached, `1` blocked, other/inconclusive needs review"
+        )
     lines.append("")
     lines.append("## Blue team sanitization")
     lines.append("")
@@ -839,7 +913,9 @@ def main() -> int:
     )
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
     commands.add_argument(
-        "--tui", action="store_true", help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)"
+        "--tui",
+        action="store_true",
+        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)",
     )
     commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(

@@ -5,6 +5,11 @@
 Only these fixed pairs can be chosen from the dashboard or CLI. A browser can never
 send an arbitrary model ID. "custom" means "use the server's configured models"
 (META_MUSE_RED_MODEL / META_MUSE_BLUE_MODEL), which is also the default.
+
+Role guide for judges: Muse Spark is the fast triage model (red-team analysis
+and verification probe); Muse Wonder is the deep-reasoning model (blue-team
+sanitization patch). Economy runs Spark for both roles, balanced runs Spark
+for red and Wonder for blue, and quality runs Wonder for both roles.
 """
 
 from dataclasses import dataclass, replace
@@ -26,21 +31,21 @@ META_PROFILES: dict[str, Profile] = {
     "economy": Profile(
         "economy",
         "Economy",
-        "Muse Spark for both roles. Lowest cost.",
+        "Muse Spark for red (fast triage) and blue (fast patch). Lowest cost.",
         "muse-spark-1.3",
         "muse-spark-1.3",
     ),
     "balanced": Profile(
         "balanced",
         "Balanced",
-        "Spark analyzes, Wonder patches. Default.",
+        "Spark red triage, Wonder blue patch. Default.",
         "muse-spark-1.3",
         "muse-wonder-1.0",
     ),
     "quality": Profile(
         "quality",
         "Quality",
-        "Muse Wonder for both roles. Highest cost.",
+        "Muse Wonder for red (deep analysis) and blue (deep patch). Highest cost.",
         "muse-wonder-1.0",
         "muse-wonder-1.0",
     ),

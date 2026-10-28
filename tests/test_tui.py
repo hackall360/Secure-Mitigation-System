@@ -155,3 +155,87 @@ def test_start_scan_thread_uses_workflow(monkeypatch):
     assert state.status == "done"
     assert "verified" in state.result_summary
     assert drain_queue(q, state) >= 1
+
+
+def test_run_plain_success_degrade_no_curses(monkeypatch, capsys):
+    """tui.run_plain: fixture workflow mocked, queue drained, redacted summary."""
+    import sys
+    import types as _types
+
+    async def fake_workflow(key, emit):
+        await emit("red", "analyzing sink")
+        return _types.SimpleNamespace(target=key, status="verified", message="all green")
+
+    monkeypatch.setitem(
+        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=fake_workflow)
+    )
+    rc = _tui.run_plain(["--fixture", FIXTURE_ORDER[0]])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[red]" in out and "verified" in out and FIXTURE_ORDER[0] in out
+
+
+def test_run_plain_failure_returns_one(monkeypatch, capsys):
+    """tui.run_plain: workflow raising degrades to exit 1 with type name only."""
+    import sys
+    import types as _types
+
+    async def boom(key, emit):
+        raise RuntimeError("docker down")
+
+    monkeypatch.setitem(
+        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=boom)
+    )
+    assert _tui.run_plain([]) == 1
+    assert "RuntimeError" in capsys.readouterr().out
+
+
+def test_start_scan_thread_failure_sets_error_state(monkeypatch):
+    """Worker exception: state=error, type-only summary, stop set, no raise."""
+    import queue as _queue
+    import sys
+    import threading as _threading
+    import types as _types
+
+    async def boom(key, emit):
+        raise ValueError("no docker here")
+
+    monkeypatch.setitem(
+        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=boom)
+    )
+    state = _tui.TuiState()
+    q: _queue.Queue = _queue.Queue()
+    stop = _threading.Event()
+    thread = _tui.start_scan_thread(state, q, stop, daemon=True)
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert state.status == "error" and stop.is_set()
+    assert "ValueError" in state.result_summary
+    assert _tui.drain_queue(q, state) >= 1
+
+
+def test_apply_action_scroll_up_and_filter_cycle_return_action():
+    """apply_action: scroll:up decrements floors at 0; filter cycles all kinds."""
+
+    state = _tui.TuiState()
+    assert _tui.apply_action(state, "scroll:up") == "scroll:up"
+    assert all(v == 0 for v in state.scroll.values())
+    _tui.apply_action(state, "scroll:down")
+    _tui.apply_action(state, "scroll:up")
+    assert all(v == 0 for v in state.scroll.values())
+    seen = set()
+    for _ in range(4):
+        seen.add(_tui.apply_action(state, "filter"))
+    assert seen == {"filter"}
+    assert state.filter_kind is None
+
+
+def test_parse_key_enter_codes_and_unknowns():
+    """parse_key: numeric enter codes start; garbage stays unknown."""
+
+    assert _tui.parse_key(10) == "start"
+    assert _tui.parse_key(13) == "start"
+    assert _tui.parse_key(27) == "stop"
+    assert _tui.parse_key(999999) == "unknown"
+    assert _tui.parse_key("") == "unknown"
+    assert _tui.parse_key("KEY_BOGUS") == "unknown"
