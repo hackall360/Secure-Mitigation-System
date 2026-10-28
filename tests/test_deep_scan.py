@@ -183,3 +183,44 @@ def test_user_reports_never_contain_exploit_scripts():
     assert safe["cycle_reports"][0]["evidence"]["red"]["report"][
         "verification_script_python"
     ].startswith("[exploit")
+
+
+def test_websocket_and_cli_reports_withhold_probe_source():
+    from workflow import ScanResult, redact_fixture_result_for_user
+    from agents import RedTeamFinding
+    import json as _json
+    fr = ScanResult(
+        target="t",
+        finding=RedTeamFinding(
+            vulnerability_class="vc",
+            sink_location="s",
+            analysis_summary="a",
+            verification_script_python="EVIL-WS()",
+        ),
+    )
+    fr.traces = {"before": "PAYLOAD-WS" * 100, "after": "x", "baseline": "normal ok"}
+    safe = redact_fixture_result_for_user(fr)
+    dump = _json.dumps(safe)
+    assert "EVIL-WS()" not in dump and "PAYLOAD-WS" not in dump
+    assert safe["traces"]["baseline"] == "normal ok"
+    # exit codes survive at top level
+    assert safe["pre_exit_code"] is None or isinstance(safe["pre_exit_code"], int)
+
+
+def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
+    import pytest as _pytest
+    from intel_search import nvd_lookup, nvd_search
+    with _pytest.raises(ValueError):
+        nvd_search("")
+    with _pytest.raises(ValueError):
+        nvd_lookup("CVE-bad")
+    from demo_gen import DemoProjectFiles, materialize_demo_project
+    with _pytest.raises(ValueError):
+        materialize_demo_project(
+            DemoProjectFiles(
+                app_py="x='sk_live_" + "a" * 24 + "'",
+                test_contract_py="print(1)",
+                contract="c",
+            ),
+            dest_dir=str(tmp_path / "evil"),
+        )
