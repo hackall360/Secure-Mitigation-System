@@ -76,3 +76,21 @@ def test_socket_reports_missing_key_without_docker():
                     assert "META_MUSE_API_KEY" in event["message"]
                     assert event["cleanup_ok"]
                     break
+
+
+def test_dashboard_exposes_interactive_dark_theme_controls():
+    with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
+        page = client.get("/").text
+        for element in (
+            'id="pipeline"',
+            'id="target-list"',
+            'id="diff"',
+            'data-filter="red"',
+            'name="color-scheme" content="dark"',
+            'id="toast"',
+        ):
+            assert element in page
+        script = client.get("/static/app.js").text
+        # Untrusted model output must be rendered as text, never parsed as HTML.
+        assert "innerHTML" not in script and "insertAdjacentHTML" not in script
+        assert "prefers-reduced-motion" in client.get("/static/app.css").text
