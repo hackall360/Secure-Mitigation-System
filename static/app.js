@@ -306,13 +306,21 @@ async function initialize() {
     el('red-model').textContent = health.red_model;
     el('blue-model').textContent = health.blue_model;
     configured = health.api_key_configured;
+    const setupNotes = [];
     chip('chip-server', 'ok');
+    const dockerState = (health.docker && health.docker.state) || 'unavailable';
+    const dockerReady = dockerState === 'ready';
+    chip('chip-docker', dockerReady ? 'ok' : 'error', { ready: 'Docker', images_missing: 'Images missing', unavailable: 'Docker offline' }[dockerState] || 'Docker');
     chip('chip-key', configured ? 'ok' : 'warn', configured ? 'API key' : 'No API key');
+    if (!configured) setupNotes.push('Set META_MUSE_API_KEY in .env, export it, and restart the server.');
+    if (dockerState === 'unavailable') setupNotes.push('Docker is not reachable. Start the Docker service and make sure your user can access it.');
+    if (dockerState === 'images_missing') setupNotes.push('Sandbox images are missing. Run python main.py --init-images.');
+    configured = configured && dockerReady;
     el('run-btn').disabled = !configured;
     status(configured ? 'Ready to verify' : 'Setup required', configured ? 'ready' : 'warn');
-    if (!configured) {
+    if (setupNotes.length) {
       el('setup').hidden = false;
-      el('setup').textContent = 'Set META_MUSE_API_KEY in the server environment, initialize the Docker images with python main.py --init-images, then restart the server. You can explore the dashboard while you configure the scan runtime.';
+      el('setup').textContent = `${setupNotes.join(' ')} You can explore the dashboard meanwhile.`;
     }
   } catch (error) {
     chip('chip-server', 'error', 'Offline');

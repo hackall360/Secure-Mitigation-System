@@ -44,6 +44,73 @@ sys.exit(2)
 """
 
 
+def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
+    """Fast, read-only readiness probe for the dashboard and CLI. Never raises."""
+    owned = client is None
+    try:
+        client = client if client is not None else docker.from_env(timeout=3)
+        client.ping()
+        missing = []
+        for tag in (config.target_base_image, config.verifier_base_image):
+            try:
+                client.images.get(tag)
+            except ImageNotFound:
+                missing.append(tag)
+        leftovers = len(client.containers.list(all=True, filters={"label": "purplebox.session"}))
+        return {
+            "state": "ready" if not missing else "images_missing",
+            "missing_images": missing,
+            "leftover_containers": leftovers,
+        }
+    except Exception:
+        return {"state": "unavailable", "missing_images": [], "leftover_containers": 0}
+    finally:
+        if owned and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
+    """Rebuild both base images unconditionally, e.g. after a Dockerfile change."""
+    client = client if client is not None else docker.from_env(timeout=600)
+    built = []
+    for tag, filename in (
+        (config.target_base_image, "Dockerfile.target"),
+        (config.verifier_base_image, "Dockerfile.verifier"),
+    ):
+        client.images.build(
+            path=str(BASE_DIR / "docker"),
+            dockerfile=filename,
+            tag=tag,
+            rm=True,
+            forcerm=True,
+            pull=True,
+            labels={"purplebox.base": "true"},
+            timeout=600,
+        )
+        built.append(tag)
+    return built
+
+
+def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
+    """Remove only PurpleBox session resources left by a crash. Base images are kept."""
+    client = client if client is not None else docker.from_env(timeout=60)
+    removed = {"containers": 0, "networks": 0, "snapshots": 0}
+    label = {"label": "purplebox.session"}
+    for container in client.containers.list(all=True, filters=label):
+        container.remove(force=True)
+        removed["containers"] += 1
+    for network in client.networks.list(filters=label):
+        network.remove()
+        removed["networks"] += 1
+    for image in client.images.list(name=config.clone_repo_prefix):
+        client.images.remove(image=image.id, force=True)
+        removed["snapshots"] += 1
+    return removed
+
+
 class DockerSandboxManager:
     def __init__(self, config: PurpleBoxConfig, *, client=None):
         self.config = config

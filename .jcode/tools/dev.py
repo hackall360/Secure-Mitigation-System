@@ -117,7 +117,19 @@ def smoke():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("setup", "check", "images", "docker-test", "serve", "smoke", "lock")
+        "command",
+        choices=(
+            "setup",
+            "check",
+            "images",
+            "rebuild-images",
+            "docker-status",
+            "docker-cleanup",
+            "docker-test",
+            "serve",
+            "smoke",
+            "lock",
+        ),
     )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
@@ -127,6 +139,12 @@ def main():
         check()
     elif args.command == "images":
         python("main.py", "--init-images")
+    elif args.command == "rebuild-images":
+        python("main.py", "--rebuild-images")
+    elif args.command == "docker-status":
+        python("main.py", "--docker-status")
+    elif args.command == "docker-cleanup":
+        python("main.py", "--cleanup")
     elif args.command == "docker-test":
         python("test_harness.py", "--docker")
     elif args.command == "serve":

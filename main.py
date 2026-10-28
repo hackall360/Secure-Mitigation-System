@@ -17,7 +17,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from config import ConfigurationError, PurpleBoxConfig, load_config
-from docker_manager import DockerSandboxManager
+from docker_manager import (
+    DockerSandboxManager,
+    build_base_images,
+    docker_status,
+    remove_stale_resources,
+)
 from registry import BASE_DIR, TARGETS_REGISTRY
 from workflow import execute_purple_workflow
 
@@ -72,7 +77,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 "api_key_configured": bool(settings.meta_api_key),
                 "red_model": settings.red_team_model,
                 "blue_model": settings.blue_team_model,
-                "docker": "checked when a scan starts",
+                "docker": await asyncio.to_thread(docker_status, settings),
                 "busy": application.state.scan_lock.locked(),
             }
         except ConfigurationError as exc:
@@ -161,6 +166,15 @@ def main() -> int:
     commands.add_argument(
         "--init-images", action="store_true", help="Build the two base images (requires Docker)"
     )
+    commands.add_argument(
+        "--rebuild-images", action="store_true", help="Force a fresh rebuild of both base images"
+    )
+    commands.add_argument(
+        "--docker-status", action="store_true", help="Report Docker daemon and image readiness"
+    )
+    commands.add_argument(
+        "--cleanup", action="store_true", help="Remove leftover PurpleBox session resources"
+    )
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
     commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(
@@ -185,6 +199,18 @@ def main() -> int:
             with DockerSandboxManager(settings) as manager:
                 manager.ensure_base_images()
             print("Base images ready.")
+            return 0
+        if args.rebuild_images:
+            for tag in build_base_images(settings):
+                print(f"Rebuilt {tag}")
+            return 0
+        if args.docker_status:
+            report = docker_status(settings)
+            print(json.dumps(report, indent=2))
+            return 0 if report["state"] == "ready" else 1
+        if args.cleanup:
+            removed = remove_stale_resources(settings)
+            print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
         if args.scan:
             return asyncio.run(cli_runner(args.scan, args.output_dir))
