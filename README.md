@@ -71,10 +71,10 @@ Original fixture files are never overwritten by a scan.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `META_MUSE_API_KEY` | unset | Required for scans and live API tests |
-| `META_MUSE_BASE_URL` | `https://api.meta.ai/v1` | HTTPS Meta or an explicitly configured Muse deployment on Baseten/Modal |
-| `META_MUSE_RED_MODEL` | `muse-spark-1.3` | Boundary analysis |
-| `META_MUSE_BLUE_MODEL` | `muse-wonder-1.0` | Sanitization patch generation |
+| `META_MUSE_API_KEY` | unset | Provider key (Baseten key for the hackathon default). Required for scans and live API tests |
+| `META_MUSE_BASE_URL` | `https://inference.baseten.co/v1` | Baseten (hackathon default), Modal, or `https://api.meta.ai/v1` |
+| `META_MUSE_RED_MODEL` | `meta-models/muse-spark-open-1026` | Boundary analysis |
+| `META_MUSE_BLUE_MODEL` | `meta-models/muse-spark-open-1026` | Sanitization patch generation |
 | `META_MUSE_TIMEOUT_SECONDS` | `90` | Per-request API timeout, 1–300 seconds |
 | `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS` | `20` | Per-verifier execution limit, 1–120 seconds |
 
@@ -84,6 +84,8 @@ bounded response size, no redirect following, and no fallback provider. Only Mus
 Spark/Wonder model names are accepted. For a custom Baseten/Modal deployment, supply a
 compatible base URL and ensure that the endpoint actually serves the specified Muse model;
 a hostname/model-name check cannot attest what a remote server runs.
+
+**Hackathon model:** Meta's docs list `meta-models/muse-spark-open` for hosted providers. For the hackathon, use `meta-models/muse-spark-open-1026` (the default). Muse Spark Open is open-weight and is not served by `api.meta.ai`, so the default endpoint is Baseten (`https://inference.baseten.co/v1`, a hackathon credit partner). To use the Meta Model API instead, set `META_MUSE_BASE_URL=https://api.meta.ai/v1` with `muse-spark-1.3` / `muse-wonder-1.0`.
 
 The provided specification used `muse-code` as a model ID. **Muse Code is Meta's coding
 agent**, so this implementation uses the documented `muse-spark-1.3` and `muse-wonder-1.0`

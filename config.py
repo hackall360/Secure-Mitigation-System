@@ -15,9 +15,9 @@ class ConfigurationError(ValueError):
 @dataclass(frozen=True)
 class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
-    meta_base_url: str = "https://api.meta.ai/v1"
-    red_team_model: str = "muse-spark-1.3"
-    blue_team_model: str = "muse-wonder-1.0"
+    meta_base_url: str = "https://inference.baseten.co/v1"
+    red_team_model: str = "meta-models/muse-spark-open-1026"
+    blue_team_model: str = "meta-models/muse-spark-open-1026"
     target_base_image: str = "purplebox-target-base:latest"
     verifier_base_image: str = "purplebox-verifier-base:latest"
     clone_repo_prefix: str = "purplebox-clone-cache"
@@ -49,10 +49,16 @@ class PurpleBoxConfig:
                 "without credentials, query parameters, or a custom port."
             )
         for model in (self.red_team_model, self.blue_team_model):
-            if not re.fullmatch(r"muse-(?:spark|wonder)(?:-[a-z0-9]+(?:\.[0-9]+)*)*", model):
+            # Meta Model API IDs (muse-spark-1.3, muse-wonder-1.0) or the open-weight
+            # Muse Spark Open release served by a hosted provider (meta-models/...).
+            if not re.fullmatch(
+                r"muse-(?:spark|wonder)(?:-[a-z0-9]+(?:\.[0-9]+)*)*"
+                r"|meta-models/muse-spark-open(?:-[a-z0-9]+)*",
+                model,
+            ):
                 raise ConfigurationError(
-                    "Only Muse Spark/Wonder model IDs are supported. Muse Code is a coding "
-                    "agent, not a model ID; use a model enabled for your Meta account."
+                    "Only Muse Spark/Wonder or meta-models/muse-spark-open IDs are supported. "
+                    "Muse Code is a coding agent, not a model ID."
                 )
         if not 1 <= self.api_timeout_seconds <= 300:
             raise ConfigurationError("META_MUSE_TIMEOUT_SECONDS must be between 1 and 300.")
@@ -66,11 +72,15 @@ def load_config() -> PurpleBoxConfig:
     try:
         config = PurpleBoxConfig(
             meta_api_key=os.getenv("META_MUSE_API_KEY", "").strip(),
-            meta_base_url=os.getenv("META_MUSE_BASE_URL", "https://api.meta.ai/v1")
+            meta_base_url=os.getenv("META_MUSE_BASE_URL", "https://inference.baseten.co/v1")
             .strip()
             .rstrip("/"),
-            red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3").strip(),
-            blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
+            red_team_model=os.getenv(
+                "META_MUSE_RED_MODEL", "meta-models/muse-spark-open-1026"
+            ).strip(),
+            blue_team_model=os.getenv(
+                "META_MUSE_BLUE_MODEL", "meta-models/muse-spark-open-1026"
+            ).strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "90")),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
         )

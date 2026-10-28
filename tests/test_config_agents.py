@@ -18,9 +18,16 @@ FINDING = {
 
 
 def test_key_only_required_for_inference(monkeypatch):
-    monkeypatch.delenv("META_MUSE_API_KEY", raising=False)
+    for name in (
+        "META_MUSE_API_KEY",
+        "META_MUSE_BASE_URL",
+        "META_MUSE_RED_MODEL",
+        "META_MUSE_BLUE_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
     settings = load_config()
-    assert settings.meta_base_url == "https://api.meta.ai/v1"
+    assert settings.meta_base_url == "https://inference.baseten.co/v1"
+    assert settings.red_team_model == "meta-models/muse-spark-open-1026"
     with pytest.raises(ConfigurationError, match="META_MUSE_API_KEY"):
         require_api_key(settings)
     assert "secret-value" not in repr(PurpleBoxConfig(meta_api_key="secret-value"))
@@ -54,10 +61,10 @@ async def test_muse_request_uses_exact_configured_endpoint_and_strict_schema():
 
     def handle(request):
         requests.append(request)
-        assert str(request.url) == "https://api.meta.ai/v1/chat/completions"
+        assert str(request.url) == "https://inference.baseten.co/v1/chat/completions"
         assert request.headers["authorization"] == "Bearer unit-test-key"
         body = json.loads(request.content)
-        assert body["model"] == "muse-spark-1.3"
+        assert body["model"] == "meta-models/muse-spark-open-1026"
         assert json.loads(body["messages"][1]["content"])["source"] == "test source"
         return httpx.Response(
             200,
@@ -122,3 +129,32 @@ async def test_api_failure_has_no_fallback_and_does_not_expose_body(status):
         assert len(called) == 1
     finally:
         await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "meta-models/muse-spark-open-1026",
+        "meta-models/muse-spark-open",
+        "muse-spark-1.3",
+        "muse-wonder-1.0",
+    ],
+)
+def test_hackathon_and_meta_model_ids_accepted(model):
+    replace(PurpleBoxConfig(), red_team_model=model, blue_team_model=model).validate()
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["meta-models/llama-4", "evil/muse-spark-open-1026", "meta-models/muse-spark-open/../x"],
+)
+def test_other_hosted_model_ids_rejected(model):
+    with pytest.raises(ConfigurationError):
+        replace(PurpleBoxConfig(), red_team_model=model).validate()
+
+
+def test_hackathon_defaults():
+    config = PurpleBoxConfig()
+    assert config.meta_base_url == "https://inference.baseten.co/v1"
+    assert config.red_team_model == config.blue_team_model == "meta-models/muse-spark-open-1026"
+    config.validate()

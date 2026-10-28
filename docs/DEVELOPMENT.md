@@ -225,3 +225,28 @@ Exit 1 blocked / Resources removed, diff +5 -0, 37 s. Afterwards `--docker-statu
 showed 0 leftover containers. Without a key, `main.py --scan` exits 1 with the
 "META_MUSE_API_KEY is required" message before touching Docker.
 Not yet exercised: real Muse inference, which is blocked until a key is supplied.
+
+## Hackathon model configuration (2026-10-27)
+
+Defaults (`config.py`, `example.env`): `META_MUSE_BASE_URL=https://inference.baseten.co/v1`,
+red and blue model `meta-models/muse-spark-open-1026`. `META_MUSE_API_KEY` is the
+**Baseten** key. Source: the hackathon instruction says to use `-1026` instead of the
+documented `meta-models/muse-spark-open`. Meta's docs
+(https://dev.meta.ai/docs/muse-spark-open/deploy, "Hosted providers") say Muse Spark
+Open is open-weight and **not served by api.meta.ai**. Providers and base URLs:
+Baseten `https://inference.baseten.co/v1`, Together `https://api.together.xyz/v1`,
+Groq `https://api.groq.com/openai/v1`, Nebius `https://api.tokenfactory.us-north1.nebius.com/v1`,
+Fireworks (ID `accounts/fireworks/models/muse-spark-open`). Baseten and Modal are the
+hackathon credit partners, and only Baseten/Modal/api.meta.ai hosts pass `config.validate()`.
+
+The model allowlist in `PurpleBoxConfig.validate()` accepts `muse-spark-*`, `muse-wonder-*`
+and `meta-models/muse-spark-open[-suffix]`. Nothing else under `meta-models/` is accepted.
+Verified: a no-key POST to Baseten `.../v1/chat/completions` returns HTTP 403 (endpoint
+real, auth required). A real completion is still unverified without a key.
+
+Trap: `test_key_only_required_for_inference` read the developer's real environment.
+After `source .env`, a non-default `META_MUSE_BASE_URL` would fail it. It now clears all
+`META_MUSE_*` variables first.
+
+Trap: an existing local `.env` keeps its old values. Setup never overwrites it, so
+update `META_MUSE_BASE_URL` and both model lines by hand (copy from `example.env`).
