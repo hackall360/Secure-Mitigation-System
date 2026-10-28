@@ -135,9 +135,10 @@ def test_redact_cycle_evidence_never_leaks_scripts():
             }
 
     data = redact_cycle_evidence(Ev())
-    assert data["red"]["batch_evidence"][0]["candidates"][0][
-        "verification_script_python"
-    ] == EXPLOIT_REDACTED
+    assert (
+        data["red"]["batch_evidence"][0]["candidates"][0]["verification_script_python"]
+        == EXPLOIT_REDACTED
+    )
     assert data["red"]["report"]["verification_script_python"] == EXPLOIT_REDACTED
     assert data["independent_red"]["report"]["verification_script_python"] == EXPLOIT_REDACTED
     assert data["pre_verification"]["probe"]["output"] == EXPLOIT_REDACTED
@@ -152,9 +153,7 @@ def test_redact_project_result_redacts_cycles_keeps_history():
                     {
                         "evidence": {
                             "red": {"report": {"verification_script_python": "evil()"}},
-                            "pre_verification": {
-                                "probe": {"output": "short", "exit_code": 1}
-                            },
+                            "pre_verification": {"probe": {"output": "short", "exit_code": 1}},
                         }
                     },
                     {"no_evidence": True},
@@ -163,12 +162,11 @@ def test_redact_project_result_redacts_cycles_keeps_history():
             }
 
     data = redact_project_result(Proj())
-    assert data["cycle_reports"][0]["evidence"]["red"]["report"][
-        "verification_script_python"
-    ] == EXPLOIT_REDACTED
-    assert data["cycle_reports"][0]["evidence"]["pre_verification"]["probe"][
-        "exit_code"
-    ] == 1
+    assert (
+        data["cycle_reports"][0]["evidence"]["red"]["report"]["verification_script_python"]
+        == EXPLOIT_REDACTED
+    )
+    assert data["cycle_reports"][0]["evidence"]["pre_verification"]["probe"]["exit_code"] == 1
     assert data["cycles"] == data["cycle_reports"]
     assert data["verified_history"] == [{"target": "t", "status": "verified"}]
 

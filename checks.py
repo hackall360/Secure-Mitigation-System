@@ -79,23 +79,31 @@ _FORBIDDEN_MODULES = frozenset(
 def validate_verifier_script(script: str) -> None:
     """Validate that a verifier script is safe and explicitly exits with 0/1/2."""
     if "\x00" in script:
-        raise ValueError("Verifier script contains NUL bytes (REJECT: embedded NUL makes source unsafe to parse; evidence: \\x00 byte present in submitted script).")
+        raise ValueError(
+            "Verifier script contains NUL bytes (REJECT: embedded NUL makes source unsafe to parse; evidence: \\x00 byte present in submitted script)."
+        )
     try:
         tree = ast.parse(script, filename="verify.py")
     except SyntaxError as exc:
-        raise ValueError(f"Verifier script has invalid Python syntax (REJECT: AST parse failed so the exit-code verdict contract cannot be checked; evidence: {exc})") from exc
+        raise ValueError(
+            f"Verifier script has invalid Python syntax (REJECT: AST parse failed so the exit-code verdict contract cannot be checked; evidence: {exc})"
+        ) from exc
     # Check forbidden imports.
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 root = alias.name.split(".")[0]
                 if root in _FORBIDDEN_MODULES:
-                    raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
+                    raise ValueError(
+                        f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')"
+                    )
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 root = node.module.split(".")[0]
                 if root in _FORBIDDEN_MODULES:
-                    raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
+                    raise ValueError(
+                        f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')"
+                    )
         # Also detect __import__('subprocess') as Call
         if isinstance(node, ast.Call):
             # Detect __import__('forbidden')
@@ -110,7 +118,9 @@ def validate_verifier_script(script: str) -> None:
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     root = arg.value.split(".")[0]
                     if root in _FORBIDDEN_MODULES:
-                        raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
+                        raise ValueError(
+                            f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')"
+                        )
     # Check for explicit exit call.
     has_exit = False
     for node in ast.walk(tree):
@@ -145,4 +155,6 @@ def validate_verifier_script(script: str) -> None:
                 has_exit = True
                 break
     if not has_exit:
-        raise ValueError("Verifier script must explicitly call sys.exit(0|1|2) (REJECT: no verdict exit found; contract is exit 0=boundary reached, 1=blocked, 2=inconclusive; evidence: AST scan found no sys.exit/exit/quit/SystemExit call).")
+        raise ValueError(
+            "Verifier script must explicitly call sys.exit(0|1|2) (REJECT: no verdict exit found; contract is exit 0=boundary reached, 1=blocked, 2=inconclusive; evidence: AST scan found no sys.exit/exit/quit/SystemExit call)."
+        )

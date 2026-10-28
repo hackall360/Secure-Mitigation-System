@@ -628,9 +628,7 @@ async def cli_runner(
         # usage payload plus the reasoning share of its output tokens.
         output_tokens = max(int(getattr(call, "completion_tokens", 0) or 0), 0)
         reasoning_tokens = max(int(getattr(call, "reasoning_tokens", 0) or 0), 0)
-        reasoning_share = (
-            reasoning_tokens / output_tokens if output_tokens > 0 else 0.0
-        )
+        reasoning_share = reasoning_tokens / output_tokens if output_tokens > 0 else 0.0
         print(
             f"[USAGE ] {call.role or '?'} {call.model}: {call.prompt_tokens} in, "
             f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning, "
@@ -819,7 +817,9 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     post = getattr(result, "post_exit_code", None)
     if pre is not None or post is not None:
         lines.append(f"- Pre/post probe exit codes: {pre} / {post}")
-        lines.append("- Before/after: `0` boundary reached, `1` blocked, other/inconclusive needs review")
+        lines.append(
+            "- Before/after: `0` boundary reached, `1` blocked, other/inconclusive needs review"
+        )
     lines.append("")
     lines.append("## Blue team sanitization")
     lines.append("")
@@ -913,7 +913,9 @@ def main() -> int:
     )
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
     commands.add_argument(
-        "--tui", action="store_true", help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)"
+        "--tui",
+        action="store_true",
+        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)",
     )
     commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(

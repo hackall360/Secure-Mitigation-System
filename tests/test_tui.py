@@ -162,8 +162,6 @@ def test_run_plain_success_degrade_no_curses(monkeypatch, capsys):
     import sys
     import types as _types
 
-    import tui as _tui
-
     async def fake_workflow(key, emit):
         await emit("red", "analyzing sink")
         return _types.SimpleNamespace(target=key, status="verified", message="all green")
@@ -182,8 +180,6 @@ def test_run_plain_failure_returns_one(monkeypatch, capsys):
     import sys
     import types as _types
 
-    import tui as _tui
-
     async def boom(key, emit):
         raise RuntimeError("docker down")
 
@@ -200,8 +196,6 @@ def test_start_scan_thread_failure_sets_error_state(monkeypatch):
     import sys
     import threading as _threading
     import types as _types
-
-    import tui as _tui
 
     async def boom(key, emit):
         raise ValueError("no docker here")
@@ -222,7 +216,6 @@ def test_start_scan_thread_failure_sets_error_state(monkeypatch):
 
 def test_apply_action_scroll_up_and_filter_cycle_return_action():
     """apply_action: scroll:up decrements floors at 0; filter cycles all kinds."""
-    import tui as _tui
 
     state = _tui.TuiState()
     assert _tui.apply_action(state, "scroll:up") == "scroll:up"
@@ -239,7 +232,6 @@ def test_apply_action_scroll_up_and_filter_cycle_return_action():
 
 def test_parse_key_enter_codes_and_unknowns():
     """parse_key: numeric enter codes start; garbage stays unknown."""
-    import tui as _tui
 
     assert _tui.parse_key(10) == "start"
     assert _tui.parse_key(13) == "start"
