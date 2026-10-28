@@ -525,9 +525,15 @@ async def cli_runner(
     show_usage: bool = False,
 ) -> int:
     use_color: bool | None = None
+    json_mode = out_format == "json"
+
+    def _out(message: str):
+        # --format json keeps stdout machine-pure (report only); all chatter
+        # goes to stderr. Table mode keeps the legacy stdout stream.
+        print(message, flush=True, file=sys.stderr if json_mode else sys.stdout)
 
     def emit_progress(team: str, message: str):
-        print(f"[{team.upper():6}] {message}", flush=True)
+        print(f"[{team.upper():6}] {message}", flush=True, file=sys.stderr)
 
     async def emit(team: str, message: str):
         emit_progress(team, message)
@@ -539,10 +545,7 @@ async def cli_runner(
         settings = settings.__class__(
             **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
         )
-    print(
-        f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}",
-        flush=True,
-    )
+    _out(f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}")
     if project is not None and cve_scan:
         cve_result = await execute_cve_scan(
             project,
@@ -552,10 +555,10 @@ async def cli_runner(
             include_deep_assessment=deep_assessment,
             include_nvd=True,
         )
-        print(f"[SYSTEM] {cve_result.message}", flush=True)
+        _out(f"[SYSTEM] {cve_result.message}")
         for vuln in cve_result.vulnerabilities[:20]:
             cves = ",".join(vuln.get("cves") or [vuln.get("id", "")])
-            print(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}", flush=True)
+            _out(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}")
         if output_dir is not None:
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
             summary = _build_cve_summary_markdown(project, settings, cve_result)
@@ -574,10 +577,10 @@ async def cli_runner(
         # LAW 4: only the redacted report reaches stdout; probe scripts stay in Docker.
         print(json.dumps(user_report, indent=2, default=str))
     else:
-        print(fact_table(result, use_color=use_color))
+        _out(fact_table(result, use_color=use_color))
         if show_usage or result.usage.calls:
-            print(usage_table(result, use_color=use_color))
-        print(f"Status: {status_color(str(result.status), use_color)}")
+            _out(usage_table(result, use_color=use_color))
+        _out(f"Status: {status_color(str(result.status), use_color)}")
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
         print(
@@ -851,6 +854,11 @@ def main() -> int:
         action="store_true",
         help="Report readiness (models, profiles, Docker) without Docker or a key",
     )
+    commands.add_argument(
+        "--ai-demo",
+        action="store_true",
+        help="AI-built demo mode: Muse designs a novel vulnerable demo project from threat intel, then red/blue teams exercise it in Docker",
+    )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--image", help="Already-loaded runtime image containing offline dependencies"
@@ -907,11 +915,6 @@ def main() -> int:
         "--offline-cve",
         action="store_true",
         help="Skip OSV network lookup; static signals only",
-    )
-    parser.add_argument(
-        "--ai-demo",
-        action="store_true",
-        help="AI-built demo mode: Muse designs a novel vulnerable demo project from threat intel, then red/blue teams exercise it in Docker",
     )
     parser.add_argument(
         "--build-brief",
@@ -1060,9 +1063,6 @@ def main() -> int:
         or args.contract
         or args.scan_profile != "custom"
         or args.cycles is not None
-        or args.red_agents != 5
-        or args.blue_agents != 5
-        or args.context_budget != 32768
         or args.allow_remote_inference
         or args.cve_scan
         or args.deep_assessment
@@ -1151,16 +1151,6 @@ def main() -> int:
                 )
             )
         if args.project:
-            # Consent parity with the dashboard: hosted inference moves project
-            # source to Muse, so --allow-remote-inference is required. The
-            # dashboard enforces the same rule via the allow-remote checkbox.
-            if settings.inference_mode != "local" and not args.allow_remote_inference:
-                from project_workflow import ProjectWorkflowError as _ConsentError
-
-                raise _ConsentError(
-                    "Remote inference consent is required before project source "
-                    "can be sent to Muse. Re-run with --allow-remote-inference."
-                )
             try:
                 project_values = {
                     "path": str(args.project.absolute()),
@@ -1182,6 +1172,18 @@ def main() -> int:
             except ValueError:
                 parser.error(
                     "Invalid project settings. Use JSON argv arrays and valid cycle/context limits."
+                )
+            # Consent parity with the dashboard: hosted inference moves project
+            # source to Muse, so --allow-remote-inference is required. The
+            # dashboard enforces the same rule via the allow-remote checkbox.
+            # Spec validation runs first so argparse errors (exit 2) precede
+            # the runtime consent failure (exit 1).
+            if settings.inference_mode != "local" and not args.allow_remote_inference:
+                from project_workflow import ProjectWorkflowError as _ConsentError
+
+                raise _ConsentError(
+                    "Remote inference consent is required before project source "
+                    "can be sent to Muse. Re-run with --allow-remote-inference."
                 )
             return asyncio.run(
                 cli_runner(
