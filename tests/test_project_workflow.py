@@ -7,6 +7,7 @@ from collections import deque
 
 import pytest
 
+from agents import AgentError
 from config import PurpleBoxConfig
 from pricing import CallUsage
 from project_agents import (
@@ -426,6 +427,72 @@ async def test_project_spec_path_is_never_hosted_and_contract_is_sent(tmp_path):
     assert str(tmp_path) not in serialized_payloads
     assert spec.contract in serialized_payloads
     assert all(call["payload"]["project"] == tmp_path.name for call in muse.calls)
+
+
+async def test_full_payload_budget_fails_closed_without_truncating_contract_or_source():
+    muse = FakeMuse(red_outcomes=["finding"])
+    runner = ProjectAgentRunner(muse, CONFIG)
+    with pytest.raises(AgentError, match="no content was silently truncated"):
+        await runner.analyze_red(
+            [SourceDocument(path="src/app.py", content="x" * 4096)],
+            project_name="demo",
+            cycle=1,
+            contract="contract-data-" * 2000,
+            max_batch_bytes=1024,
+            max_payload_bytes=16_384,
+        )
+    assert muse.calls == []
+
+
+async def test_blue_never_receives_protected_test_source_as_patchable_context():
+    muse = FakeMuse()
+    runner = ProjectAgentRunner(muse, CONFIG)
+    report = RedReport(
+        outcome="finding",
+        vulnerability="test bypass",
+        affected_paths=["tests/test_app.py"],
+        analysis_summary="The reported issue is in a protected regression file.",
+        verification_script_python="import sys\nsys.exit(0)",
+    )
+    proposal = await runner.propose_blue(
+        [SourceDocument(path="tests/test_app.py", content="assert True\n")],
+        project_name="demo",
+        cycle=1,
+        red_report=report,
+        pre_verification={"probe": {"exit_code": 0}},
+        contract="tests are evidence only",
+        protected_paths=["tests/test_app.py"],
+        max_changed_files=2,
+        max_changed_bytes=10_000,
+    )
+    assert proposal.replacements == []
+    assert muse.calls == []
+    assert "never model-replaceable" in proposal.limitations[0]
+
+
+async def test_project_spec_requires_remote_inference_consent_before_external_setup(tmp_path):
+    (tmp_path / "app.py").write_text("print('safe')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="Local test project.",
+        allow_remote_inference=False,
+    )
+
+    def forbidden(_settings):
+        raise AssertionError("External clients must not be created without consent")
+
+    result = await execute_project_workflow(
+        spec,
+        silent_emit,
+        config=CONFIG,
+        sandbox_factory=forbidden,
+        muse_factory=forbidden,
+    )
+    assert result.status == "error" and not result.success
+    assert "Remote inference consent" in result.message
+    assert not result.cleanup.attempted
 
 
 def test_cycles_are_bounded_before_external_resources_are_created():
