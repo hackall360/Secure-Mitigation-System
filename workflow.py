@@ -233,10 +233,11 @@ def redact_fixture_result_for_user(result: "ScanResult") -> dict:
         if isinstance(data.get("traces", {}).get(key), str):
             out = data["traces"][key]
             data["traces"][key] = (
-                (out[:500] + "\n[probe output truncated; full exploit output withheld]")
-                if len(out) > 500
-                else EXPLOIT_REDACTED
-                if out
-                else out
+                "[probe output withheld: available only inside the isolated verification sandbox]"
             )
+    for key in ("baseline", "regression", "after_probe_regression"):
+        if isinstance(data.get("traces", {}).get(key), str):
+            out = data["traces"][key]
+            if len(out) > 2000:
+                data["traces"][key] = out[:2000] + "\n[normal-input output truncated]"
     return data

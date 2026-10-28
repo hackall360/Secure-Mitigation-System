@@ -124,10 +124,13 @@ def doctor():
     checks.append(("node", bool(_sh.which("node"))))
     checks.append((".venv", PYTHON.exists()))
     try:
-        import docker as _docker
-
-        _docker.from_env(timeout=3).ping()
-        checks.append(("docker-daemon", True))
+        probe = subprocess.run(
+            [str(PYTHON), "-c", "import docker; docker.from_env(timeout=3).ping()"],
+            cwd=ROOT,
+            capture_output=True,
+            timeout=15,
+        )
+        checks.append(("docker-daemon", probe.returncode == 0))
     except Exception:
         checks.append(("docker-daemon", False))
     try:
