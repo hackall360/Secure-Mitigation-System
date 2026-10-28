@@ -27,6 +27,8 @@ class PurpleBoxConfig:
     api_timeout_seconds: float = 180.0
     max_output_tokens: int = 32_768
     reasoning_effort: str = ""
+    research_enabled: bool = False
+    research_scanners: tuple[str, ...] = ()
     verifier_timeout_seconds: int = 20
     docker_timeout_seconds: int = 30
     max_source_bytes: int = 65_536
@@ -88,6 +90,17 @@ def load_config() -> PurpleBoxConfig:
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "180")),
             max_output_tokens=int(os.getenv("META_MUSE_MAX_TOKENS", "32768")),
             reasoning_effort=os.getenv("META_MUSE_REASONING_EFFORT", "").strip().lower(),
+            research_enabled=os.getenv("PURPLEBOX_RESEARCH", "off").strip().lower() == "on",
+            research_scanners=tuple(
+                sorted(
+                    {
+                        s.strip().lower()
+                        for s in os.getenv("PURPLEBOX_RESEARCH_SCANNERS", "").split(",")
+                        if s.strip().lower()
+                        in ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track")
+                    }
+                )
+            ),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
         )
         config.validate()

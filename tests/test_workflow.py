@@ -201,3 +201,152 @@ async def test_result_carries_usage_and_cost_from_the_client():
     assert result.total_tokens == 42
     assert result.cost_usd == 0.003
     assert "usage" in result.model_dump() and result.model_dump()["cost_usd"] == 0.003
+
+
+class ResearchFakeMuse(FakeMuse):
+    """FakeMuse plus research sidecar methods returning grounded digests."""
+
+    def __init__(self):
+        super().__init__()
+        self.red_research_calls = 0
+        self.blue_research_calls = 0
+
+    async def run_red_research(self, sink_description, intel_records):
+        from agents import RedResearchDigest
+
+        self.red_research_calls += 1
+        assert isinstance(intel_records, list)
+        return RedResearchDigest(
+            queries=["test query"],
+            attack_patterns=["grounded pattern"],
+            cwe_hints=["CWE-78"],
+        )
+
+    async def run_blue_research(self, sink_description, intel_records):
+        from agents import BlueResearchDigest
+
+        self.blue_research_calls += 1
+        return BlueResearchDigest(
+            queries=["test query"],
+            fix_patterns=["grounded fix"],
+            cwe_hints=["CWE-78"],
+        )
+
+
+async def test_research_schemas_reject_work_product():
+    """Research digests cannot carry findings, patches, or scripts."""
+    import pytest
+    from pydantic import ValidationError
+
+    from agents import BlueResearchDigest, RedResearchDigest
+
+    with pytest.raises(ValidationError):
+        RedResearchDigest(
+            queries=["q"],
+            attack_patterns=["p"],
+            cwe_hints=[],
+            verification_script_python="evil",  # type: ignore[call-arg]
+        )
+    with pytest.raises(ValidationError):
+        BlueResearchDigest(
+            queries=["q"],
+            fix_patterns=["f"],
+            cwe_hints=[],
+            patched_file_content="evil",  # type: ignore[call-arg]
+        )
+
+
+async def test_research_off_by_default_no_sidecar_calls():
+    """Default config: no research emits, no research records, no calls."""
+    events: list[tuple[str, str]] = []
+
+    async def emit(team, message):
+        events.append((team, message))
+
+    muse = ResearchFakeMuse()
+    result = await execute_purple_workflow(
+        "node_query_sink",
+        emit,
+        config=PurpleBoxConfig(meta_api_key="unit-test-key"),
+        sandbox_factory=lambda settings: FakeSandbox([0, 0, 0, 1, 0]),
+        muse_factory=lambda settings: muse,
+    )
+    assert result.status == "verified"
+    assert muse.red_research_calls == 0 and muse.blue_research_calls == 0
+    assert result.research_records == []
+    assert not [m for _, m in events if "Research sidecar" in m]
+
+
+async def test_research_on_runs_sidecars_and_grounds_contracts(monkeypatch):
+    """Opt-in: intel fetch + both digests run, contracts carry grounded intel."""
+    import workflow as _workflow
+    from research import ResearchRecord
+
+    async def fake_sink(*args, **kwargs):
+        return [
+            ResearchRecord(
+                source="circl",
+                cve_id="CVE-2024-3094",
+                title="t",
+                summary="s",
+            )
+        ]
+
+    monkeypatch.setattr(
+        _workflow,
+        "blocking",
+        lambda fn, *a, **k: (
+            fake_sink(*a, **k)
+            if getattr(fn, "__module__", "") == "research"
+            else _real_blocking(fn, *a, **k)
+        ),
+    )
+
+    async def _real_blocking(function, *args, **kwargs):
+        import asyncio as _aio
+
+        return await _aio.to_thread(function, *args, **kwargs)
+
+    events: list[tuple[str, str]] = []
+
+    async def emit(team, message):
+        events.append((team, message))
+
+    seen_contracts: list[str] = []
+
+    class ObservingMuse(ResearchFakeMuse):
+        async def run_red_team_analysis(self, filename, source, contract=""):
+            seen_contracts.append(contract)
+            return await super().run_red_team_analysis(filename, source, contract)
+
+        async def run_blue_team_sanitizer(
+            self, filename, source, finding, verifier_output, contract=""
+        ):
+            seen_contracts.append(contract)
+            return await super().run_blue_team_sanitizer(
+                filename, source, finding, verifier_output, contract
+            )
+
+    muse = ObservingMuse()
+    result = await execute_purple_workflow(
+        "node_query_sink",
+        emit,
+        config=PurpleBoxConfig(meta_api_key="unit-test-key", research_enabled=True),
+        sandbox_factory=lambda settings: FakeSandbox([0, 0, 0, 1, 0]),
+        muse_factory=lambda settings: muse,
+    )
+    assert result.status == "verified"
+    assert muse.red_research_calls == 1 and muse.blue_research_calls == 1
+    assert len(result.research_records) == 1
+    assert result.research_records[0]["cve_id"] == "CVE-2024-3094"
+    assert any("Grounded intel" in c for c in seen_contracts)
+    assert any(t == "research" for t, _ in events)
+
+
+def test_research_record_truncates_and_source_fallback_order():
+    """Records cap summary length; transport prefers OSV/CIRCL over NVD."""
+    import research as _research
+
+    rec = _research.ResearchRecord(source="osv", summary="x" * 5000)
+    assert len(rec.summary) == 1500
+    assert "html.duckduckgo" not in _research.__doc__

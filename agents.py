@@ -11,7 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from config import PurpleBoxConfig, require_api_key
 from pricing import CallUsage, usage_from_response
-from prompts import BLUE_TEAM_SYSTEM_PROMPT, RED_TEAM_SYSTEM_PROMPT
+from prompts import (
+    BLUE_RESEARCH_SYSTEM_PROMPT,
+    BLUE_TEAM_SYSTEM_PROMPT,
+    RED_RESEARCH_SYSTEM_PROMPT,
+    RED_TEAM_SYSTEM_PROMPT,
+)
 
 
 class AgentError(RuntimeError):
@@ -31,6 +36,24 @@ class BlueTeamPatch(BaseModel):
     sanitization_strategy: str = Field(min_length=1, max_length=8192)
     diff_summary: str = Field(min_length=1, max_length=8192)
     patched_file_content: str = Field(min_length=1, max_length=65_536)
+
+
+class RedResearchDigest(BaseModel):
+    """Research-only output: grounded queries + patterns, never work product."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    queries: list[str] = Field(min_length=1, max_length=4)
+    attack_patterns: list[str] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
+
+
+class BlueResearchDigest(BaseModel):
+    """Research-only output: grounded fix patterns, never a patch."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    queries: list[str] = Field(min_length=1, max_length=4)
+    fix_patterns: list[str] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
@@ -149,4 +172,36 @@ class MetaMuseClient:
             },
             BlueTeamPatch,
             role="blue",
+        )
+
+    async def run_red_research(
+        self, sink_description: str, intel_records: list[dict]
+    ) -> RedResearchDigest:
+        """Research-only: grounded attack patterns for one sink. No work product."""
+        return await self._request(
+            self.config.red_team_model,
+            RED_RESEARCH_SYSTEM_PROMPT,
+            {
+                "sink_description": sink_description[:2000],
+                "intel_records": intel_records[:20],
+                "note": "Research only. Do not produce findings, patches, or scripts.",
+            },
+            RedResearchDigest,
+            role="red-research",
+        )
+
+    async def run_blue_research(
+        self, sink_description: str, intel_records: list[dict]
+    ) -> BlueResearchDigest:
+        """Research-only: grounded fix patterns for one sink. Never a patch."""
+        return await self._request(
+            self.config.blue_team_model,
+            BLUE_RESEARCH_SYSTEM_PROMPT,
+            {
+                "sink_description": sink_description[:2000],
+                "intel_records": intel_records[:20],
+                "note": "Research only. Do not produce patches or file content.",
+            },
+            BlueResearchDigest,
+            role="blue-research",
         )

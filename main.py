@@ -159,12 +159,22 @@ app = create_app()
 
 
 async def cli_runner(
-    target_key: str, output_dir: Path | None = None, profile: str | None = None
+    target_key: str,
+    output_dir: Path | None = None,
+    profile: str | None = None,
+    research: bool = False,
+    research_scanners: str = "",
 ) -> int:
     async def emit(team: str, message: str):
         print(f"[{team.upper():6}] {message}", flush=True)
 
     settings = apply_profile(load_config(), profile)
+    if research:
+        allowed = {"trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"}
+        picked = tuple(sorted({s.strip().lower() for s in research_scanners.split(",")} & allowed))
+        settings = settings.__class__(
+            **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
+        )
     print(
         f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}",
         flush=True,
@@ -224,6 +234,20 @@ def main() -> int:
     parser.add_argument(
         "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
     )
+    parser.add_argument(
+        "--research",
+        action="store_true",
+        help="Opt-in research sidecars for --scan: red/blue Muse research agents "
+        "grounded in keyless public intel (OSV/CIRCL/GHSA/EPSS). Off by default; "
+        "extra model calls, no sandbox contact, Docker evidence still decides.",
+    )
+    parser.add_argument(
+        "--research-scanners",
+        default="",
+        help="Comma-separated local scanners to run as extra research grounding "
+        "(trivy,grype,osv-scanner,dependency-check,dependency-track). Requires "
+        "--research; binaries run on the host, each absent tool is skipped.",
+    )
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
@@ -231,6 +255,10 @@ def main() -> int:
         parser.error("--profile requires --scan")
     if args.output_dir is not None and not args.scan:
         parser.error("--output-dir requires --scan")
+    if args.research and not args.scan:
+        parser.error("--research requires --scan")
+    if args.research_scanners and not args.research:
+        parser.error("--research-scanners requires --research")
     try:
         if args.list_targets:
             for key, target in TARGETS_REGISTRY.items():
@@ -255,7 +283,15 @@ def main() -> int:
             print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
         if args.scan:
-            return asyncio.run(cli_runner(args.scan, args.output_dir, args.profile))
+            return asyncio.run(
+                cli_runner(
+                    args.scan,
+                    args.output_dir,
+                    args.profile,
+                    args.research,
+                    args.research_scanners,
+                )
+            )
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port)
         return 0
     except KeyboardInterrupt:
