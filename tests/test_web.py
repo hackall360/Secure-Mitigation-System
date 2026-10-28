@@ -81,6 +81,53 @@ def test_socket_reports_missing_key_without_docker():
                     break
 
 
+def test_socket_redaction_failure_fails_closed(monkeypatch):
+    """aa09566 hunk 2: a redaction raise must never leak the unredacted dump.
+
+    Pre-fix the `except Exception: pass` left `safe` as the raw
+    `model_dump()` — probe scripts and payloads rode the socket to the
+    browser (fail-open LAW 4 violation). Post-fix the client receives
+    status=error with zero exploit bytes.
+    """
+    from agents import RedTeamFinding
+    from workflow import ScanResult
+
+    async def evil_workflow(target, emit, **kwargs):
+        result = ScanResult(
+            target=target,
+            status="verified",
+            message="ok",
+            finding=RedTeamFinding(
+                vulnerability_class="vc",
+                sink_location="s",
+                analysis_summary="a",
+                verification_script_python="EVIL-SOCKET()",
+            ),
+        )
+        result.traces = {"before": "PAYLOAD-SOCKET" * 10}
+        return result
+
+    def boom_redact(result):
+        raise RuntimeError("redactor down")
+
+    monkeypatch.setattr("main.execute_purple_workflow", evil_workflow)
+    monkeypatch.setattr("workflow.redact_fixture_result_for_user", boom_redact)
+    with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
+        with client.websocket_connect(
+            "ws://localhost/ws/combat/node_query_sink", headers={"origin": "http://localhost"}
+        ) as socket:
+            while True:
+                import json as _json
+
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    assert event["status"] == "error"
+                    assert "redaction failed" in event["message"].lower()
+                    assert "EVIL-SOCKET()" not in _json.dumps(event)
+                    assert "PAYLOAD-SOCKET" not in _json.dumps(event)
+                    break
+
+
 def test_dashboard_exposes_interactive_dark_theme_controls():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         page = client.get("/").text

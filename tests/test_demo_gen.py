@@ -32,6 +32,51 @@ def test_parse_build_intent_bare_cve_has_no_free_text():
     assert intent.free_text == []
 
 
+def test_parse_build_intent_no_phantom_sinks_from_separator_fragments():
+    """aa09566 hunk 1: separator fragments stay free text, never phantom sinks.
+
+    'path/traversal' splits at '/' into the fragments 'path' and 'traversal',
+    which the old substring fallback matched because 'path' in '...path
+    traversal' — inventing a path-traversal sink the user never requested.
+    Only the explicitly named command-injection survives.
+    """
+    from demo_gen import parse_build_intent
+
+    intent = parse_build_intent(vulns="path/traversal plus command-injection")
+    assert intent.named_types == ["OS command injection"]
+    assert "path traversal" not in intent.named_types
+
+
+def test_parse_build_intent_no_phantom_sinks_from_hypernyms():
+    """aa09566 hunk 1: bare hypernyms stay free text, never phantom sinks.
+
+    The old substring fallback matched 'injection' inside every '...X
+    injection' alias (7 phantom types), 'header' inside 'header
+    injection'/'header reflection', and 'site' inside 'cross site
+    scripting' — inventing sinks the user never named.
+    """
+    from demo_gen import parse_build_intent
+
+    for hypernym in ("injection", "header", "site"):
+        intent = parse_build_intent(vulns=hypernym)
+        assert intent.named_types == [], hypernym
+        assert intent.free_text == [hypernym], hypernym
+
+
+def test_parse_build_intent_whole_word_aliases_still_match():
+    """aa09566 hunk 1: the whole-word restriction keeps every tested case green."""
+    from demo_gen import parse_build_intent
+
+    assert parse_build_intent(vulns="sqli").named_types == ["SQL injection"]
+    assert parse_build_intent(vulns="XSS!!!").named_types == ["cross-site scripting"]
+    assert parse_build_intent(vulns="SQL-INJECTION").named_types == ["SQL injection"]
+    assert parse_build_intent(vulns="log4shell").named_types == ["Log4Shell (CVE-2021-44228)"]
+    assert parse_build_intent(vulns="command-injection").named_types == ["OS command injection"]
+    assert parse_build_intent(vulns="deserialization vuln").named_types == [
+        "insecure deserialization"
+    ]
+
+
 def test_generate_demo_project_carries_intent_into_payload(monkeypatch):
     """I5 wiring: brief + requested flaws reach the generator payload."""
     import demo_gen as _dg
