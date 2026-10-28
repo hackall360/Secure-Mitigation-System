@@ -88,3 +88,111 @@ def test_gitignore_protects_secrets_and_allows_environment_templates():
     assert result.returncode == 0
     assert set(result.stdout.splitlines()) == {".env", ".env.local", ".env.production"}
     assert (root / "example.env").is_file()
+
+
+def test_serve_up_kills_only_own_spawn_and_restarts_with_key(dev, tmp_path, monkeypatch):
+    """LAW 7 drill contract: stale keyless server -> restart -> keyed ready."""
+    import io
+    import json
+    import urllib.request
+
+    state = {"ready": False, "keyed": False}
+    spawned = []
+
+    class FakeProc:
+        _next_pid = 9000
+
+        def __init__(self, *args, **kwargs):
+            FakeProc._next_pid += 1
+            self.pid = FakeProc._next_pid
+            self.args = args
+            self.env = kwargs.get("env", {})
+            # The stale server was started WITHOUT the key; the restart must have it.
+            state["ready"] = True
+            state["keyed"] = bool(self.env.get("META_MUSE_API_KEY"))
+            spawned.append(self)
+
+        def terminate(self):
+            state["ready"] = False
+            state["keyed"] = False
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return None
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._body = json.dumps(payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return self._body
+
+    class FakeOpener:
+        def open(self, url, timeout=None):
+            if not state["ready"]:
+                raise OSError("connection refused")
+            return FakeResponse(
+                {
+                    "status": "ok",
+                    "api_key_configured": state["keyed"],
+                    "inference_ready": state["keyed"],
+                }
+            )
+
+    # A stale keyless server already answers on the port; it is OURS, so an
+    # own tracked handle exists for it (that is the only thing serve_up kills).
+    stale = FakeProc()
+    dev._TRACKED[18001] = stale
+    monkeypatch.setattr(dev.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *a, **k: FakeOpener())
+    monkeypatch.setattr(dev.time, "sleep", lambda seconds: None)
+    env_file = dev.ROOT / ".env"
+    env_file.write_text("META_MUSE_API_KEY=test-key-not-a-secret\n")
+    python_bin = tmp_path / ".venv/bin/python"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.touch()
+    monkeypatch.setattr(dev, "PYTHON", python_bin)
+
+    out = io.StringIO()
+    monkeypatch.setattr(dev.sys, "stdout", out)
+    try:
+        dev.serve_up(port=18001, restart=True)
+    finally:
+        dev._TRACKED.pop(18001, None)
+
+    # Only the stale handle was terminated; its PID was never passed to a
+    # broad kill, and the restart carries the key.
+    assert stale.pid not in [p.pid for p in spawned[1:]]
+    assert spawned[-1].env.get("META_MUSE_API_KEY") == "test-key-not-a-secret"
+    assert state["keyed"] is True
+    assert "api_key_configured=True" in out.getvalue()
+
+
+def test_serve_up_refuses_to_steal_a_foreign_server(dev, monkeypatch):
+    """LAW 7 safety: a live server we did not spawn is left alone."""
+    import urllib.request
+
+    class DeadOpener:
+        def open(self, url, timeout=None):
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *a, **k: DeadOpener())
+    monkeypatch.setattr(
+        dev.subprocess,
+        "Popen",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not spawn when nothing listens and restart=False")
+        ),
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(RuntimeError, match="missing|empty"):
+        dev.serve_up(port=18002, restart=False)

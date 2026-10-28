@@ -148,8 +148,9 @@ sub-agents aggressively (up to 10 at once, typically 3–5), but:
 
 ### LAW 7 — Single server + key check on start/restart
 
-Before starting a server, probe the port first. If a live server already
-answers on `:8000/health`:
+Before starting a server, probe the port first. The app's only health route
+is `/api/health` (see `main.py`; there is no `/health` route). If a live
+server already answers on `/api/health`:
 
 1. Kill ONLY handles your own code spawned (PIDs you started, Popen handles
    you own). Never broad-`pkill`, never touch the user's processes — the same
@@ -164,6 +165,10 @@ Root cause this encodes (2026-10-28): a stale keyless 14:05 process held
 `:8000` while a fresh restart bounced off EADDRINUSE, so the dashboard showed
 "No API key" with a valid `.env` on disk. See
 `.jcode/briefs/2026-10-28-ui-gaps-green-crash.md`.
+Tooling: `python3 .jcode/tools/dev.py serve-up [--port 8000] [--no-restart]`
+implements exactly this (probe `/api/health` → terminate only the own
+tracked `Popen` handle → start with `META_MUSE_API_KEY` from owner-only
+`.env` → verify). Prefer it over hand-rolled `curl` + `kill`.
 
 ### LAW 8 — Full-stack vertical wiring and tri-surface parity (no orphaned backend)
 
