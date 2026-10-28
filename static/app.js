@@ -213,6 +213,7 @@ function writeLine(team, text) {
   eventCount += 1;
   el('event-count').textContent = String(eventCount);
   advanceStage(known, String(text));
+  if (window.SMSFx) window.SMSFx.onEvent(known, String(text));
 }
 
 function logText(team) {
@@ -228,6 +229,7 @@ function setStage(name, state = 'active') {
   const index = STAGES.indexOf(name);
   if (index < 0) return;
   if (state === 'active' && index < currentStage) return;
+  if (window.SMSFx) window.SMSFx.onStage(name, state);
   document.querySelectorAll('#pipeline li').forEach((item, i) => {
     if (state === 'active') {
       if (i < index) item.dataset.state = item.dataset.state === 'skipped' ? 'skipped' : 'done';
@@ -275,6 +277,7 @@ function finishPipeline(result) {
   cleanup.dataset.state = result.cleanup_ok ? 'done' : 'failed';
   el('progress').style.setProperty('--value', '1');
   el('progress').dataset.state = result.status;
+  if (window.SMSFx) window.SMSFx.onFinish(result);
 }
 
 /* ---------- targets ---------- */

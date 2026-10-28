@@ -430,3 +430,67 @@ body.scanning .scanline { animation-duration: 3.5s; }
 .comms-log { margin: 12px 24px 20px; height: 180px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.22); }
 .comms-log .entry { border-left: 2px solid var(--purple); }
 @media (max-width: 760px) { .arena-grid { grid-template-columns: 1fr; padding: 12px 16px 2px; } .comms-log { margin: 10px 16px 16px; } }
+
+/* ---------- fx motion layer (static/fx.js) ---------- */
+:root {
+  --fx-mx: 50vw;
+  --fx-my: 20vh;
+  --fx-px: 0;
+  --fx-py: 0;
+  --fx-glow: rgba(167, 139, 250, 0.10);
+}
+/* (1) cursor glow tracks the pointer; orbs parallax via independent property. */
+.backdrop::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(560px, 60vw);
+  height: min(560px, 60vw);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-glow), transparent 65%);
+  transform: translate(calc(var(--fx-mx) - 50%), calc(var(--fx-my) - 50%));
+}
+/* translate (not transform): composes with the existing drift animation. */
+.orb-red { translate: calc(var(--fx-px) * 60px) calc(var(--fx-py) * 40px); }
+.orb-blue { translate: calc(var(--fx-px) * -80px) calc(var(--fx-py) * -50px); }
+/* (2) data-flow pulses: 10px dots animated via WAAPI (transform/opacity only). */
+#fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+.flow-pulse {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  z-index: 25;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--purple-2);
+  box-shadow: 0 0 14px var(--purple-2);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.flow-probe { background: var(--red); box-shadow: 0 0 14px var(--red); }
+.flow-blocked { background: var(--green); box-shadow: 0 0 14px var(--green); }
+.flow-patch { background: var(--blue); box-shadow: 0 0 14px var(--blue); }
+.flow-research { background: #5eead4; box-shadow: 0 0 14px #5eead4; }
+.flow-build { background: var(--green); box-shadow: 0 0 14px var(--green); }
+.flow-sweep { background: var(--purple-2); box-shadow: 0 0 14px var(--purple-2); }
+/* (3) speaking agents: reuse .speaking, add a soft glow keyframe. */
+.agent-chip.speaking { animation: speakGlow 1.6s ease-in-out infinite; }
+@keyframes speakGlow {
+  0%, 100% { box-shadow: 0 0 6px -4px currentColor; }
+  50% { box-shadow: 0 0 18px -4px currentColor; }
+}
+.panel.active { animation: speakGlow 2.2s ease-in-out infinite; }
+/* (4) perf guards: layers hidden / static under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop::before, .flow-pulse, #fx-layer { display: none; }
+  .orb-red, .orb-blue { translate: 0 0; }
+  .agent-chip.speaking, .panel.active { animation: none; }
+}
