@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import random
 import re
 import time
 from typing import TypeVar
@@ -123,6 +124,38 @@ def _extract_json_object(text: str) -> str:
     return stripped
 
 
+# Bounded transient-retry discipline for the Muse transport.
+# RETRY_MAX_ATTEMPTS bounds total tries (never loop forever); backoff is
+# exponential (RETRY_BASE_SECONDS * 2**retry_index) plus uniform jitter up to
+# RETRY_JITTER_SECONDS. A server Retry-After on 429 is honored but capped at
+# RETRY_AFTER_MAX_SECONDS so one header cannot stall the scan.
+TRANSIENT_STATUS_CODES = (429, 502, 503, 504)
+RETRY_MAX_ATTEMPTS = 2
+RETRY_BASE_SECONDS = 0.5
+RETRY_JITTER_SECONDS = 0.5
+RETRY_AFTER_MAX_SECONDS = 5.0
+
+
+def _retry_delay_seconds(retry_index: int, retry_after: float | None = None) -> float:
+    """Jittered backoff for retry number `retry_index` (0-based)."""
+    delay = RETRY_BASE_SECONDS * (2**retry_index) + random.uniform(0, RETRY_JITTER_SECONDS)
+    if retry_after is not None:
+        delay = min(max(retry_after, 0.0), RETRY_AFTER_MAX_SECONDS) + random.uniform(
+            0, RETRY_JITTER_SECONDS
+        )
+    return delay
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header (delta-seconds only); None when absent/invalid."""
+    if not value:
+        return None
+    try:
+        return max(float(value.strip()), 0.0)
+    except (TypeError, ValueError):
+        return None
+
+
 class MetaMuseClient:
     def __init__(
         self, config: PurpleBoxConfig, *, transport: httpx.AsyncBaseTransport | None = None
@@ -168,7 +201,7 @@ class MetaMuseClient:
     ) -> ResponseModel:
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(RETRY_MAX_ATTEMPTS):
             started = time.monotonic()
             # Meta's Chat Completions endpoint constrains decoding through response_format,
             # not a schema embedded only in prompt text. Keep exactly one schema on wire.
@@ -199,7 +232,7 @@ class MetaMuseClient:
                     "chat/completions",
                     json=request_body,
                 ) as response:
-                    if response.status_code in (429, 502, 503, 504) and attempt == 0:
+                    if response.status_code in TRANSIENT_STATUS_CODES and attempt == 0:
                         # Record usage if possible before retrying.
                         try:
                             body = await _read_capped(response)
@@ -216,7 +249,16 @@ class MetaMuseClient:
                                 )
                         except Exception:
                             pass
-                        await asyncio.sleep(0.5)
+                        # Rate-limit graceful: jittered exponential backoff; a
+                        # server Retry-After on 429 is honored but capped, so a
+                        # hostile header cannot stall the scan. Loop bound above
+                        # (attempt == 0) guarantees no infinite retry.
+                        retry_after = (
+                            _parse_retry_after(response.headers.get("retry-after"))
+                            if response.status_code == 429
+                            else None
+                        )
+                        await asyncio.sleep(_retry_delay_seconds(attempt, retry_after))
                         continue
                     if response.status_code != 200:
                         raise AgentError(
