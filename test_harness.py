@@ -120,6 +120,7 @@ def local_checks() -> None:
 def docker_checks() -> None:
     settings = load_config()
     for key, target in TARGETS_REGISTRY.items():
+        print(f"RUN: {key}: starting sandbox and baseline checks", flush=True)
         with DockerSandboxManager(settings) as manager:
             manager.require_base_images()
             network = manager.create_isolated_network()
@@ -131,6 +132,7 @@ def docker_checks() -> None:
                 manager.run_isolated_verifier(network, ISOLATION_SCRIPT).exit_code == 0,
                 "Verifier egress check failed",
             )
+            print(f"RUN: {key}: target/verifier egress checks passed", flush=True)
             normal = normal_behavior_script(key)
             boundary = diagnostic_script(key)
             check(manager.run_isolated_verifier(network, normal).exit_code == 0, "Baseline failed")
@@ -138,6 +140,7 @@ def docker_checks() -> None:
                 manager.run_isolated_verifier(network, boundary).exit_code == 0,
                 "Boundary was not confirmed",
             )
+            print(f"RUN: {key}: baseline and unsanitized boundary confirmed", flush=True)
             patched = known_patch(key, source)
             validate_patch(target, source, patched)
             manager.replace_target(container, snapshot, network, target, patched)
@@ -149,7 +152,10 @@ def docker_checks() -> None:
                 manager.run_isolated_verifier(network, boundary).exit_code == 1,
                 "Patch did not block boundary",
             )
-        print(f"PASS: {key} baseline, pre/post probe, normal regression, egress checks, cleanup")
+        print(
+            f"PASS: {key} baseline, pre/post probe, normal regression, egress checks, cleanup",
+            flush=True,
+        )
 
 
 async def api_checks() -> None:

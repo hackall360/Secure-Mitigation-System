@@ -11,6 +11,12 @@ baseline checks → Muse analysis → isolated boundary probe → guarded candid
 This is an initial, runnable implementation for **three bundled fixtures**. It is not
 an arbitrary-repository scanner or a production security boundary.
 
+## Development setup
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the reproducible virtual
+environment, hash-locked dependencies, Docker builds, live fixture tests, and
+localhost smoke checks. Start with `python3 .jcode/tools/dev.py setup`.
+
 ## Quick start
 
 Requires Python 3.12+, Docker Engine/Desktop using Linux containers, and a Meta Model
@@ -18,7 +24,7 @@ API account with access to the configured Muse models. Image initialization down
 Alpine packages; scan containers do not install dependencies or publish host ports.
 
 ```bash
-cd purplebox
+cd Secure-Mitigation-System
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -33,10 +39,10 @@ Open **http://127.0.0.1:8000**. The dashboard loads without Docker or a key and 
 missing setup. Stop the server before changing its environment. On Windows PowerShell,
 activate with `.venv\Scripts\Activate.ps1`; use `$env:NAME="value"` for environment variables.
 
-To enable inference, copy `.env.example` to `.env`, fill in your key, and export its values:
+To enable inference, copy `example.env` to `.env`, fill in your key, and export its values:
 
 ```bash
-cp .env.example .env
+cp example.env .env
 # Edit .env with your own Meta Model API key, then:
 set -a
 source .env
