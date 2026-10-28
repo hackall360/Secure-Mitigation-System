@@ -422,7 +422,11 @@ class DockerSandboxManager:
                 ) from exc
         finally:
             if container is not None:
-                container.remove(force=True)
+                try:
+                    container.remove(force=True)
+                finally:
+                    if container in self.containers:
+                        self.containers.remove(container)
 
     def _require_preloaded_image(self, image: str) -> None:
         try:

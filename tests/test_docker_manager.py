@@ -97,6 +97,22 @@ def test_verifier_timeout_is_inconclusive_and_removed():
     with pytest.raises(SandboxError, match="inconclusive"):
         manager.run_isolated_verifier(MagicMock(), "import sys\nsys.exit(1)")
     runtime.remove.assert_called_once_with(force=True)
+    assert runtime not in manager.containers
+    assert stage not in manager.containers
+
+
+def test_verifier_success_untracks_both_containers():
+    client, stage, runtime = MagicMock(), MagicMock(), MagicMock()
+    client.containers.create.side_effect = [stage, runtime]
+    stage.put_archive.return_value = True
+    stage.commit.return_value = MagicMock()
+    runtime.wait.return_value = {"StatusCode": 1}
+    runtime.logs.return_value = b"blocked"
+    manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
+    result = manager.run_isolated_verifier(MagicMock(), "import sys\nsys.exit(1)")
+    assert result.exit_code == 1
+    assert runtime not in manager.containers
+    assert stage not in manager.containers
 
 
 def test_cleanup_attempts_network_after_container_failure():
