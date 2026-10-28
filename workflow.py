@@ -147,7 +147,8 @@ async def _gather_research(
         )
     except Exception as exc:
         await log(
-            "research", f"Intel fetch unavailable ({type(exc).__name__}); continuing ungrounded."
+            "research",
+            f"[phase intel] Intel fetch unavailable ({type(exc).__name__}); continuing ungrounded.",
         )
         return "", []
     records = list(records)
@@ -174,11 +175,14 @@ async def _gather_research(
         scanner_hits = await blocking(_run_opt_in_scanners, settings, filename, log)
         records.extend(scanner_hits)
     if not records:
-        await log("research", "No intel records for this sink; continuing ungrounded.")
+        await log(
+            "research",
+            "[phase intel] No intel records for this sink; continuing ungrounded.",
+        )
         return "", []
     await log(
         "research",
-        f"{len(records)} intel records across "
+        f"[phase intel] {len(records)} intel records across "
         f"{len({getattr(r, 'source', getattr(r, 'scanner', '?')) for r in records})} sources.",
     )
     from sms_records import to_record_dict as _to_dict
@@ -197,12 +201,13 @@ async def _gather_research(
         digest = "\n".join(p for p in parts if p and not p.endswith(": "))
         await log(
             "research",
-            f"Red patterns: {len(red_digest.attack_patterns)}, "
+            f"[phase intel] Red patterns: {len(red_digest.attack_patterns)}, "
             f"blue patterns: {len(blue_digest.fix_patterns)}.",
         )
     except (AgentError, ValueError) as exc:
         await log(
-            "research", f"Research digest unavailable ({type(exc).__name__}); raw records only."
+            "research",
+            f"[phase intel] Research digest unavailable ({type(exc).__name__}); raw records only.",
         )
     return digest, record_dicts
 
@@ -254,7 +259,10 @@ async def execute_purple_workflow(
         muse = muse_factory(settings)
         sandbox = await blocking(sandbox_factory, settings)
         await blocking(sandbox.require_base_images)
-        await log("system", "Creating an internal Docker network and immutable target snapshot.")
+        await log(
+            "system",
+            "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
+        )
         network = await blocking(sandbox.create_isolated_network)
         container, snapshot = await blocking(
             sandbox.start_cloneable_target, network, target, source
@@ -266,9 +274,15 @@ async def execute_purple_workflow(
         if baseline.exit_code != 0:
             raise SandboxError("Original fixture failed its trusted normal-input checks.")
         result.baseline_passed = True
-        await log("system", "Original fixture is ready; normal-input checks passed.")
+        await log(
+            "system",
+            "[phase baseline] Original fixture is ready; normal-input checks passed.",
+        )
 
-        await log("red", f"Analyzing {target.filename} with {settings.red_team_model}.")
+        await log(
+            "red",
+            f"[phase red probe] Analyzing {target.filename} with {settings.red_team_model}.",
+        )
         research_digest = ""
         if settings.research_enabled:
             await log("research", "Research sidecars on: fetching keyless intel.")
@@ -295,7 +309,7 @@ async def execute_purple_workflow(
         )
         result.pre_exit_code = pre.exit_code
         result.traces["before"] = pre.output
-        await log("red", f"Boundary check exited {pre.exit_code}. {pre.output}")
+        await log("red", f"[phase red probe] Boundary check exited {pre.exit_code}. {pre.output}")
         await log(
             "red",
             chatter(
@@ -314,7 +328,10 @@ async def execute_purple_workflow(
                 "The probe did not confirm the reported boundary. No patch was requested."
             )
         else:
-            await log("blue", f"Requesting a sanitization patch from {settings.blue_team_model}.")
+            await log(
+                "blue",
+                f"[phase blue patch] Requesting a sanitization patch from {settings.blue_team_model}.",
+            )
             await log(
                 "blue",
                 chatter("blue_start", persona="Bastion", path=target.filename, seed=3),
@@ -331,7 +348,10 @@ async def execute_purple_workflow(
             result.diff = validate_patch(target, source, patch.patched_file_content)
             await log("blue", patch.sanitization_strategy)
             await log("blue", result.diff)
-            await log("system", "Starting a fresh target from the patched snapshot.")
+            await log(
+                "system",
+                "[phase blue patch] Starting a fresh target from the patched snapshot.",
+            )
             container, _ = await blocking(
                 sandbox.replace_target,
                 container,
@@ -354,7 +374,10 @@ async def execute_purple_workflow(
             )
             result.post_exit_code = post.exit_code
             result.traces["after"] = post.output
-            await log("blue", f"Post-patch boundary check exited {post.exit_code}. {post.output}")
+            await log(
+                "blue",
+                f"[phase verify] Post-patch boundary check exited {post.exit_code}. {post.output}",
+            )
             await log(
                 "blue",
                 chatter(
@@ -422,9 +445,9 @@ async def execute_purple_workflow(
                     await muse.aclose()
                 except Exception:
                     pass
-    await log("system", result.message)
+    await log("system", f"[done] {result.message}")
     if sandbox is not None and result.cleanup_ok:
-        await log("system", "Session containers, snapshots, and network removed.")
+        await log("system", "[phase cleanup] Session containers, snapshots, and network removed.")
     return result
 
 
