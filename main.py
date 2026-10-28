@@ -144,6 +144,17 @@ async def cli_runner(target_key: str, output_dir: Path | None = None) -> int:
         print(f"[{team.upper():6}] {message}", flush=True)
 
     result = await execute_purple_workflow(target_key, emit)
+    for call in result.usage.calls:
+        cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
+        print(
+            f"[USAGE ] {call.role or '?'} {call.model}: {call.prompt_tokens} in, "
+            f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning), "
+            f"{call.seconds:.1f}s, {cost}",
+            flush=True,
+        )
+    if result.usage.calls:
+        total = "unknown" if result.cost_usd is None else f"${result.cost_usd:.4f}"
+        print(f"[USAGE ] total {result.total_tokens} tokens, estimated cost {total}", flush=True)
     if output_dir is not None:
         # A fresh per-run directory prevents accidental overwriting of previous results.
         run_dir = output_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"

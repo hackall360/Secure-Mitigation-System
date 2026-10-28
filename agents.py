@@ -3,12 +3,14 @@
 """One inference transport, explicitly addressed to a configured Muse endpoint."""
 
 import json
+import time
 from typing import TypeVar
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from config import PurpleBoxConfig, require_api_key
+from pricing import CallUsage, usage_from_response
 from prompts import BLUE_TEAM_SYSTEM_PROMPT, RED_TEAM_SYSTEM_PROMPT
 
 
@@ -48,6 +50,9 @@ class MetaMuseClient:
             trust_env=False,
             transport=transport,
         )
+        # One entry per completed HTTP call, including calls whose JSON was rejected,
+        # because the provider still bills them.
+        self.usage: list[CallUsage] = []
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -68,8 +73,9 @@ class MetaMuseClient:
         return body
 
     async def _request(
-        self, model: str, system: str, payload: dict, schema: type[ResponseModel]
+        self, model: str, system: str, payload: dict, schema: type[ResponseModel], role: str = ""
     ) -> ResponseModel:
+        started = time.monotonic()
         try:
             async with self.client.stream(
                 "POST",
@@ -85,7 +91,9 @@ class MetaMuseClient:
                     body.extend(chunk)
                     if len(body) > 1_048_576:
                         raise AgentError("Muse response exceeded the 1 MiB limit.")
-            choice = json.loads(body)["choices"][0]
+            data = json.loads(body)
+            self.usage.append(usage_from_response(role, model, data, time.monotonic() - started))
+            choice = data["choices"][0]
             if choice.get("finish_reason") == "length":
                 raise AgentError(
                     "Muse ran out of output tokens before finishing (reasoning counts toward "
@@ -118,6 +126,7 @@ class MetaMuseClient:
                 "fixture_contract": contract,
             },
             RedTeamFinding,
+            role="red",
         )
 
     async def run_blue_team_sanitizer(
@@ -139,4 +148,5 @@ class MetaMuseClient:
                 "fixture_contract": contract,
             },
             BlueTeamPatch,
+            role="blue",
         )
