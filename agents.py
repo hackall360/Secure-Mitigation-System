@@ -92,8 +92,12 @@ def _extract_json_object(text: str) -> str:
     """
     if "\x00" in text:
         raise ValueError("Response contains NUL bytes.")
-    stripped = text.strip()
-    fence_match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?\s*```\s*", stripped, flags=re.DOTALL)
+    stripped = text.strip().lstrip("\ufeff").strip()
+    if not stripped:
+        raise ValueError("Response contains no JSON object.")
+    fence_match = re.fullmatch(
+        r"```\s*(?:json\b)?\s*(.*?)\s*```\s*", stripped, flags=re.DOTALL | re.IGNORECASE
+    )
     if fence_match:
         stripped = fence_match.group(1).strip()
     in_string = False
@@ -230,6 +234,8 @@ class MetaMuseClient:
                     usage_from_response(role, model, data, time.monotonic() - started)
                 )
                 choice = data["choices"][0]
+                if not isinstance(choice, dict):
+                    raise AgentError("Muse returned an incomplete response.")
                 if choice.get("finish_reason") == "length":
                     raise AgentError(
                         "Muse ran out of output tokens before finishing (reasoning counts toward "
@@ -237,7 +243,8 @@ class MetaMuseClient:
                     )
                 if choice.get("finish_reason") not in (None, "stop"):
                     raise AgentError("Muse returned an incomplete response.")
-                content = choice["message"]["content"]
+                message = choice.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
                 if not isinstance(content, str):
                     raise AgentError("Muse did not return text JSON.")
                 # Strip fences and extract JSON before schema validation.
