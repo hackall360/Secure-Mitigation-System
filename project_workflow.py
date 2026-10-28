@@ -863,19 +863,24 @@ async def execute_project_workflow(
                 )
                 await log(
                     "research",
-                    f"Project intel pass complete: {len(project_records)} records stored on the report.",
+                    f"[phase intel] Project intel pass complete: "
+                    f"{len(project_records)} records stored on the report.",
                 )
             except Exception as exc:
                 await log(
                     "research",
-                    f"Project intel unavailable ({type(exc).__name__}); continuing ungrounded.",
+                    f"[phase intel] Project intel unavailable "
+                    f"({type(exc).__name__}); continuing ungrounded.",
                 )
         await blocking(sandbox.require_base_images)
 
         protected_paths = protected_regression_paths(
             list(cumulative_files), safe_project.regression_command
         )
-        await log("system", "Running original-project baseline checks in isolated containers.")
+        await log(
+            "system",
+            "[phase baseline] Running original-project baseline checks in isolated containers.",
+        )
         baseline_raw = await blocking(
             sandbox.verify_project_snapshot,
             safe_project,
@@ -889,7 +894,7 @@ async def execute_project_workflow(
         if not baseline.fresh_target or baseline.regression.exit_code != 0:
             raise SandboxError("Original project failed its preserved regression command.")
 
-        await log("system", "Original-project normal-input checks passed.")
+        await log("system", "[phase baseline] Original-project normal-input checks passed.")
 
         for round_index in range(requested_cycles * passes_per_cycle):
             cycle = round_index // passes_per_cycle + 1
@@ -904,7 +909,8 @@ async def execute_project_workflow(
                 )
             await log(
                 "red",
-                f"Cycle {cycle}/{requested_cycles}, pass {pass_number}/{passes_per_cycle}: "
+                f"[phase red review] Cycle {cycle}/{requested_cycles}, "
+                f"pass {pass_number}/{passes_per_cycle}: "
                 "reviewing the cumulative verified snapshot.",
             )
             try:
@@ -971,7 +977,12 @@ async def execute_project_workflow(
             if unknown_paths:
                 raise ProjectWorkflowError("Red report referenced paths outside the safe snapshot.")
 
-            await log("red", f"Cycle {cycle}: proving the finding before requesting changes.")
+            await log(
+                "red",
+                f"[phase verify] Cycle {cycle}/{requested_cycles} "
+                f"pass {pass_number}/{passes_per_cycle}: "
+                "proving the finding before requesting changes.",
+            )
             pre_raw = await blocking(
                 sandbox.verify_project_snapshot,
                 safe_project,
@@ -1056,7 +1067,12 @@ async def execute_project_workflow(
                 )
             except Exception:
                 pass
-            await log("blue", f"Cycle {cycle}: requesting bounded sanitation-only replacements.")
+            await log(
+                "blue",
+                f"[phase blue patch] Cycle {cycle}/{requested_cycles} "
+                f"pass {pass_number}/{passes_per_cycle}: "
+                "requesting bounded sanitation-only replacements.",
+            )
             proposal = await agents.propose_blue(
                 documents,
                 project_name=safe_project.name,
@@ -1110,7 +1126,8 @@ async def execute_project_workflow(
             candidate_diff = render_diff(cumulative_files, candidate_files, bounds.max_diff_chars)
             await log(
                 "system",
-                f"Cycle {cycle}: verifying a fresh target with the original probe and regression command.",
+                f"[phase verify] Cycle {cycle}/{requested_cycles} pass {pass_number}/{passes_per_cycle}: "
+                "verifying a fresh target with the original probe and regression command.",
             )
             patched_raw = await blocking(
                 sandbox.verify_project_snapshot,
@@ -1299,7 +1316,10 @@ async def execute_project_workflow(
         try:
             if sandbox is not None:
                 result.cleanup.attempted = True
-                await log("system", "Removing project session containers, snapshots, and network.")
+                await log(
+                    "system",
+                    "[phase cleanup] Removing project session containers, snapshots, and network.",
+                )
                 try:
                     await blocking(sandbox.close)
                 except Exception as exc:
@@ -1322,7 +1342,10 @@ async def execute_project_workflow(
                     await muse.aclose()
                 except Exception:
                     pass
-    await log("system", result.message)
+    await log(
+        "system",
+        f"[done] {result.cycles_completed}/{requested_cycles} cycles complete: {result.message}",
+    )
     return result
 
 
