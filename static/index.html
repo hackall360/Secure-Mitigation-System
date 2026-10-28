@@ -42,13 +42,30 @@
 
       <section class="card picker" aria-labelledby="picker-title">
         <header class="card-head">
-          <div><p class="eyebrow">Step 1</p><h2 id="picker-title">Choose a target fixture</h2></div>
-          <p class="hint"><kbd>1</kbd>–<kbd>3</kbd> select · <kbd>Enter</kbd> run · <kbd>Esc</kbd> stop</p>
+          <div><p class="eyebrow">Step 1</p><h2 id="picker-title">Choose what to verify</h2></div>
+          <p class="hint"><kbd>Enter</kbd> run · <kbd>Esc</kbd> stop</p>
         </header>
-        <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
-          <div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div>
+        <div class="mode-switch" role="radiogroup" aria-label="Verification source">
+          <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
+          <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
         </div>
-        <select id="target-select" class="visually-hidden" tabindex="-1" aria-hidden="true" disabled></select>
+        <div id="demo-config">
+          <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
+            <div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div>
+          </div>
+          <select id="target-select" class="visually-hidden" tabindex="-1" aria-hidden="true" disabled></select>
+        </div>
+        <form id="project-form" class="project-form" hidden novalidate>
+          <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the PurpleBox server.</small></div>
+          <div class="field wide"><label for="project-image">Preloaded sandbox image</label><input id="project-image" name="image" required placeholder="purplebox-node:latest" autocomplete="off"></div>
+          <div class="field"><label for="project-command">Start command <span>JSON argv</span></label><textarea id="project-command" name="command" required rows="3" spellcheck="false" placeholder='["npm", "start"]'></textarea></div>
+          <div class="field"><label for="project-test-command">Regression test command <span>JSON argv</span></label><textarea id="project-test-command" name="test_command" required rows="3" spellcheck="false" placeholder='["npm", "test", "--", "--runInBand"]'></textarea></div>
+          <div class="field wide"><label for="project-contract">Behavior contract</label><textarea id="project-contract" name="contract" required rows="4" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
+          <div class="field compact"><label for="project-cycles">Cycles</label><input id="project-cycles" name="cycles" type="number" min="1" max="20" value="1" required></div>
+          <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1" value="32768" required></div>
+          <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
+          <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
+        </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>
           <div id="profile-list" class="profiles" role="radiogroup" aria-labelledby="profile-label"></div>
@@ -57,7 +74,7 @@
           <p id="target-description" class="target-description">Connecting to the local orchestrator.</p>
           <div class="actions">
             <button id="stop-btn" class="btn ghost" hidden>Stop scan</button>
-            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span>Run verification<span aria-hidden="true" class="arrow">→</span></button>
+            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run demo verification</span><span aria-hidden="true" class="arrow">→</span></button>
           </div>
         </div>
         <div id="setup" class="setup" role="status" hidden></div>
@@ -100,7 +117,7 @@
         <div class="result-main">
           <span class="result-icon" aria-hidden="true"></span>
           <div><p class="eyebrow">Scan result</p><h2 id="result-title"></h2><p id="result-message"></p></div>
-          <button id="download-btn" class="btn ghost">Download report ↓</button>
+          <div class="result-actions"><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch ↓</button><button id="download-btn" class="btn ghost">Download JSON report ↓</button></div>
         </div>
         <dl class="facts">
           <div><dt>Baseline</dt><dd id="fact-baseline">—</dd></div>
@@ -113,6 +130,7 @@
           <div class="usage-total"><span>Estimated cost</span><strong id="usage-cost">—</strong><small id="usage-tokens"></small></div>
           <ul id="usage-calls" class="usage-calls" aria-label="Model calls"></ul>
         </div>
+        <div id="cycle-reports" class="cycle-reports" hidden><h3>Cycle reports</h3><div id="cycle-list"></div></div>
         <details id="diff-wrap" class="diff-wrap" hidden>
           <summary>Candidate patch <span id="diff-stats"></span><button class="icon-btn" id="copy-diff" type="button" title="Copy diff" aria-label="Copy diff">⧉</button></summary>
           <pre id="diff" class="diff" tabindex="0" aria-label="Candidate unified diff"></pre>

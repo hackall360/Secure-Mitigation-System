@@ -10,6 +10,9 @@ const RESULT_LABELS = {
   not_confirmed: 'Boundary not confirmed',
   rejected: 'Candidate patch rejected',
   failed: 'Boundary still reachable',
+  no_findings: 'No findings',
+  partial: 'Verification partially completed',
+  completed: 'Project verification completed',
   error: 'Scan could not complete'
 };
 const MAX_ENTRIES = 300;
@@ -25,6 +28,7 @@ let currentStage = -1;
 let activeFilter = 'all';
 let profiles = [];
 let selectedProfile = 'custom';
+let sourceMode = 'demo';
 
 /* ---------- small helpers ---------- */
 
@@ -160,7 +164,7 @@ function resetPipeline() {
 
 function finishPipeline(result) {
   const items = [...document.querySelectorAll('#pipeline li')];
-  const ok = result.status === 'verified' || result.status === 'not_confirmed';
+  const ok = ['verified', 'not_confirmed', 'no_findings', 'completed'].includes(result.status);
   items.forEach((item, i) => {
     if (item.dataset.state === 'active') item.dataset.state = ok ? 'done' : 'failed';
     else if (!item.dataset.state && i < STAGES.length - 1) item.dataset.state = 'skipped';
@@ -238,6 +242,64 @@ function renderTargets() {
 function lockTargets(locked) {
   document.querySelectorAll('.target[data-key]').forEach((card) => { card.disabled = locked; });
   el('target-list').classList.toggle('locked', locked);
+}
+
+function setSourceMode(mode) {
+  if (socket || !['demo', 'project'].includes(mode)) return;
+  sourceMode = mode;
+  document.querySelectorAll('.mode').forEach((button) => {
+    const active = button.dataset.mode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-checked', String(active));
+  });
+  el('demo-config').hidden = mode !== 'demo';
+  el('project-form').hidden = mode !== 'project';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : 'Run demo verification';
+  el('target-description').textContent = mode === 'project'
+    ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
+    : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+  el('project-errors').hidden = true;
+}
+
+function parseArgv(id, label, errors) {
+  const node = el(id);
+  node.removeAttribute('aria-invalid');
+  try {
+    const value = JSON.parse(node.value);
+    if (!Array.isArray(value) || !value.length || value.some((part) => typeof part !== 'string' || !part.length)) throw new Error();
+    return value;
+  } catch {
+    node.setAttribute('aria-invalid', 'true');
+    errors.push(`${label} must be a non-empty JSON array of strings.`);
+    return null;
+  }
+}
+
+function projectSpec() {
+  const errors = [];
+  el('project-form').querySelectorAll('input, textarea').forEach((node) => node.removeAttribute('aria-invalid'));
+  const path = el('project-path').value.trim();
+  const image = el('project-image').value.trim();
+  const contract = el('project-contract').value.trim();
+  const cycles = Number(el('project-cycles').value);
+  const contextBudget = Number(el('project-budget').value);
+  if (!path.startsWith('/')) { el('project-path').setAttribute('aria-invalid', 'true'); errors.push('Repository path must be absolute and start with /.'); }
+  if (!image) { el('project-image').setAttribute('aria-invalid', 'true'); errors.push('Preloaded sandbox image is required.'); }
+  if (!contract) { el('project-contract').setAttribute('aria-invalid', 'true'); errors.push('Behavior contract is required.'); }
+  if (!Number.isInteger(cycles) || cycles < 1 || cycles > 20) { el('project-cycles').setAttribute('aria-invalid', 'true'); errors.push('Cycles must be a whole number from 1 to 20.'); }
+  if (!Number.isInteger(contextBudget) || contextBudget < 1) { el('project-budget').setAttribute('aria-invalid', 'true'); errors.push('Context budget must be a positive whole number.'); }
+  if (!el('allow-remote').checked) errors.push('Confirm that source may be sent to the configured Muse endpoint.');
+  const command = parseArgv('project-command', 'Start command', errors);
+  const testCommand = parseArgv('project-test-command', 'Regression test command', errors);
+  el('project-errors').hidden = errors.length === 0;
+  el('project-errors').textContent = errors.join(' ');
+  if (errors.length) return null;
+  return { path, image, command, test_command: testCommand, contract, cycles, context_budget: contextBudget, allow_remote_inference: true };
+}
+
+function lockProjectForm(locked) {
+  el('project-form').querySelectorAll('input, textarea').forEach((node) => { node.disabled = locked; });
+  document.querySelectorAll('.mode').forEach((node) => { node.disabled = locked; });
 }
 
 /* ---------- model profiles ---------- */
@@ -344,29 +406,63 @@ function renderUsage(payload) {
   });
 }
 
+function renderCycles(cycles) {
+  const list = el('cycle-list');
+  list.replaceChildren();
+  el('cycle-reports').hidden = !Array.isArray(cycles) || cycles.length === 0;
+  if (!Array.isArray(cycles)) return;
+  cycles.forEach((cycle, index) => {
+    const details = document.createElement('details');
+    details.className = 'cycle-report';
+    if (index === cycles.length - 1) details.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = `Cycle ${cycle.cycle || index + 1}${cycle.status ? ` · ${cycle.status}` : ''}`;
+    const body = document.createElement('div');
+    body.className = 'cycle-body';
+    [['Report', cycle.report || cycle.message], ['Evidence', cycle.evidence], ['Diff', cycle.diff]].forEach(([heading, value]) => {
+      if (value === null || value === undefined || value === '') return;
+      const section = document.createElement('section');
+      const title = document.createElement('strong');
+      title.textContent = heading;
+      const content = document.createElement(Array.isArray(value) || typeof value === 'object' ? 'pre' : 'p');
+      content.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      section.append(title, content);
+      body.append(section);
+    });
+    details.append(summary, body);
+    list.append(details);
+  });
+}
+
 function showResult(payload) {
   latestResult = payload;
+  const diff = payload.diff || payload.cumulative_diff || '';
+  const cycles = payload.cycles || payload.cycle_reports || [];
+  const cleanupOk = payload.cleanup_ok !== undefined ? payload.cleanup_ok : !payload.cleanup || payload.cleanup.succeeded;
+  const displayPayload = { ...payload, cost_usd: payload.cost_usd ?? payload.total_cost_usd };
   const label = RESULT_LABELS[payload.status] || 'Scan finished';
   el('result-panel').dataset.status = payload.status;
   el('result-title').textContent = label;
   el('result-message').textContent = payload.message;
-  fact('fact-baseline', payload.baseline_passed ? 'Passed' : 'Not passed', payload.baseline_passed);
+  fact('fact-baseline', payload.baseline_passed === undefined ? 'Not reported' : payload.baseline_passed ? 'Passed' : 'Not passed', payload.baseline_passed);
   const pre = probeLabel(payload.pre_exit_code);
   fact('fact-pre', pre[0], payload.pre_exit_code === 0 ? undefined : pre[1]);
-  fact('fact-regression', payload.regression_passed ? 'Passed' : 'Not passed', payload.regression_passed);
+  fact('fact-regression', payload.regression_passed === undefined ? 'Not reported' : payload.regression_passed ? 'Passed' : 'Not passed', payload.regression_passed);
   fact('fact-post', ...probeLabel(payload.post_exit_code));
-  fact('fact-cleanup', payload.cleanup_ok ? 'Resources removed' : 'Inspect Docker', payload.cleanup_ok);
-  renderUsage(payload);
-  if (payload.diff) {
-    renderDiff(payload.diff);
+  fact('fact-cleanup', cleanupOk ? 'Resources removed' : 'Inspect Docker', cleanupOk);
+  renderUsage(displayPayload);
+  renderCycles(cycles);
+  if (diff) {
+    renderDiff(diff);
     el('diff-wrap').hidden = false;
   } else {
     el('diff-wrap').hidden = true;
   }
+  el('download-patch-btn').hidden = !diff;
   el('result-panel').hidden = false;
   el('result-panel').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
   status(label, payload.status);
-  finishPipeline(payload);
+  finishPipeline({ ...payload, cleanup_ok: cleanupOk });
 }
 
 /* ---------- lifecycle ---------- */
@@ -409,7 +505,9 @@ async function initialize() {
 function startScan() {
   if (socket || !configured) return;
   const key = el('target-select').value;
-  if (!targets[key]) return;
+  if (sourceMode === 'demo' && !targets[key]) return;
+  const spec = sourceMode === 'project' ? projectSpec() : null;
+  if (sourceMode === 'project' && !spec) { status('Fix project details', 'warn'); return; }
   latestResult = null;
   eventCount = 0;
   el('event-count').textContent = '0';
@@ -421,6 +519,7 @@ function startScan() {
   el('run-btn').disabled = true;
   lockTargets(true);
   lockProfiles(true);
+  lockProjectForm(true);
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Verification running', 'running');
@@ -428,7 +527,12 @@ function startScan() {
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
   const profileQuery = profiles.length ? `?profile=${encodeURIComponent(selectedProfile)}` : '';
-  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/combat/${encodeURIComponent(key)}${profileQuery}`);
+  const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${profileQuery}` : `${base}/ws/combat/${encodeURIComponent(key)}${profileQuery}`);
+  if (spec) socket.onopen = () => {
+    socket.send(JSON.stringify(spec));
+    writeLine('system', `Project specification accepted by connection · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} requested.`);
+  };
   socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
@@ -451,6 +555,7 @@ function startScan() {
     el('run-btn').disabled = !configured;
     lockTargets(false);
     lockProfiles(false);
+    lockProjectForm(false);
     el('stop-btn').hidden = true;
     el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
     if (!latestResult) {
@@ -472,6 +577,7 @@ function stopScan() {
 
 el('run-btn').addEventListener('click', startScan);
 el('stop-btn').addEventListener('click', stopScan);
+document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => setSourceMode(button.dataset.mode)));
 
 el('download-btn').addEventListener('click', () => {
   if (!latestResult) return;
@@ -487,6 +593,18 @@ el('download-btn').addEventListener('click', () => {
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');
+});
+
+el('download-patch-btn').addEventListener('click', () => {
+  const diff = latestResult && (latestResult.diff || latestResult.cumulative_diff);
+  if (!diff) return;
+  const url = URL.createObjectURL(new Blob([diff], { type: 'text/x-diff' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'candidate.patch';
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Candidate patch downloaded');
 });
 
 document.querySelectorAll('[data-copy]').forEach((button) => {
@@ -521,7 +639,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && socket) { stopScan(); return; }
   const index = Number.parseInt(event.key, 10);
   const keys = Object.keys(targets);
-  if (index >= 1 && index <= keys.length && !socket) { selectTarget(keys[index - 1], true); return; }
+  if (sourceMode === 'demo' && index >= 1 && index <= keys.length && !socket) { selectTarget(keys[index - 1], true); return; }
   if (event.key === 'Enter' && !socket && configured && (tag === 'body' || event.target.classList.contains('target'))) {
     event.preventDefault();
     startScan();
