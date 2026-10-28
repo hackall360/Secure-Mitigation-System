@@ -3,14 +3,22 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
+Pre-production security mitigation for the **Meta Global AI Developer Hackathon**.
 An autonomous **red/blue input-boundary verification harness**: a red-team AI
-finds an input-handling weakness, an isolated Docker sandbox proves it, a
-blue-team AI writes a minimal sanitization patch, and trusted regression checks
-confirm the boundary holds — then every container is removed. A FastAPI
-dashboard and a CLI share one evidence-gated workflow.
+finds an input-handling weakness in your source repository, an isolated Docker
+sandbox proves it, a blue-team AI writes a minimal sanitization patch, and
+trusted regression checks confirm the boundary holds — then every container is
+removed. The three bundled fixtures demonstrate the loop; **scan a local source
+repository through the CLI or dashboard**, not just the demos. Each cycle
+separates **red discovery and proof → blue sanitization proposal → red
+re-verification → blue final report**. Repeated cycles carry forward verified
+candidate changes inside the sandbox, never into your source tree.
 
 Built for Meta's **Muse** models — and that choice is load-bearing, not branding
 (see [Why Muse](#why-muse-models-are-required)).
+
+This is a defensive review tool, not a proof of security or a VM-grade boundary
+for actively hostile code. Review every candidate patch before applying it.
 
 ## How it works
 
@@ -80,6 +88,42 @@ below). But for security-intensive applications built in the open, Muse's
 posture — capable models, developer-owned safety, containment over refusal —
 is what makes this project possible at all.
 
+## Operating modes
+
+Secure Mitigation System runs Muse red/blue teams in isolated Docker. Red attacks
+offline inside the sandbox, blue defends. You receive only patched code and a
+redacted report — exploit scripts never leave the sandbox.
+
+| Mode | Command | What happens |
+|---|---|---|
+| Bring your own | `main.py --project /path ...` | Snapshot your repo, evidence-gated red/blue cycles |
+| Example | `main.py --scan node_query_sink` | Bundled fixtures, same pipeline |
+| AI-built demo | `main.py --ai-demo` | Muse designs a novel demo from live NVD intel, then red/blue exercise it |
+
+```sh
+# 1. Preflight (cannot fail out, prints fixes)
+python3 .jcode/tools/dev.py doctor
+# 2. Environment + images (two containers: target + verifier)
+python3 .jcode/tools/dev.py setup
+python3 .jcode/tools/dev.py images
+# 3. Key-free smoke test
+python3 .jcode/tools/dev.py smoke
+# 4. AI-built demo (needs META_MUSE_API_KEY exported)
+python3 main.py --ai-demo --scan-profile extra_light --output-dir reports
+# 5. Your own repo (needs --allow-remote-inference for hosted Muse)
+python3 main.py --project /path/to/repo --command '["python3","app.py"]' \
+  --test-command '["python3","-m","unittest"]' --contract '...' --scan-profile light \
+  --allow-remote-inference --output-dir reports
+# 6. Deep CVE scan (no probe/patch; OSV needs network, offline with --offline-cve)
+python3 main.py --project /path/to/repo --command '["python3","app.py"]' \
+  --test-command '["python3","-m","unittest"]' --contract '...' --cve-scan --output-dir reports
+```
+
+Threat intel: OSV (`https://osv.dev`, no key) + NVD API 2.0
+(`https://services.nvd.nist.gov/rest/json/cves/2.0`, optional `NVD_API_KEY`).
+Intel grounds generation and triage only — every fix still requires an isolated
+Docker probe before it is retained.
+
 ## Quick start
 
 Requires Python 3.12+, Docker Engine/Desktop with Linux containers, and a
@@ -108,10 +152,11 @@ set -a; source .env; set +a
 python main.py --serve --port 8000
 ```
 
-`.env` is git-ignored, created owner-only (0600), and **never loaded
-automatically**. No keys are sent to Docker, written to reports, returned by
-health checks, or displayed in the UI. A real scan sends the selected fixture
-source to the configured Muse endpoint.
+`.env` is ignored by Git, created owner-only (0600), and **never loaded
+automatically**. Secure Mitigation System reads `META_MUSE_API_KEY`, even though
+Meta's examples call the variable `MODEL_API_KEY`. No keys are sent to Docker,
+written to reports, returned by health checks, or displayed in the UI. A real
+scan sends the selected source to the configured Muse endpoint.
 
 ```bash
 python main.py --scan node_query_sink --output-dir reports
@@ -124,6 +169,64 @@ CLI exit status is `0` only for a verified candidate with successful cleanup,
 fresh run folder with `report.json` and, when available, `candidate.patch`.
 Reports can contain source code, model output, and candidate patches.
 
+## Scan your own repository
+
+Use an existing local checkout. Secure Mitigation System deliberately does not clone URLs, execute
+Git hooks, run repository Dockerfiles, or download dependencies during a scan.
+Prepare a trusted runtime image with the required tools and dependencies beforehand.
+The bundled target image provides Python, Node.js, and PHP, not every framework.
+Commands are JSON argv arrays executed **only inside containers**, from `/workspace`.
+Your start command must keep the target running. Supply meaningful regression tests
+and an expected-behavior contract so a blocked probe cannot earn credit by breaking the app.
+
+```bash
+python main.py --project /absolute/path/to/checkout \
+  --image my-prepared-runtime:latest \
+  --command '["python3", "app.py"]' \
+  --test-command '["python3", "-m", "unittest", "discover"]' \
+  --contract 'Preserve routes, successful responses, and business logic. Only harden untrusted inputs.' \
+  --cycles 3 --context-budget 32768 \
+  --allow-remote-inference --output-dir reports
+```
+
+The default is **one cycle**, with a maximum of 20. The dashboard's **Local project**
+mode accepts the same settings. Paths refer to the server's local filesystem.
+Each CLI project run creates a private report directory with evidence and a
+cumulative candidate diff. UI reports and patches can be downloaded separately.
+The original checkout is read-only to Secure Mitigation System and is never mounted into containers.
+To continue on a later run, review/apply the exported patch yourself and scan that
+checkout again. No hidden conversation or cross-run state is reused.
+
+See [project intake and runtime requirements](docs/PROJECTS.md) and
+[workflow, evidence, and context limits](docs/PROJECT_WORKFLOW.md).
+
+### Private and offline operation
+
+**Hosted mode sends selected source and evidence to the configured Muse endpoint.**
+It requires the explicit `--allow-remote-inference` flag or dashboard consent.
+Filename-based secret exclusions are a precaution, not a secret scanner. Audit your
+source before authorizing hosted inference. Reports can contain sensitive code.
+
+For offline inference, run an operator-provided **Muse-compatible local server**
+before starting Secure Mitigation System, with models, runtime images, and dependencies already
+available. Secure Mitigation System does not install or download a model server:
+
+```bash
+export PURPLEBOX_INFERENCE_MODE=local
+export META_MUSE_BASE_URL=http://127.0.0.1:8081/v1
+export META_MUSE_RED_MODEL=meta-models/muse-spark-open-1026
+export META_MUSE_BLUE_MODEL=meta-models/muse-spark-open-1026
+python main.py --serve
+```
+
+Local mode permits only literal `127.0.0.1` or `[::1]` endpoints, does not require
+an API key or remote-source consent, and never falls back to hosted inference.
+The dashboard automatically hides hosted consent and enables local scans without a key. It still uses `MetaMuseClient`
+and the Muse model allowlist. The local server must support Chat Completions
+`response_format` with `type: "json_schema"`. The operator must ensure the local server actually
+serves Muse and does not forward requests externally. No real local Muse serving
+deployment is bundled or attested by the endpoint check.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -134,12 +237,13 @@ Reports can contain source code, model output, and candidate patches.
 | `META_MUSE_BLUE_MODEL` | `muse-wonder-1.0` | Sanitization patch generation |
 | `META_MUSE_TIMEOUT_SECONDS` | `180` | Per-request API timeout, 1–300 s (a real blue call took 60+ s) |
 | `META_MUSE_MAX_TOKENS` | `32768` | Output budget, 1024–131072. **Reasoning tokens count toward it** |
-| `META_MUSE_REASONING_EFFORT` | unset | `minimal`/`low`/`medium`/`high`/`xhigh`/`max`. Unset = model default |
+| `META_MUSE_REASONING_EFFORT` | unset | Optional `minimal`/`low`/`medium`/`high`/`xhigh`/`max`. Unset = model default. `none` is rejected by Muse |
 | `PURPLEBOX_RESEARCH` | `off` | `on` enables research sidecars (extra model calls, host network only) |
 | `PURPLEBOX_RESEARCH_SCANNERS` | unset | Comma list: `trivy,grype,osv-scanner,dependency-check,dependency-track` |
 | `PURPLEBOX_DTRACK_URL` / `PURPLEBOX_DTRACK_API_KEY` | unset | Dependency-Track server (both required to enable) |
 | `NVD_API_KEY` | unset | Optional; raises NVD/Dependency-Check rate limits |
 | `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS` | `20` | Per-verifier execution limit, 1–120 s |
+| `PURPLEBOX_INFERENCE_MODE` | `hosted` | `hosted` requires a key and consent for project source. `local` restricts inference to a literal loopback endpoint |
 
 All inference goes through `agents.MetaMuseClient`: HTTPX against Meta's
 compatible `/chat/completions` endpoint, strict Pydantic response validation,
@@ -163,12 +267,16 @@ Spark/Wonder IDs. See Meta's [quickstart](https://dev.meta.ai/docs/quickstart).
 | CLI + FastAPI | Shared async workflow, localhost binding, one active UI scan per process |
 | Dashboard | Local-only assets, split red/blue traces, arena comms, cancel, report download |
 | Three fixtures | Node dynamic-expression sink, PHP local command argument, MySQL config audit |
+| Local projects | Bounded immutable snapshots, user-supplied offline runtime and regression commands, multi-file candidate patches |
+| Repeated red/blue cycles | Fresh role contexts, structured handoffs, original-probe rechecks, rollback of failed candidates, final patch reports |
+| Large-project context | Explicit bounded source batches and coverage records instead of one growing conversation |
 | Docker lifecycle | Two pre-built images; isolated target/verifier; immutable per-session snapshots |
 | Resource controls | Non-root, dropped caps, no-new-privs, CPU/RAM/PID caps, read-only roots, bounded `/tmp` |
 | Patch guard | Required notices, small-diff budget, protected lines, exact MySQL allowlist |
 | Verification | Trusted normal-input checks before/after; explicit 0/1/2 verifier semantics |
 | Research sidecars | Opt-in red/blue Muse researchers over OSV/CIRCL/GHSA/EPSS + 5 local scanners |
 | Testability | Mocked unit tests, live Docker/API self-tests, headless-browser E2E (Chrome/FF) |
+| Cleanup | Resource tracking, cancellation-aware worker joins, cleanup independent of UI logging |
 
 The PHP fixture uses `printf` for a deterministic local diagnostic (no
 external requests). The MySQL fixture is a served config file — no database
@@ -182,10 +290,13 @@ from those snapshots with read-only roots. No host mounts, socket mounts,
 exposed ports, or inherited proxies. Base images persist; per-session
 snapshots, containers, and networks are removed after every scan.
 
-Docker `internal=True` blocks normal routing but **does not guarantee host
-gateway services are unreachable**, and containers share the host kernel. Use
-a disposable VM or stronger sandbox before pointing this at hostile
-repositories. No claim of complete air-gapping or measured performance.
+Docker `internal=True` blocks normal external routing but **does not guarantee that
+host gateway services are unreachable**. Containers also share the host kernel. See
+[Docker's internal-network documentation](https://docs.docker.com/reference/cli/docker/network/create/#network-internal-mode---internal).
+Project networks additionally require Docker's isolated gateway mode to avoid assigning
+a host bridge address. Use a disposable VM or stronger sandbox before pointing this at
+hostile repositories. No claim of complete air-gapping, sub-second startup, or measured
+performance is made.
 
 The model verifier must explicitly exit `0` (boundary observed), `1`
 (blocked), or `2`/other (inconclusive → error, never a fix). Python
@@ -222,8 +333,17 @@ workflow.py          Baseline → probe → patch → regression → cleanup
 research.py          Keyless intel transport (OSV/CIRCL/GHSA/EPSS)
 scanner_binaries.py  Trivy / Grype / OSV-Scanner / Dependency-Check wrappers
 scanner_dtrack.py    Dependency-Track BOM upload client
-main.py              CLI, FastAPI, WebSocket entry points
+personas.py          Agent personas (tone only, safety rules override)
+chatter.py           Safe server-built team chatter summaries
+main.py              CLI (--scan/--project/--research/--ai-demo), FastAPI, WebSocket
 registry.py          Fixture registry + normal-behavior contracts
+projects.py          Arbitrary project intake, validation, sandbox execution
+project_workflow.py  Red/blue cycles, handoffs, regression, final reports
+project_agents.py    Project-scoped Muse roles + bounded source batches
+scan_profiles.py     Cycle profiles (economy/balanced/quality/custom)
+intel_search.py      NVD CVE lookup for deep scans + demo intel
+cve_workflow.py      CVE scan workflow; deep_scan.py deep static CVE scan
+demo_gen.py          AI-built demo project generation
 patches.py           Patch guards, unified diffs
 docker_manager.py    Images, isolated runtimes, deadlines, cleanup
 checks.py            Normal-input + egress checks
@@ -288,5 +408,12 @@ authorized, do not proceed.
 **Human supervision is required.** Every candidate patch must be reviewed by
 a qualified person before application. Automated outputs of this system must
 never trigger unattended changes to production systems.
+
+## Next steps
+
+Language-aware semantic patch validation, more runtime adapters, stronger host
+isolation, and a measured live demo with your Muse account. Distributed queues,
+webhook/CI automation, automatic host-source patching, and cross-scan snapshot
+caches are outside this scaffold.
 
 Licensed under [PolyForm Noncommercial 1.0.0](LICENSE.md).

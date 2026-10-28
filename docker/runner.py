@@ -18,7 +18,10 @@ def main() -> int:
     except BaseException:
         traceback.print_exc(limit=3)
         return 2
-    print("Verifier ended without an explicit result.", file=sys.stderr)
+    print(
+        "Verifier returned without an explicit sys.exit(0|1|2) call; treating as inconclusive.",
+        file=sys.stderr,
+    )
     return 2
 
 
