@@ -176,6 +176,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         # any Docker or API work starts.
         try:
             scan_config = apply_profile(config or load_config(), socket.query_params.get("profile"))
+            # Dashboard opt-in mirrors --research/--research-scanners: off unless
+            # the query explicitly says on. Allowlist-validated like the env var.
+            if socket.query_params.get("research") == "on":
+                allowed = ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track")
+                wanted = tuple(
+                    sorted(
+                        {
+                            s.strip().lower()
+                            for s in (socket.query_params.get("research_scanners") or "").split(",")
+                            if s.strip().lower() in allowed
+                        }
+                    )
+                )
+                import dataclasses
+
+                scan_config = dataclasses.replace(
+                    scan_config, research_enabled=True, research_scanners=wanted
+                )
         except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
@@ -782,6 +800,9 @@ def main() -> int:
             removed = remove_stale_resources(settings)
             print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
+        if args.serve:
+            uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
+            return 0
         if args.scan:
             return asyncio.run(
                 cli_runner(
@@ -838,6 +859,7 @@ def main() -> int:
                     offline_cve=args.offline_cve,
                 )
             )
+        # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
         return 0
     except KeyboardInterrupt:

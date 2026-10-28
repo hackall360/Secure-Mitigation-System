@@ -83,11 +83,16 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
 - [x] H2. Green roster populates on green lines + demo start (null-leader
       guard added). Proof: same run.
 - [x] H3. Reconciled stale A3/A5 fold notes (post-reunite wording) and G4 checkbox. Proof: gate + read-through.
-- [ ] H4. Dashboard research controls: `--research` is CLI/scan-only; no
-      dashboard toggle or per-scan records view. Proof: UI scan with toggle.
-- [ ] H5. Project-mode + research interplay: `_gather_research` fixture-only
-      (`TARGETS_REGISTRY` lookup); project scans get no scanner grounding.
-      Proof: project scan with `--research --research-scanners` shows records.
+- [x] H4. Dashboard research controls: `research-toggle` +
+      `research-scanners-toggle` checkboxes feed `?research=on` + allowlisted
+      `research_scanners` into every WS route; server parses per-scan into a
+      replaced config. Proof: `test_ws_research_query_enables_sidecar_config`
+      + `test_ws_research_absent_stays_off` + `test_dashboard_research_toggles_exist_and_default_off`.
+- [x] H5. Project-mode + research interplay: `execute_project_workflow`
+      runs `_gather_research` when enabled, grounds the red contract with the
+      digest, stores records on `ProjectWorkflowResult.research_records`;
+      dashboard renders them in a Threat-intel cycle detail. Proof:
+      `test_project_research_on_runs_grounding_and_stores_records` (+ off-by-default).
 
 ## Done
 

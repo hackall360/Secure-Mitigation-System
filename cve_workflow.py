@@ -171,7 +171,7 @@ async def execute_cve_scan(
 
     if include_nvd and summaries:
         try:
-            from intel_search import nvd_lookup, summarize_nvd_record
+            from intel_search import nvd_lookup, osv_lookup_by_cve, summarize_nvd_record
 
             for summary in summaries[:10]:
                 for cve_id in (summary.get("cves") or [])[:2]:
@@ -183,6 +183,34 @@ async def execute_cve_scan(
                             break
                     except Exception as exc:
                         summary.setdefault("nvd_error", f"{type(exc).__name__}")
+                        break
+                # Keyless OSV second opinion: fix commits / ranges NVD often omits.
+                for cve_id in (summary.get("cves") or [])[:2]:
+                    try:
+                        record = await blocking(osv_lookup_by_cve, cve_id)
+                        affected = record.get("affected") or []
+                        ranges = [
+                            r.get("type")
+                            for a in affected
+                            for r in (a.get("ranges") or [])
+                            if r.get("type")
+                        ]
+                        fixed = sorted(
+                            {
+                                e.get("fixed")
+                                for a in affected
+                                for e in (a.get("ranges") or [])
+                                for e in (e.get("events") or [])
+                                if e.get("fixed")
+                            }
+                        )
+                        if ranges or fixed:
+                            summary["osv_ranges"] = {
+                                "types": sorted(set(ranges))[:4],
+                                "fixed": fixed[:8],
+                            }
+                        break
+                    except Exception:
                         break
             await log("system", "Deep scan: NVD enrichment complete.")
         except Exception as exc:

@@ -8,6 +8,9 @@ const STAGES = ['sandbox', 'baseline', 'analysis', 'probe', 'patch', 'regression
 const RESULT_LABELS = {
   verified: 'Boundary check passed',
   not_confirmed: 'Boundary not confirmed',
+  no_finding: 'No finding this cycle',
+  inconclusive: 'Probe inconclusive',
+  rolled_back: 'Change rolled back',
   rejected: 'Candidate patch rejected',
   failed: 'Boundary still reachable',
   no_findings: 'No findings',
@@ -23,6 +26,13 @@ const SCAN_PROFILE_CYCLES = {
   heavy: 8,
   super_heavy: 12,
   ultra_heavy: 12
+};
+// Server-sent health.scan_profiles overrides these defaults once loaded
+// (renderProfiles copies them into scanProfiles; updateScanProfile prefers them).
+let scanProfiles = [];
+const scanProfileCycles = (key) => {
+  const server = scanProfiles.find((p) => p.key === key);
+  return server ? server.cycles : SCAN_PROFILE_CYCLES[key];
 };
 
 let targets = {};
@@ -91,23 +101,24 @@ function clearEmpty(area) {
 }
 
 function buildEntry(team, text, withTag) {
+  const normalized = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
   const line = document.createElement('div');
   line.className = 'entry';
-  line.dataset.team = team;
+  line.dataset.team = normalized;
   const stamp = document.createElement('time');
   stamp.textContent = new Date().toLocaleTimeString([], { hour12: false });
   line.append(stamp);
   if (withTag) {
     const tag = document.createElement('span');
-    tag.className = `tag tag-${team}`;
-    tag.textContent = team;
+    tag.className = `tag tag-${normalized}`;
+    tag.textContent = normalized;
     line.append(tag);
   }
   const body = document.createElement('span');
   body.className = 'msg';
   body.textContent = String(text);
   line.append(body);
-  if (activeFilter !== 'all' && withTag && team !== activeFilter) line.hidden = true;
+  if (activeFilter !== 'all' && withTag && normalized !== activeFilter) line.hidden = true;
   return line;
 }
 
@@ -150,6 +161,7 @@ function buildRoster(node, names, leader) {
   if (leader) {
     const lead = document.createElement('span');
     lead.className = 'agent-chip leader';
+    lead.dataset.name = leader;
     lead.textContent = '';
     const dot = document.createElement('i');
     const label = document.createElement('span');
@@ -184,16 +196,14 @@ function writeComms(team, text) {
   const m = CHATTER_RE.exec(String(text));
   if (!m) return;
   lightAgent(m[1]);
-  const line = buildEntry(team === 'green' ? 'system' : team, text, true);
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const line = buildEntry(known, text, true);
   append(comms, line);
 }
 function writeLine(team, text) {
-  const known = team === 'red' || team === 'blue' || team === 'research' ? team : 'system';
-  if (known !== 'system' || team === 'green') {
-    append(team === 'green' ? logs.system : logs[known], buildEntry(known, text, false));
-    if (team === 'green') {
-      try { buildRoster(el('green-roster'), ['Greenhouse'], null); } catch { /* decorative */ }
-    }
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  if (known === 'red' || known === 'blue') {
+    append(logs[known], buildEntry(known, text, false));
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.dataset.team === known));
   }
   // The activity timeline records every event so it can be filtered.
@@ -372,7 +382,9 @@ function parseArgv(id, label, errors) {
 
 function updateScanProfile() {
   const key = el('project-scan-profile').value;
-  const cycles = SCAN_PROFILE_CYCLES[key];
+  const cycles = scanProfileCycles(key);
+  const server = scanProfiles.find((p) => p.key === key);
+  const description = server ? server.description : '';
   const custom = key === 'custom';
   const ultra = key === 'ultra_heavy';
   el('project-cycles').readOnly = !custom;
@@ -382,7 +394,7 @@ function updateScanProfile() {
   const cycleLabel = cycles === 1 ? '1 cycle' : `${cycles} cycles`;
   el('project-scan-description').textContent = custom
     ? 'Legacy compatibility mode · choose 1 to 20 single-pass cycles.'
-    : `${cycleLabel} · each cycle runs Red, Blue, Red, Blue with cumulative focus${key === 'ultra_heavy' ? ' and bounded automatic discovery from the first pass' : ''}.`;
+    : `${cycleLabel} · each cycle runs Red, Blue, Red, Blue with cumulative focus${key === 'ultra_heavy' ? ' and bounded automatic discovery from the first pass' : ''}${description ? ` · ${description}` : ''}`;
 }
 
 function projectSpec() {
@@ -399,7 +411,7 @@ function projectSpec() {
   if (!path.startsWith('/')) { el('project-path').setAttribute('aria-invalid', 'true'); errors.push('Repository path must be absolute and start with /.'); }
   if (!image) { el('project-image').setAttribute('aria-invalid', 'true'); errors.push('Preloaded sandbox image is required.'); }
   if (!contract) { el('project-contract').setAttribute('aria-invalid', 'true'); errors.push('Behavior contract is required.'); }
-  if (scanProfile !== 'custom' && !Object.hasOwn(SCAN_PROFILE_CYCLES, scanProfile)) { el('project-scan-profile').setAttribute('aria-invalid', 'true'); errors.push('Choose a valid scan intensity.'); }
+  if (scanProfile !== 'custom' && scanProfileCycles(scanProfile) === undefined) { el('project-scan-profile').setAttribute('aria-invalid', 'true'); errors.push('Choose a valid scan intensity.'); }
   if (!Number.isInteger(cycles) || cycles < 1 || cycles > 20) { el('project-cycles').setAttribute('aria-invalid', 'true'); errors.push('Cycles must be a whole number from 1 to 20.'); }
   if (!Number.isInteger(redAgents) || redAgents < 1 || redAgents > 12) { el('project-red-agents').setAttribute('aria-invalid', 'true'); errors.push('Red agents must be a whole number from 1 to 12.'); }
   if (!Number.isInteger(blueAgents) || blueAgents < 1 || blueAgents > 12) { el('project-blue-agents').setAttribute('aria-invalid', 'true'); errors.push('Blue agents must be a whole number from 1 to 12.'); }
@@ -436,6 +448,7 @@ function selectProfile(key) {
 
 function renderProfiles(health) {
   profiles = health.profiles || [];
+  scanProfiles = health.scan_profiles || [];
   el('profile-row').hidden = profiles.length === 0;
   const list = el('profile-list');
   list.replaceChildren();
@@ -482,8 +495,15 @@ function renderDiff(diff) {
 
 function fact(id, value, good) {
   const node = el(id);
+  const before = node.textContent;
   node.textContent = value;
   node.dataset.state = good === undefined ? 'neutral' : good ? 'good' : 'bad';
+  // Facts that flip between scans flash once so regressions catch the eye.
+  if (before !== '—' && before !== String(value)) {
+    node.classList.remove('fact-flash');
+    void node.offsetWidth;
+    node.classList.add('fact-flash');
+  }
 }
 
 function probeLabel(code) {
@@ -538,10 +558,23 @@ function redactEvidence(value) {
   return value;
 }
 
-function renderCycles(cycles) {
+function renderCycles(cycles, records) {
   const list = el('cycle-list');
   list.replaceChildren();
-  el('cycle-reports').hidden = !Array.isArray(cycles) || cycles.length === 0;
+  el('cycle-reports').hidden = (!Array.isArray(cycles) || cycles.length === 0) && (!Array.isArray(records) || records.length === 0);
+  if (Array.isArray(records) && records.length) {
+    const details = document.createElement('details');
+    details.className = 'cycle-report';
+    const summary = document.createElement('summary');
+    summary.textContent = `Threat intel · ${records.length} record${records.length === 1 ? '' : 's'} (untrusted grounding, Docker evidence decided)`;
+    const body = document.createElement('div');
+    body.className = 'cycle-body';
+    const pre = document.createElement('pre');
+    pre.textContent = records.slice(0, 16).map((r) => `${r.cve_id || '?'} [${r.source || r.scanner || '?'}] ${r.severity || ''} ${r.title || ''}`.trim()).join('\n');
+    body.append(pre);
+    details.append(summary, body);
+    list.append(details);
+  }
   if (!Array.isArray(cycles)) return;
   cycles.forEach((cycle, index) => {
     const details = document.createElement('details');
@@ -603,7 +636,7 @@ function showResult(payload) {
   fact('fact-post', ...(evidence.post_summary ? [evidence.post_summary, evidence.post_good] : probeLabel(evidence.post_exit_code)));
   fact('fact-cleanup', cleanupOk ? 'Resources removed' : 'Inspect Docker', cleanupOk);
   renderUsage(displayPayload);
-  renderCycles(cycles);
+  renderCycles(cycles, payload.research_records);
   if (diff) {
     renderDiff(diff);
     el('diff-wrap').hidden = false;
@@ -615,6 +648,20 @@ function showResult(payload) {
   el('result-panel').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
   status(label, payload.status);
   finishPipeline({ ...payload, cleanup_ok: cleanupOk });
+}
+
+/* ---------- shared socket query: profile + opt-in intel (off default) ---------- */
+
+function socketQuery() {
+  const params = [];
+  if (profiles.length) params.push(`profile=${encodeURIComponent(selectedProfile)}`);
+  if (el('research-toggle') && el('research-toggle').checked) {
+    params.push('research=on');
+    if (el('research-scanners-toggle') && el('research-scanners-toggle').checked) {
+      params.push(`research_scanners=${encodeURIComponent('trivy,grype,osv-scanner,dependency-check')}`);
+    }
+  }
+  return params.length ? `?${params.join('&')}` : '';
 }
 
 /* ---------- lifecycle ---------- */
@@ -687,44 +734,51 @@ function startScan() {
   startedAt = Date.now();
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
-  const profileQuery = profiles.length ? `?profile=${encodeURIComponent(selectedProfile)}` : '';
+  // Opt-in intel: off by default, mirrors the --research/--research-scanners CLI flags.
+  const query = socketQuery();
   const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
-  socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${profileQuery}` : `${base}/ws/combat/${encodeURIComponent(key)}${profileQuery}`);
+  socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${query}` : `${base}/ws/combat/${encodeURIComponent(key)}${query}`);
+  socket.onmessage = handleSocketMessage;
+  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onclose = handleScanClose;
   if (spec) socket.onopen = () => {
     socket.send(JSON.stringify(spec));
     writeLine('system', `Project specification accepted · ${spec.scan_profile} intensity · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} · ${spec.red_agents} red / ${spec.blue_agents} blue agents.`);
   };
-  socket.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      if (payload.type === 'result') {
-        showResult(payload);
-      } else {
-        writeLine(payload.team, payload.msg);
-        if (payload.type === 'busy') status('Another scan is running', 'error');
-      }
-    } catch {
-      writeLine('system', 'Received an unreadable server event.');
+}
+
+function handleSocketMessage(event) {
+  try {
+    const payload = JSON.parse(event.data);
+    if (payload.type === 'result') {
+      showResult(payload);
+    } else if (payload.type === 'invalid' || payload.type === 'busy') {
+      status(payload.msg || (payload.type === 'busy' ? 'Another scan is already running.' : 'Invalid request.'), 'error');
+      writeLine(payload.team || 'system', payload.msg || payload.type);
+    } else {
+      writeLine(payload.team, payload.msg);
     }
-  };
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
-  socket.onclose = () => {
-    clearInterval(timer);
-    socket = null;
-    document.body.classList.remove('scanning');
-    document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('active'));
-    el('run-btn').disabled = !configured;
-    lockTargets(false);
-    lockProfiles(false);
-    lockProjectForm(false);
-    el('stop-btn').hidden = true;
-    el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
-    if (!latestResult) {
-      status('Session ended without a result', 'error');
-      writeLine('system', 'Connection closed. The server will finish cleanup before accepting another scan.');
-      document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
-    }
-  };
+  } catch {
+    writeLine('system', 'Received an unreadable server event.');
+  }
+}
+
+function handleScanClose() {
+  clearInterval(timer);
+  socket = null;
+  document.body.classList.remove('scanning');
+  document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('active'));
+  el('run-btn').disabled = !configured;
+  lockTargets(false);
+  lockProfiles(false);
+  lockProjectForm(false);
+  el('stop-btn').hidden = true;
+  el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
+  if (!latestResult) {
+    status('Session ended without a result', 'error');
+    writeLine('system', 'Connection closed. The server will finish cleanup before accepting another scan.');
+    document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
+  }
 }
 
 function stopScan() {
@@ -759,40 +813,31 @@ function startDemoBuild() {
   startedAt = Date.now();
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
-  const profileQuery = profiles.length ? `?profile=${encodeURIComponent(selectedProfile)}` : '';
   const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
   // Reuse the shared teardown/message flow by swapping sourceMode temporarily.
   sourceMode = 'demo-build';
-  socket = new WebSocket(`${base}/ws/demo${profileQuery}`);
+  socket = new WebSocket(`${base}/ws/demo${socketQuery()}`);
+  socket.onmessage = handleSocketMessage;
+  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onclose = handleDemoClose;
   socket.onopen = () => {
-    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200) }));
+    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
     writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
   };
-  socket.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      if (payload.type === 'result') {
-        showResult(payload);
-      } else {
-        writeLine(payload.team, payload.msg);
-        if (payload.type === 'busy') status('Another scan is running', 'error');
-      }
-    } catch {
-      writeLine('system', 'Received an unreadable server event.');
-    }
-  };
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
-  socket.onclose = () => {
-    if (timer) { clearInterval(timer); timer = null; }
-    document.body.classList.remove('scanning');
-    socket = null;
-    sourceMode = 'demo';
-    el('run-btn').disabled = !configured;
-    el('stop-btn').hidden = true;
-    lockTargets(false);
-    lockProfiles(false);
-    lockProjectForm(false);
-  };
+}
+
+/* Facts that flip value between scans flash via fact(); see function fact. */
+
+function handleDemoClose() {
+  if (timer) { clearInterval(timer); timer = null; }
+  document.body.classList.remove('scanning');
+  socket = null;
+  sourceMode = 'demo';
+  el('run-btn').disabled = !configured;
+  el('stop-btn').hidden = true;
+  lockTargets(false);
+  lockProfiles(false);
+  lockProjectForm(false);
 }
 
 /* ---------- wiring ---------- */
@@ -800,6 +845,11 @@ function startDemoBuild() {
 el('run-btn').addEventListener('click', startScan);
 el('stop-btn').addEventListener('click', stopScan);
 el('project-scan-profile').addEventListener('change', updateScanProfile);
+el('allow-remote').addEventListener('change', (event) => {
+  // Consent errors clear as soon as the box is ticked; everything else
+  // re-validates on submit via projectSpec().
+  if (event.target.checked) event.target.removeAttribute('aria-invalid');
+});
 document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => setSourceMode(button.dataset.mode)));
 
 el('download-btn').addEventListener('click', () => {
@@ -833,7 +883,7 @@ el('download-patch-btn').addEventListener('click', () => {
 document.querySelectorAll('[data-copy]').forEach((button) => {
   button.addEventListener('click', () => {
     const team = button.dataset.copy;
-    copyText(logText(team), team === 'system' ? 'Activity' : `${team[0].toUpperCase()}${team.slice(1)} trace`);
+    copyText(logText(team === 'red' || team === 'blue' || team === 'system' ? team : 'system'), team === 'system' ? 'Activity' : `${team[0].toUpperCase()}${team.slice(1)} trace`);
   });
 });
 
@@ -850,7 +900,8 @@ document.querySelectorAll('.filter').forEach((button) => {
       other.classList.toggle('active', on);
       other.setAttribute('aria-pressed', String(on));
     });
-    logs.system.querySelectorAll('.entry').forEach((entry) => {
+    // Untagged red/blue panel entries bypass the filter; timeline entries carry tags.
+    document.querySelectorAll('#sys-log .entry, #comms-log .entry').forEach((entry) => {
       entry.hidden = activeFilter !== 'all' && entry.dataset.team !== activeFilter;
     });
   });

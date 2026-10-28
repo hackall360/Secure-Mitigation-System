@@ -78,6 +78,8 @@
           <div class="field compact"><label for="project-red-agents">Red agents <span>Ultra heavy only</span></label><input id="project-red-agents" name="red_agents" type="number" min="1" max="12" value="5" disabled required></div>
           <div class="field compact"><label for="project-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="project-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required></div>
           <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
+          <label class="remote-consent wide"><input id="research-toggle" type="checkbox"><span><strong>Ground with threat intel</strong><small>Opt-in keyless lookups (OSV, CIRCL, GHSA, EPSS) plus local scanners. Off by default; Docker evidence still decides every verdict.</small></span></label>
+          <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner and Dependency-Check against a temp copy on this host. Requires threat intel above.</small></span></label>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
@@ -184,6 +186,7 @@
               <button class="filter" data-filter="red" aria-pressed="false">Red</button>
               <button class="filter" data-filter="blue" aria-pressed="false">Blue</button>
               <button class="filter" data-filter="research" aria-pressed="false">Research</button>
+              <button class="filter" data-filter="green" aria-pressed="false">Green</button>
             </div>
             <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           </div>

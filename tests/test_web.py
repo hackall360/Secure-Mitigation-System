@@ -111,3 +111,64 @@ def test_demo_route_registered_and_rejects_origin_mismatch():
             raise AssertionError("origin mismatch should close")
     except Exception:
         pass
+
+
+
+def test_ws_research_query_enables_sidecar_config(monkeypatch):
+    """H4: ?research=on allowlists scanners into the per-scan config."""
+    import threading
+
+    import main as _main
+
+    seen = {}
+
+    async def fake_workflow(target, emit, **kwargs):
+        seen.update(kwargs.get("config").__dict__ if hasattr(kwargs.get("config"), "__dict__") else {})
+        await emit("system", "done")
+        from workflow import ScanResult
+
+        return ScanResult(target="t", status="error", message="probe")
+
+    monkeypatch.setattr(_main, "execute_purple_workflow", fake_workflow)
+    app = _main.create_app(PurpleBoxConfig(meta_api_key="k"))
+    with TestClient(app, base_url="http://localhost") as client:
+        headers = {"origin": "http://localhost"}
+        with client.websocket_connect(
+            "ws://localhost/ws/combat/node_query_sink?research=on&research_scanners=trivy,evil",
+            headers=headers,
+        ) as socket:
+            while True:
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    break
+    assert seen.get("research_enabled") is True
+    assert seen.get("research_scanners") == ("trivy",)
+
+
+def test_ws_research_absent_stays_off(monkeypatch):
+    """H4: no query params means the sidecar stays off (opt-in)."""
+    import main as _main
+
+    seen = {}
+
+    async def fake_workflow(target, emit, **kwargs):
+        config = kwargs.get("config")
+        seen["enabled"] = config.research_enabled
+        seen["scanners"] = config.research_scanners
+        await emit("system", "done")
+        from workflow import ScanResult
+
+        return ScanResult(target="t", status="error", message="probe")
+
+    monkeypatch.setattr(_main, "execute_purple_workflow", fake_workflow)
+    app = _main.create_app(PurpleBoxConfig(meta_api_key="k"))
+    with TestClient(app, base_url="http://localhost") as client:
+        headers = {"origin": "http://localhost"}
+        with client.websocket_connect(
+            "ws://localhost/ws/combat/node_query_sink", headers=headers
+        ) as socket:
+            while True:
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    break
+    assert seen == {"enabled": False, "scanners": ()}
