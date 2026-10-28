@@ -52,8 +52,8 @@ def setup():
 
 def check():
     python("-m", "pytest", "-q")
-    python("-m", "ruff", "check", ".", ".jcode/tools/dev.py")
-    python("-m", "ruff", "format", "--check", ".", ".jcode/tools/dev.py")
+    python("-m", "ruff", "check", ".", ".jcode/tools")
+    python("-m", "ruff", "format", "--check", ".", ".jcode/tools")
     python("-m", "compileall", "-q", "-x", r"/(\.git|\.venv)/", ".")
     for script in ("static/app.js", "targets/node_query_sink/app.js"):
         run("node", "--check", script)
@@ -126,6 +126,7 @@ def main():
             "docker-status",
             "docker-cleanup",
             "docker-test",
+            "offline-scan",
             "serve",
             "smoke",
             "lock",
@@ -147,6 +148,8 @@ def main():
         python("main.py", "--cleanup")
     elif args.command == "docker-test":
         python("test_harness.py", "--docker")
+    elif args.command == "offline-scan":
+        python(".jcode/tools/offline_scan.py")
     elif args.command == "serve":
         python("main.py", "--serve", "--port", str(args.port))
     elif args.command == "smoke":

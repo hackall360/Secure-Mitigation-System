@@ -182,6 +182,7 @@ diff, filters, keyboard selection, and no horizontal overflow on mobile.
 | `python3 .jcode/tools/dev.py rebuild-images` | `main.py --rebuild-images`: unconditional rebuild with `pull=True`, label `purplebox.base=true`. Use after editing `docker/`. |
 | `python3 .jcode/tools/dev.py docker-cleanup` | `main.py --cleanup`: removes only `purplebox.session`-labeled containers/networks and `purplebox-clone-cache` snapshots. Base images kept. |
 | `python3 .jcode/tools/dev.py docker-test` | Live harness: all three fixtures end to end in real containers. |
+| `python3 .jcode/tools/dev.py offline-scan` | `.jcode/tools/offline_scan.py`: runs the production `execute_purple_workflow` through real Docker for every fixture with only Muse replaced by known outputs. Exit 0 only if all three are `verified` with cleanup. About 110 s. |
 
 Code: `docker_status()`, `build_base_images()`, `remove_stale_resources()` in
 `docker_manager.py`. `/api/health` now returns a `docker` object
@@ -202,3 +203,13 @@ Traps:
 - Port 8766 on this machine is held by an unrelated `firefox-agent` process. If
   `--serve` exits with errno 98, pick another port. `curl` then gets an empty reply
   from the *other* process, which looks like a server crash but is not.
+
+Why `offline-scan` exists: `test_harness.py --docker` calls `DockerSandboxManager`
+directly and never runs `workflow.execute_purple_workflow`, so a harness pass did
+not prove the scan path the UI/CLI use. Verified 2026-10-27: all three fixtures
+returned `status=verified pre=0 post=1 baseline=True regression=True cleanup=True`
+with 12 events each and zero leftover containers.
+
+Trap seen while writing it: `BlueTeamPatch` requires a `diff_summary` field. A stub
+without it made every fixture end in `status=error` right after the patch request,
+which looked like a workflow/Docker failure but was a schema error in the stub.
