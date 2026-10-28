@@ -553,3 +553,48 @@ async def test_original_baseline_is_exported_as_observed_evidence():
     assert result.baseline_verification is not None
     assert result.baseline_verification.regression.exit_code == 0
     assert result.model_dump()["baseline_verification"]["fresh_target"] is True
+
+
+async def test_project_research_on_runs_grounding_and_stores_records(monkeypatch):
+    """H5: opt-in project intel grounds the red contract and lands on the report."""
+    import project_workflow as _pw
+    import workflow as _workflow
+
+    async def fake_gather(muse, settings, filename, contract, log):
+        await log("research", "fake intel pass")
+        return "Grounded attack patterns: fake", [
+            {"source": "circl", "cve_id": "CVE-9-TEST", "title": "t", "summary": "s",
+             "severity": "HIGH", "cvss": 9.0, "cwe": ["CWE-78"]}
+        ]
+
+    monkeypatch.setattr(_workflow, "_gather_research", fake_gather)
+
+    seen_contracts = []
+    muse = FakeMuse(red_outcomes=["no_finding"])
+    orig_analyze = ProjectAgentRunner.analyze_red
+
+    async def observing(self, documents, **kwargs):
+        seen_contracts.append(kwargs.get("contract", ""))
+        return await orig_analyze(self, documents, **kwargs)
+
+    monkeypatch.setattr(ProjectAgentRunner, "analyze_red", observing)
+    sandbox = FakeSandbox([verification(1)])
+    result = await execute_project_workflow(
+        PROJECT,
+        silent_emit,
+        config=PurpleBoxConfig(meta_api_key="unit-test-key", research_enabled=True),
+        sandbox_factory=lambda _: sandbox,
+        muse_factory=lambda _: muse,
+    )
+    assert result.status == "no_findings"
+    assert len(result.research_records) == 1
+    assert result.research_records[0]["cve_id"] == "CVE-9-TEST"
+    assert any("Grounded intel" in c for c in seen_contracts)
+
+
+async def test_project_research_off_by_default_stores_nothing():
+    """H5: default config runs zero intel and keeps the report clean."""
+    muse = FakeMuse(red_outcomes=["no_finding"])
+    sandbox = FakeSandbox([verification(1)])
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.research_records == []

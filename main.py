@@ -35,6 +35,53 @@ NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved fo
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
 
+async def run_demo_build(emit, settings, *, theme: str = "", intel_offline: bool = False):
+    """Green builder for the dashboard: generate a demo project, then red/blue it.
+
+    Emits green team lines as Greenhouse works, then delegates to the project
+    workflow for evidence-gated cycles. Returned dict is already user-redacted.
+    """
+    from agents import MetaMuseClient
+    from demo_gen import generate_demo_project, materialize_demo_project
+    from intel_search import intel_for_demo
+    from project_workflow import redact_report_for_user
+
+    themes = [w for w in (theme or "input validation SQL injection XSS").split() if w][:6]
+    intel: list = []
+    if not intel_offline:
+        try:
+            intel = await intel_for_demo(themes, per_theme=4)
+            await emit("green", f"Greenhouse studied {len(intel)} threat-intel records.")
+        except Exception as exc:
+            await emit(
+                "green",
+                f"Greenhouse could not reach threat intel ({type(exc).__name__}); building from patterns.",
+            )
+    else:
+        await emit("green", "Greenhouse building from static flaw patterns (offline).")
+    muse = MetaMuseClient(settings)
+    try:
+        files = await generate_demo_project(muse, intel_context=intel, theme=" ".join(themes))
+    finally:
+        try:
+            await muse.aclose()
+        except Exception:
+            pass
+    try:
+        from chatter import chatter as _chatter
+
+        await emit("green", _chatter("green", n=len(files.flaw_notes), path="app.py"))
+    except Exception:
+        await emit("green", "Greenhouse planted a fresh demo with wobbly joints.")
+    spec = materialize_demo_project(files)
+    await emit(
+        "green",
+        f"Greenhouse grew {spec.path.name}: {', '.join(files.cve_inspiration) or 'novel flaw mix'}. Red and blue, it is yours.",
+    )
+    result = await execute_project_workflow(spec, emit, config=settings)
+    return redact_report_for_user(result)
+
+
 def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     application = FastAPI(
         title="Secure Mitigation System", version="0.1.0", docs_url=None, redoc_url=None
@@ -119,7 +166,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             f"{'https' if socket.url.scheme == 'wss' else 'http'}://{socket.headers.get('host')}"
         )
         if socket.headers.get("origin") != expected_origin or (
-            target_key is not None and target_key not in TARGETS_REGISTRY
+            target_key is not None
+            and target_key not in TARGETS_REGISTRY
+            and target_key != "__demo__"
         ):
             await socket.close(code=1008)
             return
@@ -127,6 +176,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         # any Docker or API work starts.
         try:
             scan_config = apply_profile(config or load_config(), socket.query_params.get("profile"))
+            # Dashboard opt-in mirrors --research/--research-scanners: off unless
+            # the query explicitly says on. Allowlist-validated like the env var.
+            if socket.query_params.get("research") == "on":
+                allowed = ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track")
+                wanted = tuple(
+                    sorted(
+                        {
+                            s.strip().lower()
+                            for s in (socket.query_params.get("research_scanners") or "").split(",")
+                            if s.strip().lower() in allowed
+                        }
+                    )
+                )
+                import dataclasses
+
+                scan_config = dataclasses.replace(
+                    scan_config, research_enabled=True, research_scanners=wanted
+                )
         except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
@@ -170,6 +237,27 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     await socket.close(code=1008)
                     return
                 coroutine = execute_project_workflow(spec, emit, config=scan_config)
+            elif target_key == "__demo__":
+                try:
+                    # Theme comes from the browser, bounded and sanitized here.
+                    # No paths or source in URLs, history, or access logs.
+                    raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
+                    request = json.loads(raw) if raw.strip() else {}
+                    theme = str(request.get("theme", "") or "")[:200]
+                    intel_offline = bool(request.get("intel_offline", False))
+                except (ValueError, TimeoutError, WebSocketDisconnect):
+                    await socket.send_json(
+                        {
+                            "type": "invalid",
+                            "team": "system",
+                            "msg": "Invalid demo request. Send JSON with an optional theme string.",
+                        }
+                    )
+                    await socket.close(code=1008)
+                    return
+                coroutine = run_demo_build(
+                    emit, scan_config, theme=theme, intel_offline=intel_offline
+                )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
             run = asyncio.create_task(coroutine)
@@ -178,6 +266,10 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 done, _ = await asyncio.wait({run, disconnect}, return_when=asyncio.FIRST_COMPLETED)
                 if run in done:
                     result = await run
+                    if target_key == "__demo__":
+                        # run_demo_build returns an already-redacted dict.
+                        await socket.send_json({"type": "result", **result})
+                        return
                     safe = result.model_dump()
                     try:
                         from project_workflow import redact_report_for_user as _redact_proj
@@ -209,6 +301,11 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     @application.websocket("/ws/project")
     async def project_combat(socket: WebSocket):
         await run_socket(socket)
+
+    @application.websocket("/ws/demo")
+    async def demo_build(socket: WebSocket):
+        """Green builder: Muse designs a novel demo project, then red/blue exercise it."""
+        await run_socket(socket, target_key="__demo__")
 
     return application
 
@@ -703,6 +800,9 @@ def main() -> int:
             removed = remove_stale_resources(settings)
             print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
+        if args.serve:
+            uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
+            return 0
         if args.scan:
             return asyncio.run(
                 cli_runner(
@@ -759,6 +859,7 @@ def main() -> int:
                     offline_cve=args.offline_cve,
                 )
             )
+        # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
         return 0
     except KeyboardInterrupt:

@@ -308,6 +308,7 @@ body.scanning .live-dot { background: var(--green); box-shadow: 0 0 10px var(--g
 .tag-red { color: var(--red); }
 .tag-blue { color: var(--blue); }
 .tag-research { color: var(--teal, #5eead4); }
+.tag-green { color: var(--green, #4ade80); }
 .tag-system { color: var(--purple-2); }
 
 /* ---------- toast & footer ---------- */

@@ -308,3 +308,12 @@ assert.equal(roster.children[2].children[1].textContent, 'Lockpick');
         capture_output=True,
         text=True,
     )
+
+
+def test_dashboard_research_toggles_exist_and_default_off():
+    markup = INDEX.read_text()
+    assert 'id="research-toggle"' in markup
+    assert 'id="research-scanners-toggle"' in markup
+    assert "Opt-in keyless lookups" in markup
+    assert "Off by default" in markup
+    assert "Docker evidence still decides" in markup

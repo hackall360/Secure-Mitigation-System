@@ -68,14 +68,17 @@ class ExecutionEvidence(BaseModel):
 
     @property
     def vulnerable(self) -> bool:
+        """Exit 0 means the probe reached the boundary: the flaw is exposed."""
         return self.exit_code == 0
 
     @property
     def blocked(self) -> bool:
+        """Exit 1 means the probe was stopped: the boundary held."""
         return self.exit_code == 1
 
     @property
     def inconclusive(self) -> bool:
+        """Any other exit means the probe itself failed: no verdict possible."""
         return self.exit_code not in (0, 1)
 
 
@@ -161,6 +164,7 @@ class ProjectWorkflowResult(BaseModel):
     cumulative_diff: str = ""
     baseline_verification: SnapshotVerification | None = None
     context_coverage: list[ContextCoverage] = Field(default_factory=list)
+    research_records: list[dict] = Field(default_factory=list)
     usage: ScanUsage = Field(default_factory=ScanUsage)
     total_tokens: int = 0
     total_cost_usd: float | None = None
@@ -805,6 +809,8 @@ async def execute_project_workflow(
         red_agents=red_agents,
         blue_agents=blue_agents,
     )
+    project_digest = ""
+    project_records: list[dict] = []
     sandbox: ProjectSandbox | None = None
     muse: MetaMuseClient | None = None
     safe_project: ProjectWorkflowInput | None = None
@@ -855,6 +861,26 @@ async def execute_project_workflow(
         cumulative_files = dict(original_files)
         muse = muse_factory(settings)
         agents = agent_factory(muse, settings)
+        if settings.research_enabled:
+            try:
+                from workflow import _gather_research as _fixture_gather
+
+                project_digest, project_records = await _fixture_gather(
+                    muse,
+                    settings,
+                    safe_project.name,
+                    safe_project.contract,
+                    log,
+                )
+                await log(
+                    "research",
+                    f"Project intel pass complete: {len(project_records)} records stored on the report.",
+                )
+            except Exception as exc:
+                await log(
+                    "research",
+                    f"Project intel unavailable ({type(exc).__name__}); continuing ungrounded.",
+                )
         await blocking(sandbox.require_base_images)
 
         protected_paths = protected_regression_paths(
@@ -914,7 +940,8 @@ async def execute_project_workflow(
                 project_name=safe_project.name,
                 cycle=cycle,
                 max_batch_bytes=bounds.max_batch_bytes,
-                contract=safe_project.contract,
+                contract=safe_project.contract
+                + (f"\n\nGrounded intel:\n{project_digest}" if project_digest else ""),
                 total_paths=snapshot_total_paths,
                 total_bytes=snapshot_total_bytes,
                 omitted_paths=omitted_paths,
@@ -1279,6 +1306,7 @@ async def execute_project_workflow(
         result.cumulative_diff = render_diff(
             original_files, cumulative_files, bounds.max_diff_chars
         )
+        result.research_records = project_records
         try:
             if sandbox is not None:
                 result.cleanup.attempted = True
