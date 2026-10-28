@@ -46,6 +46,24 @@ NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved fo
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
 
+def _demo_build_failure(exc: BaseException) -> dict:
+    """User-safe error report for a failed demo build (UI result-card shape)."""
+    return {
+        "status": "error",
+        "message": f"Demo generation failed ({type(exc).__name__}): {exc}",
+        "project": "ai-demo",
+        "cycles": [],
+        "cycle_reports": [],
+        "cumulative_diff": "",
+        "diff": "",
+        "research_records": [],
+        "usage": {"calls": []},
+        "total_tokens": 0,
+        "cost_usd": None,
+        "cleanup_ok": True,
+    }
+
+
 async def run_demo_build(
     emit,
     settings,
@@ -62,7 +80,7 @@ async def run_demo_build(
     `build_brief` is what the user wants built; `vulns` lists CVEs, named
     types, or free text to implement. Both flow into intent parsing + research.
     """
-    from agents import MetaMuseClient
+    from agents import AgentError, MetaMuseClient
     from demo_gen import generate_demo_project, materialize_demo_project, parse_build_intent
     from intel_search import intel_for_demo
     from project_workflow import redact_report_for_user
@@ -123,18 +141,30 @@ async def run_demo_build(
             f"Greenhouse brief: {intent.build_brief[:160] or 'showcase demo'}; "
             f"requested flaws: {', '.join(intent.vulns[:6]) or 'novel mix'}.",
         )
-    muse = MetaMuseClient(settings)
+    muse = None
     try:
-        files = await generate_demo_project(
-            muse,
-            intel_context=intel,
-            theme=" ".join(themes),
-            build_brief=intent.build_brief,
-            vulns=intent.vulns,
-        )
+        try:
+            muse = MetaMuseClient(settings)
+            files = await generate_demo_project(
+                muse,
+                intel_context=intel,
+                theme=" ".join(themes),
+                build_brief=intent.build_brief,
+                vulns=intent.vulns,
+            )
+        except (AgentError, ValueError, TypeError, OSError) as exc:
+            # Invalid generation output (bad syntax, unsafe content, budget
+            # overflow) or a Muse transport/schema failure is a reportable
+            # scan outcome, not a dead socket.
+            await emit(
+                "green",
+                f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build.",
+            )
+            return _demo_build_failure(exc)
     finally:
         try:
-            await muse.aclose()
+            if muse is not None:
+                await muse.aclose()
         except Exception:
             pass
     try:
@@ -143,7 +173,15 @@ async def run_demo_build(
         await emit("green", _chatter("green", n=len(files.flaw_notes), path="app.py"))
     except Exception:
         await emit("green", "Greenhouse planted a fresh demo with wobbly joints.")
-    spec = materialize_demo_project(files)
+    try:
+        spec = materialize_demo_project(files)
+    except (ValueError, TypeError, OSError) as exc:
+        # A bad generation (invalid syntax, unsafe content) must surface as a
+        # reportable scan outcome, never a dead socket with no result card.
+        await emit(
+            "green", f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build."
+        )
+        return _demo_build_failure(exc)
     await emit(
         "green",
         f"Greenhouse grew {spec.path.name}: {', '.join(files.cve_inspiration) or 'novel flaw mix'}. Red and blue, it is yours.",
