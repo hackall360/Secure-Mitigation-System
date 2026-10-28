@@ -637,6 +637,28 @@ function summaryEvidence(payload) {
   };
 }
 
+function renderResultMeta(payload, evidence, cycles) {
+  let meta = el('result-meta');
+  if (!meta) {
+    meta = document.createElement('p');
+    meta.id = 'result-meta';
+    el('result-message').after(meta);
+  }
+  const parts = [];
+  const before = evidence.pre_summary || probeLabel(evidence.pre_exit_code)[0];
+  const after = evidence.post_summary || probeLabel(evidence.post_exit_code)[0];
+  if (before !== 'Not run' || after !== 'Not run') parts.push(`${before} → ${after}`);
+  if (Array.isArray(cycles) && cycles.length) {
+    const kept = cycles.filter((cycle) => cycle && cycle.status === 'retained').length;
+    parts.push(`${kept}/${cycles.length} cycles verified`);
+  } else if (payload.status) {
+    parts.push(payload.status === 'verified' ? '1/1 verified' : '0/1 verified');
+  }
+  if (startedAt) parts.push(`took ${formatElapsed(Date.now() - startedAt)}`);
+  meta.textContent = parts.join(' · ');
+  meta.hidden = parts.length === 0;
+}
+
 function showResult(payload) {
   latestResult = payload;
   const evidence = summaryEvidence(payload);
@@ -648,6 +670,7 @@ function showResult(payload) {
   el('result-panel').dataset.status = payload.status;
   el('result-title').textContent = label;
   el('result-message').textContent = payload.message;
+  renderResultMeta(payload, evidence, cycles);
   fact('fact-baseline', evidence.baseline_passed === undefined ? 'Not reported' : evidence.baseline_passed ? 'Passed' : 'Not passed', evidence.baseline_passed);
   const pre = evidence.pre_summary ? [evidence.pre_summary, evidence.pre_good ? undefined : false] : probeLabel(evidence.pre_exit_code);
   fact('fact-pre', pre[0], evidence.pre_exit_code === 0 ? undefined : pre[1]);
