@@ -13,7 +13,6 @@ Chatter rules (enforced here, not by the model):
 from __future__ import annotations
 
 import random
-from typing import Literal
 
 _CHATTER: dict[str, list[str]] = {
     "red_start": [
@@ -79,24 +78,9 @@ def chatter(
     except (TypeError, ValueError):
         safe_n = 0
     line = template.format(persona=safe_persona, path=short_path, code=safe_code, n=safe_n)
+    # Minor summaries must not carry code-shaped runs (e.g. dunders from hostile
+    # punctuation); collapse them so fuzzed names stay inert text.
+    while "__" in line:
+        line = line.replace("__", "_")
     # Hard ceiling: minor summaries only.
     return line[:220]
-
-
-def wire_chatter(
-    emit,
-    team: Literal["red", "blue", "system", "green"],
-    kind: str,
-    **kwargs,
-):
-    """Return an async sender for one chatter line over the log pipeline."""
-
-    async def _send():
-        try:
-            await emit(
-                team if team in ("red", "blue", "system") else "system", chatter(kind, **kwargs)
-            )
-        except Exception:
-            pass
-
-    return _send

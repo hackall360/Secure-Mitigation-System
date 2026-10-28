@@ -423,3 +423,184 @@ def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
 
     line = _c("red_proof", persona="Breakwater", path="src/app.py", code=0, seed=0)
     assert "exit 0" in line or "exit" in line
+
+
+def test_persona_roster_wraps_and_safety_overrides_voice():
+    from personas import (
+        BLUE_LEADER_PERSONA,
+        GREEN_PERSONA,
+        RED_LEADER_PERSONA,
+        blue_persona,
+        red_persona,
+    )
+    from project_agents import (
+        RED_WORKER_SYSTEM_PROMPT,
+        blue_persona_prompt,
+        red_persona_prompt,
+    )
+
+    # full 12-agent roster wraps deterministically
+    assert [red_persona(i).name for i in range(1, 13)] == [
+        "Breakwater",
+        "Lockpick",
+        "Bloodhound",
+        "Sparkler",
+        "Cartographer",
+    ] * 2 + ["Breakwater", "Lockpick"]
+    assert blue_persona(7).name == "Stitch"  # (7-1) % 5 == 1
+    # every worker prompt carries its own name + beat + safety override
+    for i in range(1, 6):
+        rp = red_persona_prompt(i)
+        assert red_persona(i).name in rp and red_persona(i).beat in rp
+        assert "probe contract" in rp and "Never" in rp
+        bp = blue_persona_prompt(i)
+        assert blue_persona(i).name in bp and blue_persona(i).beat in bp
+        assert "sanitation-only" in bp and "Never" in bp
+    # safety rules come AFTER persona voice in the wire payload (override position)
+    wire = red_persona_prompt(3) + "\n" + RED_WORKER_SYSTEM_PROMPT
+    assert wire.index("Bloodhound") < wire.index("untrusted model output")
+    # leaders are coordinators, not super-users: no privilege language
+    for leader in (RED_LEADER_PERSONA, BLUE_LEADER_PERSONA):
+        assert "coordinator" in leader.voice
+        for bad in ("root", "sudo", "bypass", "ignore safety", "override"):
+            assert bad not in leader.voice.lower()
+    # green builds only: no security claims
+    assert "does not care about security" in GREEN_PERSONA.voice
+    # persona prefix is small relative to payload budget (~600 chars vs 256KB)
+    assert len(red_persona_prompt(1)) < 1000 and len(blue_persona_prompt(1)) < 1000
+
+
+def test_chatter_fuzz_basename_and_determinism():
+    import random
+
+    from chatter import _CHATTER, chatter
+
+    rng = random.Random(7)
+    markers = (
+        "import ",
+        "sys.exit",
+        "eval(",
+        "exec(",
+        "shell",
+        "__",
+        "sk_live",
+        "<script",
+        "rm -rf",
+        "PRIVATE",
+    )
+    for _ in range(300):
+        kind = rng.choice(list(_CHATTER))
+        persona = "".join(
+            rng.choice("abcXYZ\n\r\t<>\"'&;(){}[]$`\\|/") for _ in range(rng.randint(0, 60))
+        )
+        path = "".join(rng.choice("abcXYZ/._-\n\r<>\"'&; ") for _ in range(rng.randint(0, 200)))
+        code = rng.choice([0, 1, 2, -1, 9999999999, None, "x", 3.7])
+        n = rng.choice([0, 5, 12, -3, 10**12, None, "z"])
+        line = chatter(kind, persona=persona, path=path, code=code, n=n)
+        assert len(line) <= 220
+        assert "\n" not in line and "\r" not in line
+        for bad in markers:
+            assert bad not in line, (kind, bad, line)
+    # basename only: directories never leak
+    line = chatter(
+        "red_start", persona="Breakwater", path="/home/user/secret-project/src/app.py", seed=1
+    )
+    assert "secret-project" not in line and "home" not in line and "app.py" in line
+    # seeded determinism for dashboard replay
+    assert chatter("red_done", persona="X", seed=42) == chatter("red_done", persona="X", seed=42)
+
+
+def test_arena_name_lists_match_backend_wrap_order():
+    import json
+    from pathlib import Path
+
+    from personas import blue_persona, red_persona
+
+    js = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
+    for var in ("RED_NAMES", "BLUE_NAMES"):
+        start = js.index(f"const {var} = ")
+        raw = js[start : js.index("];", start) + 1]
+        names = json.loads(raw[raw.index("[") :].replace("'", '"'))
+        assert len(names) == 12, (var, len(names))
+        backend = (
+            [red_persona(i).name for i in range(1, 13)]
+            if var == "RED_NAMES"
+            else [blue_persona(i).name for i in range(1, 13)]
+        )
+        assert names == backend, (var, names)
+    # CHATTER_RE still covers every roster name so speaking lights fire
+    import re
+
+    m = re.search(r"const CHATTER_RE = /(.*?)/;", js)
+    assert m
+    rx = re.compile(m.group(1))
+    for i in range(1, 13):
+        assert rx.search(red_persona(i).name) and rx.search(blue_persona(i).name)
+
+
+def test_redacted_history_and_chatter_ephemerality():
+    import inspect
+    import json
+
+    from project_workflow import redact_report_for_user
+
+    # verified_history carries only class names/paths/exit codes, no probe source
+    src = inspect.getsource(__import__("project_workflow"))
+    i = src.index("verified_history.append(")
+    block = src[i : i + 700]
+    assert "verification_script" not in block
+    stripped = block.lower().replace("pre_probe_exit", "").replace("post_probe_exit", "")
+    assert (
+        "probe.output" not in stripped
+        and "probe.command" not in stripped
+        and "verification" not in stripped
+    )
+    # chatter flows only through emit (websocket), never into result objects
+    assert "chatter(" in src
+    lines = src.splitlines()
+    for idx, line in enumerate(lines):
+        if "chatter(" in line and "from chatter import" in line:
+            continue
+        if "chatter(" in line:
+            window = "\n".join(lines[max(0, idx - 2) : idx + 1])
+            assert "await log(" in window or "log(" in window, (
+                f"chatter outside log pipeline: {line.strip()}"
+            )
+    # file perms: report/patch/summary written 0600 under 0700 run dir
+    import main as main_mod
+
+    msrc = inspect.getsource(main_mod)
+    assert msrc.count("chmod(0o600)") >= 3 and "mode=0o700" in msrc
+    # full redaction round-trip keeps history, drops any injected script
+    evidence = {
+        "red": {"batch_evidence": [], "evidence_digests": [], "report": {}},
+        "independent_red": {"batch_evidence": [], "evidence_digests": [], "report": {}},
+        "pre_verification": {"probe": {"output": "", "exit_code": 0}},
+    }
+    hist = [
+        {
+            "cycle": 1,
+            "pass_number": 1,
+            "vulnerability": "SQLi class",
+            "changed_paths": ["src/app.py"],
+            "pre_probe_exit": 0,
+            "post_probe_exit": 1,
+            "regression_exit": 0,
+        }
+    ]
+    result = type(
+        "R",
+        (),
+        {
+            "model_dump": lambda self: {
+                "cycle_reports": [
+                    dict(cycle=1, pass_number=1, status="retained", message="ok", evidence=evidence)
+                ],
+                "cycles": [],
+                "verified_history": hist,
+            }
+        },
+    )()
+    redacted = redact_report_for_user(result)
+    assert redacted["verified_history"] == hist
+    assert "evil" not in json.dumps(redacted)
