@@ -282,3 +282,27 @@ an incomplete response". Now `META_MUSE_MAX_TOKENS` (default 32768, range 1024-1
 optional `META_MUSE_REASONING_EFFORT` (minimal..max, `none` returns HTTP 400 on Muse) are
 configurable, and a `length` finish names the fix. Use `META_MUSE_TIMEOUT_SECONDS=180+`,
 because a blue request can take over 60 s.
+
+## History rewrite: author name removed (2026-10-28)
+
+The scaffold's notice line held the owner's real name. It was replaced by `hackall360`
+in the tree (former commit `82e702c`) and then in **all history**:
+- `git-filter-repo --replace-text/--replace-message` (a single rule mapping the real name to `hackall360`, kept outside the repo)
+  rewrote every commit. Develop's final tree was byte-identical to the pre-rewrite tree
+  (0 changed lines). All 20 commits, messages, authors and dates were kept.
+- Trap: filter-repo **also re-created the GitHub-made root commit `8bb2dc6`** (it drops
+  the `gpgsig` header), so `main` silently became `8e0c133`, which differs from GitHub's.
+  It looked like a successful rewrite, but pushing it would have forked `main` from develop.
+  Fix: a small `git hash-object` script re-parented every commit onto the original signed
+  `8bb2dc6` (identical tree). filter-repo `--commit-callback` parent edits and `git replace --graft`
+  plus `--proceed` both failed to change it, because filter-repo rewrote the root again.
+- Pushed with `--force-with-lease=refs/heads/develop:3fdb331...`. `main` was untouched.
+- A fresh clone of GitHub had 0 matches in any file of any commit, in any message or
+  author, and in raw pack blobs.
+- Backups made before the rewrite: `~/purplebox-pre-rewrite-backup-20261028T003810.{git,bundle}`.
+  **They still contain the old name.** Delete them once you are satisfied.
+- Residual: GitHub still serves old commits by exact ID (e.g. `/commit/3fdb331` returns
+  HTTP 200) until garbage collection. The repo is private with no PRs or forks, so only
+  collaborators with the ID can reach them. Fully purging that cache needs a GitHub
+  Support request ("remove cached views / sensitive data").
+- Any other clone made before 2026-10-28 must be re-cloned. Do not merge or push old branches.
