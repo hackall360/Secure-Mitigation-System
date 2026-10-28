@@ -152,3 +152,23 @@ supersedes its Docker-unavailable statement for this machine only.
 explicit exception for the conventional `.env.example` template name.
 `example.env` is explicitly allowed. Never put real credentials in templates.
 To use the configuration, edit `.env` privately and export it as described above.
+
+## Web UI (dark, interactive dashboard)
+
+Files: `static/index.html`, `static/app.css`, `static/app.js`. No build step, no
+external fonts/CDNs (the CSP is `default-src 'self'`). Features: clickable target
+cards (keys `1`-`3`, arrows, `Enter` runs, `Esc` stops), a 7-stage pipeline driven
+by matching workflow log text in `advanceStage()` in `app.js`, per-team traces
+with copy buttons, filterable activity timeline, result facts, and a colored
+candidate diff. All model output is inserted with `textContent` only; a test in
+`tests/test_web.py` forbids `innerHTML`.
+
+Trap: pipeline stages are inferred from message strings emitted in `workflow.py`.
+If you reword those `log(...)` messages, update `advanceStage()` too, or the
+pipeline will stop advancing (the scan itself still works).
+
+Visual check without an API key or Docker: run a server whose
+`main.execute_purple_workflow` is monkeypatched to emit the real message
+sequence, then load it in headless Chrome (`google-chrome --headless=new
+--screenshot`). Verified 2026-10-27 at 1440px and 390px: full pipeline, facts,
+diff, filters, keyboard selection, and no horizontal overflow on mobile.
