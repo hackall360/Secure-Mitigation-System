@@ -44,7 +44,9 @@ class MetaMuseClient:
         self.config = config
         self.client = httpx.AsyncClient(
             base_url=config.meta_base_url.rstrip("/") + "/",
-            headers={"Authorization": f"Bearer {config.meta_api_key}"},
+            headers=(
+                {"Authorization": f"Bearer {config.meta_api_key}"} if config.meta_api_key else {}
+            ),
             timeout=config.api_timeout_seconds,
             follow_redirects=False,
             trust_env=False,
