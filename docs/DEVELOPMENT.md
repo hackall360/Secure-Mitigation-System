@@ -326,12 +326,31 @@ in the tree (former commit `82e702c`) and then in **all history**:
 
 ### `.jcode/tools/ui_scan.py`
 
-Real-browser acceptance check: `python3 .jcode/tools/ui_scan.py TARGET [--offline]`. It starts
-the server with only the key from `.env`, clicks the dashboard in headless Chrome, prints the
-result card as JSON and saves a screenshot. `--offline` swaps only Muse for the known
-outputs, so it has no API cost.
+Real-browser acceptance check: `.venv/bin/python .jcode/tools/ui_scan.py TARGET [--browser chrome|chromium|edge|brave|firefox] [--offline]`.
+It starts the server with only the key from `.env`, drives the dashboard in the
+requested headless browser, prints the result card as JSON and saves a screenshot.
+`--offline` swaps only Muse for the known outputs, so it has no API cost.
+
+Browser matrix. Chrome, Chromium, Edge, and Brave all speak the Chrome DevTools
+Protocol, so they share one drive path; `--browser` picks the binary by PATH plus
+the usual Windows/macOS install directories. Firefox speaks no CDP, so it is
+driven over WebDriver via a local `geckodriver` on PATH (`snap install firefox`
+ships one) using only the standard library — no selenium dependency. The
+WebDriver path launches its own headless instance and session, then deletes the
+session and terminates only the processes it spawned; it never touches a user's
+running Firefox. The dashboard frontend itself is engine-neutral: `fetch`,
+`WebSocket`, CSS grid, and `color-mix` all verified working in Firefox 158, with
+`navigator.clipboard` guarded by try/catch where headless permissions deny it.
 
 Traps hit while building it:
+- Firefox ships no CDP: probing `/json/version` returns nothing, so the
+  Chrome-family DevTools path cannot drive it. Firefox is automated over
+  WebDriver instead (new session runs its own headless instance).
+- `/usr/bin/firefox` on snap-based distros is a shell redirect, and
+  geckodriver rejects it with `binary is not a Firefox executable`. The
+  Firefox path passes `moz:firefoxOptions.binary` only when the file starts
+  with the ELF magic; otherwise it omits the key and geckodriver finds
+  Firefox on PATH itself.
 - Writing `\n` inside a Python string that holds JavaScript turns into a real newline and
   breaks the JS regular expression (`Invalid regular expression: missing /`). The DevTools
   result then has no `value`, which looked like a missing element. Use

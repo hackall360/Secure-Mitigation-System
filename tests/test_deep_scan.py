@@ -653,6 +653,15 @@ def test_cross_platform_compat_guards():
     for name in ("chrome.exe", '"chrome"', '"chromium"'):
         assert name in ui, name
     assert "import signal" not in ui and ".terminate()" in ui
+    # --browser covers Chrome, Chromium, Edge, Brave (CDP) + Firefox (WebDriver).
+    # Edge/Brave share the CDP path; Firefox has no CDP and goes via geckodriver.
+    for variant in ("edge", "brave", "firefox", "CHROME_CANDIDATES", "drive_firefox"):
+        assert variant in ui, variant
+    assert '"auto"' in ui and "Scripts/python.exe" in ui
+    assert "geckodriver" in ui and "import selenium" not in ui and "import playwright" not in ui
+    # no broad kills: only Popen handles this module spawned (.terminate()/.kill()),
+    # never pkill/killall of user processes
+    assert "pkill" not in ui and "killall" not in ui
     # dev tool: owner-only .env creation + nt-aware venv python
     dev = (Path(__file__).resolve().parents[1] / ".jcode" / "tools" / "dev.py").read_text()
     assert "Scripts/python.exe" in dev and "os.open(env" in dev
