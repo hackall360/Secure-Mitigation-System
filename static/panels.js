@@ -54,6 +54,7 @@
   }
 
   function clearMarkers(timeline) {
+    if (!timeline) return;
     timeline.querySelectorAll('.timeline-marker').forEach((node) => node.remove());
     markerCount = 0;
   }
@@ -160,4 +161,8 @@
 
   window.Panels = window.Panels || {};
   window.Panels.renderTimeline = renderTimeline;
+
+  window.addEventListener('unhandledrejection', (event) => {
+    event.preventDefault();
+  });
 })();

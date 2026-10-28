@@ -57,19 +57,23 @@ let inferenceMode = 'hosted';
 /* ---------- small helpers ---------- */
 
 function status(text, state = 'idle') {
-  el('status').textContent = text;
-  el('status').dataset.state = state;
+  const node = el('status');
+  if (!node) return;
+  node.textContent = text;
+  node.dataset.state = state;
 }
 
 function chip(id, state, label) {
   const node = el(id);
+  if (!node) return;
   node.dataset.state = state;
-  if (label) node.lastChild.textContent = label;
+  if (label && node.lastChild) node.lastChild.textContent = label;
 }
 
 let toastTimer = null;
 function toast(text) {
   const node = el('toast');
+  if (!node) return;
   node.textContent = text;
   node.hidden = false;
   node.classList.remove('show');
@@ -111,6 +115,7 @@ function formatElapsed(ms) {
 /* ---------- logs ---------- */
 
 function clearEmpty(area) {
+  if (!area) return;
   const empty = area.querySelector('.empty');
   if (empty) empty.remove();
 }
@@ -138,6 +143,7 @@ function buildEntry(team, text, withTag) {
 }
 
 function append(area, line) {
+  if (!area || !line) return;
   clearEmpty(area);
   const pinned = area.scrollHeight - area.scrollTop - area.clientHeight < 40;
   area.append(line);
@@ -172,6 +178,7 @@ function spawnTerminalPop(team, text) {
 
 const CHATTER_RE = /(Breakwater|Lockpick|Bloodhound|Sparkler|Cartographer|Bastion|Stitch|Librarian|Sentinel|Proofreader|Warlord|Warden|Greenhouse)/;
 function buildRoster(node, names, leader) {
+  if (!node) return;
   node.replaceChildren();
   if (leader) {
     const lead = document.createElement('span');
@@ -227,13 +234,16 @@ function writeLine(team, text) {
   writeComms(known, text);
   if (team !== 'system' || /Cycle|probe|patch|regression|cleanup|Docker|Muse/i.test(String(text))) spawnTerminalPop(team, text);
   eventCount += 1;
-  el('event-count').textContent = String(eventCount);
+  const counter = el('event-count');
+  if (counter) counter.textContent = String(eventCount);
   advanceStage(known, String(text));
   if (window.SMSFx) window.SMSFx.onEvent(known, String(text));
 }
 
 function logText(team) {
-  return [...logs[team].querySelectorAll('.entry')]
+  const area = logs[team];
+  if (!area) return '';
+  return [...area.querySelectorAll('.entry')]
     .filter((entry) => !entry.hidden)
     .map((entry) => entry.innerText.replace(/\n/g, ' '))
     .join('\n');
@@ -255,7 +265,8 @@ function setStage(name, state = 'active') {
   if (state !== 'active') document.querySelector(`#pipeline li[data-stage="${name}"]`).dataset.state = state;
   currentStage = Math.max(currentStage, index);
   const fraction = (index + (state === 'active' ? 0.5 : 1)) / STAGES.length;
-  el('progress').style.setProperty('--value', String(Math.min(1, fraction)));
+  const progress = el('progress');
+  if (progress) progress.style.setProperty('--value', String(Math.min(1, fraction)));
 }
 
 function advanceStage(team, text) {
@@ -283,7 +294,8 @@ function advanceStage(team, text) {
 function resetPipeline() {
   currentStage = -1;
   document.querySelectorAll('#pipeline li').forEach((item) => { delete item.dataset.state; });
-  el('progress').style.setProperty('--value', '0');
+  const progress = el('progress');
+  if (progress) progress.style.setProperty('--value', '0');
 }
 
 function finishPipeline(result) {
@@ -294,9 +306,12 @@ function finishPipeline(result) {
     else if (!item.dataset.state && i < STAGES.length - 1) item.dataset.state = 'skipped';
   });
   const cleanup = items[items.length - 1];
-  cleanup.dataset.state = result.cleanup_ok ? 'done' : 'failed';
-  el('progress').style.setProperty('--value', '1');
-  el('progress').dataset.state = result.status;
+  if (cleanup) cleanup.dataset.state = result.cleanup_ok ? 'done' : 'failed';
+  const progress = el('progress');
+  if (progress) {
+    progress.style.setProperty('--value', '1');
+    progress.dataset.state = result.status;
+  }
   if (window.SMSFx) window.SMSFx.onFinish(result);
 }
 
@@ -318,8 +333,10 @@ const TARGET_ICONS = { node_query_sink: 'JS', php_command_sink: 'PHP', mysql_ins
 
 function renderTargets() {
   const list = el('target-list');
+  const select = el('target-select');
+  if (!list || !select) return;
   list.replaceChildren();
-  el('target-select').replaceChildren();
+  select.replaceChildren();
   Object.entries(targets).forEach(([key, target], index) => {
     const option = document.createElement('option');
     option.value = key;
@@ -799,7 +816,10 @@ function startScan() {
   socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleScanClose;
   if (spec) socket.onopen = () => {
-    socket.send(JSON.stringify(spec));
+    try {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(spec));
+      else return;
+    } catch { return; }
     writeLine('system', `Project specification accepted · ${spec.scan_profile} intensity · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} · ${spec.red_agents} red / ${spec.blue_agents} blue agents.`);
   };
 }
@@ -906,7 +926,10 @@ function startDemoBuild() {
   socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleDemoClose;
   socket.onopen = () => {
-    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
+    try {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
+    } catch { return; }
     writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
   };
 }
@@ -1022,6 +1045,18 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     startScan();
   }
+});
+
+/* ---------- teardown guards (disconnect + rejected promises only) ---------- */
+
+window.addEventListener('pagehide', () => {
+  try {
+    if (socket && socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) socket.close(1000, 'Page hidden');
+  } catch { /* socket already gone */ }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault();
 });
 
 updateScanProfile();
