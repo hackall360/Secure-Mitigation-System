@@ -297,6 +297,129 @@ class RedAnalysisArtifacts(BaseModel):
     leader_plan: ReviewTeamPlan | None = None
 
 
+_LEADER_DECISION_LINE_LIMIT = 220
+_LEADER_DECISION_MAX_FOCUS_LABELS = 3
+_LEADER_DECISION_MAX_FOCUS_CHARS = 48
+
+
+def _compact_worker_indices(indices: Iterable[int]) -> str:
+    """Render worker indices compactly ("1-3, 5"). Ints only; never model text."""
+    nums = sorted({index for index in indices if type(index) is int and index >= 1})
+    if not nums:
+        return "none"
+    spans: list[tuple[int, int]] = []
+    start = prev = nums[0]
+    for num in nums[1:]:
+        if num == prev + 1:
+            prev = num
+            continue
+        spans.append((start, prev))
+        start = prev = num
+    spans.append((start, prev))
+    return ", ".join(str(first) if first == last else f"{first}-{last}" for first, last in spans)
+
+
+def _safe_focus_labels(focus: Sequence[str]) -> list[str]:
+    """Keep server-side focus labels only: stripped, single-line, bounded."""
+    labels: list[str] = []
+    for item in focus or ():
+        if not isinstance(item, str):
+            continue
+        label = " ".join(item.split())
+        if label:
+            labels.append(label[:_LEADER_DECISION_MAX_FOCUS_CHARS])
+        if len(labels) >= _LEADER_DECISION_MAX_FOCUS_LABELS:
+            break
+    return labels
+
+
+def _leader_decision_message(
+    *,
+    leader_name: str,
+    worker_noun: str,
+    sector_noun: str,
+    plan: ReviewTeamPlan,
+    cycle: int,
+    pass_number: int,
+    focus: Sequence[str] = (),
+) -> str:
+    """Build one LAW-4-safe leader decision line from facts already present.
+
+    The line states what the leader decided (the sector split), why (trusted
+    server-side focus labels plus cycle/pass), and what it dispatched (worker
+    indices). Model-authored plan text — strategy, assignment focus, and
+    objectives — is untrusted data and is never quoted; only counts and
+    indices shape the line. Pure string construction: no agent calls, no
+    WebSocket types.
+    """
+    try:
+        assignments = list(plan.assignments)
+    except (AttributeError, TypeError):
+        assignments = []
+    indices: list[int] = []
+    for assignment in assignments:
+        try:
+            indices.append(int(assignment.agent_index))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    try:
+        safe_cycle = int(cycle)
+    except (TypeError, ValueError):
+        safe_cycle = 0
+    try:
+        safe_pass = int(pass_number)
+    except (TypeError, ValueError):
+        safe_pass = 0
+    labels = _safe_focus_labels(focus)
+    why = "; ".join(labels) if labels else "routine sweep"
+    line = (
+        f"{' '.join(leader_name.split()) or 'Leader'} decided: "
+        f"cycle {safe_cycle} pass {safe_pass} split into "
+        f"{len(assignments)} {sector_noun}; "
+        f"focus: {why}; "
+        f"dispatched {worker_noun} {_compact_worker_indices(indices)}."
+    )
+    return " ".join(line.split())[:_LEADER_DECISION_LINE_LIMIT]
+
+
+def red_leader_decision_message(
+    plan: ReviewTeamPlan,
+    *,
+    cycle: int,
+    pass_number: int,
+    focus: Sequence[str] = (),
+) -> str:
+    """Warlord's decision line: sector split, trusted focus, dispatched hunters."""
+    return _leader_decision_message(
+        leader_name=RED_LEADER_PERSONA.name,
+        worker_noun="hunters",
+        sector_noun="sectors",
+        plan=plan,
+        cycle=cycle,
+        pass_number=pass_number,
+        focus=focus,
+    )
+
+
+def blue_leader_decision_message(
+    plan: ReviewTeamPlan,
+    *,
+    cycle: int,
+    pass_number: int,
+    focus: Sequence[str] = (),
+) -> str:
+    """Warden's decision line: wall split, trusted focus, dispatched defenders."""
+    return _leader_decision_message(
+        leader_name=BLUE_LEADER_PERSONA.name,
+        worker_noun="defenders",
+        sector_noun="walls",
+        plan=plan,
+        cycle=cycle,
+        pass_number=pass_number,
+        focus=focus,
+    )
+
+
 def build_source_batches(
     documents: Sequence[SourceDocument], *, max_batch_bytes: int
 ) -> tuple[list[SourceBatch], ContextCoverage]:
