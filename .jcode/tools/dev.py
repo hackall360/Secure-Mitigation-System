@@ -52,8 +52,8 @@ def setup():
 
 def check():
     python("-m", "pytest", "-q")
-    python("-m", "ruff", "check", ".", ".jcode/tools/dev.py")
-    python("-m", "ruff", "format", "--check", ".", ".jcode/tools/dev.py")
+    python("-m", "ruff", "check", ".", ".jcode/tools")
+    python("-m", "ruff", "format", "--check", ".", ".jcode/tools")
     python("-m", "compileall", "-q", "-x", r"/(\.git|\.venv)/", ".")
     for script in ("static/app.js", "targets/node_query_sink/app.js"):
         run("node", "--check", script)
@@ -117,7 +117,20 @@ def smoke():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("setup", "check", "images", "docker-test", "serve", "smoke", "lock")
+        "command",
+        choices=(
+            "setup",
+            "check",
+            "images",
+            "rebuild-images",
+            "docker-status",
+            "docker-cleanup",
+            "docker-test",
+            "offline-scan",
+            "serve",
+            "smoke",
+            "lock",
+        ),
     )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
@@ -127,8 +140,16 @@ def main():
         check()
     elif args.command == "images":
         python("main.py", "--init-images")
+    elif args.command == "rebuild-images":
+        python("main.py", "--rebuild-images")
+    elif args.command == "docker-status":
+        python("main.py", "--docker-status")
+    elif args.command == "docker-cleanup":
+        python("main.py", "--cleanup")
     elif args.command == "docker-test":
         python("test_harness.py", "--docker")
+    elif args.command == "offline-scan":
+        python(".jcode/tools/offline_scan.py")
     elif args.command == "serve":
         python("main.py", "--serve", "--port", str(args.port))
     elif args.command == "smoke":

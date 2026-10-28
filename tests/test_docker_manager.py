@@ -108,3 +108,35 @@ def test_runner_distinguishes_exception_from_explicit_block(monkeypatch, failure
 
     monkeypatch.setattr(runner.runpy, "run_path", fail)
     assert runner.main() == expected
+
+
+def test_docker_status_reports_ready_missing_and_unavailable():
+    from docker.errors import DockerException, ImageNotFound
+
+    from docker_manager import docker_status
+
+    client = MagicMock()
+    client.containers.list.return_value = []
+    assert docker_status(PurpleBoxConfig(), client=client)["state"] == "ready"
+    client.images.get.side_effect = [None, ImageNotFound("gone")]
+    report = docker_status(PurpleBoxConfig(), client=client)
+    assert report["state"] == "images_missing"
+    assert report["missing_images"] == ["purplebox-verifier-base:latest"]
+    client.ping.side_effect = DockerException("down")
+    assert docker_status(PurpleBoxConfig(), client=client)["state"] == "unavailable"
+
+
+def test_stale_cleanup_is_label_scoped_and_keeps_base_images():
+    from docker_manager import remove_stale_resources
+
+    client = MagicMock()
+    container, network, snapshot = MagicMock(), MagicMock(), MagicMock(id="sha256:x")
+    client.containers.list.return_value = [container]
+    client.networks.list.return_value = [network]
+    client.images.list.return_value = [snapshot]
+    removed = remove_stale_resources(PurpleBoxConfig(), client=client)
+    assert removed == {"containers": 1, "networks": 1, "snapshots": 1}
+    client.containers.list.assert_called_once_with(all=True, filters={"label": "purplebox.session"})
+    client.networks.list.assert_called_once_with(filters={"label": "purplebox.session"})
+    client.images.list.assert_called_once_with(name="purplebox-clone-cache")
+    client.images.remove.assert_called_once_with(image="sha256:x", force=True)
