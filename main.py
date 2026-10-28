@@ -272,6 +272,12 @@ async def ai_demo_runner(
         flush=True,
     )
     spec = materialize_demo_project(files)
+    try:
+        from chatter import chatter as _chatter
+
+        print(f"[GREEN] {_chatter('green', n=len(files.flaw_notes), path='app.py')}", flush=True)
+    except Exception:
+        pass
     # Enrich ProjectSpec with requested intensity/team sizes.
     from projects import ProjectSpec as _Spec
 

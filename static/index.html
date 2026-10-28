@@ -124,11 +124,33 @@
         </article>
       </section>
 
+      <section class="card arena" aria-labelledby="arena-title">
+        <header class="panel-head">
+          <h2 id="arena-title"><span class="live-dot" aria-hidden="true"></span>Team arena <small class="arena-sub">live agent presence</small></h2>
+          <div class="panel-tools"><span class="team-label">Red vs Blue</span><span class="team-label green-label">Green builds</span></div>
+        </header>
+        <div class="arena-grid">
+          <div class="squad red-squad" aria-label="Red team">
+            <p class="squad-title"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l5 2.5v4c0 3.5-2.2 6-5 7.5C5.2 13.5 3 11 3 7.5v-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Red offense</p>
+            <div id="red-roster" class="roster"></div>
+          </div>
+          <div class="squad blue-squad" aria-label="Blue team">
+            <p class="squad-title"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l5 2.5v4c0 3.5-2.2 6-5 7.5C5.2 13.5 3 11 3 7.5v-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.8 8l1.7 1.7 3-3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Blue defense</p>
+            <div id="blue-roster" class="roster"></div>
+          </div>
+          <div class="squad green-squad" aria-label="Green builder">
+            <p class="squad-title"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14V6M8 6C8 3.5 6 2 3.5 2c0 2.8 2 4.5 4.5 4M8 9c0-2.5 2-4 4.5-4 0 2.8-2 4.5-4.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Green builds</p>
+            <div id="green-roster" class="roster"></div>
+          </div>
+        </div>
+        <div id="comms-log" class="log comms-log" role="log" aria-label="Team communications"><p class="empty">Teams are quiet. Start a scan to hear them talk.</p></div>
+      </section>
+
       <section id="result-panel" class="card result" data-status="idle" hidden aria-live="polite">
         <div class="result-main">
           <span class="result-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <div><p class="eyebrow">Scan result</p><h2 id="result-title"></h2><p id="result-message"></p></div>
-          <div class="result-actions"><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch ↓</button><button id="download-btn" class="btn ghost">Download JSON report ↓</button></div>
+          <div class="result-actions"><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="download-btn" class="btn ghost">Download JSON report <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
         </div>
         <dl class="facts">
           <div><dt>Baseline</dt><dd id="fact-baseline">—</dd></div>

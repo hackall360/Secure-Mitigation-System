@@ -29,6 +29,8 @@ let targets = {};
 let socket = null;
 let latestResult = null;
 let configured = false;
+const RED_NAMES = ['Breakwater', 'Lockpick', 'Bloodhound', 'Sparkler', 'Cartographer'];
+const BLUE_NAMES = ['Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader'];
 let startedAt = 0;
 let timer = null;
 let eventCount = 0;
@@ -142,6 +144,47 @@ function spawnTerminalPop(team, text) {
   } catch { /* decorative only */ }
 }
 
+const CHATTER_RE = /(Breakwater|Lockpick|Bloodhound|Sparkler|Cartographer|Bastion|Stitch|Librarian|Sentinel|Proofreader|Warlord|Warden|Greenhouse)/;
+function buildRoster(node, names, leader) {
+  node.replaceChildren();
+  const lead = document.createElement('span');
+  lead.className = 'agent-chip leader';
+  lead.textContent = '';
+  const dot = document.createElement('i');
+  const label = document.createElement('span');
+  label.textContent = leader;
+  lead.append(dot, label);
+  node.append(lead);
+  names.forEach((name) => {
+    const chip = document.createElement('span');
+    chip.className = 'agent-chip';
+    chip.dataset.name = name;
+    const d = document.createElement('i');
+    const l = document.createElement('span');
+    l.textContent = name;
+    chip.append(d, l);
+    node.append(chip);
+  });
+}
+function lightAgent(name) {
+  document.querySelectorAll('.agent-chip').forEach((chip) => chip.classList.remove('speaking'));
+  const chip = document.querySelector(`.agent-chip[data-name="${name}"]`);
+  if (chip) chip.classList.add('speaking');
+  const comms = el('comms-log');
+  if (comms) {
+    const empty = comms.querySelector('.empty');
+    if (empty) empty.remove();
+  }
+}
+function writeComms(team, text) {
+  const comms = el('comms-log');
+  if (!comms) return;
+  const m = CHATTER_RE.exec(String(text));
+  if (!m) return;
+  lightAgent(m[1]);
+  const line = buildEntry(team === 'green' ? 'system' : team, text, true);
+  append(comms, line);
+}
 function writeLine(team, text) {
   const known = team === 'red' || team === 'blue' ? team : 'system';
   if (known !== 'system') {
@@ -150,6 +193,7 @@ function writeLine(team, text) {
   }
   // The activity timeline records every event so it can be filtered.
   append(logs.system, buildEntry(known, text, true));
+  writeComms(known, text);
   if (team !== 'system' || /Cycle|probe|patch|regression|cleanup|Docker|Muse/i.test(String(text))) spawnTerminalPop(team, text);
   eventCount += 1;
   el('event-count').textContent = String(eventCount);
@@ -622,6 +666,11 @@ function startScan() {
   lockTargets(true);
   lockProfiles(true);
   lockProjectForm(true);
+  try {
+    buildRoster(el('red-roster'), RED_NAMES.slice(0, (spec && spec.red_agents) || 5), 'Warlord');
+    buildRoster(el('blue-roster'), BLUE_NAMES.slice(0, (spec && spec.blue_agents) || 5), 'Warden');
+    buildRoster(el('green-roster'), ['Greenhouse'], 'Greenhouse');
+  } catch { /* decorative */ }
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Verification running', 'running');

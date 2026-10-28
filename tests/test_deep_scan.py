@@ -229,3 +229,24 @@ def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
             ),
             dest_dir=str(tmp_path / "evil"),
         )
+
+
+def test_persona_prompts_carry_voice_and_safety_override():
+    from personas import RED_PERSONAS, BLUE_PERSONAS, RED_LEADER_PERSONA, BLUE_LEADER_PERSONA, GREEN_PERSONA
+    from project_agents import red_persona_prompt, blue_persona_prompt
+    assert len(RED_PERSONAS) == 5 and len(BLUE_PERSONAS) == 5
+    assert "Warlord" in RED_LEADER_PERSONA.name and "Warden" in BLUE_LEADER_PERSONA.name
+    assert "Greenhouse" in GREEN_PERSONA.name
+    for i in range(1, 6):
+        assert "probe contract" in red_persona_prompt(i)
+        assert "sanitation-only" in blue_persona_prompt(i)
+
+
+def test_chatter_never_carries_exploit_material():
+    from chatter import chatter
+    import json as _json
+    for kind in ("red_start", "red_proof", "red_done", "blue_start", "blue_done", "leader_red", "leader_blue", "green"):
+        line = chatter(kind, persona="Breakwater", path="src/app.py", code=0, n=5)
+        assert len(line) <= 220
+        for bad in ("import ", "sys.exit", "eval(", "exec(", "shell", "PRIVATE KEY", "sk_live"):
+            assert bad not in line, (kind, bad)

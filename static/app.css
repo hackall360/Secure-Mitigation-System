@@ -403,3 +403,28 @@ body.scanning .scanline { animation-duration: 3.5s; }
 .result-icon svg { width: 26px; height: 26px; }
 .fact-flash { animation: factFlash 1s var(--ease); }
 @keyframes factFlash { from { background: rgba(167,139,250,.18); } }
+
+/* ---------- team arena ---------- */
+.arena-sub { color: var(--faint); font: 500 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; margin-left: 8px; }
+.green-label { color: var(--green); background: rgba(74,222,128,.1); }
+.arena-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 24px 4px; }
+.squad { border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.18); padding: 10px 12px; min-height: 118px; }
+.squad-title { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: 600 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; }
+.red-squad .squad-title { color: var(--red); }
+.blue-squad .squad-title { color: var(--blue); }
+.green-squad .squad-title { color: var(--green); }
+.roster { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border-hi); font: 600 11px var(--mono); color: var(--muted); background: rgba(255,255,255,.03); transition: all .25s var(--ease); }
+.agent-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.agent-chip.leader { border-style: double; }
+.agent-chip.speaking { color: var(--text); border-color: currentColor; box-shadow: 0 0 16px -4px currentColor; }
+.agent-chip.speaking i { animation: blink 1s infinite; }
+.red-squad .agent-chip.speaking { color: var(--red); }
+.red-squad .agent-chip.speaking i { background: var(--red); }
+.blue-squad .agent-chip.speaking { color: var(--blue); }
+.blue-squad .agent-chip.speaking i { background: var(--blue); }
+.green-squad .agent-chip.speaking { color: var(--green); }
+.green-squad .agent-chip.speaking i { background: var(--green); }
+.comms-log { margin: 12px 24px 20px; height: 180px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.22); }
+.comms-log .entry { border-left: 2px solid var(--purple); }
+@media (max-width: 760px) { .arena-grid { grid-template-columns: 1fr; padding: 12px 16px 2px; } .comms-log { margin: 10px 16px 16px; } }

@@ -15,6 +15,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agents import AgentError, MetaMuseClient
+from chatter import chatter
 from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 from docker_manager import (
     DockerSandboxManager,
@@ -22,6 +23,7 @@ from docker_manager import (
     SandboxError,
     VerificationResult,
 )
+from personas import blue_persona, red_persona
 from pricing import ScanUsage
 from project_agents import (
     BlueProposal,
@@ -890,6 +892,22 @@ async def execute_project_workflow(
                 f"Cycle {cycle}/{requested_cycles}, pass {pass_number}/{passes_per_cycle}: "
                 "reviewing the cumulative verified snapshot.",
             )
+            try:
+                if named_profile and profile_key == "ultra_heavy":
+                    await log("red", chatter("leader_red", n=red_agents, seed=cycle))
+                    await log("blue", chatter("leader_blue", n=blue_agents, seed=cycle))
+                else:
+                    await log(
+                        "red",
+                        chatter(
+                            "red_start",
+                            persona=red_persona(1).name,
+                            path="",
+                            seed=cycle * 10 + pass_number,
+                        ),
+                    )
+            except Exception:
+                pass
             documents = documents_from_mapping(cumulative_files)
             red = await agents.analyze_red(
                 documents,
@@ -1009,6 +1027,19 @@ async def execute_project_workflow(
                     continue
                 break
 
+            try:
+                await log(
+                    "red",
+                    chatter(
+                        "red_proof",
+                        persona=red_persona((round_index % 5) + 1).name,
+                        path=(red.report.affected_paths[0] if red.report.affected_paths else ""),
+                        code=pre.probe.exit_code,
+                        seed=cycle * 100 + pass_number,
+                    ),
+                )
+            except Exception:
+                pass
             await log("blue", f"Cycle {cycle}: requesting bounded sanitation-only replacements.")
             proposal = await agents.propose_blue(
                 documents,
@@ -1136,6 +1167,19 @@ async def execute_project_workflow(
                     and independent_check.regression.exit_code == 0
                 )
             disposition = "retained" if retained else "rolled_back"
+            try:
+                await log(
+                    "blue",
+                    chatter(
+                        "blue_done",
+                        persona=blue_persona((round_index % 5) + 1).name,
+                        path=(sorted(replacements)[0] if retained and replacements else ""),
+                        code=patched.probe.exit_code,
+                        seed=cycle * 1000 + pass_number,
+                    ),
+                )
+            except Exception:
+                pass
             stage_evidence = {
                 "red_report": red.report.model_dump(),
                 "pre_verification": pre.model_dump(),
