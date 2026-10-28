@@ -1,0 +1,978 @@
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+"""Iterative arbitrary-project red, blue, verification, and reporting workflow."""
+
+from __future__ import annotations
+
+import asyncio
+import difflib
+import hashlib
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from pathlib import PurePosixPath
+from typing import Any, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from agents import AgentError, MetaMuseClient
+from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from docker_manager import (
+    DockerSandboxManager,
+    ProjectCheckResult,
+    SandboxError,
+    VerificationResult,
+)
+from pricing import ScanUsage
+from project_agents import (
+    BlueProposal,
+    ContextCoverage,
+    FinalBlueReport,
+    ProjectAgentRunner,
+    RedAnalysisArtifacts,
+    documents_from_mapping,
+)
+from projects import ProjectSnapshot, ProjectSpec, replace_snapshot_files, snapshot_project
+from workflow import blocking
+
+Emit = Callable[[str, str], Awaitable[None]]
+
+
+class ProjectWorkflowError(RuntimeError):
+    """An invalid project or untrusted stage result prevented safe continuation."""
+
+
+class ProjectWorkflowInput(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    name: str = Field(min_length=1, max_length=256)
+    files: dict[str, str] = Field(min_length=1, max_length=20_000)
+    regression_command: list[str] = Field(min_length=1, max_length=128)
+    contract: str = Field(default="", max_length=32_768)
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> ProjectWorkflowInput:
+        for path, content in self.files.items():
+            validate_safe_path(path)
+            if not isinstance(content, str):
+                raise ValueError("Project file contents must be text.")
+        if any(not part or len(part) > 4096 for part in self.regression_command):
+            raise ValueError("Regression command entries must be non-empty and bounded.")
+        return self
+
+
+class ExecutionEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    exit_code: int
+    output: str = Field(max_length=131_072)
+
+    @property
+    def vulnerable(self) -> bool:
+        return self.exit_code == 0
+
+    @property
+    def blocked(self) -> bool:
+        return self.exit_code == 1
+
+    @property
+    def inconclusive(self) -> bool:
+        return self.exit_code not in (0, 1)
+
+
+class SnapshotVerification(BaseModel):
+    """Evidence produced against one fresh target created from one immutable file map."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    probe: ExecutionEvidence
+    regression: ExecutionEvidence
+    fresh_target: bool = True
+
+
+class ProjectSandbox(Protocol):
+    """High-level Docker boundary required by the arbitrary-project workflow."""
+
+    def require_base_images(self) -> None: ...
+
+    def verify_project_snapshot(
+        self,
+        project: ProjectWorkflowInput,
+        files: Mapping[str, str],
+        verification_script_python: str,
+        regression_command: Sequence[str],
+        *,
+        label: str,
+    ) -> SnapshotVerification: ...
+
+    def close(self) -> None: ...
+
+
+class ReplacementValidation(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    accepted: bool
+    paths: list[str] = Field(default_factory=list)
+    changed_bytes: int = Field(default=0, ge=0)
+    reason: str = ""
+
+
+class CycleEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    red: RedAnalysisArtifacts
+    pre_verification: SnapshotVerification | None = None
+    blue_proposal: BlueProposal | None = None
+    replacement_validation: ReplacementValidation | None = None
+    patched_verification: SnapshotVerification | None = None
+    independent_red: RedAnalysisArtifacts | None = None
+    independent_verification: SnapshotVerification | None = None
+    final_blue_report: FinalBlueReport | None = None
+
+
+class ProjectCycleReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    cycle: int = Field(ge=1, le=20)
+    status: Literal[
+        "retained", "rolled_back", "no_finding", "not_confirmed", "inconclusive", "error"
+    ]
+    message: str
+    changed_paths: list[str] = Field(default_factory=list)
+    diff: str = ""
+    evidence: CycleEvidence
+
+
+class CleanupReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    attempted: bool = False
+    succeeded: bool = True
+    error: str = ""
+
+
+class ProjectWorkflowResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    project: str
+    status: Literal["verified", "no_findings", "partial", "error"] = "error"
+    message: str = "Project workflow did not complete."
+    cycles_requested: int = Field(ge=1, le=20)
+    cycles_completed: int = Field(default=0, ge=0, le=20)
+    cycle_reports: list[ProjectCycleReport] = Field(default_factory=list)
+    cumulative_diff: str = ""
+    context_coverage: list[ContextCoverage] = Field(default_factory=list)
+    usage: ScanUsage = Field(default_factory=ScanUsage)
+    total_tokens: int = 0
+    total_cost_usd: float | None = None
+    cleanup: CleanupReport = Field(default_factory=CleanupReport)
+
+    @property
+    def success(self) -> bool:
+        return self.status in ("verified", "no_findings") and self.cleanup.succeeded
+
+    @property
+    def cycles(self) -> list[ProjectCycleReport]:
+        return self.cycle_reports
+
+    @property
+    def diff(self) -> str:
+        return self.cumulative_diff
+
+    @property
+    def cost_usd(self) -> float | None:
+        return self.total_cost_usd
+
+    @property
+    def cleanup_ok(self) -> bool:
+        return self.cleanup.succeeded
+
+    def model_dump(self, *args, **kwargs) -> dict[str, Any]:
+        data = super().model_dump(*args, **kwargs)
+        data.update(
+            success=self.success,
+            cycles=[cycle.model_dump() for cycle in self.cycle_reports],
+            diff=self.cumulative_diff,
+            cost_usd=self.total_cost_usd,
+            cleanup_ok=self.cleanup.succeeded,
+        )
+        return data
+
+
+class ProjectWorkflowLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    max_batch_bytes: int = Field(default=48_000, ge=1_024, le=4_000_000)
+    max_changed_files: int = Field(default=8, ge=1, le=32)
+    max_changed_bytes: int = Field(default=256_000, ge=1_024, le=2_000_000)
+    max_evidence_chars: int = Field(default=16_000, ge=1_000, le=131_072)
+    max_diff_chars: int = Field(default=100_000, ge=1_000, le=1_000_000)
+    max_context_files: int = Field(default=512, ge=1, le=4096)
+    max_context_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=32 * 1024 * 1024)
+    max_payload_bytes: int = Field(default=256_000, ge=16_384, le=4_000_000)
+
+
+def validate_safe_path(path: str) -> None:
+    candidate = PurePosixPath(path)
+    if (
+        not path
+        or candidate.is_absolute()
+        or path != candidate.as_posix()
+        or "\\" in path
+        or any(part in ("", ".", "..") for part in candidate.parts)
+    ):
+        raise ValueError(f"Unsafe project path: {path!r}")
+
+
+def coerce_project(project: ProjectWorkflowInput | Mapping[str, Any] | Any) -> ProjectWorkflowInput:
+    """Accept the public model plus the simple objects emitted by project intake."""
+    if isinstance(project, ProjectWorkflowInput):
+        return project
+    if isinstance(project, Mapping):
+        raw = dict(project)
+    elif hasattr(project, "model_dump"):
+        raw = project.model_dump()
+    else:
+        raw = vars(project)
+
+    name = raw.get("name") or raw.get("project_name") or raw.get("project_id")
+    files = raw.get("files") or raw.get("source_files")
+    command = raw.get("regression_command") or raw.get("test_command")
+    contract = raw.get("contract") or ""
+    if isinstance(files, list):
+        converted: dict[str, str] = {}
+        for item in files:
+            item = item.model_dump() if hasattr(item, "model_dump") else item
+            if not isinstance(item, Mapping):
+                raise ProjectWorkflowError("Project source entries must be mappings.")
+            converted[str(item.get("path", ""))] = str(item.get("content", ""))
+        files = converted
+    if isinstance(command, tuple):
+        command = list(command)
+    try:
+        return ProjectWorkflowInput.model_validate(
+            {
+                "name": name,
+                "files": files,
+                "regression_command": command,
+                "contract": contract,
+            },
+            strict=True,
+        )
+    except Exception as exc:
+        raise ProjectWorkflowError("Project intake did not provide a valid safe snapshot.") from exc
+
+
+def _snapshot_context(
+    spec: ProjectSpec, snapshot: ProjectSnapshot, limits: ProjectWorkflowLimits
+) -> tuple[ProjectWorkflowInput, list[str], list[str]]:
+    """Select bounded UTF-8 inference context while retaining the full immutable sandbox snapshot."""
+    selected: dict[str, str] = {}
+    omitted: list[str] = []
+    notes: list[str] = []
+    selected_bytes = 0
+    for path in sorted(snapshot.files):
+        content = snapshot.files[path]
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            omitted.append(path)
+            continue
+        if len(selected) >= limits.max_context_files:
+            omitted.append(path)
+            continue
+        if selected_bytes + len(content) > limits.max_context_bytes:
+            omitted.append(path)
+            continue
+        selected[path] = text
+        selected_bytes += len(content)
+    if not selected:
+        raise ProjectWorkflowError(
+            "The project snapshot has no UTF-8 source within context limits."
+        )
+    if omitted:
+        notes.append(
+            f"Inference context included {len(selected)} of {len(snapshot.files)} files and "
+            f"{selected_bytes} of {snapshot.total_bytes} bytes; {len(omitted)} paths were omitted "
+            "because they were binary or exceeded the explicit 512-file/2-MiB context caps."
+        )
+    return (
+        ProjectWorkflowInput(
+            name=spec.path.name,
+            files=selected,
+            regression_command=list(spec.test_command),
+            contract=spec.contract,
+        ),
+        omitted,
+        notes,
+    )
+
+
+def _check_evidence(check: ProjectCheckResult, limit: int) -> ExecutionEvidence:
+    output = "\n".join(part for part in (check.stdout, check.stderr) if part)
+    exit_code = 2 if check.timed_out or check.exit_code is None else check.exit_code
+    return ExecutionEvidence(exit_code=exit_code, output=_bounded(output, limit))
+
+
+class DockerProjectSandbox:
+    """Adapt DockerSandboxManager project primitives to fresh evidence snapshots."""
+
+    def __init__(
+        self,
+        config: PurpleBoxConfig,
+        spec: ProjectSpec,
+        snapshot: ProjectSnapshot,
+        *,
+        manager_factory=DockerSandboxManager,
+    ):
+        self.config = config
+        self.spec = spec
+        self.base_snapshot = snapshot
+        self.manager = manager_factory(config)
+        self.network = None
+
+    def require_base_images(self) -> None:
+        self.manager.require_base_images()
+        self.network = self.manager.create_isolated_network()
+
+    def verify_project_snapshot(
+        self,
+        project: ProjectWorkflowInput,
+        files: Mapping[str, str],
+        verification_script_python: str,
+        regression_command: Sequence[str],
+        *,
+        label: str,
+    ) -> SnapshotVerification:
+        del project, label
+        if tuple(regression_command) != tuple(self.spec.test_command):
+            raise SandboxError("Regression command changed after project intake.")
+        if self.network is None:
+            raise SandboxError("Project network was not initialized.")
+        snapshot = replace_snapshot_files(self.base_snapshot, files)
+        target = None
+        try:
+            target, _image = self.manager.start_project(self.network, self.spec, snapshot)
+            regression = self.manager.run_project_check(
+                self.network, self.spec, snapshot, command=list(self.spec.test_command)
+            )
+            probe = self.manager.run_project_check(
+                self.network, self.spec, snapshot, script=verification_script_python
+            )
+            return SnapshotVerification(
+                probe=_check_evidence(probe, 131_072),
+                regression=_check_evidence(regression, 131_072),
+                fresh_target=True,
+            )
+        finally:
+            if target is not None:
+                self.manager.stop_project(target)
+
+    def close(self) -> None:
+        self.manager.close()
+
+
+def _bounded(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    return f"{text[:limit]}\n[report limit reached; {omitted} characters omitted]"
+
+
+def _normalize_execution(value: Any, limit: int) -> ExecutionEvidence:
+    if isinstance(value, ExecutionEvidence):
+        return value.model_copy(update={"output": _bounded(value.output, limit)})
+    if isinstance(value, VerificationResult):
+        return ExecutionEvidence(exit_code=value.exit_code, output=_bounded(value.output, limit))
+    if isinstance(value, Mapping):
+        return ExecutionEvidence(
+            exit_code=int(value["exit_code"]), output=_bounded(str(value.get("output", "")), limit)
+        )
+    return ExecutionEvidence(
+        exit_code=int(value.exit_code),
+        output=_bounded(str(getattr(value, "output", "")), limit),
+    )
+
+
+def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerification:
+    if isinstance(value, SnapshotVerification):
+        return SnapshotVerification(
+            probe=_normalize_execution(value.probe, limit),
+            regression=_normalize_execution(value.regression, limit),
+            fresh_target=value.fresh_target,
+        )
+    if isinstance(value, Mapping):
+        return SnapshotVerification(
+            probe=_normalize_execution(value["probe"], limit),
+            regression=_normalize_execution(value["regression"], limit),
+            fresh_target=bool(value.get("fresh_target", True)),
+        )
+    return SnapshotVerification(
+        probe=_normalize_execution(value.probe, limit),
+        regression=_normalize_execution(value.regression, limit),
+        fresh_target=bool(getattr(value, "fresh_target", True)),
+    )
+
+
+def validate_replacements(
+    proposal: BlueProposal,
+    current_files: Mapping[str, str],
+    *,
+    max_changed_files: int,
+    max_changed_bytes: int,
+    protected_paths: Sequence[str] = (),
+) -> tuple[ReplacementValidation, dict[str, str]]:
+    """Fail closed on paths, hashes, duplicates, no-ops, and configured change bounds."""
+    if not proposal.replacements:
+        return ReplacementValidation(accepted=False, reason="Blue proposed no replacements."), {}
+    if len(proposal.replacements) > max_changed_files:
+        return ReplacementValidation(accepted=False, reason="Replacement file limit exceeded."), {}
+
+    changed: dict[str, str] = {}
+    changed_bytes = 0
+    protected = set(protected_paths)
+    for replacement in proposal.replacements:
+        try:
+            validate_safe_path(replacement.path)
+        except ValueError:
+            return ReplacementValidation(accepted=False, reason="Replacement path is unsafe."), {}
+        if replacement.path not in current_files:
+            return ReplacementValidation(
+                accepted=False, reason="Replacement path is not in the safe snapshot."
+            ), {}
+        if replacement.path in protected:
+            return ReplacementValidation(
+                accepted=False,
+                reason="Replacement targeted a protected regression-test path.",
+            ), {}
+        if replacement.path in changed:
+            return ReplacementValidation(
+                accepted=False, reason="Replacement paths are duplicated."
+            ), {}
+        original = current_files[replacement.path]
+        digest = hashlib.sha256(original.encode("utf-8")).hexdigest()
+        if digest != replacement.original_sha256:
+            return ReplacementValidation(
+                accepted=False,
+                reason="Replacement source hash does not match the current snapshot.",
+            ), {}
+        if replacement.replacement_content == original:
+            return ReplacementValidation(accepted=False, reason="Replacement is a no-op."), {}
+        changed_bytes += len(replacement.replacement_content.encode("utf-8"))
+        if changed_bytes > max_changed_bytes:
+            return ReplacementValidation(
+                accepted=False, reason="Replacement byte limit exceeded."
+            ), {}
+        changed[replacement.path] = replacement.replacement_content
+    return (
+        ReplacementValidation(
+            accepted=True,
+            paths=sorted(changed),
+            changed_bytes=changed_bytes,
+            reason="Proposal is path-, hash-, and size-bounded; semantic review remains manual.",
+        ),
+        changed,
+    )
+
+
+def protected_regression_paths(
+    paths: Sequence[str], regression_command: Sequence[str]
+) -> list[str]:
+    """Protect common test corpora and explicit existing argv file paths from Blue edits."""
+    explicit = {
+        PurePosixPath(part.removeprefix("./")).as_posix()
+        for part in regression_command
+        if part and not part.startswith("-")
+    }
+    protected: list[str] = []
+    for path in paths:
+        candidate = PurePosixPath(path)
+        lowered_parts = {part.lower() for part in candidate.parts[:-1]}
+        name = candidate.name.lower()
+        common_test = (
+            bool(lowered_parts & {"test", "tests", "__tests__"})
+            or name.startswith("test_")
+            or name.endswith("_test.py")
+            or ".test." in name
+            or ".spec." in name
+        )
+        if common_test or path in explicit:
+            protected.append(path)
+    return sorted(protected)
+
+
+def render_diff(before: Mapping[str, str], after: Mapping[str, str], limit: int) -> str:
+    pieces: list[str] = []
+    for path in sorted(set(before) | set(after)):
+        if before.get(path) == after.get(path):
+            continue
+        pieces.extend(
+            difflib.unified_diff(
+                before.get(path, "").splitlines(keepends=True),
+                after.get(path, "").splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+            )
+        )
+    return _bounded("".join(pieces), limit)
+
+
+def proposal_report_evidence(proposal: BlueProposal) -> dict[str, object]:
+    """Remove full replacement bodies from later report prompts while preserving audit hashes."""
+    return {
+        "strategy": proposal.strategy,
+        "limitations": proposal.limitations,
+        "replacements": [
+            {
+                "path": item.path,
+                "original_sha256": item.original_sha256,
+                "replacement_sha256": hashlib.sha256(
+                    item.replacement_content.encode("utf-8")
+                ).hexdigest(),
+                "replacement_bytes": len(item.replacement_content.encode("utf-8")),
+                "rationale": item.rationale,
+                "change_kind": item.change_kind,
+            }
+            for item in proposal.replacements
+        ],
+    }
+
+
+async def execute_project_workflow(
+    project: ProjectSpec | ProjectWorkflowInput | Mapping[str, Any] | Any,
+    emit: Emit,
+    *,
+    cycles: int | None = None,
+    config: PurpleBoxConfig | None = None,
+    limits: ProjectWorkflowLimits | None = None,
+    sandbox_factory: Callable[[PurpleBoxConfig], ProjectSandbox] | None = None,
+    muse_factory: Callable[[PurpleBoxConfig], MetaMuseClient] = MetaMuseClient,
+    agent_factory: Callable[
+        [MetaMuseClient, PurpleBoxConfig], ProjectAgentRunner
+    ] = ProjectAgentRunner,
+) -> ProjectWorkflowResult:
+    """Run up to twenty evidence-gated cycles without modifying the source project."""
+    requested_cycles = (
+        project.cycles if cycles is None and isinstance(project, ProjectSpec) else cycles
+    )
+    requested_cycles = 1 if requested_cycles is None else requested_cycles
+    if not 1 <= requested_cycles <= 20:
+        raise ValueError("cycles must be between 1 and 20.")
+    bounds = limits or ProjectWorkflowLimits()
+    payload_budget = bounds.max_payload_bytes
+    if isinstance(project, ProjectSpec):
+        payload_budget = min(payload_budget, max(16_384, project.context_budget * 4))
+    project_name = (
+        project.path.name if isinstance(project, ProjectSpec) else coerce_project(project).name
+    )
+    result = ProjectWorkflowResult(project=project_name, cycles_requested=requested_cycles)
+    sandbox: ProjectSandbox | None = None
+    muse: MetaMuseClient | None = None
+    safe_project: ProjectWorkflowInput | None = None
+    original_files: dict[str, str] = {}
+    cumulative_files: dict[str, str] = {}
+    omitted_paths: list[str] = []
+    coverage_notes: list[str] = []
+    snapshot_total_paths = 0
+    snapshot_total_bytes = 0
+    verified_history: list[dict[str, object]] = []
+
+    async def log(team: str, message: str) -> None:
+        try:
+            await emit(team, message)
+        except Exception:
+            pass
+
+    try:
+        settings = config or load_config()
+        require_api_key(settings)
+        if isinstance(project, ProjectSpec):
+            if not project.allow_remote_inference:
+                raise ProjectWorkflowError(
+                    "Remote inference consent is required before project source can be sent to Muse."
+                )
+            snapshot = await blocking(snapshot_project, project)
+            safe_project, omitted_paths, coverage_notes = _snapshot_context(
+                project, snapshot, bounds
+            )
+            snapshot_total_paths = len(snapshot.files)
+            snapshot_total_bytes = snapshot.total_bytes
+            if sandbox_factory is None:
+                sandbox = await blocking(DockerProjectSandbox, settings, project, snapshot)
+            else:
+                sandbox = await blocking(sandbox_factory, settings)
+        else:
+            safe_project = coerce_project(project)
+            snapshot_total_paths = len(safe_project.files)
+            snapshot_total_bytes = sum(
+                len(value.encode("utf-8")) for value in safe_project.files.values()
+            )
+            if sandbox_factory is None:
+                raise ProjectWorkflowError(
+                    "A ProjectSpec is required when using the default Docker project sandbox."
+                )
+            sandbox = await blocking(sandbox_factory, settings)
+        original_files = dict(safe_project.files)
+        cumulative_files = dict(original_files)
+        muse = muse_factory(settings)
+        agents = agent_factory(muse, settings)
+        await blocking(sandbox.require_base_images)
+
+        protected_paths = protected_regression_paths(
+            list(cumulative_files), safe_project.regression_command
+        )
+        baseline_raw = await blocking(
+            sandbox.verify_project_snapshot,
+            safe_project,
+            dict(cumulative_files),
+            "import sys\nsys.exit(1)",
+            tuple(safe_project.regression_command),
+            label="baseline",
+        )
+        baseline = normalize_snapshot_verification(baseline_raw, bounds.max_evidence_chars)
+        if not baseline.fresh_target or baseline.regression.exit_code != 0:
+            raise SandboxError("Original project failed its preserved regression command.")
+
+        for cycle in range(1, requested_cycles + 1):
+            await log("red", f"Cycle {cycle}: reviewing the cumulative verified snapshot.")
+            documents = documents_from_mapping(cumulative_files)
+            red = await agents.analyze_red(
+                documents,
+                project_name=safe_project.name,
+                cycle=cycle,
+                max_batch_bytes=bounds.max_batch_bytes,
+                contract=safe_project.contract,
+                total_paths=snapshot_total_paths,
+                total_bytes=snapshot_total_bytes,
+                omitted_paths=omitted_paths,
+                coverage_notes=coverage_notes,
+                max_payload_bytes=payload_budget,
+                prior_verified_history=verified_history,
+            )
+            result.context_coverage.append(red.coverage)
+            evidence = CycleEvidence(red=red)
+            if red.report.outcome == "no_finding":
+                final = await agents.final_blue_report(
+                    project_name=safe_project.name,
+                    cycle=cycle,
+                    contract=safe_project.contract,
+                    max_payload_bytes=payload_budget,
+                    stage_evidence={
+                        "red_report": red.report.model_dump(),
+                        "coverage": red.coverage.model_dump(),
+                        "disposition": "no_change",
+                    },
+                )
+                evidence.final_blue_report = final
+                result.cycle_reports.append(
+                    ProjectCycleReport(
+                        cycle=cycle,
+                        status="no_finding",
+                        message="The bounded review produced no testable finding; this is not a security guarantee.",
+                        evidence=evidence,
+                    )
+                )
+                result.cycles_completed += 1
+                break
+
+            unknown_paths = sorted(set(red.report.affected_paths) - set(cumulative_files))
+            if unknown_paths:
+                raise ProjectWorkflowError("Red report referenced paths outside the safe snapshot.")
+
+            await log("red", f"Cycle {cycle}: proving the finding before requesting changes.")
+            pre_raw = await blocking(
+                sandbox.verify_project_snapshot,
+                safe_project,
+                dict(cumulative_files),
+                red.report.verification_script_python,
+                tuple(safe_project.regression_command),
+                label=f"cycle-{cycle}-pre",
+            )
+            pre = normalize_snapshot_verification(pre_raw, bounds.max_evidence_chars)
+            evidence.pre_verification = pre
+            if not pre.fresh_target:
+                raise SandboxError("Pre-verification did not use a fresh target.")
+            if pre.regression.exit_code != 0:
+                raise SandboxError(
+                    "The cumulative snapshot failed the original regression command."
+                )
+            if pre.probe.inconclusive:
+                final = await agents.final_blue_report(
+                    project_name=safe_project.name,
+                    cycle=cycle,
+                    contract=safe_project.contract,
+                    max_payload_bytes=payload_budget,
+                    stage_evidence={
+                        "red_report": red.report.model_dump(),
+                        "pre_verification": pre.model_dump(),
+                        "disposition": "no_change",
+                    },
+                )
+                evidence.final_blue_report = final
+                result.cycle_reports.append(
+                    ProjectCycleReport(
+                        cycle=cycle,
+                        status="inconclusive",
+                        message="The pre-change probe was inconclusive; no changes were requested.",
+                        evidence=evidence,
+                    )
+                )
+                result.cycles_completed += 1
+                break
+            if pre.probe.blocked:
+                final = await agents.final_blue_report(
+                    project_name=safe_project.name,
+                    cycle=cycle,
+                    contract=safe_project.contract,
+                    max_payload_bytes=payload_budget,
+                    stage_evidence={
+                        "red_report": red.report.model_dump(),
+                        "pre_verification": pre.model_dump(),
+                        "disposition": "no_change",
+                    },
+                )
+                evidence.final_blue_report = final
+                result.cycle_reports.append(
+                    ProjectCycleReport(
+                        cycle=cycle,
+                        status="not_confirmed",
+                        message="The original probe did not confirm the reported vulnerability; no changes were requested.",
+                        evidence=evidence,
+                    )
+                )
+                result.cycles_completed += 1
+                break
+
+            await log("blue", f"Cycle {cycle}: requesting bounded sanitation-only replacements.")
+            proposal = await agents.propose_blue(
+                documents,
+                project_name=safe_project.name,
+                cycle=cycle,
+                red_report=red.report,
+                pre_verification=pre.model_dump(),
+                contract=safe_project.contract,
+                protected_paths=protected_paths,
+                max_changed_files=bounds.max_changed_files,
+                max_changed_bytes=bounds.max_changed_bytes,
+                max_payload_bytes=payload_budget,
+            )
+            evidence.blue_proposal = proposal
+            validation, replacements = validate_replacements(
+                proposal,
+                cumulative_files,
+                max_changed_files=bounds.max_changed_files,
+                max_changed_bytes=bounds.max_changed_bytes,
+                protected_paths=protected_paths,
+            )
+            evidence.replacement_validation = validation
+            if not validation.accepted:
+                final = await agents.final_blue_report(
+                    project_name=safe_project.name,
+                    cycle=cycle,
+                    contract=safe_project.contract,
+                    max_payload_bytes=payload_budget,
+                    stage_evidence={
+                        "red_report": red.report.model_dump(),
+                        "pre_verification": pre.model_dump(),
+                        "proposal": proposal_report_evidence(proposal),
+                        "replacement_validation": validation.model_dump(),
+                        "disposition": "rolled_back",
+                    },
+                )
+                evidence.final_blue_report = final
+                result.cycle_reports.append(
+                    ProjectCycleReport(
+                        cycle=cycle,
+                        status="rolled_back",
+                        message=validation.reason,
+                        evidence=evidence,
+                    )
+                )
+                result.cycles_completed += 1
+                continue
+
+            candidate_files = dict(cumulative_files)
+            candidate_files.update(replacements)
+            candidate_diff = render_diff(cumulative_files, candidate_files, bounds.max_diff_chars)
+            await log(
+                "system",
+                f"Cycle {cycle}: verifying a fresh target with the original probe and regression command.",
+            )
+            patched_raw = await blocking(
+                sandbox.verify_project_snapshot,
+                safe_project,
+                candidate_files,
+                red.report.verification_script_python,
+                tuple(safe_project.regression_command),
+                label=f"cycle-{cycle}-patched",
+            )
+            patched = normalize_snapshot_verification(patched_raw, bounds.max_evidence_chars)
+            evidence.patched_verification = patched
+            if not patched.fresh_target:
+                raise SandboxError("Patched verification did not use a fresh target.")
+
+            independent_red: RedAnalysisArtifacts | None = None
+            independent_same_finding = False
+            if patched.probe.blocked and patched.regression.exit_code == 0:
+                independent_red = await agents.analyze_red(
+                    documents_from_mapping(candidate_files),
+                    project_name=safe_project.name,
+                    cycle=cycle,
+                    phase="verification",
+                    max_batch_bytes=bounds.max_batch_bytes,
+                    contract=safe_project.contract,
+                    total_paths=snapshot_total_paths,
+                    total_bytes=snapshot_total_bytes,
+                    omitted_paths=omitted_paths,
+                    coverage_notes=coverage_notes,
+                    max_payload_bytes=payload_budget,
+                    prior_verified_history=verified_history,
+                )
+                evidence.independent_red = independent_red
+                result.context_coverage.append(independent_red.coverage)
+                if independent_red.report.outcome == "finding":
+                    independent_same_finding = (
+                        independent_red.report.vulnerability.strip().casefold()
+                        == red.report.vulnerability.strip().casefold()
+                    )
+                    if independent_same_finding:
+                        independent_raw = await blocking(
+                            sandbox.verify_project_snapshot,
+                            safe_project,
+                            candidate_files,
+                            independent_red.report.verification_script_python,
+                            tuple(safe_project.regression_command),
+                            label=f"cycle-{cycle}-independent-red",
+                        )
+                        evidence.independent_verification = normalize_snapshot_verification(
+                            independent_raw, bounds.max_evidence_chars
+                        )
+
+            retained = (
+                patched.probe.blocked
+                and patched.regression.exit_code == 0
+                and not patched.probe.inconclusive
+            )
+            if independent_same_finding:
+                independent_check = evidence.independent_verification
+                retained = bool(
+                    retained
+                    and independent_check is not None
+                    and independent_check.fresh_target
+                    and independent_check.probe.blocked
+                    and independent_check.regression.exit_code == 0
+                )
+            disposition = "retained" if retained else "rolled_back"
+            stage_evidence = {
+                "red_report": red.report.model_dump(),
+                "pre_verification": pre.model_dump(),
+                "proposal": proposal_report_evidence(proposal),
+                "replacement_validation": validation.model_dump(),
+                "patched_verification": patched.model_dump(),
+                "independent_red": (
+                    {
+                        "report": independent_red.report.model_dump(),
+                        "coverage": independent_red.coverage.model_dump(),
+                        "same_finding": independent_same_finding,
+                    }
+                    if independent_red
+                    else None
+                ),
+                "independent_verification": (
+                    evidence.independent_verification.model_dump()
+                    if evidence.independent_verification
+                    else None
+                ),
+                "candidate_diff": candidate_diff,
+                "disposition": disposition,
+                "semantic_guarantee": False,
+            }
+            final = await agents.final_blue_report(
+                project_name=safe_project.name,
+                cycle=cycle,
+                contract=safe_project.contract,
+                max_payload_bytes=payload_budget,
+                stage_evidence=stage_evidence,
+            )
+            evidence.final_blue_report = final
+            if final.disposition != disposition:
+                raise ProjectWorkflowError("Final blue report contradicted observed disposition.")
+
+            if retained:
+                cumulative_files = candidate_files
+                verified_history.append(
+                    {
+                        "cycle": cycle,
+                        "vulnerability": red.report.vulnerability,
+                        "changed_paths": sorted(replacements),
+                        "pre_probe_exit": pre.probe.exit_code,
+                        "post_probe_exit": patched.probe.exit_code,
+                        "regression_exit": patched.regression.exit_code,
+                    }
+                )
+                status = "retained"
+                message = (
+                    "Candidate replacements were retained after the same probe was blocked on a fresh "
+                    "target and the original regression command passed; no general security claim is made."
+                )
+            else:
+                status = "rolled_back"
+                message = (
+                    "Candidate replacements were rolled back because the same probe was not blocked or "
+                    "the original regression command did not pass."
+                )
+            result.cycle_reports.append(
+                ProjectCycleReport(
+                    cycle=cycle,
+                    status=status,
+                    message=message,
+                    changed_paths=sorted(replacements) if retained else [],
+                    diff=candidate_diff,
+                    evidence=evidence,
+                )
+            )
+            result.cycles_completed += 1
+
+        statuses = [report.status for report in result.cycle_reports]
+        if statuses and all(status == "no_finding" for status in statuses):
+            result.status = "no_findings"
+            result.message = "The bounded review produced no testable finding; this is not a general security claim."
+        elif "retained" in statuses and not any(
+            status in ("rolled_back", "not_confirmed", "inconclusive", "error")
+            for status in statuses
+        ):
+            result.status = "verified"
+            result.message = "Evidence-gated candidate replacements were retained. Review the reports and diff manually."
+        else:
+            result.status = "partial"
+            result.message = "The workflow completed without a fully verified outcome; review rollbacks and evidence."
+    except asyncio.CancelledError:
+        raise
+    except (ConfigurationError, AgentError, ProjectWorkflowError, SandboxError, ValueError) as exc:
+        result.status = "error"
+        result.message = str(exc)
+    except Exception as exc:
+        result.status = "error"
+        result.message = (
+            f"Project workflow failed ({type(exc).__name__}); no unverified changes retained."
+        )
+    finally:
+        result.cumulative_diff = render_diff(
+            original_files, cumulative_files, bounds.max_diff_chars
+        )
+        try:
+            if sandbox is not None:
+                result.cleanup.attempted = True
+                try:
+                    await blocking(sandbox.close)
+                except Exception as exc:
+                    result.cleanup.succeeded = False
+                    result.cleanup.error = (
+                        str(exc)
+                        if isinstance(exc, SandboxError)
+                        else "Docker cleanup failed; inspect session resources."
+                    )
+                    result.status = "error"
+                    result.message = result.cleanup.error
+        finally:
+            if muse is not None:
+                calls = getattr(muse, "usage", None)
+                if isinstance(calls, list):
+                    result.usage = ScanUsage(calls=calls)
+                    result.total_tokens = result.usage.total_tokens
+                    result.total_cost_usd = result.usage.cost_usd
+                try:
+                    await muse.aclose()
+                except Exception:
+                    pass
+    await log("system", result.message)
+    return result
