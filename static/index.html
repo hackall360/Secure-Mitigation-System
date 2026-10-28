@@ -33,7 +33,7 @@
         <div>
           <p class="eyebrow">Input sanitization · Boundary verification</p>
           <h1>Find the boundary.<br><span class="gradient">Verify the fix.</span></h1>
-          <p class="value-prop">One click: red proves the input flaw in Docker, blue patches it, both checks re-run.</p>
+          <p class="value-prop">First time here? Press Run below — red proves the input flaw in Docker, blue patches it, both checks re-run.</p>
           <p class="lede">Red agent proves an input sink is reachable. Blue agent proposes a minimal sanitization patch. Docker sandboxes check both, then disappear.</p><div class="hype-ticker" aria-hidden="true"><span class="hype-chip">Live sandbox telemetry</span><span class="hype-chip">Red boundary proof</span><span class="hype-chip">Blue sanitization</span><span class="hype-chip">Evidence gated</span></div>
         </div>
         <dl class="stats" aria-label="Session summary">
@@ -46,7 +46,7 @@
       <section class="card picker" aria-labelledby="picker-title">
         <header class="card-head">
           <div><p class="eyebrow">Step 1</p><h2 id="picker-title">Choose what to verify</h2></div>
-          <p class="hint"><kbd>Enter</kbd> run · <kbd>Esc</kbd> stop</p>
+          <p class="hint"><kbd>Enter</kbd> one-click demo · <kbd>Esc</kbd> stop</p>
         </header>
         <div class="mode-switch" role="radiogroup" aria-label="Verification source">
           <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
@@ -95,7 +95,7 @@
         <div class="run-row">
           <p id="target-description" class="target-description">Connecting to the local orchestrator.</p>
           <div class="actions">
-            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run demo verification</span><span aria-hidden="true" class="arrow"><svg class="icon" viewBox="0 0 16 16"><path d="M2 8h11M9 3.5L13.5 8 9 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run the demo — one click</span><span aria-hidden="true" class="arrow"><svg class="icon" viewBox="0 0 16 16"><path d="M2 8h11M9 3.5L13.5 8 9 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
             <button id="stop-btn" class="btn ghost" hidden>Stop scan</button>
           </div>
         </div>
