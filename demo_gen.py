@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +32,7 @@ Return JSON matching the supplied response schema.
 
 Rules:
 - App must listen on 0.0.0.0:8080, single file app.py plus test_contract.py regression script.
+- Implement EVERY entry in requested_vulns as a testable input-boundary flaw: use the CVE record for inspiration (which sink, which check was missing), never copy any exploit.
 - Include 2-4 testable input-boundary flaws that are NOVEL COMBINATIONS (e.g. type-coercion + path handling, header reflection + config parsing), plus 1 flaw inspired by a supplied CVE pattern (state which CVE inspired it, do not copy any exploit).
 - Embed a benign marker style: verification probes use plain benign strings, 3s timeouts, no persistence, no exfiltration, no destructive behavior.
 - test_contract.py must assert normal behavior (valid inputs succeed) so blue patches can be regression-checked.
@@ -49,18 +50,142 @@ class DemoProjectFiles(BaseModel):
     cve_inspiration: list[str] = Field(default_factory=list, max_length=8)
 
 
+CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
+
+# Named vuln types the interpreter recognizes (alias -> canonical). Anything
+# else stays free text and goes to web search. Keep this list cheap: it maps
+# user words to the sink families Greenhouse knows how to build.
+VULN_TYPES: dict[str, str] = {
+    "sqli": "SQL injection",
+    "sql injection": "SQL injection",
+    "sqlinjection": "SQL injection",
+    "xss": "cross-site scripting",
+    "cross-site scripting": "cross-site scripting",
+    "cross site scripting": "cross-site scripting",
+    "cmdi": "OS command injection",
+    "command injection": "OS command injection",
+    "rce": "remote code execution",
+    "remote code execution": "remote code execution",
+    "ssti": "server-side template injection",
+    "template injection": "server-side template injection",
+    "xxe": "XML external entity",
+    "xml external entity": "XML external entity",
+    "ssrf": "server-side request forgery",
+    "server-side request forgery": "server-side request forgery",
+    "lfi": "local file inclusion",
+    "local file inclusion": "local file inclusion",
+    "rfi": "remote file inclusion",
+    "path traversal": "path traversal",
+    "directory traversal": "path traversal",
+    "idor": "insecure direct object reference",
+    "open redirect": "open redirect",
+    "header injection": "HTTP header injection",
+    "header reflection": "HTTP header reflection",
+    "crlf": "CRLF injection",
+    "deserialization": "insecure deserialization",
+    "insecure deserialization": "insecure deserialization",
+    "prototype pollution": "prototype pollution",
+    "nosql": "NoSQL injection",
+    "nosql injection": "NoSQL injection",
+    "ldap": "LDAP injection",
+    "ldap injection": "LDAP injection",
+    "xpath": "XPath injection",
+    "xpath injection": "XPath injection",
+    "log4shell": "Log4Shell (CVE-2021-44228)",
+    "log4j": "Log4Shell (CVE-2021-44228)",
+}
+
+
+class BuildIntent(BaseModel):
+    """What the user wants built and which flaws to implement.
+
+    cve_ids: exact CVE ids for CVE-endpoint lookup. named_types: canonical
+    vuln families for intel keyword search. free_text: everything else, for
+    web search. build_brief + themes describe the demo app itself.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    build_brief: str = Field(default="", max_length=500)
+    themes: list[str] = Field(default_factory=list, max_length=8)
+    cve_ids: list[str] = Field(default_factory=list, max_length=8)
+    named_types: list[str] = Field(default_factory=list, max_length=8)
+    free_text: list[str] = Field(default_factory=list, max_length=8)
+
+    @property
+    def vulns(self) -> list[str]:
+        return [*self.cve_ids, *self.named_types, *self.free_text]
+
+
+def parse_build_intent(*, build_brief: str = "", vulns: str = "", theme: str = "") -> BuildIntent:
+    """Split user intent into CVE ids, named vuln types, and free text.
+
+    Pure string surgery: no network, no model, never raises on weird input.
+    CVE ids match CVE-YYYY-NNNN(+); named types match VULN_TYPES keys
+    (case-insensitive, punctuation-tolerant); leftovers stay free text for
+    web search. Duplicates collapse, order preserved, everything bounded.
+    """
+    brief = " ".join(str(build_brief or "").split())[:500]
+    themes = [w for w in str(theme or "").split() if w][:6]
+    raw_parts = [p.strip() for p in str(vulns or "").replace(";", ",").split(",")]
+    cve_ids: list[str] = []
+    named_types: list[str] = []
+    free_text: list[str] = []
+    for part in raw_parts:
+        if not part:
+            continue
+        found = [c.upper() for c in CVE_RE.findall(part)]
+        for cve in found:
+            if cve not in cve_ids and len(cve_ids) < 8:
+                cve_ids.append(cve)
+        remainder = CVE_RE.sub(" ", part)
+        norm = re.sub(r"[^a-z0-9 ]", " ", remainder.lower())
+        norm = " ".join(norm.split())
+        if not norm:
+            continue
+        canonical = VULN_TYPES.get(norm)
+        if canonical is None:
+            # Try substring: "sqli vuln" still maps to SQL injection.
+            for alias, canon in VULN_TYPES.items():
+                if alias in norm or norm in alias:
+                    canonical = canon
+                    break
+        if canonical is not None:
+            if canonical not in named_types and len(named_types) < 8:
+                named_types.append(canonical)
+        elif len(part) <= 120 and len(free_text) < 8:
+            clean = " ".join(part.split())[:120]
+            if clean and clean not in free_text:
+                free_text.append(clean)
+    return BuildIntent(
+        build_brief=brief,
+        themes=themes,
+        cve_ids=cve_ids,
+        named_types=named_types,
+        free_text=free_text,
+    )
+
+
 async def generate_demo_project(
     client,
     *,
     intel_context: list[Mapping[str, Any]],
     theme: str = "input boundary showcase",
+    build_brief: str = "",
+    vulns: Sequence[str] | None = None,
     max_payload_bytes: int = 256_000,
 ) -> DemoProjectFiles:
-    """Ask Muse to design a novel demo project grounded in threat intel."""
+    """Ask Muse to design a novel demo project grounded in threat intel.
+
+    build_brief describes the app; vulns lists the flaw families/CVEs to
+    implement. Both reach the generator so Greenhouse builds what was asked.
+    """
     import json as _json
 
+    wanted = [str(v)[:120] for v in (vulns or [])][:8]
     payload = {
         "theme": theme[:256],
+        "build_brief": str(build_brief or "")[:500],
+        "requested_vulns": wanted,
         "intel_context": [dict(c) for c in intel_context[:20]],
         "response_schema": DemoProjectFiles.model_json_schema(),
     }

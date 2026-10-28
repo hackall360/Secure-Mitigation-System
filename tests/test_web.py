@@ -113,17 +113,17 @@ def test_demo_route_registered_and_rejects_origin_mismatch():
         pass
 
 
-
 def test_ws_research_query_enables_sidecar_config(monkeypatch):
     """H4: ?research=on allowlists scanners into the per-scan config."""
-    import threading
 
     import main as _main
 
     seen = {}
 
     async def fake_workflow(target, emit, **kwargs):
-        seen.update(kwargs.get("config").__dict__ if hasattr(kwargs.get("config"), "__dict__") else {})
+        seen.update(
+            kwargs.get("config").__dict__ if hasattr(kwargs.get("config"), "__dict__") else {}
+        )
         await emit("system", "done")
         from workflow import ScanResult
 
@@ -172,3 +172,39 @@ def test_ws_research_absent_stays_off(monkeypatch):
                 if event["type"] == "result":
                     break
     assert seen == {"enabled": False, "scanners": ()}
+
+
+def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
+    """I1: the demo socket parses build_brief + vulns alongside the theme."""
+    import json as _json
+
+    import main as _main
+
+    seen = {}
+
+    async def fake_build(emit, config, **kwargs):
+        seen.update(kwargs)
+        await emit("green", "done")
+        return {"status": "no_findings", "message": "probe", "project": "ai-demo"}
+
+    monkeypatch.setattr(_main, "run_demo_build", fake_build)
+    app = _main.create_app(PurpleBoxConfig(meta_api_key="k"))
+    with TestClient(app, base_url="http://localhost") as client:
+        headers = {"origin": "http://localhost"}
+        with client.websocket_connect("ws://localhost/ws/demo", headers=headers) as socket:
+            socket.send_text(
+                _json.dumps(
+                    {
+                        "theme": "xss",
+                        "build_brief": "a tiny notes app",
+                        "vulns": "CVE-2024-3094, sqli",
+                    }
+                )
+            )
+            while True:
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    break
+    assert seen.get("theme") == "xss"
+    assert seen.get("build_brief") == "a tiny notes app"
+    assert seen.get("vulns") == "CVE-2024-3094, sqli"

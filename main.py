@@ -35,17 +35,28 @@ NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved fo
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
 
-async def run_demo_build(emit, settings, *, theme: str = "", intel_offline: bool = False):
+async def run_demo_build(
+    emit,
+    settings,
+    *,
+    theme: str = "",
+    build_brief: str = "",
+    vulns: str = "",
+    intel_offline: bool = False,
+):
     """Green builder for the dashboard: generate a demo project, then red/blue it.
 
     Emits green team lines as Greenhouse works, then delegates to the project
     workflow for evidence-gated cycles. Returned dict is already user-redacted.
+    `build_brief` is what the user wants built; `vulns` lists CVEs, named
+    types, or free text to implement. Both flow into intent parsing + research.
     """
     from agents import MetaMuseClient
-    from demo_gen import generate_demo_project, materialize_demo_project
+    from demo_gen import generate_demo_project, materialize_demo_project, parse_build_intent
     from intel_search import intel_for_demo
     from project_workflow import redact_report_for_user
 
+    intent = parse_build_intent(build_brief=build_brief, vulns=vulns, theme=theme)
     themes = [w for w in (theme or "input validation SQL injection XSS").split() if w][:6]
     intel: list = []
     if not intel_offline:
@@ -59,9 +70,21 @@ async def run_demo_build(emit, settings, *, theme: str = "", intel_offline: bool
             )
     else:
         await emit("green", "Greenhouse building from static flaw patterns (offline).")
+    if intent.vulns or intent.build_brief:
+        await emit(
+            "green",
+            f"Greenhouse brief: {intent.build_brief[:160] or 'showcase demo'}; "
+            f"requested flaws: {', '.join(intent.vulns[:6]) or 'novel mix'}.",
+        )
     muse = MetaMuseClient(settings)
     try:
-        files = await generate_demo_project(muse, intel_context=intel, theme=" ".join(themes))
+        files = await generate_demo_project(
+            muse,
+            intel_context=intel,
+            theme=" ".join(themes),
+            build_brief=intent.build_brief,
+            vulns=intent.vulns,
+        )
     finally:
         try:
             await muse.aclose()
@@ -244,6 +267,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
                     request = json.loads(raw) if raw.strip() else {}
                     theme = str(request.get("theme", "") or "")[:200]
+                    build_brief = str(request.get("build_brief", "") or "")[:500]
+                    vulns = str(request.get("vulns", "") or "")[:500]
                     intel_offline = bool(request.get("intel_offline", False))
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
@@ -256,7 +281,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     await socket.close(code=1008)
                     return
                 coroutine = run_demo_build(
-                    emit, scan_config, theme=theme, intel_offline=intel_offline
+                    emit,
+                    scan_config,
+                    theme=theme,
+                    build_brief=build_brief,
+                    vulns=vulns,
+                    intel_offline=intel_offline,
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
@@ -356,9 +386,18 @@ async def ai_demo_runner(
             )
             intel = []
     print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
+    from demo_gen import parse_build_intent as _parse
+
+    _intent = _parse(theme=intel_theme)
     muse = MetaMuseClient(settings)
     try:
-        files = await generate_demo_project(muse, intel_context=intel, theme=" ".join(themes))
+        files = await generate_demo_project(
+            muse,
+            intel_context=intel,
+            theme=" ".join(themes),
+            build_brief=_intent.build_brief,
+            vulns=_intent.vulns,
+        )
     finally:
         try:
             await muse.aclose()

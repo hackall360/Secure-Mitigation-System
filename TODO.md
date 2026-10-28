@@ -1,7 +1,8 @@
 # TODO — Secure Mitigation System
 
 Owner: Jcode agent. This file is the work queue. Check items off as they land.
-Conventions: `[ ]` open, `[x]` done. Every item names its files and its proof.
+Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
+Every item names its files and its proof.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
@@ -100,3 +101,32 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       backoff, 1 MiB caps, never-raises, committed `e827a8b`, merged to main.
 - [x] Browser matrix: `--browser auto|chrome|chromium|edge|brave|firefox`
       in `ui_scan.py`, committed `175ad12`, merged to main.
+
+## I. Green intent + web/CVE research depth (brief 2026-10-28-laws-green-research)
+
+- [.] I1. Green builder: "What do you want to build?" + "Vulnerabilities to
+      implement" dashboard prompts (CVE ids, named types, or free text).
+      Files: `static/index.html`, `static/app.js`, `main.py` (`run_demo_build`).
+      Proof: UI scan showing both prompts; WS carries both fields.
+- [ ] I2. Intent interpreter: green/research agents parse the vuln field into
+      CVE ids vs named types vs free text and plan research accordingly.
+      Files: `demo_gen.py` (new `parse_build_intent`), tests.
+      Proof: unit test on mixed input ("CVE-2024-3094, sqli, weird header thing").
+- [ ] I3. CVE endpoint series for green/research: NVD + OSV + GHSA already
+      keyless; add CIRCL CVE lookup + EPSS scoring per CVE id so builders see
+      severity/context. Files: `intel_search.py`, `research.py`, tests.
+      Proof: live keyless fetch of a known CVE id with EPSS score attached.
+- [ ] I4. Real web search for green/research: keyless, bot-tolerant web
+      endpoint (no scraping wars) for named types + free text, same
+      never-raises + caps discipline as `research.py`. Files: new
+      `web_search.py` or extended `research.py`, tests with canned fixtures.
+      Proof: canned test + one live probe.
+- [ ] I5. Green prompt upgrade: Greenhouse system prompt consumes build
+      intent + CVE records + web notes and implements the requested flaws.
+      Files: `demo_gen.py` (`DEMO_GEN_SYSTEM_PROMPT` + payload), tests.
+      Proof: offline generation test with canned intel shows requested vuln class.
+- [ ] I6. Research sidecar upgrade: red/blue digests consume the same
+      CVE + web context for grounding. Files: `prompts.py`, `agents.py`,
+      `workflow.py` (`_gather_research`), tests. Proof: digest test with CVE context.
+- [ ] I7. Small features that fall out: keep each cheap, tested, shippable
+      (record here as they land).

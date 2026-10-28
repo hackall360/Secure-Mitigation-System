@@ -557,14 +557,20 @@ async def test_original_baseline_is_exported_as_observed_evidence():
 
 async def test_project_research_on_runs_grounding_and_stores_records(monkeypatch):
     """H5: opt-in project intel grounds the red contract and lands on the report."""
-    import project_workflow as _pw
     import workflow as _workflow
 
     async def fake_gather(muse, settings, filename, contract, log):
         await log("research", "fake intel pass")
         return "Grounded attack patterns: fake", [
-            {"source": "circl", "cve_id": "CVE-9-TEST", "title": "t", "summary": "s",
-             "severity": "HIGH", "cvss": 9.0, "cwe": ["CWE-78"]}
+            {
+                "source": "circl",
+                "cve_id": "CVE-9-TEST",
+                "title": "t",
+                "summary": "s",
+                "severity": "HIGH",
+                "cvss": 9.0,
+                "cwe": ["CWE-78"],
+            }
         ]
 
     monkeypatch.setattr(_workflow, "_gather_research", fake_gather)
