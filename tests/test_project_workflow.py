@@ -3,184 +3,51 @@
 import asyncio
 import hashlib
 import threading
-from collections import deque
 
 import pytest
+from helpers import (
+    TEST_CONFIG as CONFIG,
+)
+from helpers import (
+    FakeProjectMuse as FakeMuse,
+)
+from helpers import (
+    FakeProjectSandbox as FakeSandbox,
+)
+from helpers import (
+    project_verification as verification,
+)
+from helpers import (
+    run_project_workflow as run_workflow,
+)
+from helpers import (
+    silent_emit,
+)
 
 from agents import AgentError
 from config import PurpleBoxConfig
-from pricing import CallUsage
 from project_agents import (
     BlueProposal,
     FileReplacement,
-    FinalBlueReport,
     ProjectAgentRunner,
-    RedBatchEvidence,
-    RedCandidate,
     RedReport,
     SourceDocument,
     build_source_batches,
 )
 from project_workflow import (
-    ExecutionEvidence,
     ProjectWorkflowInput,
     ProjectWorkflowLimits,
-    SnapshotVerification,
     execute_project_workflow,
     protected_regression_paths,
     validate_replacements,
 )
 from projects import ProjectSpec
 
-
-async def silent_emit(_team, _message):
-    return None
-
-
-def verification(probe: int, regression: int = 0, output: str = "evidence"):
-    return SnapshotVerification(
-        probe=ExecutionEvidence(exit_code=probe, output=output),
-        regression=ExecutionEvidence(exit_code=regression, output="regression"),
-        fresh_target=True,
-    )
-
-
-class FakeMuse:
-    def __init__(self, *, red_outcomes=None, invalid_path=None, no_replacements=False):
-        self.red_outcomes = deque(red_outcomes or ["finding", "no_finding"])
-        self.invalid_path = invalid_path
-        self.no_replacements = no_replacements
-        self.calls = []
-        self.closed = False
-        self.usage = [
-            CallUsage(
-                role="seed",
-                model="muse-spark-1.3",
-                prompt_tokens=7,
-                completion_tokens=3,
-                cost_usd=0.001,
-            )
-        ]
-
-    async def _request(self, model, system, payload, schema, role=""):
-        self.calls.append(
-            {"model": model, "system": system, "payload": payload, "schema": schema, "role": role}
-        )
-        assert "messages" not in payload and "conversation" not in payload
-        if schema is RedBatchEvidence:
-            path = payload["batch"]["chunks"][0]["path"]
-            return RedBatchEvidence(
-                candidates=[
-                    RedCandidate(
-                        vulnerability="injection",
-                        affected_paths=[path],
-                        evidence="untrusted input reaches a sink",
-                        verification_script_python="import sys\nsys.exit(0)",
-                        confidence="high",
-                    )
-                ],
-                observations=["reviewed supplied chunk only"],
-            )
-        if schema is RedReport:
-            outcome = self.red_outcomes.popleft() if self.red_outcomes else "no_finding"
-            if outcome == "no_finding":
-                return RedReport(
-                    outcome="no_finding",
-                    analysis_summary="No testable finding in the supplied bounded context.",
-                    limitations=["Not a general security claim."],
-                )
-            evidence_items = payload["evidence_digests"]
-            candidate = evidence_items[0]["candidates"][0]
-            return RedReport(
-                outcome="finding",
-                vulnerability=candidate["vulnerability"],
-                affected_paths=candidate["affected_paths"],
-                analysis_summary="A concrete testable input boundary was identified.",
-                verification_script_python=candidate["verification_script_python"],
-                limitations=["Only supplied source was reviewed."],
-            )
-        if schema is BlueProposal:
-            selected = payload["safe_snapshot_files"]
-            if self.no_replacements:
-                return BlueProposal(strategy="Evidence was insufficient.", replacements=[])
-            source = selected[0]
-            path = self.invalid_path or source["path"]
-            return BlueProposal(
-                strategy="Add a bounded input validation guard without changing business behavior.",
-                replacements=[
-                    FileReplacement(
-                        path=path,
-                        original_sha256=source["sha256"],
-                        replacement_content=source["content"] + "\n# validated input\n",
-                        rationale="Reject malformed input before it reaches the sink.",
-                        change_kind="input_validation",
-                    )
-                ],
-                limitations=["Semantic correctness still requires human review."],
-            )
-        if schema is FinalBlueReport:
-            disposition = payload["stage_evidence"]["disposition"]
-            return FinalBlueReport(
-                disposition=disposition,
-                summary="Report reflects only observed probe and regression evidence.",
-                evidence=["stage artifacts supplied independently"],
-                changed_paths=[],
-                limitations=["The project is not labeled secure."],
-            )
-        raise AssertionError(f"Unexpected response schema: {schema}")
-
-    async def aclose(self):
-        self.closed = True
-
-
-class FakeSandbox:
-    def __init__(self, outcomes=()):
-        self.outcomes = iter(outcomes)
-        self.calls = []
-        self.closed = False
-        self.required = False
-
-    def require_base_images(self):
-        self.required = True
-
-    def verify_project_snapshot(
-        self, project, files, verification_script_python, regression_command, *, label
-    ):
-        self.calls.append(
-            {
-                "project": project,
-                "files": dict(files),
-                "probe": verification_script_python,
-                "regression_command": tuple(regression_command),
-                "label": label,
-            }
-        )
-        return next(self.outcomes)
-
-    def close(self):
-        self.closed = True
-
-
 PROJECT = ProjectWorkflowInput(
     name="demo",
     files={"src/app.py": "value = input()\nprint(value)\n"},
     regression_command=["pytest", "-q"],
 )
-CONFIG = PurpleBoxConfig(meta_api_key="unit-test-key")
-
-
-async def run_workflow(*, muse, sandbox, cycles=1, project=PROJECT, limits=None):
-    result = await execute_project_workflow(
-        project,
-        silent_emit,
-        cycles=cycles,
-        config=CONFIG,
-        limits=limits,
-        sandbox_factory=lambda _settings: sandbox,
-        muse_factory=lambda _settings: muse,
-    )
-    assert muse.closed and sandbox.closed
-    return result
 
 
 def test_bounded_batches_cover_every_utf8_byte_without_silent_truncation():

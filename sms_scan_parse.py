@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sms_records import truncate_summary
-
 CWE_LIMIT = 16
 CWE_COUNT = 8
 REF_LIMIT = 256
@@ -79,8 +77,3 @@ def cvss_best(entries: Any) -> str:
             except (TypeError, ValueError):
                 continue
     return best
-
-
-def summary_capped(raw: Any, limit: int = 1500) -> str:
-    """Scanner summary shaping through the shared truncation."""
-    return truncate_summary(raw if isinstance(raw, str) else "", limit)

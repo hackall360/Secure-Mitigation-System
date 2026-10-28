@@ -31,8 +31,3 @@ def take_utf8_prefix(text: str, max_bytes: int) -> tuple[str, str]:
     if end == 0:
         raise ValueError("max_bytes is too small for the next UTF-8 character.")
     return encoded[:end].decode("utf-8"), encoded[end:].decode("utf-8")
-
-
-def truncate_list(items: list, limit: int) -> list:
-    """Bound a list, order preserved."""
-    return list(items)[:limit]

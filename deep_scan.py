@@ -12,15 +12,22 @@ from __future__ import annotations
 
 import json
 import re
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from sms_http import paced_get_json, paced_post_json
+
 OSV_QUERY_URL = "https://api.osv.dev/v1/querybatch"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns"
+
+# OSV batch perf: bounded batch size (fewer oversize payloads) and an
+# explicit response cap; retries ride the shared sms_http discipline.
+OSV_BATCH_LIMIT = 100
+OSV_BATCH_MAX_BYTES = 8 * 1024 * 1024
+OSV_VULN_MAX_BYTES = 4 * 1024 * 1024
 
 # Static signal rules: (rule_id, title, severity, pattern, CWE hint).
 # Conservative: flag well-known dangerous sinks/flows for Muse triage, not as confirmed vulns.
@@ -216,32 +223,28 @@ def extract_dependencies(files: Mapping[str, str]) -> list[dict[str, str]]:
 
 def query_osv_batch(queries: Sequence[dict[str, str]], *, timeout: float = 30.0) -> dict[str, Any]:
     """Query OSV.dev /v1/querybatch for a list of package queries. No API key needed."""
+    capped = list(queries)[:OSV_BATCH_LIMIT]
     payload = {
         "queries": [
             {"package": {"name": q["name"], "ecosystem": q["ecosystem"]}, "version": q["version"]}
-            for q in queries
+            for q in capped
         ]
     }
-    request = urllib.request.Request(
-        OSV_QUERY_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "Secure-Mitigation-System/0.1"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(8 * 1024 * 1024)
-    return json.loads(body.decode("utf-8"))
+    result = paced_post_json(OSV_QUERY_URL, payload, timeout=timeout, max_bytes=OSV_BATCH_MAX_BYTES)
+    if not isinstance(result, dict):
+        raise ValueError("OSV batch response was not a JSON object")
+    return result
 
 
 def fetch_osv_vuln(vuln_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
     """Fetch a full OSV vulnerability record by ID."""
     safe_id = re.sub(r"[^A-Za-z0-9\-_:.]", "", vuln_id)[:128]
-    request = urllib.request.Request(
-        f"{OSV_VULN_URL}/{safe_id}",
-        headers={"User-Agent": "Secure-Mitigation-System/0.1"},
+    result = paced_get_json(
+        f"{OSV_VULN_URL}/{safe_id}", timeout=timeout, max_bytes=OSV_VULN_MAX_BYTES
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(4 * 1024 * 1024)
-    return json.loads(body.decode("utf-8"))
+    if not isinstance(result, dict):
+        raise ValueError("OSV vuln response was not a JSON object")
+    return result
 
 
 def summarize_osv_vuln(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -358,19 +361,3 @@ async def muse_deep_assessment(
         role="deep_vuln_assessment",
         max_payload_bytes=max_payload_bytes,
     )
-
-
-@dataclass
-class CveScanResult:
-    """Offline intermediate: static signals + OSV summaries before Muse triage.
-
-    `query_osv_batch` / `fetch_osv_vuln` shape the transport; the CVE
-    workflow promotes the surviving records into `CveScanReport`.
-    """
-
-    static_findings: list[StaticFinding] = field(default_factory=list)
-    dependencies: list[dict[str, str]] = field(default_factory=list)
-    osv_results: list[dict[str, Any]] = field(default_factory=list)
-    cve_summaries: list[dict[str, Any]] = field(default_factory=list)
-    deep_report: DeepVulnReport | None = None
-    errors: list[str] = field(default_factory=list)
