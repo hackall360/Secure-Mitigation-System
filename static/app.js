@@ -202,6 +202,7 @@ function writeComms(team, text) {
 }
 function writeLine(team, text) {
   const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  try { if (window.Panels && typeof window.Panels.renderTimeline === 'function') window.Panels.renderTimeline(known, text); } catch { /* timeline is decorative */ }
   if (known === 'red' || known === 'blue') {
     append(logs[known], buildEntry(known, text, false));
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.dataset.team === known));

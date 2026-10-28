@@ -10,6 +10,7 @@
   <title>Secure Mitigation System · Boundary verification</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/panels.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/fx.js" defer></script>
 </head>
@@ -32,6 +33,7 @@
         <div>
           <p class="eyebrow">Input sanitization · Boundary verification</p>
           <h1>Find the boundary.<br><span class="gradient">Verify the fix.</span></h1>
+          <p class="value-prop">One click: red proves the input flaw in Docker, blue patches it, both checks re-run.</p>
           <p class="lede">Red agent proves an input sink is reachable. Blue agent proposes a minimal sanitization patch. Docker sandboxes check both, then disappear.</p><div class="hype-ticker" aria-hidden="true"><span class="hype-chip">Live sandbox telemetry</span><span class="hype-chip">Red boundary proof</span><span class="hype-chip">Blue sanitization</span><span class="hype-chip">Evidence gated</span></div>
         </div>
         <dl class="stats" aria-label="Session summary">
@@ -93,8 +95,8 @@
         <div class="run-row">
           <p id="target-description" class="target-description">Connecting to the local orchestrator.</p>
           <div class="actions">
-            <button id="stop-btn" class="btn ghost" hidden>Stop scan</button>
             <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run demo verification</span><span aria-hidden="true" class="arrow"><svg class="icon" viewBox="0 0 16 16"><path d="M2 8h11M9 3.5L13.5 8 9 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+            <button id="stop-btn" class="btn ghost" hidden>Stop scan</button>
           </div>
         </div>
         <div id="setup" class="setup" role="status" hidden></div>
@@ -116,20 +118,29 @@
         </ol>
       </section>
 
+      <section class="card timeline-card" aria-labelledby="timeline-title">
+        <header class="card-head">
+          <div><p class="eyebrow">Step 2.5</p><h2 id="timeline-title">Scan timeline</h2></div>
+          <p class="hint">One marker per event · newest at the right</p>
+        </header>
+        <div id="scan-timeline" class="timeline" role="log" aria-live="polite" aria-label="Scan timeline" tabindex="0"><p class="empty">No scan yet. Press Run and each event lands here as a marker.</p></div>
+        <div class="timeline-legend" aria-hidden="true"><span><i class="sq red"></i>Red</span><span><i class="sq blue"></i>Blue</span><span><i class="sq green"></i>Green</span><span><i class="sq purple"></i>System</span></div>
+      </section>
+
       <section class="team-grid" aria-label="Agent traces">
         <article class="card panel red" data-team="red">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">R</span><div><h2>Boundary auditor</h2><span id="red-model" class="model">Muse</span></div></div>
             <div class="panel-tools"><span class="team-label">Red team</span><button class="icon-btn" data-copy="red" title="Copy red team trace" aria-label="Copy red team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>Waiting for a target.<br><span>Analysis and boundary evidence will appear here.</span></p></div>
+          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>No boundary evidence yet.<br><span>Press Run — red analysis and probe results land here.</span></p></div>
         </article>
         <article class="card panel blue" data-team="blue">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">B</span><div><h2>Input sanitizer</h2><span id="blue-model" class="model">Muse</span></div></div>
             <div class="panel-tools"><span class="team-label">Blue team</span><button class="icon-btn" data-copy="blue" title="Copy blue team trace" aria-label="Copy blue team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Waiting for a confirmed boundary.<br><span>Sanitization changes and regression results appear here.</span></p></div>
+          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>No patch yet.<br><span>Blue sanitization and re-verification land here once red proves the boundary.</span></p></div>
         </article>
       </section>
 
@@ -194,7 +205,7 @@
             <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           </div>
         </header>
-        <div id="sys-log" class="log system-log" role="log" aria-label="Sandbox activity"><p class="empty">Ready when you are. Each scan creates and removes its own Docker resources.</p></div>
+        <div id="sys-log" class="log system-log" role="log" aria-label="Sandbox activity"><p class="empty">Ready. Press Run — every sandbox event lands here, with a marker on the timeline above.</p></div>
       </section>
     </main>
 
