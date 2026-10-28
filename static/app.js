@@ -669,7 +669,7 @@ function startScan() {
   try {
     buildRoster(el('red-roster'), RED_NAMES.slice(0, (spec && spec.red_agents) || 5), 'Warlord');
     buildRoster(el('blue-roster'), BLUE_NAMES.slice(0, (spec && spec.blue_agents) || 5), 'Warden');
-    buildRoster(el('green-roster'), ['Greenhouse'], 'Greenhouse');
+    buildRoster(el('green-roster'), [], 'Greenhouse');
   } catch { /* decorative */ }
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;

@@ -294,6 +294,10 @@ assert.equal(q, null);
 // roster builds chips from trusted names only
 const roster = makeNode('div');
 buildRoster(roster, ['Breakwater', 'Lockpick'], 'Warlord');
+// green builder renders once: leader only, no duplicate member chip
+const green = makeNode('div');
+buildRoster(green, [], 'Greenhouse');
+assert.equal(green.children.length, 1);
 assert.equal(roster.children.length, 3);
 assert.equal(roster.children[1].children[1].textContent, 'Breakwater');
 assert.equal(roster.children[2].children[1].textContent, 'Lockpick');

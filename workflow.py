@@ -10,6 +10,7 @@ from docker.errors import DockerException
 from pydantic import BaseModel, Field
 
 from agents import AgentError, BlueTeamPatch, MetaMuseClient, RedTeamFinding
+from chatter import chatter
 from checks import normal_behavior_script
 from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 from docker_manager import DockerSandboxManager, SandboxError
@@ -99,6 +100,10 @@ async def execute_purple_workflow(
         await log("system", "Original fixture is ready; normal-input checks passed.")
 
         await log("red", f"Analyzing {target.filename} with {settings.red_team_model}.")
+        await log(
+            "red",
+            chatter("red_start", persona="Breakwater", path=target.filename, seed=1),
+        )
         finding = await muse.run_red_team_analysis(target.filename, source, target.contract)
         result.finding = finding
         await log(
@@ -111,6 +116,16 @@ async def execute_purple_workflow(
         result.pre_exit_code = pre.exit_code
         result.traces["before"] = pre.output
         await log("red", f"Boundary check exited {pre.exit_code}. {pre.output}")
+        await log(
+            "red",
+            chatter(
+                "red_proof",
+                persona="Breakwater",
+                path=target.filename,
+                code=pre.exit_code,
+                seed=2,
+            ),
+        )
         if pre.inconclusive:
             raise SandboxError("Pre-patch verifier was inconclusive; no patch was requested.")
         if pre.exit_code == 1:
@@ -120,6 +135,10 @@ async def execute_purple_workflow(
             )
         else:
             await log("blue", f"Requesting a sanitization patch from {settings.blue_team_model}.")
+            await log(
+                "blue",
+                chatter("blue_start", persona="Bastion", path=target.filename, seed=3),
+            )
             patch = await muse.run_blue_team_sanitizer(
                 target.filename,
                 source,
@@ -155,6 +174,16 @@ async def execute_purple_workflow(
             result.post_exit_code = post.exit_code
             result.traces["after"] = post.output
             await log("blue", f"Post-patch boundary check exited {post.exit_code}. {post.output}")
+            await log(
+                "blue",
+                chatter(
+                    "blue_done",
+                    persona="Bastion",
+                    path=target.filename,
+                    code=post.exit_code,
+                    seed=4,
+                ),
+            )
             if post.inconclusive:
                 raise SandboxError(
                     "Post-patch verifier was inconclusive; this is not a successful fix."

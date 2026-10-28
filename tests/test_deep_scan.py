@@ -604,3 +604,42 @@ def test_redacted_history_and_chatter_ephemerality():
     redacted = redact_report_for_user(result)
     assert redacted["verified_history"] == hist
     assert "evil" not in json.dumps(redacted)
+
+
+def test_fixture_chatter_flows_over_log_pipeline():
+    import asyncio
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".jcode" / "tools"))
+    from offline_scan import KnownMuse
+
+    from workflow import execute_purple_workflow
+
+    events = []
+
+    async def emit(team, message):
+        events.append((team, message))
+
+    async def run():
+        from config import PurpleBoxConfig
+
+        cfg = PurpleBoxConfig(meta_api_key="offline-check-not-a-key")
+
+        def muse_factory(settings):
+            return KnownMuse("node_query_sink")
+
+        return await execute_purple_workflow(
+            "node_query_sink", emit, config=cfg, muse_factory=muse_factory
+        )
+
+    result = asyncio.run(run())
+    assert result.status == "verified", result.message
+    teams = [t for t, _ in events]
+    assert "red" in teams and "blue" in teams and "system" in teams
+    chatter_lines = [m for _, m in events if "Breakwater" in m or "Bastion" in m]
+    assert len(chatter_lines) >= 4, [m[:80] for _, m in events]
+    for line in chatter_lines:
+        assert len(line) <= 220 and "\n" not in line
+    # full run emits more events than the pre-chatter baseline of 12
+    assert len(events) > 12, len(events)
