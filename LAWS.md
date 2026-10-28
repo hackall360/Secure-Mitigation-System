@@ -227,3 +227,52 @@ Every touched file complete, valid, executable.
 untouched lines; `git diff` every line as a hostile reviewer — fully wired,
 tests failed-then-passed, zero regressions, zero dead code, zero debug
 artifacts.
+
+### LAW 11 — Real-browser verification (Firefox + Chrome), old-vs-new mapping
+
+Unit tests and screenshots of a single state never prove a UI change works.
+Whenever you change anything user-visible (Web UI markup, styles, motion,
+controls, copy, event wiring), you MUST:
+
+1. Drive a REAL browser — Firefox AND Chrome via the headless harness
+   (`.jcode/tools/ui_scan.py --browser firefox|chrome`), not a DOM stub, not
+   a static screenshot review.
+2. Map old-vs-new: capture the affected flow on the BASE version (pre-change)
+   and on YOUR version (post-change) — same fixture, same steps — and compare
+   element-by-element: is every added control visible, reachable, and
+   operable in both browsers?
+3. Operate it, don't just load it: click the new control, run the flow it
+   triggers, and confirm the downstream effect (WS event sent, state
+   transition rendered, result displayed). Loading the page is not testing.
+4. If anything added is not visible, not usable, or does not work correctly
+   in either browser, stop and fix it in the same pass — never ship a
+   verified-on-one-browser UI.
+5. Keep the evidence: shot paths + offline E2E JSON (exit codes, diff,
+   cleanup) in your report, per LAW 5 live-paths proof.
+
+The existing offline Firefox E2E (`ui_scan.py node_query_sink --offline`)
+is the floor, not the ceiling: extend it to the flow you touched (green
+build, project mode, new widgets) and run the browser matrix.
+
+### LAW 12 — Semver discipline (0.major.minor; first value rarely moves)
+
+Every user-facing change progresses the version. Format `0.major.minor`:
+
+- The FIRST value (`0`) moves only for a public/API-breaking epoch change —
+  almost never. It stays `0` through ordinary development.
+- The SECOND value (major) increments for new capabilities, new controls,
+  new modes, new endpoints, or any behavior addition a judge could notice.
+- The THIRD value (minor) increments for fixes, polish, copy, motion, and
+  hardening with no new capability.
+- Exactly one bump per shipped change set, decided by its highest change:
+  any new capability present → major; fixes/polish only → minor.
+- The version lives in the release line (`main`) and MUST be consistent
+  everywhere it appears (dashboard footer/header, `--version`, health
+  payload, docs) — no drift between surfaces (LAW 8 parity applies to the
+  version string too).
+- Record the bump and its reason in the ship commit message
+  (e.g. `Ship: ... (0.4.1 — minor: ...)`).
+
+Current version at time of writing: `0.1` (see `static/index.html`,
+health payload). The next shipped change set moves it — minor if
+fixes/polish only, major if any gap-wiring capability lands.
