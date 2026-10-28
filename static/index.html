@@ -47,6 +47,7 @@
         </header>
         <div class="mode-switch" role="radiogroup" aria-label="Verification source">
           <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
+          <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
         </div>
         <div id="demo-config">
@@ -54,6 +55,9 @@
             <div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div><div class="target skeleton" aria-hidden="true"></div>
           </div>
           <select id="target-select" class="visually-hidden" tabindex="-1" aria-hidden="true" disabled></select>
+        </div>
+        <div id="demo-build-config" hidden>
+          <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Space-separated threat-intel keywords. Greenhouse grows a novel demo around them; red and blue then run it.</small></div>
         </div>
         <form id="project-form" class="project-form" hidden novalidate>
           <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>

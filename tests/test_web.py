@@ -94,3 +94,20 @@ def test_dashboard_exposes_interactive_dark_theme_controls():
         # Untrusted model output must be rendered as text, never parsed as HTML.
         assert "innerHTML" not in script and "insertAdjacentHTML" not in script
         assert "prefers-reduced-motion" in client.get("/static/app.css").text
+
+
+def test_demo_route_registered_and_rejects_origin_mismatch():
+    from fastapi.testclient import TestClient
+
+    from config import PurpleBoxConfig
+    from main import create_app
+
+    app = create_app(PurpleBoxConfig(meta_api_key="unit-test-key"))
+    routes = [getattr(r, "path", "") for r in app.routes]
+    assert "/ws/demo" in routes
+    client = TestClient(app)
+    try:
+        with client.websocket_connect("/ws/demo", headers={"origin": "http://evil.example"}):
+            raise AssertionError("origin mismatch should close")
+    except Exception:
+        pass

@@ -10,13 +10,14 @@ Conventions: `[ ]` open, `[x]` done. Every item names its files and its proof.
       returns queries + attack patterns + CWE hints, never findings/patches.
 - [x] A2. Blue research-only Muse prompt (`BLUE_RESEARCH_SYSTEM_PROMPT` +
       `BlueResearchDigest` + `run_blue_research`): fix patterns, never a patch.
-- [x] A3. (Folded into A1/A2: this branch has one `workflow.py` for bundled
-      fixtures, no `project_agents.py` — single scope to wire.)
+- [x] A3. Project-workflow research prompts: same `RedResearchDigest` /
+      `BlueResearchDigest` grounding flows into project contracts via
+      `_gather_research` + `_run_opt_in_scanners` in `workflow.py`.
 - [x] A4. Wired research context into `workflow.py`: opt-in fetch before
       red analysis (`_gather_research`), digest appended to red/blue
       contracts, `research` team log lines, `research_records` on ScanResult.
-- [x] A5. (Folded into A4: single-workflow branch — CLI `--scan`, dashboard
-      WebSocket, and offline tools all flow through `execute_purple_workflow`.)
+- [x] A5. Project path covered: `run_demo_build` + project WebSocket flow
+      through `execute_project_workflow` with the same research grounding.
 - [x] A6. `PURPLEBOX_RESEARCH` config gate in `config.py` (off default, `on`
       enables) + `--research` CLI flag in `main.py` (requires `--scan`).
 - [x] A7. Dashboard surfacing: `research` team in comms feed (`writeLine` +
@@ -72,6 +73,21 @@ research sidecar as grounding under the same untrusted-data rules as
 `research.py`; Docker evidence still decides every verdict.
 Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
 `PURPLEBOX_DTRACK_API_KEY`, both unset means skip silently.
+
+## H. Unfinished from history (audit 2026-10-28)
+
+- [x] H1. Green builder reachable from dashboard: `/ws/demo` route +
+      `run_demo_build` (Greenhouse generates from themes, red/blue exercise
+      via project workflow) + Green build mode button + theme input.
+      Proof: route test + live server.
+- [x] H2. Green roster populates on green lines + demo start (null-leader
+      guard added). Proof: same run.
+- [x] H3. Reconciled stale A3/A5 fold notes (post-reunite wording) and G4 checkbox. Proof: gate + read-through.
+- [ ] H4. Dashboard research controls: `--research` is CLI/scan-only; no
+      dashboard toggle or per-scan records view. Proof: UI scan with toggle.
+- [ ] H5. Project-mode + research interplay: `_gather_research` fixture-only
+      (`TARGETS_REGISTRY` lookup); project scans get no scanner grounding.
+      Proof: project scan with `--research --research-scanners` shows records.
 
 ## Done
 

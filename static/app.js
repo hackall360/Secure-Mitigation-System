@@ -147,14 +147,16 @@ function spawnTerminalPop(team, text) {
 const CHATTER_RE = /(Breakwater|Lockpick|Bloodhound|Sparkler|Cartographer|Bastion|Stitch|Librarian|Sentinel|Proofreader|Warlord|Warden|Greenhouse)/;
 function buildRoster(node, names, leader) {
   node.replaceChildren();
-  const lead = document.createElement('span');
-  lead.className = 'agent-chip leader';
-  lead.textContent = '';
-  const dot = document.createElement('i');
-  const label = document.createElement('span');
-  label.textContent = leader;
-  lead.append(dot, label);
-  node.append(lead);
+  if (leader) {
+    const lead = document.createElement('span');
+    lead.className = 'agent-chip leader';
+    lead.textContent = '';
+    const dot = document.createElement('i');
+    const label = document.createElement('span');
+    label.textContent = leader;
+    lead.append(dot, label);
+    node.append(lead);
+  }
   names.forEach((name) => {
     const chip = document.createElement('span');
     chip.className = 'agent-chip';
@@ -187,8 +189,11 @@ function writeComms(team, text) {
 }
 function writeLine(team, text) {
   const known = team === 'red' || team === 'blue' || team === 'research' ? team : 'system';
-  if (known !== 'system') {
-    append(logs[known] || logs.system, buildEntry(known, text, false));
+  if (known !== 'system' || team === 'green') {
+    append(team === 'green' ? logs.system : logs[known], buildEntry(known, text, false));
+    if (team === 'green') {
+      try { buildRoster(el('green-roster'), ['Greenhouse'], null); } catch { /* decorative */ }
+    }
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.dataset.team === known));
   }
   // The activity timeline records every event so it can be filtered.
@@ -332,7 +337,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'project'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -340,11 +345,14 @@ function setSourceMode(mode) {
     button.setAttribute('aria-checked', String(active));
   });
   el('demo-config').hidden = mode !== 'demo';
+  el('demo-build-config').hidden = mode !== 'demo-build';
   el('project-form').hidden = mode !== 'project';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : 'Run demo verification';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
-    : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+    : mode === 'demo-build'
+      ? 'Greenhouse grows a novel vulnerable demo from your themes, then red and blue exercise it in Docker.'
+      : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
 }
 
@@ -653,6 +661,7 @@ function startScan() {
   if (socket || !configured) return;
   const key = el('target-select').value;
   if (sourceMode === 'demo' && !targets[key]) return;
+  if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) { status('Fix project details', 'warn'); return; }
   latestResult = null;
@@ -723,6 +732,67 @@ function stopScan() {
   el('stop-btn').disabled = true;
   status('Stopping scan', 'running');
   socket.close(1000, 'User cancelled');
+}
+
+function startDemoBuild() {
+  // Green builder path: Greenhouse grows a novel demo, then red/blue run it.
+  latestResult = null;
+  eventCount = 0;
+  el('event-count').textContent = '0';
+  el('result-panel').hidden = true;
+  delete el('progress').dataset.state;
+  Object.values(logs).forEach((area) => area.replaceChildren());
+  resetPipeline();
+  document.body.classList.add('scanning');
+  el('run-btn').disabled = true;
+  lockTargets(true);
+  lockProfiles(true);
+  lockProjectForm(true);
+  try {
+    buildRoster(el('red-roster'), RED_NAMES.slice(0, 5), 'Warlord');
+    buildRoster(el('blue-roster'), BLUE_NAMES.slice(0, 5), 'Warden');
+    buildRoster(el('green-roster'), ['Greenhouse'], null);
+  } catch { /* decorative */ }
+  el('stop-btn').hidden = false;
+  el('stop-btn').disabled = false;
+  status('Greenhouse is building', 'running');
+  startedAt = Date.now();
+  el('elapsed').textContent = '0s';
+  timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
+  const profileQuery = profiles.length ? `?profile=${encodeURIComponent(selectedProfile)}` : '';
+  const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  // Reuse the shared teardown/message flow by swapping sourceMode temporarily.
+  sourceMode = 'demo-build';
+  socket = new WebSocket(`${base}/ws/demo${profileQuery}`);
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200) }));
+    writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
+  };
+  socket.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'result') {
+        showResult(payload);
+      } else {
+        writeLine(payload.team, payload.msg);
+        if (payload.type === 'busy') status('Another scan is running', 'error');
+      }
+    } catch {
+      writeLine('system', 'Received an unreadable server event.');
+    }
+  };
+  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onclose = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    document.body.classList.remove('scanning');
+    socket = null;
+    sourceMode = 'demo';
+    el('run-btn').disabled = !configured;
+    el('stop-btn').hidden = true;
+    lockTargets(false);
+    lockProfiles(false);
+    lockProjectForm(false);
+  };
 }
 
 /* ---------- wiring ---------- */
