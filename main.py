@@ -24,6 +24,8 @@ from docker_manager import (
     remove_stale_resources,
 )
 from profiles import ProfileError, apply_profile, available_profiles, default_profile
+from project_workflow import execute_project_workflow
+from projects import ProjectSpec
 from registry import BASE_DIR, TARGETS_REGISTRY
 from workflow import execute_purple_workflow
 
@@ -74,6 +76,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             return {
                 "status": "ok",
                 "api_key_configured": bool(settings.meta_api_key),
+                "inference_mode": settings.inference_mode,
+                "inference_ready": settings.inference_mode == "local"
+                or bool(settings.meta_api_key),
                 "red_model": settings.red_team_model,
                 "blue_model": settings.blue_team_model,
                 "profiles": [
@@ -95,13 +100,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 {"status": "configuration_error", "message": str(exc)}, status_code=503
             )
 
-    @application.websocket("/ws/combat/{target_key}")
-    async def combat(socket: WebSocket, target_key: str):
+    async def run_socket(socket: WebSocket, target_key: str | None = None):
         # Host validation plus exact same-origin validation prevents drive-by browser scans.
         expected_origin = (
             f"{'https' if socket.url.scheme == 'wss' else 'http'}://{socket.headers.get('host')}"
         )
-        if socket.headers.get("origin") != expected_origin or target_key not in TARGETS_REGISTRY:
+        if socket.headers.get("origin") != expected_origin or (
+            target_key is not None and target_key not in TARGETS_REGISTRY
+        ):
             await socket.close(code=1008)
             return
         # The profile is a fixed key, never a model ID. Unknown keys are refused before
@@ -133,7 +139,27 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 return
 
         async with lock:
-            run = asyncio.create_task(execute_purple_workflow(target_key, emit, config=scan_config))
+            if target_key is None:
+                try:
+                    # No paths or source are placed in URLs, browser history, or access logs.
+                    raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
+                    if len(raw.encode("utf-8")) > 32_768:
+                        raise ValueError("Project request is too large.")
+                    spec = ProjectSpec.model_validate(json.loads(raw))
+                except (ValueError, TimeoutError, WebSocketDisconnect):
+                    await socket.send_json(
+                        {
+                            "type": "invalid",
+                            "team": "system",
+                            "msg": "Invalid project settings. Check the path, argv commands, cycle count, and context budget.",
+                        }
+                    )
+                    await socket.close(code=1008)
+                    return
+                coroutine = execute_project_workflow(spec, emit, config=scan_config)
+            else:
+                coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
+            run = asyncio.create_task(coroutine)
             disconnect = asyncio.create_task(disconnected())
             try:
                 done, _ = await asyncio.wait({run, disconnect}, return_when=asyncio.FIRST_COMPLETED)
@@ -152,6 +178,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 except (RuntimeError, WebSocketDisconnect):
                     pass
 
+    @application.websocket("/ws/combat/{target_key}")
+    async def combat(socket: WebSocket, target_key: str):
+        await run_socket(socket, target_key)
+
+    @application.websocket("/ws/project")
+    async def project_combat(socket: WebSocket):
+        await run_socket(socket)
+
     return application
 
 
@@ -159,7 +193,11 @@ app = create_app()
 
 
 async def cli_runner(
-    target_key: str, output_dir: Path | None = None, profile: str | None = None
+    target_key: str | None,
+    output_dir: Path | None = None,
+    profile: str | None = None,
+    *,
+    project: ProjectSpec | None = None,
 ) -> int:
     async def emit(team: str, message: str):
         print(f"[{team.upper():6}] {message}", flush=True)
@@ -169,7 +207,10 @@ async def cli_runner(
         f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}",
         flush=True,
     )
-    result = await execute_purple_workflow(target_key, emit, config=settings)
+    if project is None:
+        result = await execute_purple_workflow(target_key, emit, config=settings)
+    else:
+        result = await execute_project_workflow(project, emit, config=settings)
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
         print(
@@ -184,11 +225,13 @@ async def cli_runner(
     if output_dir is not None:
         # A fresh per-run directory prevents accidental overwriting of previous results.
         run_dir = output_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
-        run_dir.mkdir(parents=True, exist_ok=False)
+        run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
         report = {"notice": NOTICE, "license_url": LICENSE_URL, **result.model_dump()}
         (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        (run_dir / "report.json").chmod(0o600)
         if result.diff:
             (run_dir / "candidate.patch").write_text(result.diff, encoding="utf-8")
+            (run_dir / "candidate.patch").chmod(0o600)
         print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
     return 0 if result.success else 1
 
@@ -213,9 +256,33 @@ def main() -> int:
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
     commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(
+        "--project", type=Path, help="Scan a local source directory without modifying it"
+    )
+    commands.add_argument(
         "--list-targets", action="store_true", help="List bundled fixtures without Docker or a key"
     )
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--image", help="Already-loaded runtime image containing offline dependencies"
+    )
+    parser.add_argument("--command", help='Target argv as JSON, e.g. ["python3", "app.py"]')
+    parser.add_argument(
+        "--test-command", help='Trusted regression argv as JSON, e.g. ["python3", "-m", "unittest"]'
+    )
+    parser.add_argument(
+        "--contract", default="", help="Expected behavior and sanitization-only patch constraints"
+    )
+    parser.add_argument(
+        "--cycles", type=int, default=1, help="Red/blue cycles, 1 to 20 (default 1)"
+    )
+    parser.add_argument(
+        "--context-budget", type=int, default=32768, help="Bounded per-call source context budget"
+    )
+    parser.add_argument(
+        "--allow-remote-inference",
+        action="store_true",
+        help="Consent to send project source/evidence to the configured hosted Muse endpoint",
+    )
     parser.add_argument(
         "--profile",
         choices=["economy", "balanced", "quality", "custom"],
@@ -227,10 +294,22 @@ def main() -> int:
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    if args.profile is not None and not args.scan:
-        parser.error("--profile requires --scan")
-    if args.output_dir is not None and not args.scan:
-        parser.error("--output-dir requires --scan")
+    if args.profile is not None and not (args.scan or args.project):
+        parser.error("--profile requires --scan or --project")
+    if args.output_dir is not None and not (args.scan or args.project):
+        parser.error("--output-dir requires --scan or --project")
+    if args.project and (not args.command or not args.test_command or not args.contract):
+        parser.error("--project requires --command, --test-command, and --contract")
+    if not args.project and (
+        args.image
+        or args.command
+        or args.test_command
+        or args.contract
+        or args.cycles != 1
+        or args.context_budget != 32768
+        or args.allow_remote_inference
+    ):
+        parser.error("Project options require --project")
     try:
         if args.list_targets:
             for key, target in TARGETS_REGISTRY.items():
@@ -256,7 +335,28 @@ def main() -> int:
             return 0
         if args.scan:
             return asyncio.run(cli_runner(args.scan, args.output_dir, args.profile))
-        uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port)
+        if args.project:
+            try:
+                spec = ProjectSpec.model_validate(
+                    {
+                        "path": str(args.project.absolute()),
+                        "image": args.image or settings.target_base_image,
+                        "command": json.loads(args.command),
+                        "test_command": json.loads(args.test_command),
+                        "contract": args.contract,
+                        "cycles": args.cycles,
+                        "context_budget": args.context_budget,
+                        "allow_remote_inference": args.allow_remote_inference,
+                    }
+                )
+            except ValueError:
+                parser.error(
+                    "Invalid project settings. Use JSON argv arrays and valid cycle/context limits."
+                )
+            return asyncio.run(
+                cli_runner(None, args.output_dir or Path("reports"), args.profile, project=spec)
+            )
+        uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
         return 0
     except KeyboardInterrupt:
         print("Interrupted; cleanup was requested.", file=sys.stderr)

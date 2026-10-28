@@ -3,6 +3,7 @@
 """Resource-scoped Docker execution. Never run fixture or model code on the host."""
 
 import io
+import re
 import tarfile
 import uuid
 from dataclasses import dataclass
@@ -10,9 +11,17 @@ from pathlib import PurePosixPath
 
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.types import LogConfig
+from requests.exceptions import ReadTimeout
 
 import docker
 from config import PurpleBoxConfig
+from projects import (
+    MAX_PROJECT_BYTES,
+    MAX_PROJECT_FILE_BYTES,
+    MAX_PROJECT_FILES,
+    ProjectSnapshot,
+    ProjectSpec,
+)
 from registry import BASE_DIR, Target
 
 
@@ -30,6 +39,14 @@ class VerificationResult:
         return self.exit_code not in (0, 1)
 
 
+@dataclass(frozen=True)
+class ProjectCheckResult:
+    exit_code: int | None
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+
+
 READY_SCRIPT = """
 import sys, time, urllib.request, urllib.error
 for attempt in range(25):
@@ -42,6 +59,11 @@ for attempt in range(25):
         time.sleep(0.2)
 sys.exit(2)
 """
+
+_SECRET_ENV_NAME = re.compile(
+    r"(?:^|_)(?:API_?KEY|AUTH|CREDENTIALS?|PASS(?:WORD|WD)?|PRIVATE_?KEY|SECRET|TOKEN)(?:_|$)",
+    re.IGNORECASE,
+)
 
 
 def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
@@ -195,12 +217,70 @@ class DockerSandboxManager:
             archive.addfile(entry, io.BytesIO(data))
         return stream.getvalue()
 
+    @staticmethod
+    def _create_project_tar(snapshot: ProjectSnapshot) -> bytes:
+        if not snapshot.files or len(snapshot.files) > MAX_PROJECT_FILES:
+            raise ValueError(
+                f"Project snapshot must contain between 1 and {MAX_PROJECT_FILES} files."
+            )
+        if snapshot.files.keys() != snapshot.metadata.keys():
+            raise ValueError("Project snapshot metadata does not match its files.")
+        if sum(len(content) for content in snapshot.files.values()) > MAX_PROJECT_BYTES:
+            raise ValueError(f"Project snapshot exceeds {MAX_PROJECT_BYTES} bytes.")
+
+        directories: set[PurePosixPath] = set()
+        validated: list[tuple[str, bytes, int]] = []
+        for filename in sorted(snapshot.files):
+            path = PurePosixPath(filename)
+            content = snapshot.files[filename]
+            metadata = snapshot.metadata[filename]
+            if (
+                not filename
+                or path.is_absolute()
+                or filename != path.as_posix()
+                or any(part in ("", ".", "..") for part in path.parts)
+                or "\\" in filename
+            ):
+                raise ValueError("Project archive paths must be safe relative POSIX paths.")
+            if not isinstance(content, bytes) or len(content) > MAX_PROJECT_FILE_BYTES:
+                raise ValueError(
+                    f"Project archive files must be bytes no larger than "
+                    f"{MAX_PROJECT_FILE_BYTES} bytes."
+                )
+            if metadata.size != len(content) or metadata.mode not in (0o644, 0o755):
+                raise ValueError("Project archive metadata is invalid.")
+            parent = path.parent
+            while parent != PurePosixPath("."):
+                directories.add(parent)
+                parent = parent.parent
+            validated.append((filename, content, metadata.mode))
+
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as archive:
+            for directory in sorted(
+                directories, key=lambda item: (len(item.parts), item.as_posix())
+            ):
+                entry = tarfile.TarInfo(directory.as_posix())
+                entry.type = tarfile.DIRTYPE
+                entry.mode = 0o555
+                entry.uid = entry.gid = 10001
+                entry.mtime = 0
+                archive.addfile(entry)
+            for filename, content, mode in validated:
+                entry = tarfile.TarInfo(filename)
+                entry.size, entry.mode = len(content), mode
+                entry.uid = entry.gid = 10001
+                entry.mtime = 0
+                archive.addfile(entry, io.BytesIO(content))
+        return stream.getvalue()
+
     def create_isolated_network(self):
         network = self.client.networks.create(
             name=f"{self.config.network_prefix}_{self.session_id[:12]}",
             driver="bridge",
             internal=True,
             enable_ipv6=False,
+            options={"com.docker.network.bridge.gateway_mode_ipv4": "isolated"},
             labels={"purplebox.session": self.session_id},
         )
         self.networks.append(network)
@@ -229,20 +309,37 @@ class DockerSandboxManager:
         finally:
             stage.remove(force=True)
 
-    def _runtime(self, image: str, network, role: str, command: list[str]):
+    def _runtime(
+        self,
+        image: str,
+        network,
+        role: str,
+        command: list[str],
+        *,
+        aliases: list[str] | None = None,
+        clear_entrypoint: bool = False,
+    ):
+        if aliases is None:
+            aliases = ["target-service"] if role == "target" else []
         endpoints = {
             network.name: self.client.api.create_endpoint_config(
-                aliases=["target-service"] if role == "target" else [],
+                aliases=aliases,
             )
         }
+        options = {
+            "command": command,
+            "network": network.name,
+            "networking_config": endpoints,
+            "read_only": True,
+            "healthcheck": {"test": ["NONE"]},
+            "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001"},
+            **self._options(role),
+        }
+        if clear_entrypoint:
+            options["entrypoint"] = []
         container = self.client.containers.create(
             image,
-            command=command,
-            network=network.name,
-            networking_config=endpoints,
-            read_only=True,
-            tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001"},
-            **self._options(role),
+            **options,
         )
         self.containers.append(container)
         container.start()
@@ -295,6 +392,158 @@ class DockerSandboxManager:
         finally:
             if container is not None:
                 container.remove(force=True)
+
+    def _require_preloaded_image(self, image: str) -> None:
+        try:
+            loaded = self.client.images.get(image)
+        except ImageNotFound as exc:
+            raise SandboxError(
+                f"Project image {image!r} is not preloaded; PurpleBox never pulls or builds it."
+            ) from exc
+        config = loaded.attrs.get("Config") or {}
+        if config.get("Volumes"):
+            raise SandboxError(
+                f"Project image {image!r} declares volumes, which could create host-side storage."
+            )
+        inherited_env = config.get("Env") or []
+        secret_names = []
+        for item in inherited_env:
+            name = item.partition("=")[0]
+            if _SECRET_ENV_NAME.search(name):
+                secret_names.append(name)
+        if secret_names:
+            raise SandboxError(
+                f"Project image {image!r} embeds secret-like environment variables: "
+                f"{', '.join(sorted(secret_names))}."
+            )
+
+    def _snapshot_project_image(
+        self,
+        base: str,
+        snapshot: ProjectSnapshot,
+        role: str,
+        *,
+        verifier_script: str | None = None,
+    ) -> str:
+        self._require_preloaded_image(base)
+        source_archive = self._create_project_tar(snapshot)
+        script_archive = (
+            self._create_tar_bytes("verify.py", verifier_script)
+            if verifier_script is not None
+            else None
+        )
+        stage = self.client.containers.create(
+            base,
+            command=["true"],
+            network_mode="none",
+            entrypoint=[],
+            healthcheck={"test": ["NONE"]},
+            **self._options(role),
+        )
+        self.containers.append(stage)
+        try:
+            if not stage.put_archive("/workspace", source_archive):
+                raise SandboxError("Docker rejected the project source archive.")
+            if script_archive is not None and not stage.put_archive("/verifier", script_archive):
+                raise SandboxError("Docker rejected the verifier archive.")
+            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+            image_name = f"{self.config.clone_repo_prefix}:{tag}"
+            self.images.append(image_name)
+            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            return image_name
+        finally:
+            stage.remove(force=True)
+
+    def start_project(self, network, spec: ProjectSpec, snapshot: ProjectSnapshot):
+        """Start one fresh target from a committed in-memory source snapshot."""
+        image = self._snapshot_project_image(spec.image, snapshot, "target")
+        container = self._runtime(
+            image,
+            network,
+            "target",
+            list(spec.command),
+            clear_entrypoint=True,
+        )
+        return container, image
+
+    @staticmethod
+    def _bounded_logs(container) -> tuple[str, str]:
+        stdout = container.logs(stdout=True, stderr=False, tail=200)
+        stderr = container.logs(stdout=False, stderr=True, tail=200)
+        return (
+            stdout.decode("utf-8", errors="replace")[-16_384:].strip(),
+            stderr.decode("utf-8", errors="replace")[-16_384:].strip(),
+        )
+
+    def run_project_check(
+        self,
+        network,
+        spec: ProjectSpec,
+        snapshot: ProjectSnapshot,
+        *,
+        command: list[str] | None = None,
+        script: str | None = None,
+    ) -> ProjectCheckResult:
+        """Run a disposable regression command or Python verifier against a snapshot."""
+        if command is not None and script is not None:
+            raise ValueError("Provide either a project command or a verifier script, not both.")
+        if command is None and script is None:
+            command = list(spec.test_command)
+        if command is not None and not command:
+            raise ValueError("Project check command must not be empty.")
+
+        if script is not None:
+            try:
+                compile(script, "verify.py", "exec")
+            except (SyntaxError, ValueError) as exc:
+                raise SandboxError("Verifier is not valid Python.") from exc
+            image = self._snapshot_project_image(
+                self.config.verifier_base_image,
+                snapshot,
+                "verifier",
+                verifier_script=script,
+            )
+            role = "verifier"
+            runtime_command = ["python3", "/verifier/runner.py"]
+        else:
+            image = self._snapshot_project_image(spec.image, snapshot, "test")
+            role = "test"
+            runtime_command = list(command or ())
+
+        container = None
+        try:
+            container = self._runtime(
+                image,
+                network,
+                role,
+                runtime_command,
+                aliases=[],
+                clear_entrypoint=True,
+            )
+            try:
+                status = container.wait(timeout=self.config.verifier_timeout_seconds)
+            except (TimeoutError, ReadTimeout):
+                stdout, stderr = self._bounded_logs(container)
+                return ProjectCheckResult(None, stdout, stderr, timed_out=True)
+            except Exception as exc:
+                raise SandboxError("Project check failed before producing a result.") from exc
+            stdout, stderr = self._bounded_logs(container)
+            return ProjectCheckResult(int(status["StatusCode"]), stdout, stderr)
+        finally:
+            if container is not None:
+                container.remove(force=True)
+                if container in self.containers:
+                    self.containers.remove(container)
+
+    def stop_project(self, container) -> None:
+        """Force-remove a project target, including during workflow cancellation."""
+        try:
+            container.remove(force=True)
+        except NotFound:
+            pass
+        finally:
+            if container in self.containers:
+                self.containers.remove(container)
 
     def close(self) -> None:
         failures = []

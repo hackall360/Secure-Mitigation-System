@@ -23,3 +23,9 @@ validation commands, entry points, and local-state caveats.
 
 For current setup commands, Docker rebuild/cleanup rules, and environment traps,
 see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Arbitrary local projects use `projects.py`, `project_agents.py`, and
+`project_workflow.py`, separate from the fixture workflow. See
+[docs/PROJECTS.md](docs/PROJECTS.md) for snapshot/runtime constraints and
+[docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for evidence and context rules.
+Local Muse serving is an explicit loopback-only opt-in, never a fallback provider.

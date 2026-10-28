@@ -49,6 +49,9 @@ live checks unless requested. Unit tests are not proof of live integration.
 - `config.py`: environment-driven Muse endpoint, model, and timeout configuration.
 - `agents.py`: `MetaMuseClient` and model response schemas.
 - `workflow.py`: scan orchestration.
+- `projects.py`: strict project execution settings and immutable bounded source intake.
+- `project_agents.py`: stateless red/blue stage schemas and source batching.
+- `project_workflow.py`: repeated project review, proof, sanitization, rollback, and reporting.
 - `docker_manager.py`: `DockerSandboxManager` and sandbox lifecycle.
 - `registry.py` and `targets/`: bundled target definitions and source fixtures.
 - `tests/`: isolated unit tests, configured by `pyproject.toml`.
@@ -64,3 +67,23 @@ and `AGENT.md` for maintenance constraints.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for the maintained environment and Docker
 setup guide. Import validation above is historical, not the latest setup status.
+
+## Arbitrary local projects
+
+Read [PROJECTS.md](PROJECTS.md) and [PROJECT_WORKFLOW.md](PROJECT_WORKFLOW.md)
+before changing the project execution path. The fixture APIs remain compatible.
+`main.py` shares one per-process scan lock across `/ws/project` and
+`/ws/combat/{target_key}`. Project settings are the first bounded JSON WebSocket
+message, never query parameters. Both endpoints enforce exact same-origin checks,
+and disconnection cancels the workflow while awaiting Docker cleanup.
+
+`config.PurpleBoxConfig.inference_mode` is gated by `PURPLEBOX_INFERENCE_MODE`.
+Hosted remains default. Local mode allows only literal `127.0.0.1` and `::1`
+HTTP(S) endpoints, bypasses the hosted-key requirement, and does not relax the
+Muse model lock. HTTPX retains `trust_env=False` and `follow_redirects=False`.
+Model server provenance and forwarding cannot be attested by an endpoint URL.
+
+Trap: `.env` is not automatically loaded. Also, a Docker internal bridge normally
+has a host bridge address. `gateway_mode_ipv4=isolated` is required for the new
+project path, not merely `internal=True`. Neither setting replaces a VM boundary.
+See [Docker gateway modes](https://docs.docker.com/engine/network/port-publishing/).

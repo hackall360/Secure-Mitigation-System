@@ -3,13 +3,14 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-Local input-boundary verification and sanitization scaffolding for the supplied
-**PurpleBox specification**. A FastAPI dashboard and CLI share one workflow:
-baseline checks → Muse analysis → isolated boundary probe → guarded candidate patch
-→ normal-input regression checks → repeat the same boundary probe → cleanup.
+Pre-production security mitigation for the **Meta Global AI Developer Hackathon**.
+Scan a local source repository through the CLI or dashboard, not just the three
+bundled demonstrations. Each cycle separates **red discovery and proof → blue
+sanitization proposal → red re-verification → blue final report**. Repeated cycles
+carry forward verified candidate changes inside the sandbox, never into your source tree.
 
-This is an initial, runnable implementation for **three bundled fixtures**. It is not
-an arbitrary-repository scanner or a production security boundary.
+This is a defensive review tool, not a proof of security or a VM-grade boundary
+for actively hostile code. Review every candidate patch before applying it.
 
 ## Development setup
 
@@ -67,6 +68,63 @@ folder with `report.json` and, when available, `candidate.patch`. The UI also ex
 a JSON report. Reports can contain source code, model output, and candidate patches.
 Original fixture files are never overwritten by a scan.
 
+## Scan your own repository
+
+Use an existing local checkout. PurpleBox deliberately does not clone URLs, execute
+Git hooks, run repository Dockerfiles, or download dependencies during a scan.
+Prepare a trusted runtime image with the required tools and dependencies beforehand.
+The bundled target image provides Python, Node.js, and PHP, not every framework.
+Commands are JSON argv arrays executed **only inside containers**, from `/workspace`.
+Your start command must keep the target running. Supply meaningful regression tests
+and an expected-behavior contract so a blocked probe cannot earn credit by breaking the app.
+
+```bash
+python main.py --project /absolute/path/to/checkout \
+  --image my-prepared-runtime:latest \
+  --command '["python3", "app.py"]' \
+  --test-command '["python3", "-m", "unittest", "discover"]' \
+  --contract 'Preserve routes, successful responses, and business logic. Only harden untrusted inputs.' \
+  --cycles 3 --context-budget 32768 \
+  --allow-remote-inference --output-dir reports
+```
+
+The default is **one cycle**, with a maximum of 20. The dashboard's **Local project**
+mode accepts the same settings. Paths refer to the server's local filesystem.
+Each CLI project run creates a private report directory with evidence and a
+cumulative candidate diff. UI reports and patches can be downloaded separately.
+The original checkout is read-only to PurpleBox and is never mounted into containers.
+To continue on a later run, review/apply the exported patch yourself and scan that
+checkout again. No hidden conversation or cross-run state is reused.
+
+See [project intake and runtime requirements](docs/PROJECTS.md) and
+[workflow, evidence, and context limits](docs/PROJECT_WORKFLOW.md).
+
+### Private and offline operation
+
+**Hosted mode sends selected source and evidence to the configured Muse endpoint.**
+It requires the explicit `--allow-remote-inference` flag or dashboard consent.
+Filename-based secret exclusions are a precaution, not a secret scanner. Audit your
+source before authorizing hosted inference. Reports can contain sensitive code.
+
+For offline inference, run an operator-provided **Muse-compatible local server**
+before starting PurpleBox, with models, runtime images, and dependencies already
+available. PurpleBox does not install or download a model server:
+
+```bash
+export PURPLEBOX_INFERENCE_MODE=local
+export META_MUSE_BASE_URL=http://127.0.0.1:8081/v1
+export META_MUSE_RED_MODEL=meta-models/muse-spark-open-1026
+export META_MUSE_BLUE_MODEL=meta-models/muse-spark-open-1026
+python main.py --serve
+```
+
+Local mode permits only literal `127.0.0.1` or `[::1]` endpoints, does not require
+an API key or remote-source consent, and never falls back to hosted inference.
+The dashboard automatically hides hosted consent and enables local scans without a key. It still uses `MetaMuseClient`
+and the Muse model allowlist. The operator must ensure the local server actually
+serves Muse and does not forward requests externally. No real local Muse serving
+deployment is bundled or attested by the endpoint check.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -79,6 +137,7 @@ Original fixture files are never overwritten by a scan.
 | `META_MUSE_MAX_TOKENS` | `32768` | Output budget, 1024–131072. **Reasoning tokens count toward it.** 8192 truncated real responses |
 | `META_MUSE_REASONING_EFFORT` | unset | Optional `minimal`/`low`/`medium`/`high`/`xhigh`/`max`. Unset uses the model's default. `none` is rejected by Muse |
 | `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS` | `20` | Per-verifier execution limit, 1–120 seconds |
+| `PURPLEBOX_INFERENCE_MODE` | `hosted` | `hosted` requires a key and consent for project source. `local` restricts inference to a literal loopback endpoint |
 
 All inference goes through `agents.MetaMuseClient`. The transport is HTTPX against
 Meta's compatible `/chat/completions` endpoint, with strict Pydantic response validation,
@@ -105,6 +164,9 @@ The original `SPEC.md` and requested `AGENT.md` template are retained for refere
 | CLI + FastAPI | Shared asynchronous workflow, localhost binding, one active UI scan per process |
 | Dashboard | Offline assets, split red/blue traces, session activity, cancel, report download |
 | Three fixtures | Node dynamic-expression sink, PHP local command argument, MySQL config audit |
+| Local projects | Bounded immutable snapshots, user-supplied offline runtime and regression commands, multi-file candidate patches |
+| Repeated red/blue cycles | Fresh role contexts, structured handoffs, original-probe rechecks, rollback of failed candidates, final patch reports |
+| Large-project context | Explicit bounded source batches and coverage records instead of one growing conversation |
 | Docker lifecycle | Two pre-built images; separate target/verifier containers; immutable per-session snapshots |
 | Resource controls | Non-root user, dropped capabilities, no-new-privileges, CPU/RAM/PID caps, read-only runtime roots, bounded `/tmp` |
 | Patch guard | Required notices, small-diff budget, protected-line preservation, exact MySQL edit allowlist |
@@ -129,7 +191,8 @@ staging containers, runtimes, and networks are removed after a scan.
 Docker `internal=True` blocks normal external routing but **does not guarantee that
 host gateway services are unreachable**. Containers also share the host kernel. See
 [Docker's internal-network documentation](https://docs.docker.com/reference/cli/docker/network/create/#network-internal-mode---internal).
-Use a disposable VM or stronger sandbox before extending this scaffold to hostile
+Project networks additionally require Docker's isolated gateway mode to avoid assigning
+a host bridge address. Use a disposable VM or stronger sandbox for hostile
 repositories. No claim of complete air-gapping, sub-second startup, or measured
 performance is made.
 
@@ -200,9 +263,9 @@ purplebox/
   tests/                 Unit and API tests
 ```
 
-Next development steps: language-aware patch validation; explicit supported project
-manifests and dependency preparation for real repositories; stronger host isolation;
-and a measured live demo with your Muse account. Distributed queues, webhook/CI
+Next development steps: language-aware semantic patch validation, more runtime
+adapters, stronger host isolation, and a measured live demo with your Muse account.
+Distributed queues, webhook/CI
 automation, automatic host-source patching, and cross-scan snapshot caches are outside
 this initial scaffold.
 
