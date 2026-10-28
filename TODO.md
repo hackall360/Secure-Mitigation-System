@@ -57,8 +57,8 @@ Done — see the B-section entries above (all five live in `scanner_binaries.py`
       (off default, allowlist-validated), `--research` + `--research-scanners`.
 - [x] G3. Dashboard: `research` team in comms feed + filter button + tag color
       (G3 panel counts deferred — records already on ScanResult).
-- [ ] G4. Full gate (245+ tests), commit on develop, push, merge to main,
-      push, return to develop.
+- [x] G4. Full gate (262 passed), shipped develop `7786c48` -> main `454a14f`,
+      pushed both, returned to develop.
 
 ## Scanner docs (G1)
 
