@@ -146,3 +146,69 @@ def test_absent_binaries_degrade_to_empty():
     # malformed payloads never raise
     assert sb.parse_trivy_report({}) == []
     assert sb.parse_grype_report([]) == []
+
+
+def test_cve_records_series_never_raises_and_dedupes(monkeypatch):
+    """I3: the CVE series fans out per id, dedupes, and never raises."""
+    import research as _research
+
+    def fake_circl(cve):
+        return _research.ResearchRecord(source="circl", cve_id=cve, title="t", summary="s")
+
+    def fake_osv(cve):
+        raise RuntimeError("osv down")
+
+    def fake_epss(cve):
+        return _research.ResearchRecord(source="epss", cve_id=cve, title="e", summary="s")
+
+    monkeypatch.setattr(_research, "circl_lookup", fake_circl)
+    monkeypatch.setattr(_research, "osv_lookup", fake_osv)
+    monkeypatch.setattr(_research, "epss_score", fake_epss)
+    monkeypatch.setattr(_research, "ghsa_search", lambda package: [])
+    recs = _research.cve_records(["CVE-2024-3094", "bogus!!", "CVE-2024-3094"])
+    assert [r.source for r in recs] == ["circl", "epss"]
+    assert all(r.cve_id == "CVE-2024-3094" for r in recs)
+
+
+def test_cve_records_empty_for_no_valid_ids():
+    import research as _research
+
+    assert _research.cve_records([]) == []
+    assert _research.cve_records(["not-a-cve"]) == []
+
+
+def test_web_notes_canned_search_plus_extract(monkeypatch):
+    """I4: web notes use search hits + intro extracts, dedupe, never raise."""
+    import research as _research
+
+    calls = []
+
+    def fake_get(url, *, params=None, headers=None):
+        calls.append(params)
+        if params.get("list") == "search":
+            return {
+                "query": {
+                    "search": [
+                        {"title": "SQL injection", "snippet": "bad <b>query</b>"},
+                    ]
+                }
+            }
+        return {"query": {"pages": {"1": {"extract": "Intro text here."}}}}
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    recs = _research.web_notes(["sql injection", "x"])
+    assert len(recs) == 1
+    assert recs[0].source == "web"
+    assert recs[0].title == "SQL injection"
+    assert recs[0].summary == "Intro text here."
+    assert recs[0].extra == {"query": "sql injection"}
+
+
+def test_web_notes_transport_failure_degrades_to_empty(monkeypatch):
+    import research as _research
+
+    monkeypatch.setattr(
+        _research, "_get_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
+    )
+    assert _research.web_notes(["sql injection"]) == []
+    assert _research.web_notes([]) == []

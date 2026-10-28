@@ -317,3 +317,12 @@ def test_dashboard_research_toggles_exist_and_default_off():
     assert "Opt-in keyless lookups" in markup
     assert "Off by default" in markup
     assert "Docker evidence still decides" in markup
+
+
+def test_demo_build_prompts_for_brief_and_vulns():
+    markup = INDEX.read_text()
+    assert 'id="demo-build-brief"' in markup
+    assert "What do you want to build?" in markup
+    assert 'id="demo-vulns"' in markup
+    assert "Vulnerabilities to implement" in markup
+    assert "CVEs, named types, or free text" in markup

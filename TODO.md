@@ -1,7 +1,8 @@
 # TODO — Secure Mitigation System
 
 Owner: Jcode agent. This file is the work queue. Check items off as they land.
-Conventions: `[ ]` open, `[x]` done. Every item names its files and its proof.
+Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
+Every item names its files and its proof.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
@@ -100,3 +101,39 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       backoff, 1 MiB caps, never-raises, committed `e827a8b`, merged to main.
 - [x] Browser matrix: `--browser auto|chrome|chromium|edge|brave|firefox`
       in `ui_scan.py`, committed `175ad12`, merged to main.
+
+## I. Green intent + web/CVE research depth (brief 2026-10-28-laws-green-research)
+
+- [x] I1. Green builder: "What do you want to build?" + "Vulnerabilities to
+      implement" dashboard prompts (CVE ids, named types, or free text).
+      Files: `static/index.html`, `static/app.js`, `main.py` (`run_demo_build`).
+      Proof: `test_demo_build_prompts_for_brief_and_vulns` +
+      `test_demo_request_accepts_brief_and_vulns_fields`.
+- [x] I2. Intent interpreter: green/research agents parse the vuln field into
+      CVE ids vs named types vs free text and plan research accordingly.
+      Files: `demo_gen.py` (new `parse_build_intent`), tests.
+      Proof: `test_parse_build_intent_splits_cve_named_free` et al.
+- [x] I3. CVE endpoint series for green/research: `cve_records` in
+      `research.py` fans each CVE id out to CIRCL + OSV + EPSS (+ GHSA by id),
+      keyless, never-raises, deduped. Live probe: CVE-2024-3094 returned
+      circl+osv+epss(0.909). Green builder calls it when intent has CVE ids.
+      Files: `research.py`, `main.py`, `tests/test_scanners.py`.
+      Proof: `test_cve_records_series_never_raises_and_dedupes` (+ live probe).
+- [x] I4. Real web search for green/research: `web_notes` in `research.py`
+      uses the Wikipedia JSON API only (search + intro extracts — no HTML
+      scraping, no bot wars), same pacing/backoff/caps/never-raises discipline.
+      Green builder calls it for named types + free text. Live probe: "SQL
+      injection" returned its definition extract.
+      Files: `research.py`, `main.py`, `tests/test_scanners.py`.
+      Proof: `test_web_notes_canned_search_plus_extract` (+ live probe).
+- [x] I5. Green prompt upgrade: Greenhouse system prompt consumes build
+      intent + CVE records + web notes and implements the requested flaws.
+      Files: `demo_gen.py` (`DEMO_GEN_SYSTEM_PROMPT` + payload), tests.
+      Proof: `test_generate_demo_project_carries_intent_into_payload`.
+- [x] I6. Research sidecar upgrade: `_gather_research` runs the contract
+      through `parse_build_intent` — CVE ids get the `cve_records` series,
+      substantive named types/descriptive text get `web_notes`; both land in
+      records + digests. Files: `workflow.py`, `tests/test_workflow.py`.
+      Proof: `test_research_gather_adds_cve_and_web_records`.
+- [ ] I7. Small features that fall out: keep each cheap, tested, shippable
+      (record here as they land).

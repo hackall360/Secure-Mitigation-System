@@ -57,7 +57,9 @@
           <select id="target-select" class="visually-hidden" tabindex="-1" aria-hidden="true" disabled></select>
         </div>
         <div id="demo-build-config" hidden>
-          <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Space-separated threat-intel keywords. Greenhouse grows a novel demo around them; red and blue then run it.</small></div>
+          <div class="field wide"><label for="demo-build-brief">What do you want to build?</label><input id="demo-build-brief" name="build_brief" maxlength="500" autocomplete="off" placeholder="a tiny note-taking web app with login"><small>Plain words. Greenhouse designs a small self-contained demo around it; red and blue then run it in Docker.</small></div>
+          <div class="field wide"><label for="demo-vulns">Vulnerabilities to implement</label><input id="demo-vulns" name="vulns" maxlength="500" autocomplete="off" placeholder="CVE-2024-3094, SQL injection, header reflection"><small>CVEs, named types, or free text — comma separated. Green + research look each one up (CVE records, threat intel, web) and build the requested flaws.</small></div>
+          <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Optional extra keywords. Combined with the brief and vulnerabilities above.</small></div>
         </div>
         <form id="project-form" class="project-form" hidden novalidate>
           <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>

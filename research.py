@@ -115,7 +115,7 @@ def _post_json(url: str, payload: dict, *, timeout: float = 20.0, tries: int = 3
 class ResearchRecord:
     """One grounded intel item. Data only — never instructions."""
 
-    source: str  # osv | circl | ghsa | epss | nvd
+    source: str  # osv | circl | ghsa | epss | nvd | web
     cve_id: str = ""
     title: str = ""
     summary: str = ""  # truncated to 1500 chars at construction
@@ -310,6 +310,115 @@ def epss_score(cve_id: str) -> ResearchRecord | None:
         summary=f"Exploit-prediction score {row.get('epss')} dated {row.get('date', '')}.",
         extra={"epss": str(row.get("epss", "")), "percentile": str(row.get("percentile", ""))},
     )
+
+
+def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
+    """CVE endpoint series for one or more CVE ids: CIRCL + OSV + EPSS + GHSA.
+
+    Keyless and never-raises: each id fans out to the bot-tolerant CVE
+    endpoints (CIRCL record, OSV aliases, EPSS score), plus a GHSA lookup by
+    the id. Failures degrade to fewer records. This is the series the green
+    builder and research sidecars call with parsed user intent.
+    """
+    found: list[ResearchRecord] = []
+    seen: set[str] = set()
+
+    def add(records: list[ResearchRecord | None]) -> None:
+        for rec in records:
+            if rec is None:
+                continue
+            key = f"{rec.source}:{rec.cve_id or rec.title}"
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(rec)
+
+    for raw in list(cve_ids)[:8]:
+        cve = str(raw or "").strip().upper()[:32]
+        if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", cve):
+            continue
+        for fetch in (circl_lookup, osv_lookup):
+            try:
+                add([fetch(cve)])
+            except Exception:
+                continue
+        try:
+            add([epss_score(cve)])
+        except Exception:
+            pass
+        try:
+            add([r for r in ghsa_search(cve) if r.cve_id.upper() == cve][:2])
+        except Exception:
+            pass
+    return found[:24]
+
+
+def web_notes(queries: Sequence[str], *, per_query: int = 3) -> list[ResearchRecord]:
+    """Web context for named vuln types + free text: Wikipedia JSON API only.
+
+    No HTML scraping, no search-engine bot wars: first-party MediaWiki JSON
+    (search + intro extracts), same pacing/backoff/caps discipline as the CVE
+    endpoints. Returns definition-style records so green/research agents know
+    what a named vuln means. Never raises: failures degrade to [].
+    """
+    found: list[ResearchRecord] = []
+    seen: set[str] = set()
+    for raw in list(queries)[:6]:
+        query = " ".join(str(raw or "").split())[:128]
+        if len(query) < 3:
+            continue
+        try:
+            payload = _get_json(
+                "https://en.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": str(max(1, min(per_query, 5))),
+                },
+            )
+        except RuntimeError:
+            continue
+        hits = ((payload or {}).get("query") or {}).get("search") or []
+        for hit in hits[:per_query]:
+            if not isinstance(hit, dict):
+                continue
+            title = str(hit.get("title") or "")[:256]
+            if not title or title.lower() in seen:
+                continue
+            seen.add(title.lower())
+            snippet = re.sub(r"<[^>]+>", " ", str(hit.get("snippet") or ""))
+            snippet = " ".join(snippet.split())[:600]
+            try:
+                detail = _get_json(
+                    "https://en.wikipedia.org/w/api.php",
+                    params={
+                        "action": "query",
+                        "prop": "extracts",
+                        "exintro": "1",
+                        "explaintext": "1",
+                        "titles": title,
+                        "format": "json",
+                    },
+                )
+                pages = ((detail or {}).get("query") or {}).get("pages") or {}
+                first = next(iter(pages.values()), {})
+                extract = (
+                    " ".join(str((first or {}).get("extract") or "").split())[:1500]
+                )
+            except RuntimeError:
+                extract = ""
+            found.append(
+                ResearchRecord(
+                    source="web",
+                    cve_id="",
+                    title=title,
+                    summary=extract or snippet,
+                    extra={"query": query},
+                )
+            )
+    return found[:12]
 
 
 def research_for_sink(
