@@ -19,9 +19,9 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Annotated, Any, Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from projects import ProjectSpec
 from sms_budget import check_payload_budget
@@ -42,13 +42,27 @@ Rules:
 """
 
 
+# Shared item constraints: strip padding, then reject blank/oversize entries
+# so one padded or empty entry cannot slip into the generated project spec.
+NoteStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+CveIdStr = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=24, pattern=r"(?i)^CVE-\d{4}-\d{4,7}$"
+    ),
+]
+IntentItemStr = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+
+
 class DemoProjectFiles(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     app_py: str = Field(min_length=1, max_length=12_288)
     test_contract_py: str = Field(min_length=1, max_length=12_288)
     contract: str = Field(min_length=1, max_length=4096)
-    flaw_notes: list[str] = Field(default_factory=list, max_length=8)
-    cve_inspiration: list[str] = Field(default_factory=list, max_length=8)
+    flaw_notes: list[NoteStr] = Field(default_factory=list, max_length=8)
+    cve_inspiration: list[CveIdStr] = Field(default_factory=list, max_length=8)
 
 
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -105,12 +119,20 @@ class BuildIntent(BaseModel):
     web search. build_brief + themes describe the demo app itself.
     """
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     build_brief: str = Field(default="", max_length=500)
-    themes: list[str] = Field(default_factory=list, max_length=8)
-    cve_ids: list[str] = Field(default_factory=list, max_length=8)
-    named_types: list[str] = Field(default_factory=list, max_length=8)
-    free_text: list[str] = Field(default_factory=list, max_length=8)
+    themes: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+    cve_ids: list[CveIdStr] = Field(default_factory=list, max_length=8)
+    named_types: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+    free_text: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+
+    @field_validator("cve_ids", mode="before")
+    @classmethod
+    def _upper_cve_ids(cls, value: Any) -> Any:
+        """Normalize CVE ids to canonical upper case before strict checks run."""
+        if isinstance(value, list):
+            return [item.upper() if isinstance(item, str) else item for item in value]
+        return value
 
     @property
     def vulns(self) -> list[str]:
@@ -126,7 +148,9 @@ def parse_build_intent(*, build_brief: str = "", vulns: str = "", theme: str = "
     web search. Duplicates collapse, order preserved, everything bounded.
     """
     brief = " ".join(str(build_brief or "").split())[:500]
-    themes = [w for w in str(theme or "").split() if w][:6]
+    collapsed_theme = " ".join((str(theme or "")).split())[:120]
+    theme_words = [w for w in collapsed_theme.split() if w][:6]
+    theme_words = [w[:120] for w in theme_words if w[:120]]
     raw_parts = [p.strip() for p in str(vulns or "").replace(";", ",").split(",")]
     cve_ids: list[str] = []
     named_types: list[str] = []
@@ -159,7 +183,7 @@ def parse_build_intent(*, build_brief: str = "", vulns: str = "", theme: str = "
                 free_text.append(clean)
     return BuildIntent(
         build_brief=brief,
-        themes=themes,
+        themes=theme_words,
         cve_ids=cve_ids,
         named_types=named_types,
         free_text=free_text,
