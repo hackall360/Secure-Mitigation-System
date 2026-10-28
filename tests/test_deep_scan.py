@@ -378,7 +378,7 @@ def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
     from project_agents import RedReport
     from project_workflow import EXPLOIT_REDACTED, redact_report_for_user
 
-    report = RedReport(
+    RedReport(
         outcome="finding",
         vulnerability="SQLi class",
         affected_paths=["src/app.py"],
