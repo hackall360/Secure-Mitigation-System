@@ -1,0 +1,6 @@
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+-r requirements.txt
+pytest==9.2.0
+pytest-asyncio==1.4.1
+ruff==0.17.3

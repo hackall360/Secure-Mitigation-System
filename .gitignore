@@ -218,3 +218,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Imported PurpleBox scaffold rules
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+reports/
+*.egg-info/
+dist/
+
+# Local secrets stay private. Only sanitized templates belong in Git.
+.env
+.env.*
+!.env.example
+!example.env
