@@ -242,7 +242,13 @@ hackathon credit partners, and only Baseten/Modal/api.meta.ai hosts pass `config
 The model allowlist in `PurpleBoxConfig.validate()` accepts `muse-spark-*`, `muse-wonder-*`
 and `meta-models/muse-spark-open[-suffix]`. Nothing else under `meta-models/` is accepted.
 Verified: a no-key POST to Baseten `.../v1/chat/completions` returns HTTP 403 (endpoint
-real, auth required). A real completion is still unverified without a key.
+real, auth required). **A real `-1026` completion is still unverified**: the user's key is
+a Meta Model API key (`llm...`). Baseten rejects it ("please check the api-key you
+provided"), and `api.meta.ai` returns 404 `model_not_found` for `meta-models/muse-spark-open-1026`.
+Its `/v1/models` lists only muse-wonder-1.0, muse-spark-1.1/1.2/1.3 (+contributor),
+muse-image-1.0, sam-3.1 and muse-voice-transcribe-1.0. Running `-1026` needs a
+Baseten (or other provider) key. The user's local `.env` was therefore left on the
+working Meta configuration.
 
 Trap: `test_key_only_required_for_inference` read the developer's real environment.
 After `source .env`, a non-default `META_MUSE_BASE_URL` would fail it. It now clears all
@@ -250,3 +256,21 @@ After `source .env`, a non-default `META_MUSE_BASE_URL` would fail it. It now cl
 
 Trap: an existing local `.env` keeps its old values. Setup never overwrites it, so
 update `META_MUSE_BASE_URL` and both model lines by hand (copy from `example.env`).
+
+## First real end-to-end scan (2026-10-28)
+
+With the user's Meta key, `.env` set to `https://api.meta.ai/v1`, red `muse-spark-1.3`, blue `muse-wonder-1.0`:
+- `test_harness.py --api`: PASS (live red and blue responses match their schemas).
+- `main.py --scan node_query_sink`: exit 0, `verified`. Red found `new Function` injection
+  (payload `0 || "a"=="a"` returned 2 rows instead of 0). Blue added one line,
+  `if (!/^-?\d+$/.test(rawUserId)) { ...400... }`. Post-patch probe got 400 (exit 1),
+  normal-input regression passed, and 0 containers were left. Wall time about 75 s.
+
+Trap (root cause of the first live failure): Muse models **reason before answering, and
+reasoning tokens count toward `max_tokens`**. The red request used about 4k reasoning plus
+1.1k visible tokens. The scaffold's hard-coded `max_tokens: 8192` produced intermittent
+`finish_reason: "length"` with `content: null`, which surfaced as the vague "Muse returned
+an incomplete response". Now `META_MUSE_MAX_TOKENS` (default 32768, range 1024-131072) and
+optional `META_MUSE_REASONING_EFFORT` (minimal..max, `none` returns HTTP 400 on Muse) are
+configurable, and a `length` finish names the fix. Use `META_MUSE_TIMEOUT_SECONDS=180+`,
+because a blue request can take over 60 s.

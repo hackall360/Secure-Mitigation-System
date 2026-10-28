@@ -25,6 +25,8 @@ class PurpleBoxConfig:
     container_cpu_nano: int = 500_000_000
     network_prefix: str = "purplebox_isolated_net"
     api_timeout_seconds: float = 90.0
+    max_output_tokens: int = 32_768
+    reasoning_effort: str = ""
     verifier_timeout_seconds: int = 20
     docker_timeout_seconds: int = 30
     max_source_bytes: int = 65_536
@@ -60,6 +62,12 @@ class PurpleBoxConfig:
                     "Only Muse Spark/Wonder or meta-models/muse-spark-open IDs are supported. "
                     "Muse Code is a coding agent, not a model ID."
                 )
+        if not 1_024 <= self.max_output_tokens <= 131_072:
+            raise ConfigurationError("META_MUSE_MAX_TOKENS must be between 1024 and 131072.")
+        if self.reasoning_effort not in ("", "minimal", "low", "medium", "high", "xhigh", "max"):
+            raise ConfigurationError(
+                "META_MUSE_REASONING_EFFORT must be minimal, low, medium, high, xhigh, max, or unset."
+            )
         if not 1 <= self.api_timeout_seconds <= 300:
             raise ConfigurationError("META_MUSE_TIMEOUT_SECONDS must be between 1 and 300.")
         if not 1 <= self.verifier_timeout_seconds <= 120:
@@ -82,6 +90,8 @@ def load_config() -> PurpleBoxConfig:
                 "META_MUSE_BLUE_MODEL", "meta-models/muse-spark-open-1026"
             ).strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "90")),
+            max_output_tokens=int(os.getenv("META_MUSE_MAX_TOKENS", "32768")),
+            reasoning_effort=os.getenv("META_MUSE_REASONING_EFFORT", "").strip().lower(),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
         )
         config.validate()

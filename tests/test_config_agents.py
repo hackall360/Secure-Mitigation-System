@@ -158,3 +158,44 @@ def test_hackathon_defaults():
     assert config.meta_base_url == "https://inference.baseten.co/v1"
     assert config.red_team_model == config.blue_team_model == "meta-models/muse-spark-open-1026"
     config.validate()
+
+
+def _reply(finish, content):
+    return httpx.Response(
+        200, json={"choices": [{"finish_reason": finish, "message": {"content": content}}]}
+    )
+
+
+async def test_request_budget_and_optional_reasoning_effort():
+    seen = []
+
+    def handle(request):
+        seen.append(json.loads(request.content))
+        return _reply("stop", json.dumps(FINDING))
+
+    for effort in ("", "low"):
+        config = PurpleBoxConfig(meta_api_key="k", reasoning_effort=effort)
+        client = MetaMuseClient(config, transport=httpx.MockTransport(handle))
+        await client.run_red_team_analysis("app.js", "src")
+        await client.aclose()
+    assert seen[0]["max_tokens"] == 32_768 and "reasoning_effort" not in seen[0]
+    assert seen[1]["reasoning_effort"] == "low"
+
+
+async def test_truncated_reasoning_reports_token_budget():
+    client = MetaMuseClient(
+        PurpleBoxConfig(meta_api_key="k"),
+        transport=httpx.MockTransport(lambda request: _reply("length", None)),
+    )
+    with pytest.raises(AgentError, match="META_MUSE_MAX_TOKENS"):
+        await client.run_red_team_analysis("app.js", "src")
+    await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("max_output_tokens", 100), ("reasoning_effort", "none"), ("reasoning_effort", "x")],
+)
+def test_budget_and_effort_validation(field, value):
+    with pytest.raises(ConfigurationError):
+        replace(PurpleBoxConfig(), **{field: value}).validate()
