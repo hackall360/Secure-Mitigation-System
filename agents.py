@@ -52,6 +52,21 @@ class MetaMuseClient:
     async def aclose(self) -> None:
         await self.client.aclose()
 
+    def _body(self, model: str, system: str, payload: dict) -> dict:
+        # Muse models reason before answering, and reasoning tokens count toward
+        # max_tokens. A small budget truncates the JSON (finish_reason "length").
+        body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(payload)},
+            ],
+            "max_tokens": self.config.max_output_tokens,
+        }
+        if self.config.reasoning_effort:
+            body["reasoning_effort"] = self.config.reasoning_effort
+        return body
+
     async def _request(
         self, model: str, system: str, payload: dict, schema: type[ResponseModel]
     ) -> ResponseModel:
@@ -59,14 +74,7 @@ class MetaMuseClient:
             async with self.client.stream(
                 "POST",
                 "chat/completions",
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps(payload)},
-                    ],
-                    "max_tokens": 8192,
-                },
+                json=self._body(model, system, payload),
             ) as response:
                 if response.status_code != 200:
                     raise AgentError(
@@ -78,6 +86,11 @@ class MetaMuseClient:
                     if len(body) > 1_048_576:
                         raise AgentError("Muse response exceeded the 1 MiB limit.")
             choice = json.loads(body)["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise AgentError(
+                    "Muse ran out of output tokens before finishing (reasoning counts toward "
+                    "the limit). Raise META_MUSE_MAX_TOKENS or lower META_MUSE_REASONING_EFFORT."
+                )
             if choice.get("finish_reason") not in (None, "stop"):
                 raise AgentError("Muse returned an incomplete response.")
             content = choice["message"]["content"]

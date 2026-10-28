@@ -26,9 +26,7 @@ from docker_manager import (
 from registry import BASE_DIR, TARGETS_REGISTRY
 from workflow import execute_purple_workflow
 
-NOTICE = (
-    "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
-)
+NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
 

@@ -18,9 +18,17 @@ FINDING = {
 
 
 def test_key_only_required_for_inference(monkeypatch):
-    monkeypatch.delenv("META_MUSE_API_KEY", raising=False)
+    for name in (
+        "META_MUSE_API_KEY",
+        "META_MUSE_BASE_URL",
+        "META_MUSE_RED_MODEL",
+        "META_MUSE_BLUE_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
     settings = load_config()
     assert settings.meta_base_url == "https://api.meta.ai/v1"
+    assert settings.red_team_model == "muse-spark-1.3"
+    assert settings.blue_team_model == "muse-wonder-1.0"
     with pytest.raises(ConfigurationError, match="META_MUSE_API_KEY"):
         require_api_key(settings)
     assert "secret-value" not in repr(PurpleBoxConfig(meta_api_key="secret-value"))
@@ -122,3 +130,79 @@ async def test_api_failure_has_no_fallback_and_does_not_expose_body(status):
         assert len(called) == 1
     finally:
         await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "meta-models/muse-spark-open-1026",
+        "meta-models/muse-spark-open",
+        "muse-spark-1.3",
+        "muse-wonder-1.0",
+    ],
+)
+def test_hackathon_and_meta_model_ids_accepted(model):
+    replace(PurpleBoxConfig(), red_team_model=model, blue_team_model=model).validate()
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["meta-models/llama-4", "evil/muse-spark-open-1026", "meta-models/muse-spark-open/../x"],
+)
+def test_other_hosted_model_ids_rejected(model):
+    with pytest.raises(ConfigurationError):
+        replace(PurpleBoxConfig(), red_team_model=model).validate()
+
+
+def test_meta_defaults_and_open_model_on_baseten():
+    config = PurpleBoxConfig()
+    assert config.meta_base_url == "https://api.meta.ai/v1"
+    assert (config.red_team_model, config.blue_team_model) == ("muse-spark-1.3", "muse-wonder-1.0")
+    config.validate()
+    replace(
+        config,
+        meta_base_url="https://inference.baseten.co/v1",
+        red_team_model="meta-models/muse-spark-open-1026",
+        blue_team_model="meta-models/muse-spark-open-1026",
+    ).validate()
+
+
+def _reply(finish, content):
+    return httpx.Response(
+        200, json={"choices": [{"finish_reason": finish, "message": {"content": content}}]}
+    )
+
+
+async def test_request_budget_and_optional_reasoning_effort():
+    seen = []
+
+    def handle(request):
+        seen.append(json.loads(request.content))
+        return _reply("stop", json.dumps(FINDING))
+
+    for effort in ("", "low"):
+        config = PurpleBoxConfig(meta_api_key="k", reasoning_effort=effort)
+        client = MetaMuseClient(config, transport=httpx.MockTransport(handle))
+        await client.run_red_team_analysis("app.js", "src")
+        await client.aclose()
+    assert seen[0]["max_tokens"] == 32_768 and "reasoning_effort" not in seen[0]
+    assert seen[1]["reasoning_effort"] == "low"
+
+
+async def test_truncated_reasoning_reports_token_budget():
+    client = MetaMuseClient(
+        PurpleBoxConfig(meta_api_key="k"),
+        transport=httpx.MockTransport(lambda request: _reply("length", None)),
+    )
+    with pytest.raises(AgentError, match="META_MUSE_MAX_TOKENS"):
+        await client.run_red_team_analysis("app.js", "src")
+    await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("max_output_tokens", 100), ("reasoning_effort", "none"), ("reasoning_effort", "x")],
+)
+def test_budget_and_effort_validation(field, value):
+    with pytest.raises(ConfigurationError):
+        replace(PurpleBoxConfig(), **{field: value}).validate()

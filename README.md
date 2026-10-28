@@ -71,19 +71,25 @@ Original fixture files are never overwritten by a scan.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `META_MUSE_API_KEY` | unset | Required for scans and live API tests |
-| `META_MUSE_BASE_URL` | `https://api.meta.ai/v1` | HTTPS Meta or an explicitly configured Muse deployment on Baseten/Modal |
+| `META_MUSE_API_KEY` | unset | Meta Model API key from dev.meta.ai. Required for scans and live API tests |
+| `META_MUSE_BASE_URL` | `https://api.meta.ai/v1` | Meta Model API. Baseten/Modal allowed for the open model |
 | `META_MUSE_RED_MODEL` | `muse-spark-1.3` | Boundary analysis |
 | `META_MUSE_BLUE_MODEL` | `muse-wonder-1.0` | Sanitization patch generation |
-| `META_MUSE_TIMEOUT_SECONDS` | `90` | Per-request API timeout, 1–300 seconds |
+| `META_MUSE_TIMEOUT_SECONDS` | `180` | Per-request API timeout, 1–300 seconds (one real blue request took over 60 s) |
+| `META_MUSE_MAX_TOKENS` | `32768` | Output budget, 1024–131072. **Reasoning tokens count toward it.** 8192 truncated real responses |
+| `META_MUSE_REASONING_EFFORT` | unset | Optional `minimal`/`low`/`medium`/`high`/`xhigh`/`max`. Unset uses the model's default. `none` is rejected by Muse |
 | `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS` | `20` | Per-verifier execution limit, 1–120 seconds |
 
 All inference goes through `agents.MetaMuseClient`. The transport is HTTPX against
 Meta's compatible `/chat/completions` endpoint, with strict Pydantic response validation,
 bounded response size, no redirect following, and no fallback provider. Only Muse
-Spark/Wonder model names are accepted. For a custom Baseten/Modal deployment, supply a
+Spark/Wonder IDs and `meta-models/muse-spark-open[-suffix]` are accepted. For a custom Baseten/Modal deployment, supply a
 compatible base URL and ensure that the endpoint actually serves the specified Muse model;
 a hostname/model-name check cannot attest what a remote server runs.
+
+**Default models (verified):** red `muse-spark-1.3`, blue `muse-wonder-1.0` on `https://api.meta.ai/v1`. On 2026-10-28 real scans of all three fixtures with a Meta key returned `verified`. Muse Spark is about 5x cheaper per output token than Wonder ($4.25 vs $20 per 1M), so it does the analysis and Wonder writes the patch. Spark for both roles also verified a real PHP scan; set `META_MUSE_BLUE_MODEL=muse-spark-1.3` to cut cost.
+
+**Hackathon open model (optional):** the hackathon asks for `meta-models/muse-spark-open-1026` instead of the documented `meta-models/muse-spark-open`. Muse Spark Open is open-weight and is **not served by `api.meta.ai`** (it returns `404 model_not_found`). It needs a hosted provider's key, for example Baseten: `META_MUSE_BASE_URL=https://inference.baseten.co/v1` and both models set to `meta-models/muse-spark-open-1026`. A Meta key is rejected there with `403`. The allowlist already accepts this ID.
 
 The provided specification used `muse-code` as a model ID. **Muse Code is Meta's coding
 agent**, so this implementation uses the documented `muse-spark-1.3` and `muse-wonder-1.0`

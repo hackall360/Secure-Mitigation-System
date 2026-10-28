@@ -225,3 +225,60 @@ Exit 1 blocked / Resources removed, diff +5 -0, 37 s. Afterwards `--docker-statu
 showed 0 leftover containers. Without a key, `main.py --scan` exits 1 with the
 "META_MUSE_API_KEY is required" message before touching Docker.
 Not yet exercised: real Muse inference, which is blocked until a key is supplied.
+
+## Model configuration
+
+**Current defaults (2026-10-28, user has no Baseten key):** `https://api.meta.ai/v1`, red
+`muse-spark-1.3`, blue `muse-wonder-1.0`, timeout 180 s. Real scans with the user's Meta key:
+node_query_sink, php_command_sink (Spark for both roles) and mysql_insecure_conf all `verified`,
+exit 0, 0 leftovers, 58-75 s each. Pricing per 1M output tokens: Spark $4.25, Wonder $20.
+
+**Open model, optional:** `meta-models/muse-spark-open-1026` on Baseten, needs a Baseten key.
+The history below records why it is not the default.
+
+Earlier (2026-10-27) the defaults were `META_MUSE_BASE_URL=https://inference.baseten.co/v1` and
+red and blue model `meta-models/muse-spark-open-1026`, with `META_MUSE_API_KEY` as the
+**Baseten** key. Source: the hackathon instruction says to use `-1026` instead of the
+documented `meta-models/muse-spark-open`. Meta's docs
+(https://dev.meta.ai/docs/muse-spark-open/deploy, "Hosted providers") say Muse Spark
+Open is open-weight and **not served by api.meta.ai**. Providers and base URLs:
+Baseten `https://inference.baseten.co/v1`, Together `https://api.together.xyz/v1`,
+Groq `https://api.groq.com/openai/v1`, Nebius `https://api.tokenfactory.us-north1.nebius.com/v1`,
+Fireworks (ID `accounts/fireworks/models/muse-spark-open`). Baseten and Modal are the
+hackathon credit partners, and only Baseten/Modal/api.meta.ai hosts pass `config.validate()`.
+
+The model allowlist in `PurpleBoxConfig.validate()` accepts `muse-spark-*`, `muse-wonder-*`
+and `meta-models/muse-spark-open[-suffix]`. Nothing else under `meta-models/` is accepted.
+Verified: a no-key POST to Baseten `.../v1/chat/completions` returns HTTP 403 (endpoint
+real, auth required). **A real `-1026` completion is still unverified**: the user's key is
+a Meta Model API key (`llm...`). Baseten rejects it ("please check the api-key you
+provided"), and `api.meta.ai` returns 404 `model_not_found` for `meta-models/muse-spark-open-1026`.
+Its `/v1/models` lists only muse-wonder-1.0, muse-spark-1.1/1.2/1.3 (+contributor),
+muse-image-1.0, sam-3.1 and muse-voice-transcribe-1.0. Running `-1026` needs a
+Baseten (or other provider) key. The user's local `.env` was therefore left on the
+working Meta configuration.
+
+Trap: `test_key_only_required_for_inference` read the developer's real environment.
+After `source .env`, a non-default `META_MUSE_BASE_URL` would fail it. It now clears all
+`META_MUSE_*` variables first.
+
+Trap: an existing local `.env` keeps its old values. Setup never overwrites it, so
+update `META_MUSE_BASE_URL` and both model lines by hand (copy from `example.env`).
+
+## First real end-to-end scan (2026-10-28)
+
+With the user's Meta key, `.env` set to `https://api.meta.ai/v1`, red `muse-spark-1.3`, blue `muse-wonder-1.0`:
+- `test_harness.py --api`: PASS (live red and blue responses match their schemas).
+- `main.py --scan node_query_sink`: exit 0, `verified`. Red found `new Function` injection
+  (payload `0 || "a"=="a"` returned 2 rows instead of 0). Blue added one line,
+  `if (!/^-?\d+$/.test(rawUserId)) { ...400... }`. Post-patch probe got 400 (exit 1),
+  normal-input regression passed, and 0 containers were left. Wall time about 75 s.
+
+Trap (root cause of the first live failure): Muse models **reason before answering, and
+reasoning tokens count toward `max_tokens`**. The red request used about 4k reasoning plus
+1.1k visible tokens. The scaffold's hard-coded `max_tokens: 8192` produced intermittent
+`finish_reason: "length"` with `content: null`, which surfaced as the vague "Muse returned
+an incomplete response". Now `META_MUSE_MAX_TOKENS` (default 32768, range 1024-131072) and
+optional `META_MUSE_REASONING_EFFORT` (minimal..max, `none` returns HTTP 400 on Muse) are
+configurable, and a `length` finish names the fix. Use `META_MUSE_TIMEOUT_SECONDS=180+`,
+because a blue request can take over 60 s.
