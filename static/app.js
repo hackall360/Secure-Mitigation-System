@@ -38,6 +38,8 @@ const scanProfileCycles = (key) => {
 let targets = {};
 let socket = null;
 let latestResult = null;
+let closeReason = null; // 'invalid' | 'busy' | null — set when the server refuses a scan, so onclose keeps the specific next step instead of overwriting it.
+let userCancelled = false; // set by stopScan so onclose reports "Stopped" instead of a false error.
 let configured = false;
 const RED_NAMES = ['Breakwater', 'Lockpick', 'Bloodhound', 'Sparkler', 'Cartographer', 'Breakwater', 'Lockpick', 'Bloodhound', 'Sparkler', 'Cartographer', 'Breakwater', 'Lockpick'];
 const BLUE_NAMES = ['Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader', 'Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader', 'Bastion', 'Stitch'];
@@ -717,17 +719,25 @@ async function initialize() {
     chip('chip-server', 'error', 'Offline');
     status('Unable to connect', 'error');
     el('setup').hidden = false;
-    el('setup').textContent = error.message;
+    // Keep the technical detail but always end with the one action that fixes it.
+    el('setup').textContent = `${error.message} Start the server with python main.py --serve --port 8000, then reload this page.`;
   }
 }
 
 function startScan() {
   if (socket || !configured) return;
+  closeReason = null;
+  userCancelled = false;
   const key = el('target-select').value;
-  if (sourceMode === 'demo' && !targets[key]) return;
+  if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
-  if (sourceMode === 'project' && !spec) { status('Fix project details', 'warn'); return; }
+  if (sourceMode === 'project' && !spec) {
+    status('Fix the highlighted project fields below, then run again', 'warn');
+    const firstInvalid = el('project-form').querySelector('[aria-invalid="true"]');
+    if (firstInvalid) firstInvalid.focus();
+    return;
+  }
   latestResult = null;
   eventCount = 0;
   el('event-count').textContent = '0';
@@ -756,7 +766,7 @@ function startScan() {
   const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
   socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${query}` : `${base}/ws/combat/${encodeURIComponent(key)}${query}`);
   socket.onmessage = handleSocketMessage;
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleScanClose;
   if (spec) socket.onopen = () => {
     socket.send(JSON.stringify(spec));
@@ -770,13 +780,24 @@ function handleSocketMessage(event) {
     if (payload.type === 'result') {
       showResult(payload);
     } else if (payload.type === 'invalid' || payload.type === 'busy') {
-      status(payload.msg || (payload.type === 'busy' ? 'Another scan is already running.' : 'Invalid request.'), 'error');
-      writeLine(payload.team || 'system', payload.msg || payload.type);
+      // Server refused the scan (bad spec/demo request, or lock held).
+      // Remember which, so the close handler below keeps this specific
+      // next step instead of overwriting it with the generic message.
+      closeReason = payload.type;
+      if (payload.type === 'busy') {
+        status('Another scan is already running — wait for it to finish, then run again', 'error');
+        writeLine(payload.team || 'system', 'Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
+        toast('Server is busy — try again when the current scan finishes');
+      } else {
+        status(payload.msg || 'Server rejected the request — fix the highlighted fields, then run again', 'error');
+        writeLine(payload.team || 'system', `${payload.msg || 'Invalid request.'} Fix the highlighted fields, then run again.`);
+        toast('Request rejected — check the highlighted fields');
+      }
     } else {
       writeLine(payload.team, payload.msg);
     }
   } catch {
-    writeLine('system', 'Received an unreadable server event.');
+    writeLine('system', 'Received an unreadable server event — the scan continues; check the server terminal if this repeats.');
   }
 }
 
@@ -791,22 +812,36 @@ function handleScanClose() {
   lockProjectForm(false);
   el('stop-btn').hidden = true;
   el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
-  if (!latestResult) {
-    status('Session ended without a result', 'error');
-    writeLine('system', 'Connection closed. The server will finish cleanup before accepting another scan.');
+  if (latestResult) { closeReason = null; userCancelled = false; return; }
+  if (userCancelled) {
+    status('Scan stopped — no changes were applied', 'warn');
+    writeLine('system', 'Scan stopped by user. The original fixture is untouched; run again whenever ready.');
+    toast('Scan stopped');
+  } else if (closeReason === 'busy' || closeReason === 'invalid') {
+    // handleSocketMessage already showed the specific next step; the
+    // socket close that follows a refusal must not overwrite it.
+    document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
+  } else {
+    status('Lost connection to the server — start it, then run again', 'error');
+    writeLine('system', 'Lost connection to the server before a result arrived. Start it with python main.py --serve --port 8000, then run again. Cleanup on the server finishes on its own.');
+    toast('Disconnected — restart the server, then run again');
     document.querySelectorAll('#pipeline li[data-state="active"]').forEach((item) => { item.dataset.state = 'failed'; });
   }
+  userCancelled = false;
 }
 
 function stopScan() {
   if (!socket) return;
+  userCancelled = true;
   el('stop-btn').disabled = true;
-  status('Stopping scan', 'running');
-  socket.close(1000, 'User cancelled');
+  status('Stopping scan — finishing cleanup', 'running');
+  try { socket.close(1000, 'User cancelled'); } catch { /* socket already gone */ }
 }
 
 function startDemoBuild() {
   // Green builder path: Greenhouse grows a novel demo, then red/blue run it.
+  closeReason = null;
+  userCancelled = false;
   latestResult = null;
   eventCount = 0;
   el('event-count').textContent = '0';
@@ -835,7 +870,7 @@ function startDemoBuild() {
   sourceMode = 'demo-build';
   socket = new WebSocket(`${base}/ws/demo${socketQuery()}`);
   socket.onmessage = handleSocketMessage;
-  socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
   socket.onclose = handleDemoClose;
   socket.onopen = () => {
     socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
@@ -855,6 +890,17 @@ function handleDemoClose() {
   lockTargets(false);
   lockProfiles(false);
   lockProjectForm(false);
+  if (latestResult) { closeReason = null; userCancelled = false; return; }
+  if (userCancelled) {
+    status('Build stopped — no changes were applied', 'warn');
+    writeLine('system', 'Demo build stopped by user. Run again whenever ready.');
+  } else if (closeReason !== 'busy' && closeReason !== 'invalid') {
+    status('Lost connection to the server — start it, then run again', 'error');
+    writeLine('system', 'Lost connection to the server before a result arrived. Start it with python main.py --serve --port 8000, then run again.');
+    toast('Disconnected — restart the server, then run again');
+  }
+  // Refusals already showed their specific next step via handleSocketMessage.
+  userCancelled = false;
 }
 
 /* ---------- wiring ---------- */
