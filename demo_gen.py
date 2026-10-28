@@ -166,6 +166,19 @@ def parse_build_intent(*, build_brief: str = "", vulns: str = "", theme: str = "
     )
 
 
+# Out-of-box defaults: when the user requests no specific flaws, Greenhouse
+# still builds a realistic showcase — three classic distinct sinks (query
+# lookup, reflected page, file preview) inside a tiny notes app, so the
+# red/blue loop has named routes to exercise with zero configuration.
+# Values reuse VULN_TYPES canonical names so downstream grounding keeps working.
+DEFAULT_DEMO_VULNS: tuple[str, ...] = (
+    "SQL injection",
+    "cross-site scripting",
+    "path traversal",
+)
+DEFAULT_DEMO_BRIEF = "a tiny notes app with search, profile pages, and file preview"
+
+
 async def generate_demo_project(
     client,
     *,
@@ -179,11 +192,14 @@ async def generate_demo_project(
 
     build_brief describes the app; vulns lists the flaw families/CVEs to
     implement. Both reach the generator so Greenhouse builds what was asked.
+    Empty intent falls back to DEFAULT_DEMO_BRIEF/VULNS so the out-of-box
+    run is a realistic named-flaw showcase, not an empty brief.
     """
-    wanted = [str(v)[:120] for v in (vulns or [])][:8]
+    wanted = [str(v)[:120] for v in (vulns or [])][:8] or list(DEFAULT_DEMO_VULNS)
+    brief = str(build_brief or "")[:500] or DEFAULT_DEMO_BRIEF
     payload = {
         "theme": theme[:256],
-        "build_brief": str(build_brief or "")[:500],
+        "build_brief": brief,
         "requested_vulns": wanted,
         "intel_context": [dict(c) for c in intel_context[:20]],
         "response_schema": DemoProjectFiles.model_json_schema(),
