@@ -168,8 +168,16 @@ def test_scanner_five_set_accepted(monkeypatch):
 def test_ai_demo_flag_gating_no_longer_requires_project(monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
-        ["main.py", "--ai-demo", "--scan-profile", "light", "--red-agents", "6",
-         "--intel-theme", "xss"],
+        [
+            "main.py",
+            "--ai-demo",
+            "--scan-profile",
+            "light",
+            "--red-agents",
+            "6",
+            "--intel-theme",
+            "xss",
+        ],
     )
 
     async def fake_demo(output_dir, profile, **kwargs):
@@ -302,3 +310,14 @@ def test_hosted_consent_parity_project_and_cve(monkeypatch, tmp_path):
     )
     code = main.main()
     assert code != 0
+
+
+def test_tui_command_reaches_tui_main(monkeypatch, capsys):
+    """--tui dispatches to the TUI entry (curses or plain degrade)."""
+    import main as _main
+
+    monkeypatch.setattr("sys.argv", ["main.py", "--tui"])
+    seen = {}
+    monkeypatch.setattr("tui.main", lambda argv=None: seen.setdefault("argv", argv) or 0)
+    assert _main.main() == 0
+    assert seen["argv"] == []

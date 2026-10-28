@@ -324,3 +324,26 @@ def test_agents_schema_cache_and_single_pass_extractor():
     )
     assert _extract_json_object('lead {"x": 1, "s": "a}b"} tail') == '{"x": 1, "s": "a}b"}'
     assert _extract_json_object("no braces here") == "no braces here"
+
+
+def test_dtrack_poll_backs_off_and_exits_early(monkeypatch):
+    """Poll uses exponential backoff; instant-done exits without sleeping."""
+    import scanner_dtrack as _dt
+
+    sleeps = []
+    monkeypatch.setattr(_dt.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(_dt, "configured", lambda: ("http://x", "k"))
+    monkeypatch.setattr(_dt, "build_bom", lambda *a: {})
+    calls = {"n": 0}
+
+    def fake_request(base, key, method, path, body=None, **kwargs):
+        calls["n"] += 1
+        if "bom/token" in path:
+            return {"processing": False, "project": "uuid-1"}
+        if path == "/api/v1/bom":
+            return {"token": "t"}
+        return []
+
+    monkeypatch.setattr(_dt, "_request", fake_request)
+    out = _dt.scan_packages("p", [("a", "1")])
+    assert calls["n"] == 3 and sleeps == [] and out == []

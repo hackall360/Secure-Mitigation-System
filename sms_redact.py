@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-EXPLOIT_REDACTED = "[exploit details withheld: available only inside the isolated verification sandbox]"
+EXPLOIT_REDACTED = (
+    "[exploit details withheld: available only inside the isolated verification sandbox]"
+)
 
 PROBE_OUTPUT_WITHHELD = (
     "[probe output withheld: available only inside the isolated verification sandbox]"
