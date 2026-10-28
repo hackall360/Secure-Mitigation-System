@@ -22,6 +22,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Mapping, Sequence
 
+from sms_records import sanitize_cve_id
+
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns"
 
@@ -132,7 +134,7 @@ def osv_lookup_by_cve(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
     Used by the CVE workflow as a keyless second opinion alongside NVD:
     OSV often carries the fix commit / fixed-version range NVD omits.
     """
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
+    safe = sanitize_cve_id(cve_id)
     request = urllib.request.Request(
         f"{OSV_VULN_URL}/{safe}",
         headers={"User-Agent": "Secure-Mitigation-System/0.1"},

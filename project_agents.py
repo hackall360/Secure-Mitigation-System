@@ -20,6 +20,7 @@ from personas import (
     RED_PERSONAS,
 )
 from scan_profiles import focus_for_cycle
+from sms_text import take_utf8_prefix as _take_utf8_prefix
 
 # Persona assignment: worker index -> persona (1-based, wraps). Leaders are fixed.
 # Red personas dislike security (offensive InfoSec hacker); blue personas love
@@ -296,19 +297,6 @@ class RedAnalysisArtifacts(BaseModel):
     leader_plan: ReviewTeamPlan | None = None
 
 
-def _take_utf8_prefix(text: str, max_bytes: int) -> tuple[str, str]:
-    """Split text on a character boundary without silently dropping bytes."""
-    if max_bytes < 1:
-        raise ValueError("max_bytes must be positive.")
-    encoded = text.encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return text, ""
-    end = max_bytes
-    while end > 0 and (encoded[end] & 0xC0) == 0x80:
-        end -= 1
-    if end == 0:
-        raise ValueError("max_bytes is too small for the next UTF-8 character.")
-    return encoded[:end].decode("utf-8"), encoded[end:].decode("utf-8")
 
 
 def build_source_batches(

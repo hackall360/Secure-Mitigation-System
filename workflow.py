@@ -2,8 +2,6 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """One baseline -> probe -> patch -> regression workflow for both entry points."""
 
-import asyncio
-from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from docker.errors import DockerException
@@ -24,8 +22,7 @@ from docker_manager import DockerSandboxManager, SandboxError
 from patches import PatchRejected, validate_patch
 from pricing import ScanUsage
 from registry import TARGETS_REGISTRY
-
-Emit = Callable[[str, str], Awaitable[None]]
+from sms_async import Emit, blocking, make_log
 
 
 def _sink_keywords(filename: str, contract: str) -> tuple[list[str], list[str]]:
@@ -184,18 +181,9 @@ async def _gather_research(
         f"{len(records)} intel records across "
         f"{len({getattr(r, 'source', getattr(r, 'scanner', '?')) for r in records})} sources.",
     )
-    record_dicts = [
-        {
-            "source": getattr(r, "source", getattr(r, "scanner", "?")),
-            "cve_id": r.cve_id,
-            "title": r.title,
-            "summary": r.summary[:600],
-            "severity": r.severity,
-            "cvss": r.cvss,
-            "cwe": list(r.cwe),
-        }
-        for r in records[:16]
-    ]
+    from sms_records import to_record_dict as _to_dict
+
+    record_dicts = [_to_dict(r) for r in records[:16]]
     digest = ""
     try:
         red_digest: RedResearchDigest = await muse.run_red_research(sink, record_dicts)
@@ -242,19 +230,6 @@ class ScanResult(BaseModel):
         return self.status == "verified" and self.cleanup_ok
 
 
-async def blocking(function, *args, **kwargs):
-    """Join in-flight Docker operations before propagating cancellation to cleanup."""
-    task = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        try:
-            await task
-        except Exception:
-            pass
-        raise
-
-
 async def execute_purple_workflow(
     target_key: str,
     emit: Emit,
@@ -267,12 +242,7 @@ async def execute_purple_workflow(
     sandbox = None
     muse = None
 
-    async def log(team: str, message: str) -> None:
-        # Logging/closed UI sockets must never prevent resource cleanup.
-        try:
-            await emit(team, message)
-        except Exception:
-            pass
+    log = make_log(emit)
 
     try:
         if target_key not in TARGETS_REGISTRY:
@@ -458,26 +428,10 @@ async def execute_purple_workflow(
     return result
 
 
-EXPLOIT_REDACTED = (
-    "[exploit details withheld: available only inside the isolated verification sandbox]"
-)
+from sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from sms_redact import redact_fixture_result as _redact_fixture  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
 
 
 def redact_fixture_result_for_user(result: "ScanResult") -> dict:
     """User-safe fixture report: patch + exit codes only, no probe source or payload output."""
-    data = result.model_dump()
-    finding = data.get("finding")
-    if isinstance(finding, dict):
-        finding["verification_script_python"] = EXPLOIT_REDACTED
-    for key in ("before", "after"):
-        if isinstance(data.get("traces", {}).get(key), str):
-            out = data["traces"][key]
-            data["traces"][key] = (
-                "[probe output withheld: available only inside the isolated verification sandbox]"
-            )
-    for key in ("baseline", "regression", "after_probe_regression"):
-        if isinstance(data.get("traces", {}).get(key), str):
-            out = data["traces"][key]
-            if len(out) > 2000:
-                data["traces"][key] = out[:2000] + "\n[normal-input output truncated]"
-    return data
+    return _redact_fixture(result)

@@ -38,6 +38,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Sequence
 
+from sms_records import sanitize_cve_id, truncate_summary
+
 USER_AGENT = "Secure-Mitigation-System/0.1 research-sidecar (+https://github.com)"
 MIN_GAP_SECONDS = 1.0
 MAX_BODY_BYTES = 1 * 1024 * 1024
@@ -126,8 +128,8 @@ class ResearchRecord:
     extra: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.summary = (self.summary or "")[:1500]
-        self.cve_id = (self.cve_id or "").strip().upper()[:32]
+        self.summary = truncate_summary(self.summary)
+        self.cve_id = sanitize_cve_id(self.cve_id)
 
 
 def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list[ResearchRecord]:
@@ -172,7 +174,7 @@ def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list
 
 def osv_lookup(cve_id: str) -> ResearchRecord | None:
     """OSV direct CVE fetch. No key."""
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
+    safe = sanitize_cve_id(cve_id)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
@@ -196,7 +198,7 @@ def osv_lookup(cve_id: str) -> ResearchRecord | None:
 
 def circl_lookup(cve_id: str) -> ResearchRecord | None:
     """CIRCL cve-search CVE record: full CVE JSON, no key, no rate games."""
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
+    safe = sanitize_cve_id(cve_id)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
