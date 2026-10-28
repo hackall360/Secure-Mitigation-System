@@ -245,6 +245,10 @@ function setStage(name, state = 'active') {
 
 function advanceStage(team, text) {
   const t = text.toLowerCase();
+  // Green builder runs before the sandbox exists: pin its intel/generation
+  // lines to the sandbox node so the pipeline lights up live without
+  // blocking later stages (sandbox index 0 never regresses the guard).
+  if (team === 'green') { setStage('sandbox'); return; }
   if (team === 'research') setStage('analysis');
   if (t.includes('original-project baseline checks')) { setStage('sandbox'); setStage('baseline'); }
   else if (team === 'red' && t.includes('reviewing the cumulative verified snapshot')) { resetPipeline(); setStage('analysis'); }
@@ -365,9 +369,12 @@ function setSourceMode(mode) {
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
-      ? 'Greenhouse grows a novel vulnerable demo from your themes, then red and blue exercise it in Docker.'
+      ? 'Greenhouse grows a fresh demo from your build brief and vulnerabilities below, then red and blue exercise it in Docker.'
       : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
+  // Build-brief affordance: landing on Green build puts the cursor in the
+  // brief field so the Wonder-built flow starts with one keystroke.
+  if (mode === 'demo-build' && el('demo-build-brief')) el('demo-build-brief').focus({ preventScroll: true });
 }
 
 function parseArgv(id, label, errors) {
@@ -814,6 +821,9 @@ function startDemoBuild() {
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Greenhouse is building', 'running');
+  // Immediate progress affordance: the first green WS event may take a
+  // while (intel lookups), so light the sandbox node at send time.
+  setStage('sandbox');
   startedAt = Date.now();
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
@@ -836,7 +846,10 @@ function handleDemoClose() {
   if (timer) { clearInterval(timer); timer = null; }
   document.body.classList.remove('scanning');
   socket = null;
-  sourceMode = 'demo';
+  // Restore the Green build mode: startDemoBuild temporarily borrows
+  // sourceMode as a teardown flag; leaving it 'demo-build' keeps the run
+  // label and config visible for the next build.
+  setSourceMode('demo-build');
   el('run-btn').disabled = !configured;
   el('stop-btn').hidden = true;
   lockTargets(false);
