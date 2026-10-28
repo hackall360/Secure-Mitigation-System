@@ -239,4 +239,54 @@ TODO.md              The work queue
 See `AGENTS.md` for the contributor contract — feature branches only, never
 work in `main` or `develop` — and `TODO.md` for what is next.
 
+## Acceptable use, warnings, and disclaimer
+
+This is a **defensive cybersecurity research project**. Its purpose is to
+verify that a specific input boundary is enforced and to propose a minimal
+sanitization that preserves normal behavior — nothing more.
+
+**Intended use only:**
+
+- Verifying input-handling boundaries in code you own or are authorized to test.
+- Studying red/blue remediation workflows in isolated, disposable sandboxes.
+- Evaluating AI-assisted patch review under evidence-gated, human-supervised conditions.
+
+**Not intended, not permitted:**
+
+- This system is **not a pure red-team tool**. It is not built, licensed, or
+  supported for discovering or exploiting vulnerabilities in systems you do
+  not own or lack explicit authorization to test.
+- This system is **not a pure blue-team shield**. A `verified` result is
+  finite evidence from a fixed set of probes, not proof of security,
+  correctness, or behavioral equivalence. It must never be treated as a
+  guarantee that a system is safe.
+- **No guarantee of safety or security is provided.** Sandboxes can be
+  escaped, verifiers can be wrong, patches can introduce new faults, and
+  model output can be mistaken. The isolation measures here are
+  defense-in-depth for a research scaffold, not a production security boundary.
+- **Do not repurpose this software for misuse.** Adapting, extending, or
+  reconfiguring any part of this system — red-team prompts, probe execution,
+  sandbox controls, intel fetching — to attack, intrude upon, surveil, or
+  degrade systems without authorization is prohibited, regardless of license
+  terms that might otherwise permit modification.
+- **Do not remove or weaken the safety controls.** The sandbox restrictions,
+  patch guards, artifact redaction, permission controls, and fail-closed
+  semantics are load-bearing. Running scans with weakened containment, or
+  pointing the harness at code or infrastructure outside your authority,
+  voids any expectation of safe operation.
+
+**Provided as is.** This software is supplied without warranty of any kind,
+express or implied, including fitness for a particular purpose. The authors
+and contributors accept no liability for loss, damage, or unauthorized
+activity arising from its use or modification. Operating this system —
+including any outbound network activity from research sidecars or local
+scanners — is done at your own risk and under your own authority and
+responsibility. Comply with all applicable laws and authorization
+requirements in your jurisdiction; if you are unsure whether a use is
+authorized, do not proceed.
+
+**Human supervision is required.** Every candidate patch must be reviewed by
+a qualified person before application. Automated outputs of this system must
+never trigger unattended changes to production systems.
+
 Licensed under [PolyForm Noncommercial 1.0.0](LICENSE.md).
