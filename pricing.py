@@ -4,7 +4,9 @@
 
 Prices are USD per 1M tokens from https://dev.meta.ai/docs/pricing-rate-limits
 (read 2026-10-28). Reasoning tokens are billed as output tokens and are already
-included in completion_tokens. Models without a known price report tokens only.
+included in completion_tokens (https://dev.meta.ai/docs/reasoning, read
+2026-10-28: "Reasoning tokens are billed at the same rate as visible output
+tokens"). Models without a known price report tokens only.
 """
 
 from pydantic import BaseModel, Field

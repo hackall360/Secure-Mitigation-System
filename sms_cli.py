@@ -267,6 +267,8 @@ def _probe_label(exit_code: object) -> str:
         return "Reached (exit 0)"
     if exit_code == 1:
         return "Blocked (exit 1)"
+    if exit_code == 2:
+        return "Inconclusive (exit 2)"
     if exit_code is None:
         return "Not reported"
     return f"Exit {exit_code}"
@@ -341,7 +343,11 @@ def usage_table(result: object, use_color: bool | None = None) -> str:
     total = getattr(result, "total_tokens", 0)
     total_cost = getattr(result, "cost_usd", getattr(result, "total_cost_usd", None))
     total_str = "unknown" if total_cost is None else f"${total_cost:.4f}"
-    lines.append(f"Total tokens: {total}, estimated cost: {total_str}")
+    try:
+        total_fmt = f"{int(total):,}"
+    except (TypeError, ValueError):
+        total_fmt = str(total)
+    lines.append(f"Total tokens: {total_fmt}, estimated cost: {total_str}")
     return "\n".join(lines)
 
 

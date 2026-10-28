@@ -4,12 +4,13 @@
 
 import asyncio
 import json
+import random
 import re
 import time
-from typing import TypeVar
+from typing import Annotated, TypeVar
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from config import PurpleBoxConfig, require_api_key
 from pricing import CallUsage, usage_from_response
@@ -28,8 +29,21 @@ class AgentError(RuntimeError):
     """An API or schema failure, with no credentials/provider body in the message."""
 
 
+# Shared item constraints: strip padding, then reject blank/oversize entries.
+# Scalar fields keep their own Field() bounds below; these aliases only make
+# the list-item rules explicit so one blank entry cannot slip through.
+QueryStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+PatternStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+CweStr = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=16, pattern=r"(?i)^CWE-\d{1,5}$"
+    ),
+]
+
+
 class RedTeamFinding(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     vulnerability_class: str = Field(min_length=1, max_length=256)
     sink_location: str = Field(min_length=1, max_length=512)
     analysis_summary: str = Field(min_length=1, max_length=8192)
@@ -37,7 +51,7 @@ class RedTeamFinding(BaseModel):
 
 
 class BlueTeamPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     sanitization_strategy: str = Field(min_length=1, max_length=8192)
     diff_summary: str = Field(min_length=1, max_length=8192)
     patched_file_content: str = Field(min_length=1, max_length=65_536)
@@ -46,19 +60,19 @@ class BlueTeamPatch(BaseModel):
 class RedResearchDigest(BaseModel):
     """Research-only output: grounded queries + patterns, never work product."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-    queries: list[str] = Field(min_length=1, max_length=4)
-    attack_patterns: list[str] = Field(default_factory=list, max_length=4)
-    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    queries: list[QueryStr] = Field(min_length=1, max_length=4)
+    attack_patterns: list[PatternStr] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[CweStr] = Field(default_factory=list, max_length=4)
 
 
 class BlueResearchDigest(BaseModel):
     """Research-only output: grounded fix patterns, never a patch."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-    queries: list[str] = Field(min_length=1, max_length=4)
-    fix_patterns: list[str] = Field(default_factory=list, max_length=4)
-    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    queries: list[QueryStr] = Field(min_length=1, max_length=4)
+    fix_patterns: list[PatternStr] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[CweStr] = Field(default_factory=list, max_length=4)
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
@@ -92,8 +106,12 @@ def _extract_json_object(text: str) -> str:
     """
     if "\x00" in text:
         raise ValueError("Response contains NUL bytes.")
-    stripped = text.strip()
-    fence_match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?\s*```\s*", stripped, flags=re.DOTALL)
+    stripped = text.strip().lstrip("\ufeff").strip()
+    if not stripped:
+        raise ValueError("Response contains no JSON object.")
+    fence_match = re.fullmatch(
+        r"```\s*(?:json\b)?\s*(.*?)\s*```\s*", stripped, flags=re.DOTALL | re.IGNORECASE
+    )
     if fence_match:
         stripped = fence_match.group(1).strip()
     in_string = False
@@ -121,6 +139,38 @@ def _extract_json_object(text: str) -> str:
                 if depth == 0 and start_idx != -1:
                     return stripped[start_idx : idx + 1]
     return stripped
+
+
+# Bounded transient-retry discipline for the Muse transport.
+# RETRY_MAX_ATTEMPTS bounds total tries (never loop forever); backoff is
+# exponential (RETRY_BASE_SECONDS * 2**retry_index) plus uniform jitter up to
+# RETRY_JITTER_SECONDS. A server Retry-After on 429 is honored but capped at
+# RETRY_AFTER_MAX_SECONDS so one header cannot stall the scan.
+TRANSIENT_STATUS_CODES = (429, 502, 503, 504)
+RETRY_MAX_ATTEMPTS = 2
+RETRY_BASE_SECONDS = 0.5
+RETRY_JITTER_SECONDS = 0.5
+RETRY_AFTER_MAX_SECONDS = 5.0
+
+
+def _retry_delay_seconds(retry_index: int, retry_after: float | None = None) -> float:
+    """Jittered backoff for retry number `retry_index` (0-based)."""
+    delay = RETRY_BASE_SECONDS * (2**retry_index) + random.uniform(0, RETRY_JITTER_SECONDS)
+    if retry_after is not None:
+        delay = min(max(retry_after, 0.0), RETRY_AFTER_MAX_SECONDS) + random.uniform(
+            0, RETRY_JITTER_SECONDS
+        )
+    return delay
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header (delta-seconds only); None when absent/invalid."""
+    if not value:
+        return None
+    try:
+        return max(float(value.strip()), 0.0)
+    except (TypeError, ValueError):
+        return None
 
 
 class MetaMuseClient:
@@ -168,7 +218,7 @@ class MetaMuseClient:
     ) -> ResponseModel:
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(RETRY_MAX_ATTEMPTS):
             started = time.monotonic()
             # Meta's Chat Completions endpoint constrains decoding through response_format,
             # not a schema embedded only in prompt text. Keep exactly one schema on wire.
@@ -199,7 +249,7 @@ class MetaMuseClient:
                     "chat/completions",
                     json=request_body,
                 ) as response:
-                    if response.status_code in (429, 502, 503, 504) and attempt == 0:
+                    if response.status_code in TRANSIENT_STATUS_CODES and attempt == 0:
                         # Record usage if possible before retrying.
                         try:
                             body = await _read_capped(response)
@@ -216,7 +266,16 @@ class MetaMuseClient:
                                 )
                         except Exception:
                             pass
-                        await asyncio.sleep(0.5)
+                        # Rate-limit graceful: jittered exponential backoff; a
+                        # server Retry-After on 429 is honored but capped, so a
+                        # hostile header cannot stall the scan. Loop bound above
+                        # (attempt == 0) guarantees no infinite retry.
+                        retry_after = (
+                            _parse_retry_after(response.headers.get("retry-after"))
+                            if response.status_code == 429
+                            else None
+                        )
+                        await asyncio.sleep(_retry_delay_seconds(attempt, retry_after))
                         continue
                     if response.status_code != 200:
                         raise AgentError(
@@ -230,6 +289,8 @@ class MetaMuseClient:
                     usage_from_response(role, model, data, time.monotonic() - started)
                 )
                 choice = data["choices"][0]
+                if not isinstance(choice, dict):
+                    raise AgentError("Muse returned an incomplete response.")
                 if choice.get("finish_reason") == "length":
                     raise AgentError(
                         "Muse ran out of output tokens before finishing (reasoning counts toward "
@@ -237,7 +298,8 @@ class MetaMuseClient:
                     )
                 if choice.get("finish_reason") not in (None, "stop"):
                     raise AgentError("Muse returned an incomplete response.")
-                content = choice["message"]["content"]
+                message = choice.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
                 if not isinstance(content, str):
                     raise AgentError("Muse did not return text JSON.")
                 # Strip fences and extract JSON before schema validation.

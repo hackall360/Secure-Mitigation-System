@@ -8,6 +8,9 @@ Chatter rules (enforced here, not by the model):
   details beyond IDs, or anything that could reconstruct an exploit.
 - Server builds every chatter line from trusted workflow facts. The model never
   authors chatter text. Personas select TONE templates only.
+- Model-active lines ("model_active") report which Muse model is active, which
+  phase (usage role), and token/reasoning facts already in pricing.CallUsage.
+  No prompts, completions, payloads, or secrets — counts and ids only.
 """
 
 from __future__ import annotations
@@ -48,6 +51,14 @@ _CHATTER: dict[str, list[str]] = {
         "Greenhouse planted a new demo: {n} wobbly joints and one CVE-inspired weed. Have fun, you two.",
         "Greenhouse: fresh seedlings in {path}. I left the gaps in. Do not ask me about security.",
     ],
+    # Model-active lines: which Muse model is active, which phase (usage role),
+    # and how much it reasoned (reasoning tokens, already in pricing.CallUsage).
+    # Counts and ids only — never prompts, completions, or payloads.
+    "model_active": [
+        "{persona} has {model} on the {phase} phase: {n} reasoning tokens banked, reading the boundary before writing.",
+        "{persona} letting {model} reason through {phase}: {n} thought-tokens counted, ledger open, no shortcuts.",
+        "{persona} watching {model} work {phase}: {n} reasoning tokens so far, every one on the ledger.",
+    ],
 }
 
 
@@ -59,6 +70,8 @@ def chatter(
     code: int | None = None,
     n: int = 0,
     seed: int | None = None,
+    model: str = "",
+    phase: str = "",
 ) -> str:
     """Build one safe chatter line. All inputs are trusted workflow facts or names."""
     templates = _CHATTER.get(kind, ["{persona} checking in."])
@@ -69,6 +82,10 @@ def chatter(
     short_path = path.rsplit("/", 1)[-1][:64] if path else "the boundary"
     short_path = " ".join(short_path.split())
     safe_persona = " ".join((persona[:24] or "Agent").split())
+    # Model-active lines name a Muse model id and a usage phase (role): ids only,
+    # never prompts or completions. Allowlist chars so hostile ids stay inert text.
+    safe_model = "".join(c for c in model[:48] if c.isalnum() or c in "._-") or "unknown-model"
+    safe_phase = "".join(c for c in phase[:24] if c.isalnum() or c in "_-") or "unknown-phase"
     try:
         safe_code = int(code) if code is not None else 0
     except (TypeError, ValueError):
@@ -77,7 +94,14 @@ def chatter(
         safe_n = int(n)
     except (TypeError, ValueError):
         safe_n = 0
-    line = template.format(persona=safe_persona, path=short_path, code=safe_code, n=safe_n)
+    line = template.format(
+        persona=safe_persona,
+        path=short_path,
+        code=safe_code,
+        n=safe_n,
+        model=safe_model,
+        phase=safe_phase,
+    )
     # Minor summaries must not carry code-shaped runs (e.g. dunders from hostile
     # punctuation); collapse them so fuzzed names stay inert text.
     while "__" in line:

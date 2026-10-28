@@ -1,11 +1,32 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Environment configuration. Loading the UI never requires an inference key."""
+"""Environment configuration. Loading the UI never requires an inference key.
+
+Model roles (judge guide): Muse Spark is the fast triage model and the default
+red-team pick; Muse Wonder is the deep-reasoning model and the default
+blue-team pick.
+"""
 
 import os
 import re
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
+
+ALLOWED_RESEARCH_SCANNERS = (
+    "trivy",
+    "grype",
+    "osv-scanner",
+    "dependency-check",
+    "dependency-track",
+)
+
+# Docker image tags are name[:tag] with registry-safe characters; anything
+# else is rejected before a scan starts so a typo fails fast, not mid-run.
+_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:-]{0,255}$")
+# Clone-cache repo and isolated-network prefixes: Docker-safe names only.
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,64}$")
+# Docker --memory style: bare bytes or b/k/m/g suffix.
+_MEM_LIMIT_RE = re.compile(r"^[0-9]+[bkmgBKMG]?$")
 
 
 class ConfigurationError(ValueError):
@@ -17,6 +38,7 @@ class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
     meta_base_url: str = "https://api.meta.ai/v1"
     inference_mode: str = "hosted"
+    # Red team default is Spark (fast triage); blue team default is Wonder (deep patch).
     red_team_model: str = "muse-spark-1.3"
     blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
@@ -93,6 +115,37 @@ class PurpleBoxConfig:
             raise ConfigurationError(
                 "PURPLEBOX_VERIFIER_TIMEOUT_SECONDS must be between 1 and 120."
             )
+        if not 1 <= self.docker_timeout_seconds <= 600:
+            raise ConfigurationError("PURPLEBOX_DOCKER_TIMEOUT_SECONDS must be between 1 and 600.")
+        if not 1 <= self.container_cpu_nano <= 64_000_000_000:
+            raise ConfigurationError(
+                "Container CPU quota must be between 1 and 64000000000 nano CPUs."
+            )
+        if not _MEM_LIMIT_RE.fullmatch(self.container_mem_limit):
+            raise ConfigurationError(
+                "Container memory limit must be bare bytes or carry a b/k/m/g suffix."
+            )
+        for label, image in (
+            ("target base image", self.target_base_image),
+            ("verifier base image", self.verifier_base_image),
+        ):
+            if not image or not _IMAGE_RE.fullmatch(image):
+                raise ConfigurationError(f"Docker {label} tag is invalid: {image!r}.")
+        for label, name in (
+            ("clone-cache repo prefix", self.clone_repo_prefix),
+            ("isolated network prefix", self.network_prefix),
+        ):
+            if not _SAFE_NAME_RE.fullmatch(name):
+                raise ConfigurationError(f"Docker {label} is invalid: {name!r}.")
+        for scanner in self.research_scanners:
+            if scanner not in ALLOWED_RESEARCH_SCANNERS:
+                raise ConfigurationError(f"Unknown research scanner: {scanner!r}.")
+        if len(set(self.research_scanners)) != len(self.research_scanners):
+            raise ConfigurationError("Research scanners must not repeat.")
+        if self.research_scanners != tuple(sorted(self.research_scanners)):
+            raise ConfigurationError("Research scanners must be sorted and unique.")
+        if not 1_024 <= self.max_source_bytes <= 1_048_576:
+            raise ConfigurationError("max_source_bytes must be between 1024 and 1048576.")
 
 
 def load_config() -> PurpleBoxConfig:
@@ -114,8 +167,7 @@ def load_config() -> PurpleBoxConfig:
                     {
                         s.strip().lower()
                         for s in os.getenv("PURPLEBOX_RESEARCH_SCANNERS", "").split(",")
-                        if s.strip().lower()
-                        in ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track")
+                        if s.strip().lower() in ALLOWED_RESEARCH_SCANNERS
                     }
                 )
             ),

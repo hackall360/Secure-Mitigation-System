@@ -4,7 +4,7 @@ Each leaf is behavior-identical to the code it replaced; these pin the
 semantics so future extractions cannot drift them.
 """
 
-from sms_budget import check_payload_budget, resolve_payload_budget
+from sms_budget import check_payload_budget, payload_size_bytes, resolve_payload_budget
 from sms_records import (
     dedupe_records,
     sanitize_cve_id,
@@ -14,9 +14,12 @@ from sms_records import (
 )
 from sms_redact import (
     EXPLOIT_REDACTED,
+    redact_cycle_evidence,
     redact_fixture_result,
+    redact_probe_output,
+    redact_project_result,
 )
-from sms_scan_parse import cvss_best, cvss_from_vendor_map, cwe_list, ref_list
+from sms_scan_parse import cvss_best, cvss_from_map, cvss_from_vendor_map, cwe_list, ref_list
 from sms_text import bounded, take_utf8_prefix
 
 
@@ -89,3 +92,87 @@ def test_record_dict_and_dedupe():
     d = to_record_dict(R())
     assert d["source"] == "circl" and len(d["summary"]) == 600
     assert len(dedupe_records([R(), R(), None])) == 1
+
+
+def test_cvss_from_map_first_score_wins():
+    assert cvss_from_map({"ghsa": {"V3Score": 7.5}, "other": {"V3Score": 9.0}}) == "7.5"
+    assert cvss_from_map({"x": {"V2Score": 5.0}}) == "5.0"
+    assert cvss_from_map({}) == ""
+    assert cvss_from_map(None) == ""
+    assert cvss_from_map({"x": "not-a-dict"}) == ""
+
+
+def test_redact_probe_output_truncate_vs_withhold():
+    assert redact_probe_output("") == ""
+    assert redact_probe_output(None) is None
+    assert redact_probe_output(0) == 0
+    assert redact_probe_output("short payload") == EXPLOIT_REDACTED
+    long_out = "y" * 600
+    cut = redact_probe_output(long_out)
+    assert cut.startswith("y" * 500) and "truncated" in cut
+    assert "y" * 600 not in cut or "truncated" in cut
+
+
+def test_redact_cycle_evidence_never_leaks_scripts():
+    class Ev:
+        def model_dump(self):
+            return {
+                "red": {
+                    "batch_evidence": [
+                        {
+                            "candidates": [
+                                {
+                                    "verification_script_python": "evil()",
+                                    "evidence": "payload",
+                                }
+                            ]
+                        }
+                    ],
+                    "report": {"verification_script_python": "evil2()"},
+                },
+                "independent_red": {"report": {"verification_script_python": "evil3()"}},
+                "pre_verification": {"probe": {"output": "short", "exit_code": 0}},
+            }
+
+    data = redact_cycle_evidence(Ev())
+    assert (
+        data["red"]["batch_evidence"][0]["candidates"][0]["verification_script_python"]
+        == EXPLOIT_REDACTED
+    )
+    assert data["red"]["report"]["verification_script_python"] == EXPLOIT_REDACTED
+    assert data["independent_red"]["report"]["verification_script_python"] == EXPLOIT_REDACTED
+    assert data["pre_verification"]["probe"]["output"] == EXPLOIT_REDACTED
+    assert data["pre_verification"]["probe"]["exit_code"] == 0
+
+
+def test_redact_project_result_redacts_cycles_keeps_history():
+    class Proj:
+        def model_dump(self):
+            return {
+                "cycle_reports": [
+                    {
+                        "evidence": {
+                            "red": {"report": {"verification_script_python": "evil()"}},
+                            "pre_verification": {"probe": {"output": "short", "exit_code": 1}},
+                        }
+                    },
+                    {"no_evidence": True},
+                ],
+                "verified_history": [{"target": "t", "status": "verified"}],
+            }
+
+    data = redact_project_result(Proj())
+    assert (
+        data["cycle_reports"][0]["evidence"]["red"]["report"]["verification_script_python"]
+        == EXPLOIT_REDACTED
+    )
+    assert data["cycle_reports"][0]["evidence"]["pre_verification"]["probe"]["exit_code"] == 1
+    assert data["cycles"] == data["cycle_reports"]
+    assert data["verified_history"] == [{"target": "t", "status": "verified"}]
+
+
+def test_payload_size_bytes_measures_json():
+    import json as _json
+
+    payload = {"a": "x" * 10}
+    assert payload_size_bytes(payload) == len(_json.dumps(payload).encode("utf-8"))

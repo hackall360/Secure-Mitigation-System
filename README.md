@@ -88,6 +88,38 @@ below). But for security-intensive applications built in the open, Muse's
 posture — capable models, developer-owned safety, containment over refusal —
 is what makes this project possible at all.
 
+## Showcase: Muse builds the demo world, red and blue decide what is true
+
+The most judgeable five minutes of this system is `main.py --ai-demo`:
+
+1. **Muse builds a world.** A builder persona (*Greenhouse* — cheerful,
+   ships fast, leaves gaps everywhere) designs a small, novel demo web
+   service on the fly: Python stdlib only, one `app.py` plus a regression
+   contract, under 12 KB. It mixes 2–4 fresh input-boundary flaw
+   combinations with one flaw inspired by a real, recent CVE pattern drawn
+   from live NVD threat intel (offline it falls back to static patterns).
+   The generator never emits exploit scripts — only a flawed app worth
+   exercising. Generated code is secret-scanned and syntax-checked before
+   it ever reaches a container.
+2. **Red breaks it, in Docker.** The red team (Muse Spark by default)
+   analyzes the generated service, writes a boundary probe, and runs it in
+   a disposable, network-disabled container: exit 0 means the boundary was
+   reached, anything else fails closed.
+3. **Blue fixes it, red re-checks.** The blue team (Muse Wonder by default)
+   authors a minimal sanitization patch under the conservative patch guard,
+   trusted regression checks confirm normal behavior still holds, and the
+   probe re-runs against the patched snapshot. Only then does a candidate
+   count as `verified`.
+4. **You keep the patch, never the exploit.** Generated demo code runs only
+   inside the sandbox; what leaves it is the patched project and a redacted
+   report. Every container is removed afterward.
+
+No staged fixture, no canned finding: the flaws are generated per run, the
+evidence is a container exit code, and the story — build, break, fix,
+prove — is the system, not a slide. See
+[Operating modes](#operating-modes) for the command and
+[Isolation](#isolation) for what containment actually promises.
+
 ## Operating modes
 
 Secure Mitigation System runs Muse red/blue teams in isolated Docker. Red attacks
