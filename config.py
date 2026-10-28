@@ -32,6 +32,8 @@ class PurpleBoxConfig:
     research_scanners: tuple[str, ...] = ()
     verifier_timeout_seconds: int = 20
     docker_timeout_seconds: int = 30
+    # Legacy single-blob cap: superseded by per-call context_budget plumbing
+    # (snapshot + Muse payload limits). Kept so older configs still validate.
     max_source_bytes: int = 65_536
 
     def validate(self) -> None:

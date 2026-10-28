@@ -195,9 +195,9 @@ async def drive(port: int, target: str, shot: Path, devtools: int, profile: str 
         )
         await call("Page.navigate", url=f"http://localhost:{port}/")
         await asyncio.sleep(2)
-        await js(f"document.querySelector('.target[data-key={target}]').click()")
+        await js(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
         if profile:
-            await js(f"document.querySelector('.profile[data-key={profile}]').click()")
+            await js(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
         if await js("document.getElementById('run-btn').disabled"):
             raise SystemExit("Run button is disabled; check the API key and Docker chips.")
         await js("document.getElementById('run-btn').click()")
@@ -304,9 +304,9 @@ def drive_firefox(
             if execute("return document.getElementById('run-btn') !== null"):
                 break
             time.sleep(0.5)
-        execute(f"document.querySelector('.target[data-key={target}]').click()")
+        execute(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
         if profile:
-            execute(f"document.querySelector('.profile[data-key={profile}]').click()")
+            execute(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
         if execute("return document.getElementById('run-btn').disabled"):
             raise SystemExit("Run button is disabled; check the API key and Docker chips.")
         execute("document.getElementById('run-btn').click()")
