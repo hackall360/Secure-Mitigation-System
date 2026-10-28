@@ -83,7 +83,20 @@ async function copyText(text, label) {
     await navigator.clipboard.writeText(text);
     toast(`${label} copied`);
   } catch {
-    toast('Clipboard unavailable in this browser context');
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.append(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      toast(`${label} copied`);
+    } catch {
+      toast('Clipboard unavailable in this browser context');
+    }
   }
 }
 
@@ -867,7 +880,9 @@ el('download-btn').addEventListener('click', () => {
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = `secure-mitigation-${latestResult.target || latestResult.project || 'project'}-report.json`;
+  document.body.append(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');
 });
@@ -875,11 +890,13 @@ el('download-btn').addEventListener('click', () => {
 el('download-patch-btn').addEventListener('click', () => {
   const diff = latestResult && (latestResult.diff || latestResult.cumulative_diff);
   if (!diff) return;
-  const url = URL.createObjectURL(new Blob([diff], { type: 'text/x-diff' }));
+  const url = URL.createObjectURL(new Blob([diff], { type: 'text/x-diff;charset=utf-8' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'candidate.patch';
+  anchor.download = `candidate-${latestResult.target || latestResult.project || 'project'}.patch`;
+  document.body.append(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Candidate patch downloaded');
 });
@@ -893,7 +910,8 @@ document.querySelectorAll('[data-copy]').forEach((button) => {
 
 el('copy-diff').addEventListener('click', (event) => {
   event.preventDefault();
-  copyText(latestResult && latestResult.diff, 'Diff');
+  const diff = latestResult && (latestResult.diff || latestResult.cumulative_diff);
+  copyText(diff, 'Candidate patch');
 });
 
 document.querySelectorAll('.filter').forEach((button) => {
