@@ -24,6 +24,17 @@ from docker_manager import (
     docker_status,
     remove_stale_resources,
 )
+from sms_cli import (
+    LoadError,
+    Spinner,
+    fact_table,
+    health_table,
+    load_config_file,
+    merge_config,
+    paint,
+    status_color,
+    usage_table,
+)
 from profiles import ProfileError, apply_profile, available_profiles, default_profile
 from project_workflow import execute_project_workflow, redact_report_for_user
 from projects import ProjectSpec
@@ -392,6 +403,13 @@ async def ai_demo_runner(
     blue_agents: int = 5,
     intel_theme: str = "input validation SQL injection XSS deserialization",
     intel_offline: bool = False,
+    build_brief: str = "",
+    vulns: str = "",
+    research: bool = False,
+    research_scanners: str = "",
+    allow_remote_inference: bool = False,
+    out_format: str = "table",
+    show_usage: bool = False,
 ) -> int:
     """AI-built demo mode: intel-grounded generation, then evidence-gated red/blue in Docker."""
     from agents import MetaMuseClient
@@ -401,6 +419,23 @@ async def ai_demo_runner(
     from profiles import apply_profile as _apply
 
     settings = _apply(_load(), profile)
+    if research:
+        # Same 5-set allowlist as --scan/--project and the dashboard socket.
+        allowed = {"trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"}
+        picked = tuple(sorted({s.strip().lower() for s in research_scanners.split(",")} & allowed))
+        settings = settings.__class__(
+            **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
+        )
+    if settings.inference_mode != "local" and not allow_remote_inference:
+        # Consent parity: hosted Muse receives generated source, so the demo
+        # stays offline (patterns only) unless consent is explicit — same rule
+        # the dashboard enforces by coercing intel_offline without the checkbox.
+        intel_offline = True
+        print(
+            "[SYSTEM] AI demo: hosted inference without --allow-remote-inference; "
+            "building offline from static flaw patterns.",
+            flush=True,
+        )
 
     themes = [w for w in intel_theme.split() if w][:6]
     if intel_offline:
@@ -425,7 +460,7 @@ async def ai_demo_runner(
     print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
     from demo_gen import parse_build_intent as _parse
 
-    _intent = _parse(theme=intel_theme)
+    _intent = _parse(build_brief=build_brief, vulns=vulns, theme=intel_theme)
     muse = MetaMuseClient(settings)
     try:
         files = await generate_demo_project(
@@ -460,9 +495,19 @@ async def ai_demo_runner(
             "scan_profile": scan_profile,
             "red_agents": red_agents,
             "blue_agents": blue_agents,
+            "allow_remote_inference": allow_remote_inference or settings.inference_mode == "local",
         }
     )
-    return await cli_runner(None, output_dir, profile, project=spec)
+    return await cli_runner(
+        None,
+        output_dir,
+        profile,
+        research,
+        research_scanners,
+        project=spec,
+        out_format=out_format,
+        show_usage=show_usage,
+    )
 
 
 async def cli_runner(
@@ -476,10 +521,16 @@ async def cli_runner(
     cve_scan: bool = False,
     deep_assessment: bool = False,
     offline_cve: bool = False,
+    out_format: str = "table",
+    show_usage: bool = False,
 ) -> int:
-    from chatter import print_emit as _print_emit
+    use_color: bool | None = None
 
-    emit = _print_emit()
+    def emit_progress(team: str, message: str):
+        print(f"[{team.upper():6}] {message}", flush=True)
+
+    async def emit(team: str, message: str):
+        emit_progress(team, message)
 
     settings = apply_profile(load_config(), profile)
     if research:
@@ -512,11 +563,21 @@ async def cli_runner(
             print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
         return 0 if cve_result.success else 1
     if project is None:
-        result = await execute_purple_workflow(target_key, emit, config=settings)
+        with Spinner("Verifying fixture boundary"):
+            result = await execute_purple_workflow(target_key, emit, config=settings)
         user_report = redact_fixture_result_for_user(result)
     else:
-        result = await execute_project_workflow(project, emit, config=settings)
+        with Spinner("Verifying project boundary"):
+            result = await execute_project_workflow(project, emit, config=settings)
         user_report = redact_report_for_user(result)
+    if out_format == "json":
+        # LAW 4: only the redacted report reaches stdout; probe scripts stay in Docker.
+        print(json.dumps(user_report, indent=2, default=str))
+    else:
+        print(fact_table(result, use_color=use_color))
+        if show_usage or result.usage.calls:
+            print(usage_table(result, use_color=use_color))
+        print(f"Status: {status_color(str(result.status), use_color)}")
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
         print(
@@ -524,10 +585,17 @@ async def cli_runner(
             f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning), "
             f"{call.seconds:.1f}s, {cost}",
             flush=True,
+            file=sys.stderr,
         )
     if result.usage.calls:
-        total = "unknown" if result.cost_usd is None else f"${result.cost_usd:.4f}"
-        print(f"[USAGE ] total {result.total_tokens} tokens, estimated cost {total}", flush=True)
+        cost_value = getattr(result, "cost_usd", getattr(result, "total_cost_usd", None))
+        total = "unknown" if cost_value is None else f"${cost_value:.4f}"
+        total_tokens = getattr(result, "total_tokens", 0)
+        print(
+            f"[USAGE ] total {total_tokens} tokens, estimated cost {total}",
+            flush=True,
+            file=sys.stderr,
+        )
     if output_dir is not None:
         report = {"notice": NOTICE, "license_url": LICENSE_URL, **user_report}
         summary = _build_summary_markdown(target_key, project, settings, result)
@@ -702,6 +770,55 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     return "\n".join(lines)
 
 
+def _health_report(settings: PurpleBoxConfig) -> dict:
+    """Readiness snapshot for --health (table or redacted JSON). Never raises."""
+    try:
+        settings.validate()
+    except ConfigurationError as exc:
+        return {"status": "configuration_error", "message": str(exc)}
+    try:
+        profiles = {
+            key: {
+                "label": profile.label,
+                "description": profile.description,
+                "red_model": profile.red_model,
+                "blue_model": profile.blue_model,
+            }
+            for key, profile in available_profiles(settings).items()
+        }
+    except Exception:
+        profiles = {}
+    try:
+        scan_profiles = [
+            {
+                "key": profile.key,
+                "label": profile.label,
+                "cycles": profile.cycles,
+                "description": profile.description,
+            }
+            for profile in SCAN_PROFILES.values()
+        ]
+    except Exception:
+        scan_profiles = []
+    try:
+        docker_report = docker_status(settings)
+    except Exception:
+        docker_report = {"state": "unavailable", "missing_images": [], "leftover_containers": 0}
+    return {
+        "status": "ok",
+        "api_key_configured": bool(settings.meta_api_key),
+        "inference_mode": settings.inference_mode,
+        "inference_ready": settings.inference_mode == "local" or bool(settings.meta_api_key),
+        "red_model": settings.red_team_model,
+        "blue_model": settings.blue_team_model,
+        "profiles": profiles,
+        "default_profile": default_profile(settings),
+        "scan_profiles": scan_profiles,
+        "docker": docker_report,
+        "busy": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Secure Mitigation System — local Muse boundary verification scaffold"
@@ -728,6 +845,11 @@ def main() -> int:
     )
     commands.add_argument(
         "--list-targets", action="store_true", help="List bundled fixtures without Docker or a key"
+    )
+    commands.add_argument(
+        "--health",
+        action="store_true",
+        help="Report readiness (models, profiles, Docker) without Docker or a key",
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
@@ -792,6 +914,16 @@ def main() -> int:
         help="AI-built demo mode: Muse designs a novel vulnerable demo project from threat intel, then red/blue teams exercise it in Docker",
     )
     parser.add_argument(
+        "--build-brief",
+        default="",
+        help="What the AI demo should build (bounded to 500 chars; flows into intent parsing)",
+    )
+    parser.add_argument(
+        "--vulns",
+        default="",
+        help="Requested demo flaws: CVE IDs, named types, or free text (comma-separated)",
+    )
+    parser.add_argument(
         "--intel-theme",
         default="input validation SQL injection XSS deserialization",
         help="Threat-intel themes for AI demo generation (space-separated NVD keywords)",
@@ -800,6 +932,24 @@ def main() -> int:
         "--intel-offline",
         action="store_true",
         help="Generate AI demo without live NVD lookup (uses static flaw patterns)",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="TOML or JSON file with an [sms] table of CLI defaults "
+        "(flag > config > env > default; unknown keys error)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Non-interactive output shape: human-readable tables (default) or redacted JSON",
+    )
+    parser.add_argument(
+        "--show-usage",
+        action="store_true",
+        help="Always print the token/cost table even when no model calls were made",
     )
     parser.add_argument(
         "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
@@ -819,21 +969,91 @@ def main() -> int:
         "--research; binaries run on the host, each absent tool is skipped.",
     )
     args = parser.parse_args()
+    # --config defaults (flag > config > env > default), unknown keys error.
+    file_values: dict = {}
+    if args.config is not None:
+        try:
+            file_values = load_config_file(args.config)
+        except LoadError as exc:
+            parser.error(str(exc))
+    defaults = {
+        "profile": None,
+        "scan_profile": "custom",
+        "cycles": None,
+        "red_agents": 5,
+        "blue_agents": 5,
+        "context_budget": 32768,
+        "intel_theme": "input validation SQL injection XSS deserialization",
+        "intel_offline": False,
+        "build_brief": "",
+        "vulns": "",
+        "research": False,
+        "research_scanners": "",
+        "allow_remote_inference": False,
+        "offline_cve": False,
+        "deep_assessment": False,
+        "output_dir": None,
+        "port": 8000,
+        "format": "table",
+    }
+    flag_values: dict = {}
+    for key in defaults:
+        value = getattr(args, key)
+        if value != defaults[key]:
+            flag_values[key] = value
+    merged = merge_config(None, file_values, flag_values)
+    for key, value in merged.items():
+        if key == "output_dir" and value is not None:
+            value = Path(value)
+        setattr(args, key, value)
+    out_format = args.format
+    with_config = f" (config: {args.config})" if args.config is not None else ""
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    if args.profile is not None and not (args.scan or args.project):
-        parser.error("--profile requires --scan or --project")
-    if args.output_dir is not None and not (args.scan or args.project):
-        parser.error("--output-dir requires --scan or --project")
-    if args.research and not args.scan:
-        parser.error("--research requires --scan")
+    if args.profile is not None and not (args.scan or args.project or args.ai_demo):
+        parser.error("--profile requires --scan, --project, or --ai-demo")
+    if args.output_dir is not None and not (args.scan or args.project or args.ai_demo):
+        parser.error("--output-dir requires --scan, --project, or --ai-demo")
+    # --research/--research-scanners run on every scan surface: fixture, project, ai-demo.
+    if args.research and not (args.scan or args.project or args.ai_demo):
+        parser.error("--research requires --scan, --project, or --ai-demo")
     if args.research_scanners and not args.research:
         parser.error("--research-scanners requires --research")
     if args.project and (not args.command or not args.test_command or not args.contract):
         parser.error("--project requires --command, --test-command, and --contract")
     if args.ai_demo and args.scan:
         parser.error("--ai-demo cannot be combined with --scan; it generates its own project")
-    if not args.project and (
+    if args.build_brief and not args.ai_demo:
+        parser.error("--build-brief requires --ai-demo")
+    if args.vulns and not args.ai_demo:
+        parser.error("--vulns requires --ai-demo")
+    if args.intel_theme != defaults["intel_theme"] and not args.ai_demo:
+        parser.error("--intel-theme requires --ai-demo")
+    if args.intel_offline and not args.ai_demo:
+        parser.error("--intel-offline requires --ai-demo")
+    # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
+    if args.cycles is not None and not 1 <= args.cycles <= 20:
+        parser.error("--cycles must be between 1 and 20")
+    if not 1 <= args.red_agents <= 12:
+        parser.error("--red-agents must be between 1 and 12")
+    if not 1 <= args.blue_agents <= 12:
+        parser.error("--blue-agents must be between 1 and 12")
+    if not 1024 <= args.context_budget <= 131072:
+        parser.error("--context-budget must be between 1024 and 131072")
+    intensity_warnings: list[str] = []
+    if args.red_agents + args.blue_agents >= 20:
+        intensity_warnings.append(
+            f"warning: {args.red_agents + args.blue_agents} total agents "
+            "(red + blue) will make many model calls; expect cost and latency."
+        )
+    if args.context_budget >= 65536:
+        intensity_warnings.append(
+            f"warning: --context-budget {args.context_budget} is large; "
+            "expect higher token usage per call."
+        )
+    if args.red_agents >= 10 or args.blue_agents >= 10:
+        intensity_warnings.append("warning: team size >= 10 is heavy; consider a named scan profile.")
+    if not args.project and not args.ai_demo and (
         args.image
         or args.command
         or args.test_command
@@ -848,13 +1068,37 @@ def main() -> int:
         or args.deep_assessment
         or args.offline_cve
     ):
-        parser.error("Project options require --project")
+        parser.error("Project options require --project (ai-demo carries its own intensity flags)")
     try:
         if args.list_targets:
             for key, target in TARGETS_REGISTRY.items():
                 print(f"{key}: {target.description}")
             return 0
         settings = load_config()
+        if args.health:
+            report = _health_report(settings)
+            if out_format == "json":
+                # LAW 4: readiness booleans only; keys and model internals never print.
+                safe = {
+                    "status": report["status"],
+                    "inference_mode": report["inference_mode"],
+                    "inference_ready": report["inference_ready"],
+                    "api_key_configured": report["api_key_configured"],
+                    "red_model": report["red_model"],
+                    "blue_model": report["blue_model"],
+                    "profiles": report["profiles"],
+                    "scan_profiles": report["scan_profiles"],
+                    "docker": report["docker"],
+                    "busy": report["busy"],
+                }
+                print(json.dumps(safe, indent=2))
+            else:
+                print(health_table(report))
+            return 0 if report["status"] == "ok" else 1
+        for warning in intensity_warnings:
+            print(warning, file=sys.stderr)
+        if file_values:
+            print(f"[SYSTEM] Loaded CLI defaults from {args.config}{with_config and ''}", flush=True)
         if args.init_images:
             with DockerSandboxManager(settings) as manager:
                 manager.ensure_base_images()
@@ -883,6 +1127,8 @@ def main() -> int:
                     args.profile,
                     args.research,
                     args.research_scanners,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
                 )
             )
         if args.ai_demo:
@@ -895,9 +1141,26 @@ def main() -> int:
                     blue_agents=args.blue_agents,
                     intel_theme=args.intel_theme,
                     intel_offline=args.intel_offline,
+                    build_brief=args.build_brief,
+                    vulns=args.vulns,
+                    research=args.research,
+                    research_scanners=args.research_scanners,
+                    allow_remote_inference=args.allow_remote_inference,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
                 )
             )
         if args.project:
+            # Consent parity with the dashboard: hosted inference moves project
+            # source to Muse, so --allow-remote-inference is required. The
+            # dashboard enforces the same rule via the allow-remote checkbox.
+            if settings.inference_mode != "local" and not args.allow_remote_inference:
+                from project_workflow import ProjectWorkflowError as _ConsentError
+
+                raise _ConsentError(
+                    "Remote inference consent is required before project source "
+                    "can be sent to Muse. Re-run with --allow-remote-inference."
+                )
             try:
                 project_values = {
                     "path": str(args.project.absolute()),
@@ -925,10 +1188,14 @@ def main() -> int:
                     None,
                     args.output_dir or Path("reports"),
                     args.profile,
+                    args.research,
+                    args.research_scanners,
                     project=spec,
                     cve_scan=args.cve_scan,
                     deep_assessment=args.deep_assessment,
                     offline_cve=args.offline_cve,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
                 )
             )
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
