@@ -186,9 +186,11 @@ def test_user_reports_never_contain_exploit_scripts():
 
 
 def test_websocket_and_cli_reports_withhold_probe_source():
-    from workflow import ScanResult, redact_fixture_result_for_user
-    from agents import RedTeamFinding
     import json as _json
+
+    from agents import RedTeamFinding
+    from workflow import ScanResult, redact_fixture_result_for_user
+
     fr = ScanResult(
         target="t",
         finding=RedTeamFinding(
@@ -209,12 +211,15 @@ def test_websocket_and_cli_reports_withhold_probe_source():
 
 def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
     import pytest as _pytest
+
     from intel_search import nvd_lookup, nvd_search
+
     with _pytest.raises(ValueError):
         nvd_search("")
     with _pytest.raises(ValueError):
         nvd_lookup("CVE-bad")
     from demo_gen import DemoProjectFiles, materialize_demo_project
+
     with _pytest.raises(ValueError):
         materialize_demo_project(
             DemoProjectFiles(
