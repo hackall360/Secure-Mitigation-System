@@ -124,13 +124,23 @@ def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
     removed = {"containers": 0, "networks": 0, "snapshots": 0}
     label = {"label": "purplebox.session"}
     for container in client.containers.list(all=True, filters=label):
-        container.remove(force=True)
+        try:
+            container.remove(force=True)
+        except NotFound:
+            # Reaped between list and remove; already gone, keep sweeping.
+            continue
         removed["containers"] += 1
     for network in client.networks.list(filters=label):
-        network.remove()
+        try:
+            network.remove()
+        except NotFound:
+            continue
         removed["networks"] += 1
     for image in client.images.list(name=config.clone_repo_prefix):
-        client.images.remove(image=image.id, force=True)
+        try:
+            client.images.remove(image=image.id, force=True)
+        except (ImageNotFound, NotFound):
+            continue
         removed["snapshots"] += 1
     return removed
 
@@ -327,6 +337,8 @@ class DockerSandboxManager:
         finally:
             try:
                 stage.remove(force=True)
+            except NotFound:
+                pass
             finally:
                 if stage in self.containers:
                     self.containers.remove(stage)
@@ -390,9 +402,14 @@ class DockerSandboxManager:
 
     def replace_target(self, previous, snapshot: str, network, target: Target, source: str):
         # Fresh process and immutable filesystem; no pkill or shell command interpolation.
-        previous.remove(force=True)
-        if previous in self.containers:
-            self.containers.remove(previous)
+        try:
+            previous.remove(force=True)
+        except NotFound:
+            # Already reaped (cancel/disconnect path removed it); still untrack below.
+            pass
+        finally:
+            if previous in self.containers:
+                self.containers.remove(previous)
         return self.start_cloneable_target(network, target, source, base_image=snapshot)
 
     def run_isolated_verifier(self, network, script: str) -> VerificationResult:
@@ -424,6 +441,8 @@ class DockerSandboxManager:
             if container is not None:
                 try:
                     container.remove(force=True)
+                except NotFound:
+                    pass
                 finally:
                     if container in self.containers:
                         self.containers.remove(container)
@@ -498,6 +517,8 @@ class DockerSandboxManager:
         finally:
             try:
                 stage.remove(force=True)
+            except NotFound:
+                pass
             finally:
                 if stage in self.containers:
                     self.containers.remove(stage)
@@ -593,9 +614,13 @@ class DockerSandboxManager:
             return ProjectCheckResult(int(status["StatusCode"]), stdout, stderr)
         finally:
             if container is not None:
-                container.remove(force=True)
-                if container in self.containers:
-                    self.containers.remove(container)
+                try:
+                    container.remove(force=True)
+                except NotFound:
+                    pass
+                finally:
+                    if container in self.containers:
+                        self.containers.remove(container)
 
     def stop_project(self, container) -> None:
         """Force-remove a project target, including during workflow cancellation."""
@@ -634,6 +659,15 @@ class DockerSandboxManager:
             self.client.close()
         except DockerException:
             failures.append("client")
+        finally:
+            # Tracking is per-session: clear it even on failure so a later
+            # close (or the fail-closed stale sweep) never re-removes or leaks.
+            self.containers.clear()
+            self.networks.clear()
+            images, self.images = self.images, []
+            self._snapshot_cache = {
+                key: tag for key, tag in self._snapshot_cache.items() if tag not in images
+            }
         if failures:
             raise SandboxError(
                 f"Cleanup failed for {', '.join(failures)}. Inspect Docker resources labeled "
