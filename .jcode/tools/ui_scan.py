@@ -16,7 +16,6 @@ import base64
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -65,7 +64,7 @@ def start_server(port: int, offline: bool) -> subprocess.Popen:
         env_file = ROOT / ".env"
         keys = [
             line.split("=", 1)[1].strip()
-            for line in env_file.read_text().splitlines()
+            for line in env_file.read_text(encoding="utf-8").splitlines()
             if line.startswith("META_MUSE_API_KEY=")
         ]
         if not keys or not keys[0]:
@@ -152,7 +151,13 @@ def main() -> int:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--profile", choices=["economy", "balanced", "quality"])
     args = parser.parse_args()
-    chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser")
+    chrome_bin = (
+        shutil.which("google-chrome")
+        or shutil.which("chromium-browser")
+        or shutil.which("chromium")
+        or shutil.which("chrome")
+        or shutil.which("chrome.exe")
+    )
     if not chrome_bin:
         raise SystemExit("Chrome or Chromium is required.")
     server = start_server(args.port, args.offline)
@@ -180,12 +185,18 @@ def main() -> int:
         print(f"Screenshot: {args.shot}", file=sys.stderr)
         return 0 if result["status"] == "Boundary check passed" else 1
     finally:
-        for proc, how in ((chrome, signal.SIGTERM), (server, signal.SIGINT)):
-            proc.send_signal(how)
+        for proc in (chrome, server):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
             try:
                 proc.wait(15)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         shutil.rmtree(profile, ignore_errors=True)
 
 

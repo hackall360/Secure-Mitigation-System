@@ -643,3 +643,42 @@ def test_fixture_chatter_flows_over_log_pipeline():
         assert len(line) <= 220 and "\n" not in line
     # full run emits more events than the pre-chatter baseline of 12
     assert len(events) > 12, len(events)
+
+
+def test_cross_platform_compat_guards():
+    # ui_scan: portable chrome discovery + terminate-based shutdown (no POSIX signals)
+    from pathlib import Path
+
+    ui = (Path(__file__).resolve().parents[1] / ".jcode" / "tools" / "ui_scan.py").read_text()
+    for name in ("chrome.exe", '"chrome"', '"chromium"'):
+        assert name in ui, name
+    assert "import signal" not in ui and ".terminate()" in ui
+    # dev tool: owner-only .env creation + nt-aware venv python
+    dev = (Path(__file__).resolve().parents[1] / ".jcode" / "tools" / "dev.py").read_text()
+    assert "Scripts/python.exe" in dev and "os.open(env" in dev
+    # container paths stay POSIX by design: backslash rejected, PurePosixPath used
+    import pytest as _pt
+
+    from projects import _validate_relative_path
+
+    with _pt.raises(ValueError):
+        _validate_relative_path("src\\app.py")
+    assert _validate_relative_path("src/app.py").as_posix() == "src/app.py"
+    # chatter basename handles both separators' inputs without leaking dirs
+    from chatter import chatter
+
+    line = chatter("red_start", persona="Breakwater", path="src\\app.py", seed=1)
+    assert len(line) <= 220 and "\n" not in line
+    # isolation script is documented container-only
+    import checks
+
+    assert "INSIDE the Linux verifier container only" in checks.ISOLATION_SCRIPT
+    # no POSIX-only stdlib imports in host runtime
+    root = Path(__file__).resolve().parents[1]
+    hits = []
+    for py in list(root.glob("*.py")) + list((root / ".jcode" / "tools").glob("*.py")):
+        for line in py.read_text(encoding="utf-8").splitlines():
+            sline = line.strip()
+            if sline.startswith(("import fcntl", "import termios", "import pty", "import pwd")):
+                hits.append(f"{py.name}: {sline}")
+    assert hits == [], hits

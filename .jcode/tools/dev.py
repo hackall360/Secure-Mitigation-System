@@ -43,7 +43,10 @@ def setup():
     env = ROOT / ".env"
     if not env.exists():
         # Exclusive creation never overwrites an existing developer configuration.
-        with env.open("x", encoding="utf-8") as output:
+        # Owner-only mode so the template is never world-readable, even on
+        # platforms where chmod is a no-op (Windows ACLs inherit from the dir).
+        fd = os.open(env, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
             output.write((ROOT / "example.env").read_text(encoding="utf-8"))
         if os.name != "nt":
             env.chmod(0o600)

@@ -52,6 +52,9 @@ sys.exit(0)
 
 
 ISOLATION_SCRIPT = r"""
+# Runs INSIDE the Linux verifier container only (never on the host):
+# /proc/net/route and the no-default-route assertion are Linux-container
+# checks. Windows/macOS hosts are supported; the container image is Linux.
 import socket
 import sys
 from pathlib import Path
