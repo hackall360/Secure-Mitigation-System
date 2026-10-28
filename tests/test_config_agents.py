@@ -66,6 +66,11 @@ async def test_muse_request_uses_exact_configured_endpoint_and_strict_schema():
         assert request.headers["authorization"] == "Bearer unit-test-key"
         body = json.loads(request.content)
         assert body["model"] == "muse-spark-1.3"
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "RedTeamFinding", "schema": RedTeamFinding.model_json_schema()},
+        }
+        assert "response_schema" not in json.loads(body["messages"][1]["content"])
         assert json.loads(body["messages"][1]["content"])["source"] == "test source"
         return httpx.Response(
             200,
@@ -110,7 +115,7 @@ async def test_schema_failure_is_not_a_finding(content):
         await client.aclose()
 
 
-@pytest.mark.parametrize("status", [302, 401, 429, 500])
+@pytest.mark.parametrize("status", [302, 401, 500])
 async def test_api_failure_has_no_fallback_and_does_not_expose_body(status):
     called = []
 
@@ -206,3 +211,23 @@ async def test_truncated_reasoning_reports_token_budget():
 def test_budget_and_effort_validation(field, value):
     with pytest.raises(ConfigurationError):
         replace(PurpleBoxConfig(), **{field: value}).validate()
+
+
+@pytest.mark.parametrize("status", [429, 502, 503, 504])
+async def test_transient_status_retries_once_then_fails_without_exposing_body(status):
+    called = []
+
+    def handle(request):
+        called.append(request)
+        return httpx.Response(status, text="private provider detail")
+
+    client = MetaMuseClient(
+        PurpleBoxConfig(meta_api_key="unit-test-key"), transport=httpx.MockTransport(handle)
+    )
+    try:
+        with pytest.raises(AgentError) as error:
+            await client.run_red_team_analysis("app.js", "source")
+        assert "private provider detail" not in str(error.value)
+        assert len(called) == 2
+    finally:
+        await client.aclose()

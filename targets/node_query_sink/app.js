@@ -30,5 +30,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(8080, '0.0.0.0', () => {
-    console.log('PurpleBox fixture listening on port 8080');
+    console.log('Secure Mitigation System fixture listening on port 8080');
 });

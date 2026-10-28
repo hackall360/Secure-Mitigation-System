@@ -1,7 +1,7 @@
-# AGENT.md - PurpleBox Workspace Instructions
+# AGENT.md - Secure Mitigation System Workspace Instructions
 
 ## Role & Objective
-You are an autonomous software engineering agent maintaining **PurpleBox**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
+You are an autonomous software engineering agent maintaining **Secure Mitigation System**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
 
 ## Mandatory Coding Standards
 1. **No Partial Code Blocks:** Always write complete files from top to bottom. Never use ellipses (`...`) or placeholder comments to skip unchanged code.
@@ -23,3 +23,13 @@ validation commands, entry points, and local-state caveats.
 
 For current setup commands, Docker rebuild/cleanup rules, and environment traps,
 see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Arbitrary local projects use `projects.py`, `project_agents.py`, and
+`project_workflow.py`, separate from the fixture workflow. See
+[docs/PROJECTS.md](docs/PROJECTS.md) for snapshot/runtime constraints and
+[docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for evidence and context rules.
+Local Muse serving is an explicit loopback-only opt-in, never a fallback provider.
+
+Scan intensity and team configuration live in [docs/SCAN_PROFILES.md](docs/SCAN_PROFILES.md).
+See [docs/DISCOVERY_TEAMS.md](docs/DISCOVERY_TEAMS.md) for leader/worker payloads
+and [docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for cycle/pass evidence semantics.
