@@ -7,6 +7,7 @@ import asyncio
 import json
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -152,8 +153,33 @@ async def run_demo_build(
 
 
 def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
+    @asynccontextmanager
+    async def readiness_lifespan(application: FastAPI):
+        try:
+            settings = config or load_config()
+            snapshot = _health_report(settings)
+            print(
+                "[SYSTEM] Secure Mitigation System ready: "
+                f"inference={snapshot['inference_mode']} "
+                f"(ready={snapshot['inference_ready']}), "
+                f"docker={snapshot['docker']['state']}, "
+                f"profile={snapshot['default_profile']}.",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                "[SYSTEM] Secure Mitigation System starting with unvalidated "
+                f"configuration ({type(exc).__name__}); readiness via /api/health.",
+                flush=True,
+            )
+        yield
+
     application = FastAPI(
-        title="Secure Mitigation System", version="0.1.0", docs_url=None, redoc_url=None
+        title="Secure Mitigation System",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=readiness_lifespan,
     )
     application.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
@@ -337,6 +363,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
+            # Connect preamble: the UI renders plain log frames immediately,
+            # so this hello + profile snapshot means it never sits blank
+            # while Docker/Muse warm up. Profiles are fixed keys, never model
+            # IDs; api keys never print. Fixture/demo only: invalid/busy
+            # handlers and project first-frame flow are other owners.
+            if target_key is not None:
+                try:
+                    profile_key = socket.query_params.get("profile") or default_profile(scan_config)
+                    hello_msg = (
+                        "Connected: "
+                        f"{scan_config.red_team_model} vs {scan_config.blue_team_model} "
+                        f"(profile {profile_key}"
+                        + (", research on" if scan_config.research_enabled else "")
+                        + ")."
+                    )
+                except Exception:
+                    hello_msg = "Connected: Secure Mitigation System scan socket ready."
+                await emit("system", hello_msg)
             run = asyncio.create_task(coroutine)
             disconnect = asyncio.create_task(disconnected())
             try:
