@@ -163,9 +163,12 @@ async def _gather_research(
             records = list(await blocking(_research.cve_records, intent.cve_ids)) + records
         # Only query the web for substantive named types or genuinely
         # descriptive free text — skip filename/contract word-salad so the
-        # series doesn't burn requests on noise.
+        # series doesn't burn requests on noise. Single code-like tokens
+        # (underscores, dots, slashes, ids) are never web queries.
         web_queries = list(intent.named_types) + [
-            free for free in intent.free_text if len(free.split()) >= 4
+            free
+            for free in intent.free_text
+            if len(free.split()) >= 4 and not any(ch in free for ch in "_/\\=;(){}[]")
         ]
         if web_queries:
             records = records + list(await blocking(_research.web_notes, web_queries))

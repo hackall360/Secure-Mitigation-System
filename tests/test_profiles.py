@@ -80,7 +80,10 @@ def test_socket_uses_chosen_profile(monkeypatch):
             "ws://localhost/ws/combat/node_query_sink?profile=economy",
             headers={"origin": "http://localhost"},
         ) as socket:
-            assert socket.receive_json()["type"] == "result"
+            first = socket.receive_json()
+            if first["type"] != "result":
+                assert first["team"] == "system"  # hello preamble precedes result
+                assert socket.receive_json()["type"] == "result"
     assert seen["models"] == ("muse-spark-1.3", "muse-spark-1.3")
 
 
