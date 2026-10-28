@@ -133,8 +133,20 @@ def test_dashboard_markup_defaults_to_extra_light_and_five_agent_teams():
     assert 'id="project-cycles"' in markup and "readonly" in markup
     assert 'id="project-red-agents"' in markup and 'name="red_agents"' in markup
     assert 'id="project-blue-agents"' in markup and 'name="blue_agents"' in markup
-    assert markup.count("Ultra heavy only") == 2
+    assert markup.count("Ultra heavy only") == 4
     assert markup.count('max="12" value="5"') >= 2
+    # Green-build intensity/team/budget widgets (M1-M5): same control pattern
+    # as the project form, inside #demo-build-config with the demo sender.
+    for widget in (
+        'id="demo-scan-profile"',
+        'id="demo-cycles"',
+        'id="demo-red-agents"',
+        'id="demo-blue-agents"',
+        'id="demo-budget"',
+        'id="demo-offline"',
+        'id="demo-allow-remote"',
+    ):
+        assert widget in markup
 
 
 def test_cycle_result_label_includes_named_profile_pass_number():

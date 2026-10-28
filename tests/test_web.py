@@ -248,6 +248,11 @@ def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
                         "theme": "xss",
                         "build_brief": "a tiny notes app",
                         "vulns": "CVE-2024-3094, sqli",
+                        "scan_profile": "light",
+                        "cycles": 3,
+                        "red_agents": 5,
+                        "blue_agents": 5,
+                        "context_budget": 32768,
                     }
                 )
             )
@@ -258,3 +263,8 @@ def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
     assert seen.get("theme") == "xss"
     assert seen.get("build_brief") == "a tiny notes app"
     assert seen.get("vulns") == "CVE-2024-3094, sqli"
+    assert seen.get("scan_profile") == "light"
+    assert seen.get("cycles") == 3
+    assert seen.get("red_agents") == 5
+    assert seen.get("blue_agents") == 5
+    assert seen.get("context_budget") == 32768
