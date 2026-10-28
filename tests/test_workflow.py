@@ -297,7 +297,7 @@ async def test_research_on_runs_sidecars_and_grounds_contracts(monkeypatch):
         "blocking",
         lambda fn, *a, **k: (
             fake_sink(*a, **k)
-            if getattr(fn, "__module__", "") == "research"
+            if getattr(fn, "__name__", "") == "research_for_sink"
             else _real_blocking(fn, *a, **k)
         ),
     )
@@ -350,3 +350,50 @@ def test_research_record_truncates_and_source_fallback_order():
     rec = _research.ResearchRecord(source="osv", summary="x" * 5000)
     assert len(rec.summary) == 1500
     assert "html.duckduckgo" not in _research.__doc__
+
+
+
+async def test_research_gather_adds_cve_and_web_records(monkeypatch):
+    """I6: CVE ids in the contract get series records; named text gets web notes."""
+    import workflow as _workflow
+    from research import ResearchRecord
+
+    async def fake_sink(*args, **kwargs):
+        return []
+
+    async def fake_series(*args, **kwargs):
+        return [ResearchRecord(source="circl", cve_id="CVE-2024-3094", title="t", summary="s")]
+
+    async def fake_web(*args, **kwargs):
+        return [ResearchRecord(source="web", title="SQL injection", summary="def")]
+
+    async def fake_blocking(fn, *a, **k):
+        name = getattr(fn, "__name__", "")
+        if name == "research_for_sink":
+            return await fake_sink(*a, **k)
+        if name == "cve_records":
+            return await fake_series(*a, **k)
+        if name == "web_notes":
+            return await fake_web(*a, **k)
+        import asyncio as _aio
+
+        return await _aio.to_thread(fn, *a, **k)
+
+    monkeypatch.setattr(_workflow, "blocking", fake_blocking)
+
+    events = []
+
+    async def emit(team, message):
+        events.append((team, message))
+
+    muse = ResearchFakeMuse()
+    digest, records = await _workflow._gather_research(
+        muse,
+        PurpleBoxConfig(meta_api_key="unit-test-key"),
+        "notes.py",
+        "notes app with CVE-2024-3094 and sqli",
+        emit,
+    )
+    sources = [r["source"] for r in records]
+    assert "circl" in sources and "web" in sources
+    assert any(t == "research" for t, _ in events)

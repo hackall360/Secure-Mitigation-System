@@ -821,7 +821,7 @@ function startDemoBuild() {
   socket.onerror = () => { writeLine('system', 'Connection failed. Check the server terminal.'); };
   socket.onclose = handleDemoClose;
   socket.onopen = () => {
-    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
+    socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: inferenceMode === 'local' || !(el('allow-remote') && el('allow-remote').checked) }));
     writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
   };
 }

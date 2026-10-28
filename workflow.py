@@ -154,6 +154,25 @@ async def _gather_research(
         )
         return "", []
     records = list(records)
+    # CVE ids mentioned in the sink/contract get the full endpoint series
+    # (CIRCL + OSV + EPSS + GHSA); named text gets web definition notes.
+    # Same untrusted-data rules as every other record below.
+    try:
+        from demo_gen import parse_build_intent as _parse_intent
+
+        intent = _parse_intent(vulns=f"{filename} {contract}")
+        if intent.cve_ids:
+            records = list(await blocking(_research.cve_records, intent.cve_ids)) + records
+        # Only query the web for substantive named types or genuinely
+        # descriptive free text — skip filename/contract word-salad so the
+        # series doesn't burn requests on noise.
+        web_queries = list(intent.named_types) + [
+            free for free in intent.free_text if len(free.split()) >= 4
+        ]
+        if web_queries:
+            records = records + list(await blocking(_research.web_notes, web_queries))
+    except Exception:
+        pass
     if settings.research_scanners:
         scanner_hits = await blocking(_run_opt_in_scanners, settings, filename, log)
         records.extend(scanner_hits)
