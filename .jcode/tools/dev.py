@@ -44,7 +44,7 @@ def setup():
     if not env.exists():
         # Exclusive creation never overwrites an existing developer configuration.
         with env.open("x", encoding="utf-8") as output:
-            output.write((ROOT / ".env.example").read_text(encoding="utf-8"))
+            output.write((ROOT / "example.env").read_text(encoding="utf-8"))
         if os.name != "nt":
             env.chmod(0o600)
         print("Created ignored .env template. No key configured or exported.")

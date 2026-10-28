@@ -144,3 +144,11 @@ public TCP paths but is not proof of host isolation. Fixtures remain a developme
 scaffold, not a safe execution boundary for arbitrary hostile repositories.
 The original `VALIDATION.md` remains a historical scaffold report; this section
 supersedes its Docker-unavailable statement for this machine only.
+
+## Environment template and ignore policy
+
+`example.env` is the tracked, sanitized configuration template. Setup copies it to
+`.env` only if absent. `.env` and `.env.*` local variants are ignored, with an
+explicit exception for the conventional `.env.example` template name.
+`example.env` is explicitly allowed. Never put real credentials in templates.
+To use the configuration, edit `.env` privately and export it as described above.

@@ -39,10 +39,10 @@ Open **http://127.0.0.1:8000**. The dashboard loads without Docker or a key and 
 missing setup. Stop the server before changing its environment. On Windows PowerShell,
 activate with `.venv\Scripts\Activate.ps1`; use `$env:NAME="value"` for environment variables.
 
-To enable inference, copy `.env.example` to `.env`, fill in your key, and export its values:
+To enable inference, copy `example.env` to `.env`, fill in your key, and export its values:
 
 ```bash
-cp .env.example .env
+cp example.env .env
 # Edit .env with your own Meta Model API key, then:
 set -a
 source .env

@@ -53,7 +53,7 @@ live checks unless requested. Unit tests are not proof of live integration.
 - `registry.py` and `targets/`: bundled target definitions and source fixtures.
 - `tests/`: isolated unit tests, configured by `pyproject.toml`.
 - `test_harness.py`: local checks and explicit `--docker` / `--api` live checks.
-- `.env.example`: configuration template only. Python does not automatically
+- `example.env`: configuration template only. Python does not automatically
   load `.env`, so export the configured values before starting the application.
 - `.venv/`, `.env`, caches, and `reports/` are ignored local state.
 

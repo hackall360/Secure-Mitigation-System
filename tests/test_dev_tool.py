@@ -19,7 +19,7 @@ def dev(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "PYTHON", tmp_path / ".venv/bin/python")
     monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/uv")
     monkeypatch.setattr(module, "run", Mock())
-    (tmp_path / ".env.example").write_text("META_MUSE_API_KEY=\n")
+    (tmp_path / "example.env").write_text("META_MUSE_API_KEY=\n")
     return module
 
 
@@ -70,3 +70,21 @@ def test_python_command_uses_repository_interpreter(dev):
     dev.PYTHON.touch()
     dev.python("main.py", "--list-targets")
     dev.run.assert_called_once_with(dev.PYTHON, "main.py", "--list-targets")
+
+
+def test_gitignore_protects_secrets_and_allows_environment_templates():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    paths = [".env", ".env.local", ".env.production", "example.env", ".env.example"]
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--stdin"],
+        input="\n".join(paths) + "\n",
+        text=True,
+        capture_output=True,
+        cwd=root,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert set(result.stdout.splitlines()) == {".env", ".env.local", ".env.production"}
+    assert (root / "example.env").is_file()

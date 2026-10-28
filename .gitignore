@@ -233,3 +233,9 @@ htmlcov/
 reports/
 *.egg-info/
 dist/
+
+# Local secrets stay private. Only sanitized templates belong in Git.
+.env
+.env.*
+!.env.example
+!example.env
