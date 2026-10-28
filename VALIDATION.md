@@ -1,3 +1,58 @@
+# Final acceptance: October 28, 2026
+
+- `.venv/bin/python .jcode/tools/dev.py check`: **176 tests passed**, Ruff lint
+  and format checks, Python compilation, JavaScript syntax, fixture/schema
+  harness, and CLI target listing passed. One upstream Starlette warning remains.
+- **Real Muse plus real Docker:**
+  `.jcode/tools/project_scan.py --live --cycles 1 --output-dir reports/project-live-structured`
+  passed against the configured Meta API, using Spark for red and Wonder for blue.
+  Only the generated acceptance fixture was sent. Six real model calls consumed
+  27,091 reported tokens, estimated $0.21268 for the successful run. Earlier failed
+  attempts also incurred usage and are retained separately as diagnostic evidence.
+  Red demonstrated `7*7` expression evaluation returning HTTP 200 / `49`. Blue
+  generated a replacement. The unchanged probe then received HTTP 400 / `blocked`,
+  original regressions passed, independent Red returned no finding in the bounded
+  context, final Blue produced a retained-patch report, and cleanup succeeded.
+  This is evidence for that tested boundary, not a general security guarantee.
+- **Real Firefox dashboard, WebSocket, loopback inference HTTP, and Docker:**
+  `.jcode/tools/project_ui_scan.py` served the generated local project. Two cycles
+  completed with retained cumulative SQL parameterization and input-allowlisting
+  patches. The browser showed baseline Passed, pre-probe 2/2 reachable, regression
+  Passed, post-probe 2/2 blocked, Resources removed, both retained cycle reports,
+  all seven pipeline stages done, correctly attributed Red/Blue calls, and +4/-2
+  diff lines. Remote-source consent stayed hidden and no API key was needed.
+  No desktop horizontal overflow was observed. JSON report and candidate.patch
+  downloads were read back from the browser download directory and matched the
+  server's complete cycle evidence and cumulative diff byte-for-byte.
+  This local test endpoint returned deterministic JSON, not real model inference.
+- **Pure-Python project-import probes in real Docker:**
+  `.jcode/tools/project_scan.py --source-import-probes --cycles 1 --output-dir reports/project-import-acceptance`
+  passed, including pre/post probes, original regression checks, original source
+  preservation, and cleanup. Project containers now use explicit /workspace CWD.
+- Live diagnostics exposed a missing source-import path and prompt-only schema
+  fragility. They are fixed and regression-covered. See PROJECT_WORKFLOW.md for
+  the exact runtime flags, schema request shape, provider documentation, and
+  browser evidence-summary traps. No permissive JSON repair or provider fallback
+  was added. Local schema validation still rejects malformed responses.
+- Private generated evidence lives under ignored `reports/`. Test-only dashboard
+  and inference servers were stopped after acceptance. No PurpleBox containers,
+  session networks, or snapshot images remained in the final inspection.
+
+## Operator prerequisites, not bundled services
+
+A compatible runtime image, dependencies, meaningful regression command, and
+behavior contract remain required for each project. Full offline inference needs
+an operator-provided local Muse-compatible model server with schema-constrained
+Chat Completions support. The loopback HTTP integration is verified, but no real
+local Muse model deployment is bundled or attested. Containers share the host
+kernel. VM-grade hostile-code containment, exhaustive language/framework coverage,
+mobile-browser acceptance, and universal patch correctness are not claimed.
+
+The earlier validation sections below are historical records, superseded by the
+final acceptance above where their environment or validation status differs.
+
+---
+
 # Arbitrary-project validation: October 28, 2026
 
 - `.venv/bin/python .jcode/tools/dev.py check` passed: pytest, Ruff lint and

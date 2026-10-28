@@ -121,7 +121,8 @@ python main.py --serve
 Local mode permits only literal `127.0.0.1` or `[::1]` endpoints, does not require
 an API key or remote-source consent, and never falls back to hosted inference.
 The dashboard automatically hides hosted consent and enables local scans without a key. It still uses `MetaMuseClient`
-and the Muse model allowlist. The operator must ensure the local server actually
+and the Muse model allowlist. The local server must support Chat Completions
+`response_format` with `type: "json_schema"`. The operator must ensure the local server actually
 serves Muse and does not forward requests externally. No real local Muse serving
 deployment is bundled or attested by the endpoint check.
 
