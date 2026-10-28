@@ -26,8 +26,9 @@ def test_key_only_required_for_inference(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
     settings = load_config()
-    assert settings.meta_base_url == "https://inference.baseten.co/v1"
-    assert settings.red_team_model == "meta-models/muse-spark-open-1026"
+    assert settings.meta_base_url == "https://api.meta.ai/v1"
+    assert settings.red_team_model == "muse-spark-1.3"
+    assert settings.blue_team_model == "muse-wonder-1.0"
     with pytest.raises(ConfigurationError, match="META_MUSE_API_KEY"):
         require_api_key(settings)
     assert "secret-value" not in repr(PurpleBoxConfig(meta_api_key="secret-value"))
@@ -61,10 +62,10 @@ async def test_muse_request_uses_exact_configured_endpoint_and_strict_schema():
 
     def handle(request):
         requests.append(request)
-        assert str(request.url) == "https://inference.baseten.co/v1/chat/completions"
+        assert str(request.url) == "https://api.meta.ai/v1/chat/completions"
         assert request.headers["authorization"] == "Bearer unit-test-key"
         body = json.loads(request.content)
-        assert body["model"] == "meta-models/muse-spark-open-1026"
+        assert body["model"] == "muse-spark-1.3"
         assert json.loads(body["messages"][1]["content"])["source"] == "test source"
         return httpx.Response(
             200,
@@ -153,11 +154,17 @@ def test_other_hosted_model_ids_rejected(model):
         replace(PurpleBoxConfig(), red_team_model=model).validate()
 
 
-def test_hackathon_defaults():
+def test_meta_defaults_and_open_model_on_baseten():
     config = PurpleBoxConfig()
-    assert config.meta_base_url == "https://inference.baseten.co/v1"
-    assert config.red_team_model == config.blue_team_model == "meta-models/muse-spark-open-1026"
+    assert config.meta_base_url == "https://api.meta.ai/v1"
+    assert (config.red_team_model, config.blue_team_model) == ("muse-spark-1.3", "muse-wonder-1.0")
     config.validate()
+    replace(
+        config,
+        meta_base_url="https://inference.baseten.co/v1",
+        red_team_model="meta-models/muse-spark-open-1026",
+        blue_team_model="meta-models/muse-spark-open-1026",
+    ).validate()
 
 
 def _reply(finish, content):

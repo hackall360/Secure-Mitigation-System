@@ -226,10 +226,18 @@ showed 0 leftover containers. Without a key, `main.py --scan` exits 1 with the
 "META_MUSE_API_KEY is required" message before touching Docker.
 Not yet exercised: real Muse inference, which is blocked until a key is supplied.
 
-## Hackathon model configuration (2026-10-27)
+## Model configuration
 
-Defaults (`config.py`, `example.env`): `META_MUSE_BASE_URL=https://inference.baseten.co/v1`,
-red and blue model `meta-models/muse-spark-open-1026`. `META_MUSE_API_KEY` is the
+**Current defaults (2026-10-28, user has no Baseten key):** `https://api.meta.ai/v1`, red
+`muse-spark-1.3`, blue `muse-wonder-1.0`, timeout 180 s. Real scans with the user's Meta key:
+node_query_sink, php_command_sink (Spark for both roles) and mysql_insecure_conf all `verified`,
+exit 0, 0 leftovers, 58-75 s each. Pricing per 1M output tokens: Spark $4.25, Wonder $20.
+
+**Open model, optional:** `meta-models/muse-spark-open-1026` on Baseten, needs a Baseten key.
+The history below records why it is not the default.
+
+Earlier (2026-10-27) the defaults were `META_MUSE_BASE_URL=https://inference.baseten.co/v1` and
+red and blue model `meta-models/muse-spark-open-1026`, with `META_MUSE_API_KEY` as the
 **Baseten** key. Source: the hackathon instruction says to use `-1026` instead of the
 documented `meta-models/muse-spark-open`. Meta's docs
 (https://dev.meta.ai/docs/muse-spark-open/deploy, "Hosted providers") say Muse Spark

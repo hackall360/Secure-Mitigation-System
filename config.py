@@ -15,16 +15,16 @@ class ConfigurationError(ValueError):
 @dataclass(frozen=True)
 class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
-    meta_base_url: str = "https://inference.baseten.co/v1"
-    red_team_model: str = "meta-models/muse-spark-open-1026"
-    blue_team_model: str = "meta-models/muse-spark-open-1026"
+    meta_base_url: str = "https://api.meta.ai/v1"
+    red_team_model: str = "muse-spark-1.3"
+    blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
     verifier_base_image: str = "purplebox-verifier-base:latest"
     clone_repo_prefix: str = "purplebox-clone-cache"
     container_mem_limit: str = "256m"
     container_cpu_nano: int = 500_000_000
     network_prefix: str = "purplebox_isolated_net"
-    api_timeout_seconds: float = 90.0
+    api_timeout_seconds: float = 180.0
     max_output_tokens: int = 32_768
     reasoning_effort: str = ""
     verifier_timeout_seconds: int = 20
@@ -80,16 +80,12 @@ def load_config() -> PurpleBoxConfig:
     try:
         config = PurpleBoxConfig(
             meta_api_key=os.getenv("META_MUSE_API_KEY", "").strip(),
-            meta_base_url=os.getenv("META_MUSE_BASE_URL", "https://inference.baseten.co/v1")
+            meta_base_url=os.getenv("META_MUSE_BASE_URL", "https://api.meta.ai/v1")
             .strip()
             .rstrip("/"),
-            red_team_model=os.getenv(
-                "META_MUSE_RED_MODEL", "meta-models/muse-spark-open-1026"
-            ).strip(),
-            blue_team_model=os.getenv(
-                "META_MUSE_BLUE_MODEL", "meta-models/muse-spark-open-1026"
-            ).strip(),
-            api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "90")),
+            red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3").strip(),
+            blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
+            api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "180")),
             max_output_tokens=int(os.getenv("META_MUSE_MAX_TOKENS", "32768")),
             reasoning_effort=os.getenv("META_MUSE_REASONING_EFFORT", "").strip().lower(),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
