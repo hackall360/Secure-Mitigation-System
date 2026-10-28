@@ -3,7 +3,21 @@
 """Cycle semantics and cumulative, evidence-gated named-profile execution."""
 
 import pytest
-from test_project_workflow import CONFIG, FakeMuse, FakeSandbox, silent_emit, verification
+from helpers import (
+    TEST_CONFIG as CONFIG,
+)
+from helpers import (
+    FakeProjectMuse as FakeMuse,
+)
+from helpers import (
+    FakeProjectSandbox as FakeSandbox,
+)
+from helpers import (
+    project_verification as verification,
+)
+from helpers import (
+    silent_emit,
+)
 
 from project_agents import ProjectAgentRunner
 from project_workflow import execute_project_workflow
