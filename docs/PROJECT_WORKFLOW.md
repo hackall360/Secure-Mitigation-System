@@ -107,3 +107,60 @@ This check exercises cumulative SQL parameterization then decimal-input
 allowlisting, probe rechecks, unchanged original regressions, original-source
 preservation, fresh role contexts, and cleanup. It does not measure model quality
 or attest a real local Muse server.
+
+## Finalization findings: real Muse and browser contracts
+
+`agents.MetaMuseClient._request()` now passes the Pydantic schema through
+`response_format = {"type": "json_schema", "json_schema": {"name": ..., "schema": ...}}`.
+Embedding `response_schema` only in prompt text was not constrained decoding:
+a live project run returned schema-invalid output despite prompt-only unit tests
+passing. `_request()` removes the duplicate schema from the user payload before
+sending it, while `ProjectAgentRunner._call()` still accounts for one schema in
+its bounded context calculation. Responses still undergo strict local validation.
+No retry, schema repair, or fallback provider is silently introduced. Local
+Muse-compatible servers must support this Chat Completions response format.
+Official source: <https://dev.meta.ai/docs/structured-output> (October 28, 2026).
+Strict mode is intentionally not set because these Pydantic schemas have optional
+properties. Meta documents that decoding remains schema-constrained with strict
+omitted. The schema is non-recursive and below Meta's documented depth limits.
+
+Live Muse also produced a valid probe importing `src.boundaries`. That originally
+failed with `No module named 'src'`, because launching `/verifier/runner.py` added
+`/verifier`, not `/workspace`, to the import path. Project probes now launch Python
+with `-I -B -u -c`, load `runpy`, append `/workspace` after the standard library,
+and run the existing trusted runner. The exact model probe is unchanged before
+and after patching. No base-image rebuild is needed for this launch change.
+`-I` ignores inherited PYTHONPATH and excludes implicit startup search paths,
+while `-B` prevents bytecode writes and `-u` keeps timeout evidence unbuffered.
+See <https://docs.python.org/3.12/using/cmdline.html#cmdoption-I>.
+All project targets and checks explicitly set Docker `working_dir=/workspace`:
+relying on a custom image's WORKDIR violated the documented execution contract.
+The verifier still has only its own Python standard library, not target runtime
+dependencies. HTTP probes are preferred for services. Missing dependencies remain
+inconclusive, not blocked.
+
+Browser result presentation must use project-native evidence, not fixture fields.
+`ProjectWorkflowResult.baseline_verification` preserves the actual original
+regression evidence. `static/app.js.summaryEvidence()` computes multi-cycle probe
+counts and regression summaries from recorded cycle checks, with unknown values
+remaining unknown. `renderUsage()` recognizes `project_blue_*` roles. Project
+stage log messages now drive `advanceStage()` and reset analysis per cycle.
+Otherwise a completed run misleadingly showed all stages skipped, all calls Red,
+and probes not run. Project report filenames use `project`, not the fixture-only
+`target` field.
+
+For repeatable real-browser acceptance, start
+`.venv/bin/python .jcode/tools/project_ui_scan.py`. It prints a generated repository
+specification and serves a keyless local dashboard on port 8798. Its test-only
+`/v1/chat/completions` route serves deterministic JSON replies over actual loopback
+HTTP. All snapshots, Docker execution, WebSockets, frontend code, and cleanup are
+production paths. Fill the printed settings in Local project mode and run two
+cycles. A private `browser-report.json` is saved in
+`reports/browser-project-acceptance/`. Stop this test server afterward, never use
+its deterministic inference route for actual security review.
+
+`.venv/bin/python .jcode/tools/project_scan.py --source-import-probes --cycles 1`
+checks the pure-Python import path through real Docker. `--live --cycles 1` instead
+uses the configured real Muse endpoint and incurs API usage, sending only the
+generated fixture source. Export the trusted `.env` as described in DEVELOPMENT.md
+first. Use separate `--output-dir` paths to preserve evidence from each attempt.

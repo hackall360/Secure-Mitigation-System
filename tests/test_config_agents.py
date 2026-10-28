@@ -66,6 +66,11 @@ async def test_muse_request_uses_exact_configured_endpoint_and_strict_schema():
         assert request.headers["authorization"] == "Bearer unit-test-key"
         body = json.loads(request.content)
         assert body["model"] == "muse-spark-1.3"
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "RedTeamFinding", "schema": RedTeamFinding.model_json_schema()},
+        }
+        assert "response_schema" not in json.loads(body["messages"][1]["content"])
         assert json.loads(body["messages"][1]["content"])["source"] == "test source"
         return httpx.Response(
             200,

@@ -318,6 +318,7 @@ class DockerSandboxManager:
         *,
         aliases: list[str] | None = None,
         clear_entrypoint: bool = False,
+        working_dir: str | None = None,
     ):
         if aliases is None:
             aliases = ["target-service"] if role == "target" else []
@@ -337,6 +338,8 @@ class DockerSandboxManager:
         }
         if clear_entrypoint:
             options["entrypoint"] = []
+        if working_dir is not None:
+            options["working_dir"] = working_dir
         container = self.client.containers.create(
             image,
             **options,
@@ -463,6 +466,7 @@ class DockerSandboxManager:
             "target",
             list(spec.command),
             clear_entrypoint=True,
+            working_dir="/workspace",
         )
         return container, image
 
@@ -504,7 +508,15 @@ class DockerSandboxManager:
                 verifier_script=script,
             )
             role = "verifier"
-            runtime_command = ["python3", "/verifier/runner.py"]
+            runtime_command = [
+                "python3",
+                "-I",
+                "-B",
+                "-u",
+                "-c",
+                "import runpy, sys; sys.path.append('/workspace'); "
+                "runpy.run_path('/verifier/runner.py', run_name='__main__')",
+            ]
         else:
             image = self._snapshot_project_image(spec.image, snapshot, "test")
             role = "test"
@@ -519,6 +531,7 @@ class DockerSandboxManager:
                 runtime_command,
                 aliases=[],
                 clear_entrypoint=True,
+                working_dir="/workspace",
             )
             try:
                 status = container.wait(timeout=self.config.verifier_timeout_seconds)

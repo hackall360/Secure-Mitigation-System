@@ -151,6 +151,7 @@ class ProjectWorkflowResult(BaseModel):
     cycles_completed: int = Field(default=0, ge=0, le=20)
     cycle_reports: list[ProjectCycleReport] = Field(default_factory=list)
     cumulative_diff: str = ""
+    baseline_verification: SnapshotVerification | None = None
     context_coverage: list[ContextCoverage] = Field(default_factory=list)
     usage: ScanUsage = Field(default_factory=ScanUsage)
     total_tokens: int = 0
@@ -610,6 +611,7 @@ async def execute_project_workflow(
         protected_paths = protected_regression_paths(
             list(cumulative_files), safe_project.regression_command
         )
+        await log("system", "Running original-project baseline checks in isolated containers.")
         baseline_raw = await blocking(
             sandbox.verify_project_snapshot,
             safe_project,
@@ -619,8 +621,11 @@ async def execute_project_workflow(
             label="baseline",
         )
         baseline = normalize_snapshot_verification(baseline_raw, bounds.max_evidence_chars)
+        result.baseline_verification = baseline
         if not baseline.fresh_target or baseline.regression.exit_code != 0:
             raise SandboxError("Original project failed its preserved regression command.")
+
+        await log("system", "Original-project normal-input checks passed.")
 
         for cycle in range(1, requested_cycles + 1):
             await log("red", f"Cycle {cycle}: reviewing the cumulative verified snapshot.")
@@ -952,6 +957,7 @@ async def execute_project_workflow(
         try:
             if sandbox is not None:
                 result.cleanup.attempted = True
+                await log("system", "Removing project session containers, snapshots, and network.")
                 try:
                     await blocking(sandbox.close)
                 except Exception as exc:

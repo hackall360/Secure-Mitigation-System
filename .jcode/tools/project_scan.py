@@ -2,7 +2,10 @@
 # Exercise arbitrary-project two-cycle remediation through real Docker with deterministic Muse HTTP replies.
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""No inference credentials or network calls. Temporary projects are never modified by scans."""
+"""Default: deterministic replies. --live uses configured Muse and spends API credit.
+
+Only the generated acceptance fixture is sent. Source projects are never modified.
+"""
 
 import argparse
 import asyncio
@@ -19,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 import httpx
 
 from agents import MetaMuseClient
-from config import PurpleBoxConfig
+from config import PurpleBoxConfig, load_config
 from project_workflow import execute_project_workflow
 from projects import ProjectSpec
 
@@ -75,7 +78,17 @@ print('normal-input checks passed')
 """
 
 
-def probe(cycle):
+def probe(cycle, *, source_import=False):
+    if source_import:
+        function = "lookup" if cycle == 1 else "echo"
+        payload = "999 OR 1=1" if cycle == 1 else "40+2"
+        expected = "Alice,Bob" if cycle == 1 else "42"
+        return (
+            f"import sys\nfrom src.boundaries import {function}\n"
+            f"try:\n    answer = {function}({payload!r})\n"
+            "except ValueError:\n    sys.exit(1)\n"
+            f"print(answer)\nsys.exit(0 if answer == {expected!r} else 1)\n"
+        )
     route = "lookup?id=101%20OR%201%3D1" if cycle == 1 else "echo?value=40%2B2"
     expected = "Alice,Bob" if cycle == 1 else "42"
     return f"""import sys, time, urllib.request, urllib.error
@@ -96,7 +109,7 @@ sys.exit(2)
 """
 
 
-def fake_transport(request):
+def fake_transport(request, *, source_import=False):
     body = json.loads(request.content)
     assert len(body["messages"]) == 2, "A stage reused conversation context"
     payload = json.loads(body["messages"][1]["content"])
@@ -107,7 +120,7 @@ def fake_transport(request):
         "vulnerability": "SQL injection" if cycle == 1 else "expression injection",
         "affected_paths": ["src/boundaries.py"],
         "evidence": "Untrusted text reaches an expression without validation.",
-        "verification_script_python": probe(cycle),
+        "verification_script_python": probe(cycle, source_import=source_import),
         "confidence": "high",
     }
     no_finding = {
@@ -130,7 +143,7 @@ def fake_transport(request):
                 "vulnerability": candidate["vulnerability"],
                 "affected_paths": candidate["affected_paths"],
                 "analysis_summary": candidate["evidence"],
-                "verification_script_python": probe(cycle),
+                "verification_script_python": probe(cycle, source_import=source_import),
                 "limitations": [],
             }
         )
@@ -171,26 +184,35 @@ def fake_transport(request):
     )
 
 
-async def run(output):
-    config = PurpleBoxConfig(
-        inference_mode="local",
-        meta_base_url="http://127.0.0.1:8081/v1",
-        verifier_timeout_seconds=20,
+def create_project(project):
+    (project / "src").mkdir()
+    (project / "src" / "__init__.py").write_text("")
+    (project / "src" / "boundaries.py").write_text(ORIGINAL)
+    (project / "app.py").write_text(APP)
+    (project / "test_contract.py").write_text(REGRESSION)
+    (project / ".env").write_text("TEST_SECRET=must-not-be-snapshotted\n")
+
+
+async def run(output, *, live=False, cycles=2, source_import=False):
+    config = (
+        load_config()
+        if live
+        else PurpleBoxConfig(
+            inference_mode="local",
+            meta_base_url="http://127.0.0.1:8081/v1",
+            verifier_timeout_seconds=20,
+        )
     )
     with tempfile.TemporaryDirectory(prefix="purplebox-project-", dir=output) as directory:
         project = Path(directory)
-        (project / "src").mkdir()
-        (project / "src" / "__init__.py").write_text("")
-        (project / "src" / "boundaries.py").write_text(ORIGINAL)
-        (project / "app.py").write_text(APP)
-        (project / "test_contract.py").write_text(REGRESSION)
-        (project / ".env").write_text("TEST_SECRET=must-not-be-snapshotted\n")
+        create_project(project)
         spec = ProjectSpec(
             path=project,
             command=["python3", "app.py"],
             test_command=["python3", "test_contract.py"],
             contract="HTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
-            cycles=2,
+            cycles=cycles,
+            allow_remote_inference=live and config.inference_mode != "local",
         )
 
         async def emit(team, message):
@@ -200,8 +222,17 @@ async def run(output):
             spec,
             emit,
             config=config,
-            muse_factory=lambda settings: MetaMuseClient(
-                settings, transport=httpx.MockTransport(fake_transport)
+            **(
+                {}
+                if live
+                else {
+                    "muse_factory": lambda settings: MetaMuseClient(
+                        settings,
+                        transport=httpx.MockTransport(
+                            lambda request: fake_transport(request, source_import=source_import)
+                        ),
+                    )
+                }
             ),
         )
         report = result.model_dump()
@@ -210,13 +241,13 @@ async def run(output):
             "Original project was modified"
         )
         assert result.success, report.get("message")
-        assert report["cycles_completed"] == 2, report
+        assert report["cycles_completed"] == spec.cycles, report
         cycles = report.get("cycles", report.get("cycle_reports", []))
         assert all(item["status"] == "retained" for item in cycles), report
         assert report.get("cleanup_ok", report.get("cleanup", {}).get("succeeded")), report
-        assert "db.execute" in report.get("diff", report.get("cumulative_diff", "")), report
+        assert report.get("diff", report.get("cumulative_diff", "")), report
         print(
-            "PASS: two distinct boundaries, two cumulative patches, original source unchanged, isolated execution, independent contexts, cleanup",
+            f"PASS: {spec.cycles} retained cycle(s), original source unchanged, isolated execution, independent contexts, cleanup; inference={'live' if live else 'deterministic'}",
             flush=True,
         )
 
@@ -224,9 +255,29 @@ async def run(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "reports" / "project-acceptance")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Send only the generated fixture to configured Muse (incurs usage)",
+    )
+    parser.add_argument("--cycles", type=int, default=2, choices=range(1, 21))
+    parser.add_argument(
+        "--source-import-probes",
+        action="store_true",
+        help="Exercise pure-Python source imports instead of HTTP in deterministic mode",
+    )
     args = parser.parse_args()
+    if args.live and args.source_import_probes:
+        parser.error("--source-import-probes requires deterministic mode")
     args.output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    asyncio.run(run(args.output_dir.resolve()))
+    asyncio.run(
+        run(
+            args.output_dir.resolve(),
+            live=args.live,
+            cycles=args.cycles,
+            source_import=args.source_import_probes,
+        )
+    )
 
 
 if __name__ == "__main__":

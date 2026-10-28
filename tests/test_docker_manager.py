@@ -194,6 +194,7 @@ def test_start_project_uses_preloaded_image_fresh_snapshot_and_hardening(tmp_pat
     assert create_stage.kwargs["entrypoint"] == []
     assert create_stage.kwargs["healthcheck"] == {"test": ["NONE"]}
     assert create_runtime.kwargs["command"] == list(spec.command)
+    assert create_runtime.kwargs["working_dir"] == "/workspace"
     assert create_runtime.kwargs["read_only"] is True
     assert create_runtime.kwargs["entrypoint"] == []
     assert create_runtime.kwargs["healthcheck"] == {"test": ["NONE"]}
@@ -221,7 +222,9 @@ def test_project_probe_has_separate_bounded_output_and_timeout(tmp_path):
     runtime.remove.assert_called_once_with(force=True)
     create_stage, create_runtime = client.containers.create.call_args_list
     assert create_stage.args[0] == "purplebox-verifier-base:latest"
-    assert create_runtime.kwargs["command"] == ["python3", "/verifier/runner.py"]
+    assert create_runtime.kwargs["command"][:5] == ["python3", "-I", "-B", "-u", "-c"]
+    assert "sys.path.append('/workspace')" in create_runtime.kwargs["command"][5]
+    assert create_runtime.kwargs["working_dir"] == "/workspace"
     assert create_runtime.kwargs["read_only"] is True
     assert create_runtime.kwargs["networking_config"]
 

@@ -539,3 +539,17 @@ async def test_local_project_does_not_require_remote_consent(tmp_path):
     )
     assert reached_sandbox == ["local"]
     assert "Remote inference consent" not in result.message
+
+
+async def test_original_baseline_is_exported_as_observed_evidence():
+    sandbox = FakeSandbox([verification(1)])
+    result = await execute_project_workflow(
+        PROJECT,
+        silent_emit,
+        config=CONFIG,
+        sandbox_factory=lambda _: sandbox,
+        muse_factory=lambda _: FakeMuse(red_outcomes=["no_finding"]),
+    )
+    assert result.baseline_verification is not None
+    assert result.baseline_verification.regression.exit_code == 0
+    assert result.model_dump()["baseline_verification"]["fresh_target"] is True

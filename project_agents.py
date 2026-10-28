@@ -52,6 +52,22 @@ automated semantic guarantee. State whether the candidate replacements were reta
 """
 
 
+RED_EXECUTION_CONTRACT = """
+Probe execution contract: the Python 3.12 verifier is a separate read-only container,
+not the target runtime. Only Python standard-library dependencies are available.
+The full source snapshot is at /workspace, which is the working directory and is
+appended to Python's import path after the standard library. Pure-Python project
+imports may work, but target-only dependencies and binaries are not installed here.
+Prefer non-destructive HTTP probes against http://target-service:8080 for services.
+Use bounded retries for target startup, HTTP timeouts at most 3 seconds, benign
+markers, and no external hosts, persistence, data destruction, or sandbox escapes.
+Verify normal behavior first. Connection/import/dependency failures and unexpected
+exceptions are inconclusive (exit 2), never evidence that a vulnerability is blocked.
+"""
+RED_BATCH_SYSTEM_PROMPT += RED_EXECUTION_CONTRACT
+RED_REPORT_SYSTEM_PROMPT += RED_EXECUTION_CONTRACT
+
+
 class SourceDocument(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     path: str = Field(min_length=1, max_length=1024)

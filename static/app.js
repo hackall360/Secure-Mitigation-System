@@ -148,7 +148,13 @@ function setStage(name, state = 'active') {
 
 function advanceStage(team, text) {
   const t = text.toLowerCase();
-  if (t.includes('creating an internal docker network')) setStage('sandbox');
+  if (t.includes('original-project baseline checks')) { setStage('sandbox'); setStage('baseline'); }
+  else if (team === 'red' && t.includes('reviewing the cumulative verified snapshot')) { resetPipeline(); setStage('analysis'); }
+  else if (team === 'red' && t.includes('proving the finding')) setStage('probe');
+  else if (team === 'blue' && t.includes('bounded sanitation-only replacements')) setStage('patch');
+  else if (t.includes('verifying a fresh target with the original probe')) setStage('regression');
+  else if (t.includes('removing project session containers')) setStage('cleanup');
+  else if (t.includes('creating an internal docker network')) setStage('sandbox');
   else if (t.includes('normal-input checks passed') && currentStage < 2) setStage('baseline');
   else if (team === 'red' && t.startsWith('analyzing')) setStage('analysis');
   else if (team === 'red' && t.includes('boundary check exited')) setStage('probe');
@@ -393,9 +399,10 @@ function renderUsage(payload) {
   list.replaceChildren();
   calls.forEach((call) => {
     const item = document.createElement('li');
-    item.dataset.team = call.role === 'blue' ? 'blue' : 'red';
+    const blue = call.role === 'blue' || (call.role || '').startsWith('project_blue_');
+    item.dataset.team = blue ? 'blue' : 'red';
     const who = document.createElement('strong');
-    who.textContent = call.role === 'blue' ? 'Blue' : 'Red';
+    who.textContent = blue ? 'Blue' : 'Red';
     const model = document.createElement('code');
     model.textContent = call.model;
     const detail = document.createElement('span');
@@ -435,8 +442,28 @@ function renderCycles(cycles) {
   });
 }
 
+function summaryEvidence(payload) {
+  if (!Array.isArray(payload.cycle_reports)) return payload;
+  const cycles = payload.cycle_reports;
+  const before = cycles.map((cycle) => cycle.evidence && cycle.evidence.pre_verification).filter(Boolean);
+  const after = cycles.map((cycle) => cycle.evidence && cycle.evidence.patched_verification).filter(Boolean);
+  const baseline = payload.baseline_verification;
+  return {
+    ...payload,
+    baseline_passed: baseline ? baseline.fresh_target && baseline.regression.exit_code === 0 : undefined,
+    pre_exit_code: before.length === 1 ? before[0].probe.exit_code : undefined,
+    post_exit_code: after.length === 1 ? after[0].probe.exit_code : undefined,
+    regression_passed: after.length ? after.every((check) => check.fresh_target && check.regression.exit_code === 0) : undefined,
+    pre_summary: before.length > 1 ? `${before.filter((check) => check.probe.exit_code === 0).length}/${before.length} reachable` : undefined,
+    post_summary: after.length > 1 ? `${after.filter((check) => check.probe.exit_code === 1).length}/${after.length} blocked` : undefined,
+    pre_good: before.every((check) => check.probe.exit_code === 0),
+    post_good: after.every((check) => check.probe.exit_code === 1)
+  };
+}
+
 function showResult(payload) {
   latestResult = payload;
+  const evidence = summaryEvidence(payload);
   const diff = payload.diff || payload.cumulative_diff || '';
   const cycles = payload.cycles || payload.cycle_reports || [];
   const cleanupOk = payload.cleanup_ok !== undefined ? payload.cleanup_ok : !payload.cleanup || payload.cleanup.succeeded;
@@ -445,11 +472,11 @@ function showResult(payload) {
   el('result-panel').dataset.status = payload.status;
   el('result-title').textContent = label;
   el('result-message').textContent = payload.message;
-  fact('fact-baseline', payload.baseline_passed === undefined ? 'Not reported' : payload.baseline_passed ? 'Passed' : 'Not passed', payload.baseline_passed);
-  const pre = probeLabel(payload.pre_exit_code);
-  fact('fact-pre', pre[0], payload.pre_exit_code === 0 ? undefined : pre[1]);
-  fact('fact-regression', payload.regression_passed === undefined ? 'Not reported' : payload.regression_passed ? 'Passed' : 'Not passed', payload.regression_passed);
-  fact('fact-post', ...probeLabel(payload.post_exit_code));
+  fact('fact-baseline', evidence.baseline_passed === undefined ? 'Not reported' : evidence.baseline_passed ? 'Passed' : 'Not passed', evidence.baseline_passed);
+  const pre = evidence.pre_summary ? [evidence.pre_summary, evidence.pre_good ? undefined : false] : probeLabel(evidence.pre_exit_code);
+  fact('fact-pre', pre[0], evidence.pre_exit_code === 0 ? undefined : pre[1]);
+  fact('fact-regression', evidence.regression_passed === undefined ? 'Not reported' : evidence.regression_passed ? 'Passed' : 'Not passed', evidence.regression_passed);
+  fact('fact-post', ...(evidence.post_summary ? [evidence.post_summary, evidence.post_good] : probeLabel(evidence.post_exit_code)));
   fact('fact-cleanup', cleanupOk ? 'Resources removed' : 'Inspect Docker', cleanupOk);
   renderUsage(displayPayload);
   renderCycles(cycles);
@@ -593,7 +620,7 @@ el('download-btn').addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `purplebox-${latestResult.target}-report.json`;
+  anchor.download = `purplebox-${latestResult.target || latestResult.project || 'project'}-report.json`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');

@@ -78,11 +78,23 @@ class MetaMuseClient:
         self, model: str, system: str, payload: dict, schema: type[ResponseModel], role: str = ""
     ) -> ResponseModel:
         started = time.monotonic()
+        # Meta's Chat Completions endpoint constrains decoding through response_format,
+        # not a schema embedded only in prompt text. Keep exactly one schema on wire.
+        user_payload = dict(payload)
+        user_payload.pop("response_schema", None)
+        request_body = self._body(model, system, user_payload)
+        request_body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema.__name__,
+                "schema": schema.model_json_schema(),
+            },
+        }
         try:
             async with self.client.stream(
                 "POST",
                 "chat/completions",
-                json=self._body(model, system, payload),
+                json=request_body,
             ) as response:
                 if response.status_code != 200:
                     raise AgentError(
