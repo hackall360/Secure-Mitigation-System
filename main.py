@@ -697,6 +697,21 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
         except Exception:
             cleanup_ok = None
     lines.append(f"- Cleanup verified: `{bool(cleanup_ok)}`")
+    baseline = getattr(result, "baseline_passed", None)
+    regression = getattr(result, "regression_passed", None)
+    if baseline is not None or regression is not None:
+        lines.append(
+            f"- Checks: baseline `{'passed' if baseline else 'failed'}` / "
+            f"regression `{'passed' if regression else 'failed'}`"
+        )
+    cycle_reports = getattr(result, "cycle_reports", None) or []
+    if cycle_reports:
+        counts: dict[str, int] = {}
+        for cycle in cycle_reports:
+            key = str(getattr(cycle, "status", "unknown"))
+            counts[key] = counts.get(key, 0) + 1
+        breakdown = ", ".join(f"{num} {name}" for name, num in sorted(counts.items()))
+        lines.append(f"- Cycles: `{len(cycle_reports)}` total ({breakdown})")
     lines.append("")
     lines.append("## Token and cost breakdown")
     lines.append("")
@@ -720,8 +735,12 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     total_tokens = getattr(result, "total_tokens", 0)
     total_cost = getattr(result, "cost_usd", getattr(result, "total_cost_usd", None))
     total_str = "unknown" if total_cost is None else f"${total_cost:.4f}"
-    lines.append(f"| total |  |  |  |  |  |  | {total_str} |")
-    lines.append(f"Total tokens: {total_tokens}, estimated cost: {total_str}")
+    total_seconds = sum(float(getattr(call, "seconds", 0.0) or 0.0) for call in calls)
+    lines.append(f"| total |  |  |  |  |  | {total_seconds:.1f} | {total_str} |")
+    lines.append(
+        f"Total tokens: {total_tokens}, model latency: {total_seconds:.1f}s, "
+        f"estimated cost: {total_str}"
+    )
     lines.append("")
     lines.append("## Red team findings")
     lines.append("")
@@ -746,6 +765,7 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     post = getattr(result, "post_exit_code", None)
     if pre is not None or post is not None:
         lines.append(f"- Pre/post probe exit codes: {pre} / {post}")
+        lines.append("- Before/after: `0` boundary reached, `1` blocked, other/inconclusive needs review")
     lines.append("")
     lines.append("## Blue team sanitization")
     lines.append("")
