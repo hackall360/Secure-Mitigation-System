@@ -30,7 +30,7 @@ if target == 'node_query_sink':
         assert response == {'status': 'ok', 'count': len(records), 'results': records}
     try:
         get('/unknown')
-        raise AssertionError('404 route was removed')
+        raise AssertionError('404 route was removed (FAIL: GET /unknown must return HTTP 404 not_found; evidence: request succeeded instead of raising HTTPError 404)')
     except urllib.error.HTTPError as error:
         assert error.code == 404
         assert json.loads(error.read()) == {'status': 'not_found'}
@@ -45,8 +45,8 @@ elif target == 'mysql_insecure_conf':
     assert parser.get('mysqld', 'port') == '3306'
     assert parser.get('mysqld', 'max_connections') == '100'
 else:
-    raise AssertionError('Unknown fixture')
-print('Trusted normal-input checks passed for ' + target)
+    raise AssertionError('Unknown fixture (FAIL: no normal-behavior contract for this target; evidence: target matched none of node_query_sink/php_command_sink/mysql_insecure_conf)')
+print('Trusted normal-input checks passed for ' + target + ' (PASS: every expected lookup, 404-route, and config value matched; boundary verifier not involved)')
 sys.exit(0)
 """.replace("TARGET_VALUE", json.dumps(target_key))
 
@@ -60,14 +60,14 @@ import sys
 from pathlib import Path
 
 routes = Path('/proc/net/route').read_text().splitlines()[1:]
-assert not any(row.split()[1] == '00000000' for row in routes), 'Unexpected default route'
+assert not any(row.split()[1] == '00000000' for row in routes), 'Unexpected default route (FAIL: verifier container must have no IPv4 default route; evidence: /proc/net/route row with destination 00000000)'
 for address, port in [('1.1.1.1', 443), ('8.8.8.8', 53)]:
     try:
         with socket.create_connection((address, port), timeout=2):
-            raise AssertionError('Unexpected public egress connectivity')
+            raise AssertionError('Unexpected public egress connectivity (FAIL: verifier container must not reach public net; evidence: TCP dial to 1.1.1.1:443 or 8.8.8.8:53 succeeded)')
     except OSError:
         pass
-print('No IPv4 default route; public TCP probes blocked (not proof of complete isolation).')
+print('No IPv4 default route; public TCP probes blocked (not proof of complete isolation). PASS basis: /proc/net/route has no 00000000 destination and dials to 1.1.1.1:443 + 8.8.8.8:53 raised OSError.')
 sys.exit(0)
 """
 
@@ -79,23 +79,23 @@ _FORBIDDEN_MODULES = frozenset(
 def validate_verifier_script(script: str) -> None:
     """Validate that a verifier script is safe and explicitly exits with 0/1/2."""
     if "\x00" in script:
-        raise ValueError("Verifier script contains NUL bytes.")
+        raise ValueError("Verifier script contains NUL bytes (REJECT: embedded NUL makes source unsafe to parse; evidence: \\x00 byte present in submitted script).")
     try:
         tree = ast.parse(script, filename="verify.py")
     except SyntaxError as exc:
-        raise ValueError(f"Verifier script has invalid Python syntax: {exc}") from exc
+        raise ValueError(f"Verifier script has invalid Python syntax (REJECT: AST parse failed so the exit-code verdict contract cannot be checked; evidence: {exc})") from exc
     # Check forbidden imports.
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 root = alias.name.split(".")[0]
                 if root in _FORBIDDEN_MODULES:
-                    raise ValueError(f"Verifier script imports forbidden module: {root}")
+                    raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 root = node.module.split(".")[0]
                 if root in _FORBIDDEN_MODULES:
-                    raise ValueError(f"Verifier script imports forbidden module: {root}")
+                    raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
         # Also detect __import__('subprocess') as Call
         if isinstance(node, ast.Call):
             # Detect __import__('forbidden')
@@ -110,7 +110,7 @@ def validate_verifier_script(script: str) -> None:
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     root = arg.value.split(".")[0]
                     if root in _FORBIDDEN_MODULES:
-                        raise ValueError(f"Verifier script imports forbidden module: {root}")
+                        raise ValueError(f"Verifier script imports forbidden module: {root} (REJECT: sandbox-escape guard bans subprocess/pty/ctypes/multiprocessing/shutil/resource/signal; evidence: AST scan found import of '{root}')")
     # Check for explicit exit call.
     has_exit = False
     for node in ast.walk(tree):
@@ -145,4 +145,4 @@ def validate_verifier_script(script: str) -> None:
                 has_exit = True
                 break
     if not has_exit:
-        raise ValueError("Verifier script must explicitly call sys.exit(0|1|2).")
+        raise ValueError("Verifier script must explicitly call sys.exit(0|1|2) (REJECT: no verdict exit found; contract is exit 0=boundary reached, 1=blocked, 2=inconclusive; evidence: AST scan found no sys.exit/exit/quit/SystemExit call).")
