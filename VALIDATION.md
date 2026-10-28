@@ -1,3 +1,36 @@
+# Arbitrary-project validation: October 28, 2026
+
+- `.venv/bin/python .jcode/tools/dev.py check` passed: pytest, Ruff lint and
+  formatting, Python compilation, JavaScript syntax, schema/fixture harness, and
+  CLI target listing. Current suite: **173 passed**, one upstream Starlette
+  test-client deprecation warning.
+- `.venv/bin/python .jcode/tools/project_scan.py` passed with real Docker target
+  and verifier containers. Two cycles retained cumulative SQL parameterization
+  and decimal-input allowlisting replacements. Original probes confirmed the
+  vulnerabilities before each change and were blocked afterward. The unchanged
+  original regression command passed, fresh independent red calls ran, final
+  blue reports were produced, original source was unchanged, and cleanup passed.
+- Muse HTTP replies in that acceptance run were deterministic `MockTransport`
+  responses. This verifies the orchestration and runtime, not autonomous finding
+  quality or a real local Muse deployment. The private full report is at ignored
+  `reports/project-acceptance/project-acceptance.json` and can be regenerated.
+- Dashboard JavaScript executes under Node for hosted consent, local keyless
+  readiness, local non-consent, and context-bound checks. FastAPI tests exercise
+  project WebSockets, disconnect cleanup, shared scan locking, input rejection,
+  and private CLI report exports. These are not visual browser acceptance tests.
+- Post-run Docker inspection found no PurpleBox containers or session networks.
+- Arbitrary projects require a compatible preloaded image, dependencies, startup
+  command, regression command, and behavior contract. No clone, package download,
+  automatic patch application, universal-language support, VM-grade containment,
+  or general security certification is claimed. Local inference is an explicit
+  operator-provided loopback Muse-compatible service, never a hosted fallback.
+
+The older scaffold validation below is retained as historical evidence only.
+Its Docker/browser availability statements describe that earlier environment,
+not the current Docker acceptance result.
+
+---
+
 # Scaffold validation — October 27, 2026
 
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.

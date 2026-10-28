@@ -8,7 +8,7 @@ PurpleBox reviews an immutable snapshot of a local project without writing model
 result = await execute_project_workflow(spec, emit, config=settings)
 ```
 
-`spec` is `projects.ProjectSpec`. Its `cycles` value defaults to 1 and is validated in the range 1 through 20. `allow_remote_inference=True` is required before any project source is sent to Muse. Only `spec.path.name` is used as the hosted project name. The absolute local path is never placed in a model payload.
+`spec` is `projects.ProjectSpec`. Its `cycles` value defaults to 1 and is validated in the range 1 through 20. `allow_remote_inference=True` is required in hosted mode before any project source is sent to Muse. Local mode uses only the explicitly configured loopback endpoint and does not require or grant remote-source consent. Only `spec.path.name` is used as the hosted project name. The absolute local path is never placed in a model payload.
 
 The result is `ProjectWorkflowResult`. It provides both the project-native fields and compatibility aliases used by the CLI and UI:
 
@@ -78,3 +78,32 @@ The execution contract, including the expected `target-service` hostname and por
 The design treats test-passing patches as candidates rather than correctness proofs because automated repair can overfit its validation suite. The additional independent assessment and unchanged regression corpus follow that risk model. See Le-Cong et al., *Invalidator: Automated Patch Correctness Assessment via Semantic and Syntactic Reasoning*, IEEE TSE 2023: <https://arxiv.org/abs/2301.01113>.
 
 Repository context is batched and explicitly accounted for instead of attempting to place an entire repository into one context window. A practical overview of selective repository context and its context-window tradeoff is: <https://www.tabbyml.com/blog/repository-context-for-code-completion>.
+
+## Offline integration traps and executable checks
+
+`main.py` exposes `inference_mode` and `inference_ready` from `/api/health`.
+`static/app.js.initialize()` uses those fields, not just `api_key_configured`:
+a local Muse endpoint deliberately works without a hosted API key. In local mode
+the remote-consent label is hidden and `projectSpec()` always sends
+`allow_remote_inference: false`, including if a stale checkbox is checked.
+`project_workflow.execute_project_workflow()` checks consent only for hosted mode.
+Configuration validation and `MetaMuseClient` still enforce the literal-loopback
+endpoint restriction, no redirects, and no hosted fallback. Health readiness is
+configuration readiness, not an assertion that the model server is reachable.
+
+Run `.venv/bin/python -m pytest -q tests/test_dashboard_project.py` to execute
+JavaScript intake/readiness checks under Node. These use a minimal DOM substitute,
+not a visual browser acceptance check. Context-budget bounds are 1024 through
+131072 in both the HTML, JavaScript intake, and `ProjectSpec`.
+
+Run `.venv/bin/python .jcode/tools/project_scan.py` for two real Docker cycles.
+Only the Muse HTTP transport is replaced with deterministic structured replies.
+The transport recognizes the current red report payload key `evidence_digests`,
+not the obsolete `batch_evidence`. A mismatch raises before probe execution and
+produces a failed report despite the initial red evidence call succeeding.
+The workflow intentionally sanitizes unexpected exception details in public
+reports, so inspect the transport contract when a harness reports AssertionError.
+This check exercises cumulative SQL parameterization then decimal-input
+allowlisting, probe rechecks, unchanged original regressions, original-source
+preservation, fresh role contexts, and cleanup. It does not measure model quality
+or attest a real local Muse server.

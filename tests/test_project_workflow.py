@@ -515,3 +515,27 @@ def test_replacement_hash_binds_proposal_to_current_snapshot():
         change_kind="input_validation",
     )
     assert replacement.original_sha256 != hashlib.sha256(b"changed concurrently").hexdigest()
+
+
+async def test_local_project_does_not_require_remote_consent(tmp_path):
+    (tmp_path / "app.py").write_text("print('safe')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "unittest"],
+        contract="Local test project.",
+    )
+    reached_sandbox = []
+
+    def sandbox(settings):
+        reached_sandbox.append(settings.inference_mode)
+        raise RuntimeError("local sandbox reached")
+
+    result = await execute_project_workflow(
+        spec,
+        silent_emit,
+        config=PurpleBoxConfig(inference_mode="local", meta_base_url="http://127.0.0.1:8081/v1"),
+        sandbox_factory=sandbox,
+    )
+    assert reached_sandbox == ["local"]
+    assert "Remote inference consent" not in result.message

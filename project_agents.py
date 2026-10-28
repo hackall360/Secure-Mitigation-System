@@ -326,7 +326,10 @@ class ProjectAgentRunner:
                 }
             )
         coverage_payload = coverage.model_dump()
-        if len(json.dumps(coverage_payload, ensure_ascii=False).encode("utf-8")) > max_payload_bytes // 4:
+        if (
+            len(json.dumps(coverage_payload, ensure_ascii=False).encode("utf-8"))
+            > max_payload_bytes // 4
+        ):
             listed = coverage.omitted_paths[:64]
             coverage_payload["omitted_paths"] = listed
             coverage_payload["notes"] = list(coverage.notes) + [

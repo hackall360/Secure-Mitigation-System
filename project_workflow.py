@@ -576,7 +576,7 @@ async def execute_project_workflow(
         settings = config or load_config()
         require_api_key(settings)
         if isinstance(project, ProjectSpec):
-            if not project.allow_remote_inference:
+            if settings.inference_mode != "local" and not project.allow_remote_inference:
                 raise ProjectWorkflowError(
                     "Remote inference consent is required before project source can be sent to Muse."
                 )

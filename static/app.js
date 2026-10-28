@@ -29,6 +29,7 @@ let activeFilter = 'all';
 let profiles = [];
 let selectedProfile = 'custom';
 let sourceMode = 'demo';
+let inferenceMode = 'hosted';
 
 /* ---------- small helpers ---------- */
 
@@ -287,14 +288,14 @@ function projectSpec() {
   if (!image) { el('project-image').setAttribute('aria-invalid', 'true'); errors.push('Preloaded sandbox image is required.'); }
   if (!contract) { el('project-contract').setAttribute('aria-invalid', 'true'); errors.push('Behavior contract is required.'); }
   if (!Number.isInteger(cycles) || cycles < 1 || cycles > 20) { el('project-cycles').setAttribute('aria-invalid', 'true'); errors.push('Cycles must be a whole number from 1 to 20.'); }
-  if (!Number.isInteger(contextBudget) || contextBudget < 1) { el('project-budget').setAttribute('aria-invalid', 'true'); errors.push('Context budget must be a positive whole number.'); }
-  if (!el('allow-remote').checked) errors.push('Confirm that source may be sent to the configured Muse endpoint.');
+  if (!Number.isInteger(contextBudget) || contextBudget < 1024 || contextBudget > 131072) { el('project-budget').setAttribute('aria-invalid', 'true'); errors.push('Context budget must be a whole number from 1024 to 131072.'); }
+  if (inferenceMode !== 'local' && !el('allow-remote').checked) errors.push('Confirm that source may be sent to the configured Muse endpoint.');
   const command = parseArgv('project-command', 'Start command', errors);
   const testCommand = parseArgv('project-test-command', 'Regression test command', errors);
   el('project-errors').hidden = errors.length === 0;
   el('project-errors').textContent = errors.join(' ');
   if (errors.length) return null;
-  return { path, image, command, test_command: testCommand, contract, cycles, context_budget: contextBudget, allow_remote_inference: true };
+  return { path, image, command, test_command: testCommand, contract, cycles, context_budget: contextBudget, allow_remote_inference: inferenceMode !== 'local' && el('allow-remote').checked };
 }
 
 function lockProjectForm(locked) {
@@ -477,13 +478,16 @@ async function initialize() {
     el('red-model').textContent = health.red_model;
     el('blue-model').textContent = health.blue_model;
     renderProfiles(health);
-    configured = health.api_key_configured;
+    inferenceMode = health.inference_mode || 'hosted';
+    configured = health.inference_ready === true || (inferenceMode !== 'local' && health.api_key_configured === true);
+    el('allow-remote').closest('label').hidden = inferenceMode === 'local';
+    el('allow-remote').required = inferenceMode !== 'local';
     const setupNotes = [];
     chip('chip-server', 'ok');
     const dockerState = (health.docker && health.docker.state) || 'unavailable';
     const dockerReady = dockerState === 'ready';
     chip('chip-docker', dockerReady ? 'ok' : 'error', { ready: 'Docker', images_missing: 'Images missing', unavailable: 'Docker offline' }[dockerState] || 'Docker');
-    chip('chip-key', configured ? 'ok' : 'warn', configured ? 'API key' : 'No API key');
+    chip('chip-key', configured ? 'ok' : 'warn', inferenceMode === 'local' ? 'Local inference' : (configured ? 'API key' : 'No API key'));
     if (!configured) setupNotes.push('Set META_MUSE_API_KEY in .env, export it, and restart the server.');
     if (dockerState === 'unavailable') setupNotes.push('Docker is not reachable. Start the Docker service and make sure your user can access it.');
     if (dockerState === 'images_missing') setupNotes.push('Sandbox images are missing. Run python main.py --init-images.');

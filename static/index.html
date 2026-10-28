@@ -62,7 +62,7 @@
           <div class="field"><label for="project-test-command">Regression test command <span>JSON argv</span></label><textarea id="project-test-command" name="test_command" required rows="3" spellcheck="false" placeholder='["npm", "test", "--", "--runInBand"]'></textarea></div>
           <div class="field wide"><label for="project-contract">Behavior contract</label><textarea id="project-contract" name="contract" required rows="4" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
           <div class="field compact"><label for="project-cycles">Cycles</label><input id="project-cycles" name="cycles" type="number" min="1" max="20" value="1" required></div>
-          <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1" value="32768" required></div>
+          <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
