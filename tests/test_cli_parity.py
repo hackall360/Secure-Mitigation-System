@@ -11,7 +11,6 @@ from types import SimpleNamespace
 import pytest
 
 import main
-import sms_cli
 from config import PurpleBoxConfig
 from pricing import ScanUsage
 

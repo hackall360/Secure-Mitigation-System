@@ -24,6 +24,11 @@ from docker_manager import (
     docker_status,
     remove_stale_resources,
 )
+from profiles import ProfileError, apply_profile, available_profiles, default_profile
+from project_workflow import execute_project_workflow, redact_report_for_user
+from projects import ProjectSpec
+from registry import BASE_DIR, TARGETS_REGISTRY
+from scan_profiles import SCAN_PROFILES
 from sms_cli import (
     LoadError,
     Spinner,
@@ -31,15 +36,9 @@ from sms_cli import (
     health_table,
     load_config_file,
     merge_config,
-    paint,
     status_color,
     usage_table,
 )
-from profiles import ProfileError, apply_profile, available_profiles, default_profile
-from project_workflow import execute_project_workflow, redact_report_for_user
-from projects import ProjectSpec
-from registry import BASE_DIR, TARGETS_REGISTRY
-from scan_profiles import SCAN_PROFILES
 from workflow import execute_purple_workflow, redact_fixture_result_for_user
 
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
