@@ -210,8 +210,13 @@ def parse_build_intent(
                 alias_norm = " ".join(re.sub(r"[^a-z0-9 ]", " ", alias.lower()).split())
                 if not alias_norm:
                     continue
+                # Whole-word alias match only: the alias must appear as a
+                # complete token run inside the chunk. No substring fallback:
+                # fragments from separator splits ("path"/"traversal") and
+                # hypernyms ("injection", "header") must stay free text,
+                # never phantom named sinks the user did not request.
                 whole = re.search(r"(?<![a-z0-9])" + re.escape(alias_norm) + r"(?![a-z0-9])", norm)
-                if whole is not None or (len(norm) >= 3 and norm in alias_norm):
+                if whole is not None:
                     matched.append(canon)
             if matched:
                 for canon in matched:

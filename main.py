@@ -439,7 +439,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         else:
                             safe = _redact_fixt(result)
                     except Exception:
-                        pass
+                        # LAW 4 fail-closed: a redaction failure must never
+                        # fall back to the unredacted dump (probe scripts and
+                        # payloads stay in Docker). Report the error instead.
+                        safe = {
+                            "status": "error",
+                            "message": "Report redaction failed; unredacted details withheld.",
+                            "cleanup_ok": bool(getattr(result, "cleanup_ok", True)),
+                        }
                     await socket.send_json({"type": "result", **safe})
             except (WebSocketDisconnect, RuntimeError):
                 pass
