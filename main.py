@@ -268,8 +268,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             await socket.close(code=1013)
             return
 
-        async def emit(team: str, message: str):
-            await socket.send_json({"team": team, "msg": message, "type": "log"})
+        from chatter import socket_emit as _socket_emit
+
+        emit = _socket_emit(socket)
 
         async def disconnected():
             try:
@@ -401,9 +402,6 @@ async def ai_demo_runner(
 
     settings = _apply(_load(), profile)
 
-    async def emit(team: str, message: str):
-        print(f"[{team.upper():6}] {message}", flush=True)
-
     themes = [w for w in intel_theme.split() if w][:6]
     if intel_offline:
         intel: list = []
@@ -479,8 +477,9 @@ async def cli_runner(
     deep_assessment: bool = False,
     offline_cve: bool = False,
 ) -> int:
-    async def emit(team: str, message: str):
-        print(f"[{team.upper():6}] {message}", flush=True)
+    from chatter import print_emit as _print_emit
+
+    emit = _print_emit()
 
     settings = apply_profile(load_config(), profile)
     if research:
@@ -507,20 +506,9 @@ async def cli_runner(
             cves = ",".join(vuln.get("cves") or [vuln.get("id", "")])
             print(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}", flush=True)
         if output_dir is not None:
-            import uuid as _uuid
-            from datetime import datetime as _dt
-            from datetime import timezone as _tz
-
-            run_dir = output_dir / f"{_dt.now(_tz.utc):%Y%m%dT%H%M%SZ}-{_uuid.uuid4().hex[:8]}"
-            run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
-            (run_dir / "report.json").write_text(
-                __import__("json").dumps(report, indent=2) + "\n", encoding="utf-8"
-            )
-            (run_dir / "report.json").chmod(0o600)
             summary = _build_cve_summary_markdown(project, settings, cve_result)
-            (run_dir / "SUMMARY.md").write_text(summary, encoding="utf-8")
-            (run_dir / "SUMMARY.md").chmod(0o600)
+            run_dir = write_run_report(output_dir, report, summary)
             print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
         return 0 if cve_result.success else 1
     if project is None:
@@ -541,20 +529,26 @@ async def cli_runner(
         total = "unknown" if result.cost_usd is None else f"${result.cost_usd:.4f}"
         print(f"[USAGE ] total {result.total_tokens} tokens, estimated cost {total}", flush=True)
     if output_dir is not None:
-        # A fresh per-run directory prevents accidental overwriting of previous results.
-        run_dir = output_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
-        run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
         report = {"notice": NOTICE, "license_url": LICENSE_URL, **user_report}
-        (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        (run_dir / "report.json").chmod(0o600)
-        if result.diff:
-            (run_dir / "candidate.patch").write_text(result.diff, encoding="utf-8")
-            (run_dir / "candidate.patch").chmod(0o600)
         summary = _build_summary_markdown(target_key, project, settings, result)
-        (run_dir / "SUMMARY.md").write_text(summary, encoding="utf-8")
-        (run_dir / "SUMMARY.md").chmod(0o600)
+        run_dir = write_run_report(output_dir, report, summary, diff=result.diff or "")
         print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
     return 0 if result.success else 1
+
+
+def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "") -> Path:
+    """Persist one scan run: fresh 0700 run dir, 0600 report.json/SUMMARY.md (+candidate.patch)."""
+    # A fresh per-run directory prevents accidental overwriting of previous results.
+    run_dir = output_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
+    (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    (run_dir / "report.json").chmod(0o600)
+    if diff:
+        (run_dir / "candidate.patch").write_text(diff, encoding="utf-8")
+        (run_dir / "candidate.patch").chmod(0o600)
+    (run_dir / "SUMMARY.md").write_text(summary, encoding="utf-8")
+    (run_dir / "SUMMARY.md").chmod(0o600)
+    return run_dir
 
 
 def _build_cve_summary_markdown(project, settings, result) -> str:
