@@ -14,6 +14,7 @@ from checks import normal_behavior_script
 from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 from docker_manager import DockerSandboxManager, SandboxError
 from patches import PatchRejected, validate_patch
+from pricing import ScanUsage
 from registry import TARGETS_REGISTRY
 
 Emit = Callable[[str, str], Awaitable[None]]
@@ -32,6 +33,9 @@ class ScanResult(BaseModel):
     regression_passed: bool = False
     cleanup_ok: bool = True
     traces: dict[str, str] = Field(default_factory=dict)
+    usage: ScanUsage = Field(default_factory=ScanUsage)
+    total_tokens: int = 0
+    cost_usd: float | None = None
 
     @property
     def success(self) -> bool:
@@ -199,6 +203,11 @@ async def execute_purple_workflow(
                     )
         finally:
             if muse is not None:
+                calls = getattr(muse, "usage", None)
+                if isinstance(calls, list):
+                    result.usage = ScanUsage(calls=calls)
+                    result.total_tokens = result.usage.total_tokens
+                    result.cost_usd = result.usage.cost_usd
                 try:
                     await muse.aclose()
                 except Exception:

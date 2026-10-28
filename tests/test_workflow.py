@@ -164,3 +164,40 @@ async def test_missing_key_fails_before_touching_docker():
         "node_query_sink", silent_emit, config=PurpleBoxConfig(), sandbox_factory=forbidden
     )
     assert result.status == "error" and "META_MUSE_API_KEY" in result.message
+
+
+async def test_result_carries_usage_and_cost_from_the_client():
+    from pricing import CallUsage
+
+    class MeteredMuse(FakeMuse):
+        def __init__(self):
+            super().__init__()
+            self.usage = [
+                CallUsage(
+                    role="red",
+                    model="muse-spark-1.3",
+                    prompt_tokens=10,
+                    completion_tokens=5,
+                    cost_usd=0.001,
+                ),
+                CallUsage(
+                    role="blue",
+                    model="muse-wonder-1.0",
+                    prompt_tokens=20,
+                    completion_tokens=7,
+                    cost_usd=0.002,
+                ),
+            ]
+
+    result = await execute_purple_workflow(
+        "node_query_sink",
+        silent_emit,
+        config=PurpleBoxConfig(meta_api_key="k"),
+        sandbox_factory=lambda settings: FakeSandbox([0, 0, 0, 1, 0]),
+        muse_factory=lambda settings: MeteredMuse(),
+    )
+    assert result.status == "verified", result.message
+    assert [c.role for c in result.usage.calls] == ["red", "blue"]
+    assert result.total_tokens == 42
+    assert result.cost_usd == 0.003
+    assert "usage" in result.model_dump() and result.model_dump()["cost_usd"] == 0.003

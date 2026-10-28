@@ -220,6 +220,17 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 .facts dd { margin: 0; font-size: 13px; font-weight: 600; }
 .facts dd[data-state="good"] { color: var(--green); }
 .facts dd[data-state="bad"] { color: var(--red); }
+.usage { position: relative; display: grid; grid-template-columns: 220px 1fr; gap: 0; border-top: 1px solid var(--border); }
+.usage-total { padding: 16px 24px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.usage-total span { font: 500 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--faint); }
+.usage-total strong { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.usage-total small { color: var(--muted); font-size: 12px; }
+.usage-calls { list-style: none; margin: 0; padding: 10px 24px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.usage-calls li { display: grid; grid-template-columns: 44px 130px 1fr auto; gap: 12px; align-items: baseline; font-size: 12px; color: var(--muted); }
+.usage-calls li strong { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .8px; color: var(--red); }
+.usage-calls li[data-team="blue"] strong { color: var(--blue); }
+.usage-calls code { font: 11px var(--mono); color: var(--text); }
+.usage-calls em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
 .diff-wrap { position: relative; border-top: 1px solid var(--border); }
 .diff-wrap summary { display: flex; align-items: center; gap: 12px; padding: 14px 24px; cursor: pointer; font-weight: 600; font-size: 13px; list-style: none; }
 .diff-wrap summary::-webkit-details-marker { display: none; }
@@ -297,6 +308,10 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 18px
   .facts { grid-template-columns: 1fr 1fr; }
   .facts > div { border-left: 0 !important; border-top: 1px solid var(--border); }
   .system-log .entry { grid-template-columns: 1fr; gap: 0; }
+  .usage { grid-template-columns: 1fr; }
+  .usage-total { border-right: 0; border-bottom: 1px solid var(--border); }
+  .usage-calls li { grid-template-columns: 40px 1fr auto; }
+  .usage-calls li span { grid-column: 1 / -1; }
   .panel-head { flex-wrap: wrap; }
   footer { flex-direction: column; gap: 6px; }
 }

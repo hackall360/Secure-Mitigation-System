@@ -270,6 +270,36 @@ function probeLabel(code) {
   return [`Exit ${code} · inconclusive`, false];
 }
 
+function formatCost(value) {
+  if (value === null || value === undefined) return 'Unknown';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(3)}`;
+}
+
+function renderUsage(payload) {
+  const calls = (payload.usage && payload.usage.calls) || [];
+  el('usage').hidden = calls.length === 0;
+  if (!calls.length) return;
+  el('usage-cost').textContent = formatCost(payload.cost_usd);
+  el('usage-tokens').textContent = `${(payload.total_tokens || 0).toLocaleString()} tokens · ${calls.length} model call${calls.length === 1 ? '' : 's'}`;
+  const list = el('usage-calls');
+  list.replaceChildren();
+  calls.forEach((call) => {
+    const item = document.createElement('li');
+    item.dataset.team = call.role === 'blue' ? 'blue' : 'red';
+    const who = document.createElement('strong');
+    who.textContent = call.role === 'blue' ? 'Blue' : 'Red';
+    const model = document.createElement('code');
+    model.textContent = call.model;
+    const detail = document.createElement('span');
+    detail.textContent = `${call.prompt_tokens.toLocaleString()} in · ${call.completion_tokens.toLocaleString()} out (${call.reasoning_tokens.toLocaleString()} thinking) · ${call.seconds.toFixed(1)}s`;
+    const cost = document.createElement('em');
+    cost.textContent = formatCost(call.cost_usd);
+    item.append(who, model, detail, cost);
+    list.append(item);
+  });
+}
+
 function showResult(payload) {
   latestResult = payload;
   const label = RESULT_LABELS[payload.status] || 'Scan finished';
@@ -282,6 +312,7 @@ function showResult(payload) {
   fact('fact-regression', payload.regression_passed ? 'Passed' : 'Not passed', payload.regression_passed);
   fact('fact-post', ...probeLabel(payload.post_exit_code));
   fact('fact-cleanup', payload.cleanup_ok ? 'Resources removed' : 'Inspect Docker', payload.cleanup_ok);
+  renderUsage(payload);
   if (payload.diff) {
     renderDiff(payload.diff);
     el('diff-wrap').hidden = false;

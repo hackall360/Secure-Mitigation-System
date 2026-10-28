@@ -306,3 +306,38 @@ in the tree (former commit `82e702c`) and then in **all history**:
   collaborators with the ID can reach them. Fully purging that cache needs a GitHub
   Support request ("remove cached views / sensitive data").
 - Any other clone made before 2026-10-28 must be re-cloned. Do not merge or push old branches.
+
+## Token usage and cost (feature/usage-cost-tracking, 2026-10-28)
+
+- `pricing.py`: `PRICES_PER_MILLION` (USD per 1M tokens, from
+  https://dev.meta.ai/docs/pricing-rate-limits), `estimate_cost()`, `usage_from_response()`,
+  `CallUsage`, `ScanUsage`. Reasoning tokens are already inside `completion_tokens` and
+  are billed as output. Cached input uses the cached rate and is never double-counted.
+- `MetaMuseClient.usage` gets one `CallUsage` per completed HTTP call, **including calls
+  whose JSON is then rejected** (they are still billed). `ScanResult` now carries `usage`,
+  `total_tokens` and `cost_usd`. `cost_usd` is `None` if any call has no known price
+  (for example the open model), so a partial sum is never shown as the total.
+- The CLI prints `[USAGE ]` lines. The report JSON and the dashboard result card show
+  totals and per-call tokens, thinking tokens, seconds and cost.
+- Real measurements: php_command_sink cost $0.122 (Spark red: 10,941 out, of which 9,825
+  thinking). mysql_insecure_conf cost $0.053 over WebSocket and $0.065 in the dashboard.
+  **Most of the cost is red-team reasoning tokens.** Recomputing each call's cost from the
+  saved report matched exactly.
+
+### `.jcode/tools/ui_scan.py`
+
+Real-browser acceptance check: `python3 .jcode/tools/ui_scan.py TARGET [--offline]`. It starts
+the server with only the key from `.env`, clicks the dashboard in headless Chrome, prints the
+result card as JSON and saves a screenshot. `--offline` swaps only Muse for the known
+outputs, so it has no API cost.
+
+Traps hit while building it:
+- Writing `\n` inside a Python string that holds JavaScript turns into a real newline and
+  breaks the JS regular expression (`Invalid regular expression: missing /`). The DevTools
+  result then has no `value`, which looked like a missing element. Use
+  `String.fromCharCode(10)`.
+- An earlier ad-hoc driver hung for 10 minutes with no timeout and left headless Chrome
+  running. The tool wraps everything in `asyncio.wait_for` and always terminates Chrome
+  and the server.
+- `pgrep -f PATTERN` inside `bash -c` matches its own command line. A "leftover Chrome"
+  count of 2 was just the checking shell.
