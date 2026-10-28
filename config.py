@@ -1,6 +1,11 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Environment configuration. Loading the UI never requires an inference key."""
+"""Environment configuration. Loading the UI never requires an inference key.
+
+Model roles (judge guide): Muse Spark is the fast triage model and the default
+red-team pick; Muse Wonder is the deep-reasoning model and the default
+blue-team pick.
+"""
 
 import os
 import re
@@ -17,6 +22,7 @@ class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
     meta_base_url: str = "https://api.meta.ai/v1"
     inference_mode: str = "hosted"
+    # Red team default is Spark (fast triage); blue team default is Wonder (deep patch).
     red_team_model: str = "muse-spark-1.3"
     blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
