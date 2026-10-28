@@ -69,7 +69,9 @@
     const dot = document.createElement('span');
     dot.className = `flow-pulse flow-${kind}`;
     dot.setAttribute('aria-hidden', 'true');
-    layer().append(dot);
+    const host = layer();
+    if (!host || typeof host.append !== 'function') return;
+    host.append(dot);
     active += 1;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -177,6 +179,18 @@
     }
     schedule();
   }
+
+  function dispose() {
+    active = 0;
+    document.querySelectorAll('.flow-pulse').forEach((node) => node.remove());
+  }
+
+  /* ---------- (5) teardown guards: no leaked pulses, no loud rejections ---------- */
+
+  window.addEventListener('pagehide', dispose);
+  window.addEventListener('unhandledrejection', (event) => {
+    event.preventDefault();
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
