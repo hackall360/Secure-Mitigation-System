@@ -29,86 +29,24 @@ Docker evidence still decides every verdict.
 
 from __future__ import annotations
 
-import json
-import random
 import re
-import time
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Sequence
 
-USER_AGENT = "Secure-Mitigation-System/0.1 research-sidecar (+https://github.com)"
-MIN_GAP_SECONDS = 1.0
-MAX_BODY_BYTES = 1 * 1024 * 1024
+from sms_http import DEFAULT_MAX_BYTES as MAX_BODY_BYTES
+from sms_http import MIN_GAP_SECONDS, USER_AGENT, _pace
+from sms_http import paced_get_json as _get_json
+from sms_http import paced_post_json as _post_json
+from sms_records import sanitize_cve_id, truncate_summary
 
-_last_call: float = 0.0
-
-
-def _pace() -> None:
-    """Enforce a jittered minimum gap between outbound intel requests."""
-    global _last_call
-    now = time.monotonic()
-    wait = MIN_GAP_SECONDS + random.uniform(0, 1.0) - (now - _last_call)
-    if wait > 0:
-        time.sleep(wait)
-    _last_call = time.monotonic()
-
-
-def _get_json(
-    url: str,
-    *,
-    params: dict | None = None,
-    headers: dict | None = None,
-    timeout: float = 20.0,
-    tries: int = 3,
-) -> dict | list:
-    """GET JSON with pacing, backoff-with-jitter, and a response cap."""
-    query = ("?" + urllib.parse.urlencode(params)) if params else ""
-    heads = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    if headers:
-        heads.update(headers)
-    last: Exception | None = None
-    for attempt in range(tries):
-        _pace()
-        request = urllib.request.Request(url + query, headers=heads)
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = response.read(MAX_BODY_BYTES + 1)
-            if len(body) > MAX_BODY_BYTES:
-                raise ValueError("intel response exceeded the 1 MiB cap")
-            return json.loads(body.decode("utf-8"))
-        except Exception as exc:  # network, HTTP error, bad JSON: back off
-            last = exc
-            time.sleep(2**attempt + random.uniform(0, 1.0))
-    raise RuntimeError(f"intel request failed after {tries} tries: {last}") from last
-
-
-def _post_json(url: str, payload: dict, *, timeout: float = 20.0, tries: int = 3) -> dict | list:
-    """POST JSON with the same pacing/backoff/cap discipline as _get_json."""
-    data = json.dumps(payload).encode()
-    last: Exception | None = None
-    for attempt in range(tries):
-        _pace()
-        request = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = response.read(MAX_BODY_BYTES + 1)
-            if len(body) > MAX_BODY_BYTES:
-                raise ValueError("intel response exceeded the 1 MiB cap")
-            return json.loads(body.decode("utf-8"))
-        except Exception as exc:
-            last = exc
-            time.sleep(2**attempt + random.uniform(0, 1.0))
-    raise RuntimeError(f"intel request failed after {tries} tries: {last}") from last
+__all__ = [
+    "USER_AGENT",
+    "MIN_GAP_SECONDS",
+    "MAX_BODY_BYTES",
+    "_pace",
+    "_get_json",
+    "_post_json",
+]
 
 
 @dataclass
@@ -126,8 +64,8 @@ class ResearchRecord:
     extra: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.summary = (self.summary or "")[:1500]
-        self.cve_id = (self.cve_id or "").strip().upper()[:32]
+        self.summary = truncate_summary(self.summary)
+        self.cve_id = sanitize_cve_id(self.cve_id)
 
 
 def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list[ResearchRecord]:
@@ -172,7 +110,7 @@ def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list
 
 def osv_lookup(cve_id: str) -> ResearchRecord | None:
     """OSV direct CVE fetch. No key."""
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
+    safe = sanitize_cve_id(cve_id)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
@@ -196,7 +134,7 @@ def osv_lookup(cve_id: str) -> ResearchRecord | None:
 
 def circl_lookup(cve_id: str) -> ResearchRecord | None:
     """CIRCL cve-search CVE record: full CVE JSON, no key, no rate games."""
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
+    safe = sanitize_cve_id(cve_id)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:

@@ -8,7 +8,7 @@ import ast
 import asyncio
 import difflib
 import hashlib
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import PurePosixPath
 from typing import Any, Literal, Protocol
 
@@ -34,9 +34,9 @@ from project_agents import (
     documents_from_mapping,
 )
 from projects import ProjectSnapshot, ProjectSpec, replace_snapshot_files, snapshot_project
-from workflow import blocking
-
-Emit = Callable[[str, str], Awaitable[None]]
+from sms_async import Emit, blocking, make_log
+from sms_budget import resolve_payload_budget
+from sms_text import bounded as _bounded
 
 
 class ProjectWorkflowError(RuntimeError):
@@ -511,11 +511,6 @@ class DockerProjectSandbox:
         self.manager.close()
 
 
-def _bounded(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    omitted = len(text) - limit
-    return f"{text[:limit]}\n[report limit reached; {omitted} characters omitted]"
 
 
 def _normalize_execution(value: Any, limit: int) -> ExecutionEvidence:
@@ -790,7 +785,7 @@ async def execute_project_workflow(
     bounds = limits or ProjectWorkflowLimits()
     payload_budget = bounds.max_payload_bytes
     if isinstance(project, ProjectSpec):
-        payload_budget = min(payload_budget, max(16_384, project.context_budget * 4))
+        payload_budget = resolve_payload_budget(payload_budget, project.context_budget)
     project_name = (
         project.path.name if isinstance(project, ProjectSpec) else coerce_project(project).name
     )
@@ -822,11 +817,7 @@ async def execute_project_workflow(
     snapshot_total_bytes = 0
     verified_history: list[dict[str, object]] = []
 
-    async def log(team: str, message: str) -> None:
-        try:
-            await emit(team, message)
-        except Exception:
-            pass
+    log = make_log(emit)
 
     try:
         settings = config or load_config()
@@ -1337,59 +1328,11 @@ async def execute_project_workflow(
     return result
 
 
-EXPLOIT_REDACTED = (
-    "[exploit details withheld: available only inside the isolated verification sandbox]"
-)
-
-
-def _redact_cycle_evidence(evidence: "CycleEvidence | dict") -> dict:
-    data = evidence.model_dump() if hasattr(evidence, "model_dump") else dict(evidence)
-    red = data.get("red") or {}
-    for key in ("batch_evidence", "evidence_digests"):
-        items = red.get(key) or []
-        for item in items:
-            for cand in item.get("candidates") or []:
-                cand["verification_script_python"] = EXPLOIT_REDACTED
-                cand["evidence"] = EXPLOIT_REDACTED
-    report = red.get("report") or {}
-    report["verification_script_python"] = EXPLOIT_REDACTED
-    ired = data.get("independent_red") or {}
-    for key in ("batch_evidence", "evidence_digests"):
-        for item in ired.get(key) or []:
-            for cand in item.get("candidates") or []:
-                cand["verification_script_python"] = EXPLOIT_REDACTED
-                cand["evidence"] = EXPLOIT_REDACTED
-    ireport = ired.get("report") or {}
-    if ireport:
-        ireport["verification_script_python"] = EXPLOIT_REDACTED
-    for section in ("pre_verification", "patched_verification", "independent_verification"):
-        ver = data.get(section)
-        if isinstance(ver, dict):
-            probe = ver.get("probe") or {}
-            # Keep exit codes and short status, drop raw probe output that may contain payloads.
-            output = str(probe.get("output", ""))
-            probe["output"] = (
-                (output[:500] + "\n[probe output truncated; full exploit output withheld]")
-                if len(output) > 500
-                else EXPLOIT_REDACTED
-                if output
-                else output
-            )
-    return data
+from sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from sms_redact import redact_cycle_evidence as redact_cycle_evidence  # noqa: E402,F401 (re-export; canonical def lives in sms_redact)
+from sms_redact import redact_project_result as _redact_project  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
 
 
 def redact_report_for_user(result: "ProjectWorkflowResult") -> dict:
     """Return a user-safe report: patched code only, no exploit scripts or payloads."""
-    data = result.model_dump()
-    data["cycle_reports"] = [
-        {**cycle, "evidence": _redact_cycle_evidence(cycle["evidence"])}
-        if isinstance(cycle.get("evidence"), dict)
-        else cycle
-        for cycle in data.get("cycle_reports", [])
-    ]
-    # model_dump already expanded cycles alias; keep both consistent.
-    data["cycles"] = data["cycle_reports"]
-    history = []
-    for item in data.get("verified_history", []):
-        history.append({k: v for k, v in item.items()})
-    return data
+    return _redact_project(result)

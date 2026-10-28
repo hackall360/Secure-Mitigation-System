@@ -219,6 +219,7 @@ def test_cli_named_scan_profile_is_independent_from_model_profile(tmp_path, monk
             "heavy",
             "--profile",
             "economy",
+            "--allow-remote-inference",
             "--red-agents",
             "8",
             "--blue-agents",

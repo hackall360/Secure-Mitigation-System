@@ -691,3 +691,32 @@ def test_cross_platform_compat_guards():
             if sline.startswith(("import fcntl", "import termios", "import pty", "import pwd")):
                 hits.append(f"{py.name}: {sline}")
     assert hits == [], hits
+
+
+def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
+    """deep_scan OSV calls use sms_http paced helpers; oversize batch capped."""
+    import deep_scan as _ds
+
+    calls: list[tuple] = []
+
+    def fake_post(url, payload, timeout=30.0, tries=3, max_bytes=0):
+        calls.append(("POST", url, len(payload["queries"]), max_bytes))
+        return {"results": []}
+
+    def fake_get(url, timeout=30.0, tries=3, max_bytes=0):
+        calls.append(("GET", url, max_bytes))
+        return {"id": "GHSA-x"}
+
+    monkeypatch.setattr(_ds, "paced_post_json", fake_post)
+    monkeypatch.setattr(_ds, "paced_get_json", fake_get)
+    big = [{"name": f"pkg{i}", "ecosystem": "PyPI", "version": "1.0"} for i in range(250)]
+    assert _ds.query_osv_batch(big) == {"results": []}
+    assert calls[0] == ("POST", _ds.OSV_QUERY_URL, _ds.OSV_BATCH_LIMIT, _ds.OSV_BATCH_MAX_BYTES)
+    assert _ds.fetch_osv_vuln("GHSA-x") == {"id": "GHSA-x"}
+    assert calls[1][0] == "GET" and calls[1][2] == _ds.OSV_VULN_MAX_BYTES
+    monkeypatch.setattr(_ds, "paced_get_json", lambda *a, **k: [{"not": "a dict"}])
+    try:
+        _ds.fetch_osv_vuln("GHSA-x")
+        raise AssertionError("should have rejected non-dict OSV record")
+    except ValueError:
+        pass

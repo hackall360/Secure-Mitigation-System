@@ -15,15 +15,20 @@ Sources: https://osv.dev (OSV API, no key) and NVD API 2.0
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import urllib.parse
-import urllib.request
 from typing import Any, Mapping, Sequence
+
+from sms_http import paced_get_json
+from sms_records import sanitize_cve_id
 
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns"
+
+# Response caps: NVD pages are large; OSV records are smaller.
+NVD_SEARCH_MAX_BYTES = 4 * 1024 * 1024
+NVD_LOOKUP_MAX_BYTES = 2 * 1024 * 1024
+OSV_LOOKUP_MAX_BYTES = 2 * 1024 * 1024
 
 
 def nvd_search(
@@ -40,7 +45,6 @@ def nvd_search(
         "keywordSearch": keyword,
         "resultsPerPage": str(max(1, min(results_per_page, 50))),
     }
-    url = NVD_BASE + "?" + urllib.parse.urlencode(params)
     headers = {
         "User-Agent": "Secure-Mitigation-System/0.1",
         "Accept": "application/json",
@@ -48,10 +52,9 @@ def nvd_search(
     api_key = os.getenv("NVD_API_KEY", "").strip()
     if api_key:
         headers["apiKey"] = api_key
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(4 * 1024 * 1024)
-    return json.loads(body.decode("utf-8"))
+    return paced_get_json(
+        NVD_BASE, params=params, headers=headers, timeout=timeout, max_bytes=NVD_SEARCH_MAX_BYTES
+    )
 
 
 def nvd_lookup(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
@@ -60,15 +63,13 @@ def nvd_lookup(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", cve_id):
         raise ValueError(f"Invalid CVE ID: {cve_id!r}.")
     params = {"cveId": cve_id}
-    url = NVD_BASE + "?" + urllib.parse.urlencode(params)
     headers = {"User-Agent": "Secure-Mitigation-System/0.1", "Accept": "application/json"}
     api_key = os.getenv("NVD_API_KEY", "").strip()
     if api_key:
         headers["apiKey"] = api_key
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(2 * 1024 * 1024)
-    return json.loads(body.decode("utf-8"))
+    return paced_get_json(
+        NVD_BASE, params=params, headers=headers, timeout=timeout, max_bytes=NVD_LOOKUP_MAX_BYTES
+    )
 
 
 def summarize_nvd_record(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -132,14 +133,12 @@ def osv_lookup_by_cve(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
     Used by the CVE workflow as a keyless second opinion alongside NVD:
     OSV often carries the fix commit / fixed-version range NVD omits.
     """
-    safe = re.sub(r"[^A-Za-z0-9\-_:.]", "", cve_id.strip().upper())[:32]
-    request = urllib.request.Request(
+    safe = sanitize_cve_id(cve_id)
+    return paced_get_json(
         f"{OSV_VULN_URL}/{safe}",
-        headers={"User-Agent": "Secure-Mitigation-System/0.1"},
+        timeout=timeout,
+        max_bytes=OSV_LOOKUP_MAX_BYTES,
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(2 * 1024 * 1024)
-    return json.loads(body.decode("utf-8"))
 
 
 async def intel_for_demo(

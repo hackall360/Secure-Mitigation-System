@@ -20,12 +20,11 @@ from __future__ import annotations
 import base64
 import json
 import os
-import random
 import time
 import urllib.parse
-import urllib.request
 
 from scanner_binaries import ScannerRecord
+from sms_http import paced_request_json
 
 USER_AGENT = "Secure-Mitigation-System/0.1 dtrack-client"
 MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -50,29 +49,26 @@ def _request(
     timeout: float = 30.0,
     tries: int = 3,
 ) -> dict | list | None:
-    data = json.dumps(body).encode() if body is not None else None
-    for attempt in range(tries):
-        time.sleep(1.0 + random.uniform(0, 1.0))
-        request = urllib.request.Request(
-            base + path,
-            data=data,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "X-Api-Key": key,
-            },
-            method=method,
+    """Dependency-Track JSON round-trip via the shared paced transport.
+
+    Route: the API key rides the X-Api-Key header; pacing uses the shared
+    per-host clock so dtrack polls do not starve concurrent intel lookups.
+    Never raises: any failure degrades to None.
+    """
+    url = base + path
+    try:
+        result = paced_request_json(
+            method,
+            url,
+            body=body,
+            headers={"User-Agent": USER_AGENT, "X-Api-Key": key},
+            timeout=timeout,
+            tries=tries,
+            max_bytes=MAX_BODY_BYTES,
         )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                raw = response.read(MAX_BODY_BYTES + 1)
-            if len(raw) > MAX_BODY_BYTES:
-                return None
-            return json.loads(raw.decode("utf-8"))
-        except Exception:
-            time.sleep(2**attempt + random.uniform(0, 1.0))
-    return None
+    except Exception:
+        return None
+    return result if isinstance(result, (dict, list)) else None
 
 
 def build_bom(project_name: str, packages: list[tuple[str, str]]) -> dict:

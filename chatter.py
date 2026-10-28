@@ -84,3 +84,21 @@ def chatter(
         line = line.replace("__", "_")
     # Hard ceiling: minor summaries only.
     return line[:220]
+
+
+def socket_emit(socket):
+    """Build a WebSocket Emit: forwards (team, message) as log frames to one client."""
+
+    async def emit(team: str, message: str) -> None:
+        await socket.send_json({"team": team, "msg": message, "type": "log"})
+
+    return emit
+
+
+def print_emit():
+    """Build a CLI Emit: prints flushed "[TEAM  ] message" lines to stdout."""
+
+    async def emit(team: str, message: str) -> None:
+        print(f"[{team.upper():6}] {message}", flush=True)
+
+    return emit
