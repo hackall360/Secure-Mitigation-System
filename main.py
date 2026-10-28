@@ -23,6 +23,7 @@ from docker_manager import (
     docker_status,
     remove_stale_resources,
 )
+from profiles import ProfileError, apply_profile, available_profiles, default_profile
 from registry import BASE_DIR, TARGETS_REGISTRY
 from workflow import execute_purple_workflow
 
@@ -75,6 +76,17 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 "api_key_configured": bool(settings.meta_api_key),
                 "red_model": settings.red_team_model,
                 "blue_model": settings.blue_team_model,
+                "profiles": [
+                    {
+                        "key": p.key,
+                        "label": p.label,
+                        "description": p.description,
+                        "red_model": p.red_model,
+                        "blue_model": p.blue_model,
+                    }
+                    for p in available_profiles(settings).values()
+                ],
+                "default_profile": default_profile(settings),
                 "docker": await asyncio.to_thread(docker_status, settings),
                 "busy": application.state.scan_lock.locked(),
             }
@@ -90,6 +102,13 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             f"{'https' if socket.url.scheme == 'wss' else 'http'}://{socket.headers.get('host')}"
         )
         if socket.headers.get("origin") != expected_origin or target_key not in TARGETS_REGISTRY:
+            await socket.close(code=1008)
+            return
+        # The profile is a fixed key, never a model ID. Unknown keys are refused before
+        # any Docker or API work starts.
+        try:
+            scan_config = apply_profile(config or load_config(), socket.query_params.get("profile"))
+        except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
         await socket.accept()
@@ -114,7 +133,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 return
 
         async with lock:
-            run = asyncio.create_task(execute_purple_workflow(target_key, emit, config=config))
+            run = asyncio.create_task(execute_purple_workflow(target_key, emit, config=scan_config))
             disconnect = asyncio.create_task(disconnected())
             try:
                 done, _ = await asyncio.wait({run, disconnect}, return_when=asyncio.FIRST_COMPLETED)
@@ -139,11 +158,18 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 app = create_app()
 
 
-async def cli_runner(target_key: str, output_dir: Path | None = None) -> int:
+async def cli_runner(
+    target_key: str, output_dir: Path | None = None, profile: str | None = None
+) -> int:
     async def emit(team: str, message: str):
         print(f"[{team.upper():6}] {message}", flush=True)
 
-    result = await execute_purple_workflow(target_key, emit)
+    settings = apply_profile(load_config(), profile)
+    print(
+        f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}",
+        flush=True,
+    )
+    result = await execute_purple_workflow(target_key, emit, config=settings)
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
         print(
@@ -191,11 +217,18 @@ def main() -> int:
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
+        "--profile",
+        choices=["economy", "balanced", "quality", "custom"],
+        help="Model profile for --scan (default: configured models)",
+    )
+    parser.add_argument(
         "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
     )
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
+    if args.profile is not None and not args.scan:
+        parser.error("--profile requires --scan")
     if args.output_dir is not None and not args.scan:
         parser.error("--output-dir requires --scan")
     try:
@@ -222,7 +255,7 @@ def main() -> int:
             print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
         if args.scan:
-            return asyncio.run(cli_runner(args.scan, args.output_dir))
+            return asyncio.run(cli_runner(args.scan, args.output_dir, args.profile))
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port)
         return 0
     except KeyboardInterrupt:

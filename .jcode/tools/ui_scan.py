@@ -2,7 +2,7 @@
 # Run one real scan by clicking the dashboard in headless Chrome; prints the result card as JSON and saves a screenshot.
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Usage: ui_scan.py TARGET [--port 8797] [--shot PATH] [--offline]
+"""Usage: ui_scan.py TARGET [--profile economy|balanced|quality] [--port 8797] [--shot PATH] [--offline]
 
 Starts the real server (only META_MUSE_API_KEY from .env, all other settings default),
 opens Chrome via the DevTools protocol, selects TARGET, clicks Run verification, waits
@@ -35,6 +35,7 @@ READOUT = """JSON.stringify({
   facts: [...document.querySelectorAll('.facts dd')].map((d) => d.textContent),
   diff: document.getElementById('diff-stats').textContent,
   elapsed: document.getElementById('elapsed').textContent,
+  profile: (document.querySelector('.profile[aria-checked="true"]') || {}).dataset?.key || null,
   cost: document.getElementById('usage-cost').textContent,
   tokens: document.getElementById('usage-tokens').textContent,
   calls: [...document.querySelectorAll('#usage-calls li')].map(
@@ -85,7 +86,7 @@ def start_server(port: int, offline: bool) -> subprocess.Popen:
     raise SystemExit("Server did not become ready.")
 
 
-async def drive(port: int, target: str, shot: Path, devtools: int) -> dict:
+async def drive(port: int, target: str, shot: Path, devtools: int, profile: str | None) -> dict:
     import websockets  # installed in the project venv
 
     tabs = None
@@ -125,6 +126,8 @@ async def drive(port: int, target: str, shot: Path, devtools: int) -> dict:
         await call("Page.navigate", url=f"http://localhost:{port}/")
         await asyncio.sleep(2)
         await js(f"document.querySelector('.target[data-key={target}]').click()")
+        if profile:
+            await js(f"document.querySelector('.profile[data-key={profile}]').click()")
         if await js("document.getElementById('run-btn').disabled"):
             raise SystemExit("Run button is disabled; check the API key and Docker chips.")
         await js("document.getElementById('run-btn').click()")
@@ -147,6 +150,7 @@ def main() -> int:
     parser.add_argument("--devtools-port", type=int, default=9335)
     parser.add_argument("--shot", type=Path, default=Path(tempfile.gettempdir()) / "ui-scan.png")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--profile", choices=["economy", "balanced", "quality"])
     args = parser.parse_args()
     chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser")
     if not chrome_bin:
@@ -168,7 +172,8 @@ def main() -> int:
     try:
         result = asyncio.run(
             asyncio.wait_for(
-                drive(args.port, args.target, args.shot, args.devtools_port), timeout=660
+                drive(args.port, args.target, args.shot, args.devtools_port, args.profile),
+                timeout=660,
             )
         )
         print(json.dumps(result, indent=2))

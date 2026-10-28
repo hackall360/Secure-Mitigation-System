@@ -341,3 +341,20 @@ Traps hit while building it:
   and the server.
 - `pgrep -f PATTERN` inside `bash -c` matches its own command line. A "leftover Chrome"
   count of 2 was just the checking shell.
+
+## Per-scan model profiles
+
+`profiles.py` defines Economy (Spark/Spark), Balanced (Spark/Wonder), and Quality
+(Wonder/Wonder). `custom` preserves the server's configured model pair. Profiles are
+only offered for the Meta API hostname, not other providers. `/api/health` exposes
+`profiles` and `default_profile`. The dashboard sends a fixed key via
+`/ws/combat/TARGET?profile=KEY`. Unknown keys close with code 1008 before work starts.
+The CLI accepts `main.py --scan TARGET --profile economy` (also balanced, quality,
+and custom) and prints the selected models. `--profile` requires `--scan`.
+
+Browser acceptance: `.venv/bin/python .jcode/tools/ui_scan.py node_query_sink
+--profile economy` completed a real Meta API and Docker scan with both roles using
+Spark. Baseline and regression passed, the pre-patch probe reached the boundary,
+the post-patch probe was blocked, and cleanup left zero containers. The dashboard
+reported 11,647 tokens across two calls and estimated cost $0.041. Model pricing is
+an estimate, not an invoice. Screenshot was checked at desktop width.

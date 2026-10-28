@@ -23,6 +23,8 @@ let timer = null;
 let eventCount = 0;
 let currentStage = -1;
 let activeFilter = 'all';
+let profiles = [];
+let selectedProfile = 'custom';
 
 /* ---------- small helpers ---------- */
 
@@ -238,6 +240,48 @@ function lockTargets(locked) {
   el('target-list').classList.toggle('locked', locked);
 }
 
+/* ---------- model profiles ---------- */
+
+function selectProfile(key) {
+  if (socket || !profiles.some((p) => p.key === key)) return;
+  selectedProfile = key;
+  document.querySelectorAll('.profile').forEach((button) => {
+    const on = button.dataset.key === key;
+    button.setAttribute('aria-checked', String(on));
+    button.tabIndex = on ? 0 : -1;
+  });
+  const chosen = profiles.find((p) => p.key === key);
+  el('red-model').textContent = chosen.red_model;
+  el('blue-model').textContent = chosen.blue_model;
+}
+
+function renderProfiles(health) {
+  profiles = health.profiles || [];
+  el('profile-row').hidden = profiles.length === 0;
+  const list = el('profile-list');
+  list.replaceChildren();
+  profiles.forEach((profile) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'profile';
+    button.dataset.key = profile.key;
+    button.setAttribute('role', 'radio');
+    button.title = `Red: ${profile.red_model} · Blue: ${profile.blue_model}`;
+    const name = document.createElement('strong');
+    name.textContent = profile.label;
+    const desc = document.createElement('small');
+    desc.textContent = profile.description;
+    button.append(name, desc);
+    button.addEventListener('click', () => selectProfile(profile.key));
+    list.append(button);
+  });
+  if (profiles.length) selectProfile(profiles.some((p) => p.key === health.default_profile) ? health.default_profile : profiles[0].key);
+}
+
+function lockProfiles(locked) {
+  document.querySelectorAll('.profile').forEach((button) => { button.disabled = locked; });
+}
+
 /* ---------- result ---------- */
 
 function renderDiff(diff) {
@@ -336,6 +380,7 @@ async function initialize() {
     renderTargets();
     el('red-model').textContent = health.red_model;
     el('blue-model').textContent = health.blue_model;
+    renderProfiles(health);
     configured = health.api_key_configured;
     const setupNotes = [];
     chip('chip-server', 'ok');
@@ -375,13 +420,15 @@ function startScan() {
   document.body.classList.add('scanning');
   el('run-btn').disabled = true;
   lockTargets(true);
+  lockProfiles(true);
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Verification running', 'running');
   startedAt = Date.now();
   el('elapsed').textContent = '0s';
   timer = setInterval(() => { el('elapsed').textContent = formatElapsed(Date.now() - startedAt); }, 1000);
-  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/combat/${encodeURIComponent(key)}`);
+  const profileQuery = profiles.length ? `?profile=${encodeURIComponent(selectedProfile)}` : '';
+  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/combat/${encodeURIComponent(key)}${profileQuery}`);
   socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
@@ -403,6 +450,7 @@ function startScan() {
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('active'));
     el('run-btn').disabled = !configured;
     lockTargets(false);
+    lockProfiles(false);
     el('stop-btn').hidden = true;
     el('elapsed').textContent = formatElapsed(Date.now() - startedAt);
     if (!latestResult) {
