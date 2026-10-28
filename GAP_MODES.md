@@ -3,6 +3,10 @@
 Read-only audit (2026-10-28, branch `feature/work-gap-modes`). Scope: focus
 passes, light/medium/extra-light scan profiles, scan-profile, project/demo
 handlers, green-build options. No source was edited for this audit.
+Compliance rerun same day: all 8 widgets re-verified still missing against
+current Step 1 markup; tri-surface slots (LAW 8) and semver verdict (LAW 12)
+added in §4. Doc-only change — no markup touched, so LAW 11 browser proof is
+not triggered.
 
 Sources: `scan_profiles.py`, `profiles.py`, `projects.py`,
 `project_workflow.py` (`execute_project_workflow`), `workflow.py`
@@ -185,3 +189,44 @@ the sender has nowhere to deliver the value.
   intensity dropdown is complete (all six + custom).
 - `parse_build_intent` inputs (`build_brief`, `vulns`, `theme`): all three
   widgets exist with matching `maxlength` bounds (500/500/200).
+
+## 4. Compliance rerun (2026-10-28, same day) — LAW 8 tri-surface + LAW 12 semver
+
+Re-verified each widget id against live `static/index.html` (Step 1
+`#picker`), `static/app.js` senders, `main.py` handlers, `tui.py`
+keybindings, `sms_cli.py`/CLI argparse. Result: **all 8 still missing, no
+markup drift.** New detail since the first pass: CLI `--ai-demo` already
+accepts `--scan-profile/--red-agents/--blue-agents` and `ai_demo_runner`
+already stamps those three onto the demo `ProjectSpec` — so the CLI half of
+M1/M3/M4 exists. But `--cycles` and `--context-budget`, while accepted
+globally, are silently ignored by `ai_demo_runner` (not params, never
+stamped): the CLI demo path shares the M2/M5 gap. Only the Web UI widget +
+`/ws/demo` first-frame + `run_demo_build()` forwarding are missing for
+M1/M3/M4; M2/M5 need the CLI stamp too.
+`run_demo_build()` still takes only `theme/build_brief/vulns/intel_offline`
+and `materialize_demo_project()` still returns a default custom-profile
+1-cycle spec. No new gaps found; count stays 8.
+
+LAW 8 tri-surface for each widget (Web UI control + TUI keybinding slot +
+CLI flag mapping; TUI is fixture-only today so slots are reserved bindings,
+not live paths):
+
+| Widget | Web UI control (Step 1 `#picker`) | TUI keybinding slot | CLI flag mapping |
+| --- | --- | --- | --- |
+| M1 scan intensity | `#demo-scan-profile` `<select>` mirroring `#project-scan-profile` (7 options, extra_light default); sender adds `scan_profile` to `/ws/demo` first frame; `run_demo_build()` forwards to spec | Reserved key `i` (intensity cycle extra_light→…→custom) on a future demo-build TUI screen; today TUI runs fixtures only (`tui.py` `FIXTURE_ORDER`, `1/2/3` select + `s`/`Enter` start), so the slot is specified, not wired | EXISTS: `--scan-profile` + `--ai-demo` (`main.py` argparse; `ai_demo_runner(scan_profile=...)`) |
+| M2 cycles | `#demo-cycles` number 1–20, readonly unless M1=custom; sender adds `cycles`; backend `_apply_scan_profile` rule already covers validation | Same `i` screen: cycles field editable only when intensity=custom (mirrors web readonly-unless-custom) | GAP on CLI demo path too: `--cycles` accepted globally but `ai_demo_runner()` ignores it (not a param, never stamped); add both |
+| M3 red agents | `#demo-red-agents` number 1–12 default 5, disabled unless M1=ultra_heavy (mirror `updateScanProfile()`); sender adds `red_agents` | Same screen: `r`/`R` step red team size (slot; validation 1–12) | EXISTS: `--red-agents` + `--ai-demo` |
+| M4 blue agents | `#demo-blue-agents` mirror of M3 for `blue_agents` | Same screen: `b`/`B` step blue team size (slot; validation 1–12) | EXISTS: `--blue-agents` + `--ai-demo` |
+| M5 context budget | `#demo-budget` number 1024–131072 default 32768 mirroring `#project-budget`; sender adds `context_budget`; needs `run_demo_build()` + `ai_demo_runner()` (CLI takes none for demo) to accept it | Same screen: `c` key cycles budget presets 8k/32k/64k (slot) | GAP on CLI demo path too: `--context-budget` exists globally but `ai_demo_runner()` takes no `context_budget` param and never stamps it; add both |
+| M6 offline toggle | `#demo-intel-offline` checkbox in `#demo-build-config`, replaces silent coercion; sender sends its state instead of `inferenceMode === 'local' \|\| !allow-remote.checked`; no backend change (param exists) | `o` toggles offline (slot) on the demo-build screen | EXISTS: `--intel-offline` (requires `--ai-demo`) |
+| M7 visible consent | Visible consent checkbox bound to the same `#allow-remote` element (sync, not a second source of truth), placed in `#demo-build-config` under M6; same `onopen` coercion logic, now user-visible | `a` toggles allow-remote consent (slot); plain-text degrade prints the consent state explicitly (LAW 8 explicit-failure parity) | EXISTS: `--allow-remote-inference` (applies to `--ai-demo`; coerces offline without it — same rule the widget makes visible) |
+| M8 research toggles | Relocate `#research-toggle` / `#research-scanners-toggle` labels out of `#project-form` to picker level (above `#profile-row`), visible in every mode; `socketQuery()` unchanged | `g` toggles threat-intel grounding, `G` toggles local scanners (slots; mirror `?research=on` + `research_scanners=` allowlist); plain-text output already prints research facts | EXISTS: `--research` + `--research-scanners` (run on every surface incl. `--ai-demo`) |
+
+LAW 12 semver verdict: wiring M1–M8 adds new user-visible capabilities (new
+Step 1 controls, new `/ws/demo` first-frame fields, new `run_demo_build()`
+params) — that is a **major bump** under LAW 12 (`0.major.minor`, second
+value moves for new capabilities). Current version is `0.1` (dashboard
+`static/index.html` footer) / `0.1.0` (FastAPI `version=` in `main.py`).
+Landing the widget set moves it to **`0.2`** (dashboard) / **`0.2.0`**
+(server) — exactly one bump, recorded in the ship commit message per LAW 12.
+Doc-only rerun itself triggers no bump.
