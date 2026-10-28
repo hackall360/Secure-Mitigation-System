@@ -511,8 +511,6 @@ class DockerProjectSandbox:
         self.manager.close()
 
 
-
-
 def _normalize_execution(value: Any, limit: int) -> ExecutionEvidence:
     if isinstance(value, ExecutionEvidence):
         return value.model_copy(update={"output": _bounded(value.output, limit)})

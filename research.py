@@ -342,9 +342,7 @@ def web_notes(queries: Sequence[str], *, per_query: int = 3) -> list[ResearchRec
                 )
                 pages = ((detail or {}).get("query") or {}).get("pages") or {}
                 first = next(iter(pages.values()), {})
-                extract = (
-                    " ".join(str((first or {}).get("extract") or "").split())[:1500]
-                )
+                extract = " ".join(str((first or {}).get("extract") or "").split())[:1500]
             except RuntimeError:
                 extract = ""
             found.append(

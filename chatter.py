@@ -93,12 +93,3 @@ def socket_emit(socket):
         await socket.send_json({"team": team, "msg": message, "type": "log"})
 
     return emit
-
-
-def print_emit():
-    """Build a CLI Emit: prints flushed "[TEAM  ] message" lines to stdout."""
-
-    async def emit(team: str, message: str) -> None:
-        print(f"[{team.upper():6}] {message}", flush=True)
-
-    return emit
