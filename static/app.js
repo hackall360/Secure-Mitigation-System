@@ -104,9 +104,9 @@ function append(area, line) {
 }
 
 function writeLine(team, text) {
-  const known = team === 'red' || team === 'blue' ? team : 'system';
+  const known = team === 'red' || team === 'blue' || team === 'research' ? team : 'system';
   if (known !== 'system') {
-    append(logs[known], buildEntry(known, text, false));
+    append(logs[known] || logs.system, buildEntry(known, text, false));
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.dataset.team === known));
   }
   // The activity timeline records every event so it can be filtered.
@@ -143,6 +143,7 @@ function setStage(name, state = 'active') {
 
 function advanceStage(team, text) {
   const t = text.toLowerCase();
+  if (team === 'research') setStage('analysis');
   if (t.includes('creating an internal docker network')) setStage('sandbox');
   else if (t.includes('normal-input checks passed') && currentStage < 2) setStage('baseline');
   else if (team === 'red' && t.startsWith('analyzing')) setStage('analysis');
