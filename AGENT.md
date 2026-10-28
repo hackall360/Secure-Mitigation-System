@@ -29,3 +29,7 @@ Arbitrary local projects use `projects.py`, `project_agents.py`, and
 [docs/PROJECTS.md](docs/PROJECTS.md) for snapshot/runtime constraints and
 [docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for evidence and context rules.
 Local Muse serving is an explicit loopback-only opt-in, never a fallback provider.
+
+Scan intensity and team configuration live in [docs/SCAN_PROFILES.md](docs/SCAN_PROFILES.md).
+See [docs/DISCOVERY_TEAMS.md](docs/DISCOVERY_TEAMS.md) for leader/worker payloads
+and [docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for cycle/pass evidence semantics.

@@ -126,6 +126,7 @@ class CycleEvidence(BaseModel):
 class ProjectCycleReport(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     cycle: int = Field(ge=1, le=20)
+    pass_number: int = Field(default=1, ge=1, le=2)
     status: Literal[
         "retained", "rolled_back", "no_finding", "not_confirmed", "inconclusive", "error"
     ]
@@ -147,6 +148,10 @@ class ProjectWorkflowResult(BaseModel):
     project: str
     status: Literal["verified", "no_findings", "partial", "error"] = "error"
     message: str = "Project workflow did not complete."
+    scan_profile: str = "custom"
+    passes_per_cycle: int = Field(default=1, ge=1, le=2)
+    red_agents: int = Field(default=5, ge=1, le=12)
+    blue_agents: int = Field(default=5, ge=1, le=12)
     cycles_requested: int = Field(ge=1, le=20)
     cycles_completed: int = Field(default=0, ge=0, le=20)
     cycle_reports: list[ProjectCycleReport] = Field(default_factory=list)
@@ -555,7 +560,21 @@ async def execute_project_workflow(
     project_name = (
         project.path.name if isinstance(project, ProjectSpec) else coerce_project(project).name
     )
-    result = ProjectWorkflowResult(project=project_name, cycles_requested=requested_cycles)
+    profile_key = project.scan_profile if isinstance(project, ProjectSpec) else "custom"
+    named_profile = profile_key != "custom"
+    if named_profile and cycles is not None and cycles != project.cycles:
+        raise ValueError("cycles cannot override a named scan profile.")
+    passes_per_cycle = 2 if named_profile else 1
+    red_agents = project.red_agents if isinstance(project, ProjectSpec) else 5
+    blue_agents = project.blue_agents if isinstance(project, ProjectSpec) else 5
+    result = ProjectWorkflowResult(
+        project=project_name,
+        cycles_requested=requested_cycles,
+        scan_profile=profile_key,
+        passes_per_cycle=passes_per_cycle,
+        red_agents=red_agents,
+        blue_agents=blue_agents,
+    )
     sandbox: ProjectSandbox | None = None
     muse: MetaMuseClient | None = None
     safe_project: ProjectWorkflowInput | None = None
@@ -627,8 +646,22 @@ async def execute_project_workflow(
 
         await log("system", "Original-project normal-input checks passed.")
 
-        for cycle in range(1, requested_cycles + 1):
-            await log("red", f"Cycle {cycle}: reviewing the cumulative verified snapshot.")
+        for round_index in range(requested_cycles * passes_per_cycle):
+            cycle = round_index // passes_per_cycle + 1
+            pass_number = round_index % passes_per_cycle + 1
+            if named_profile:
+                agents.configure_review(
+                    profile_key=profile_key,
+                    cycle=cycle,
+                    pass_number=pass_number,
+                    red_agents=red_agents,
+                    blue_agents=blue_agents,
+                )
+            await log(
+                "red",
+                f"Cycle {cycle}/{requested_cycles}, pass {pass_number}/{passes_per_cycle}: "
+                "reviewing the cumulative verified snapshot.",
+            )
             documents = documents_from_mapping(cumulative_files)
             red = await agents.analyze_red(
                 documents,
@@ -661,12 +694,15 @@ async def execute_project_workflow(
                 result.cycle_reports.append(
                     ProjectCycleReport(
                         cycle=cycle,
+                        pass_number=pass_number,
                         status="no_finding",
                         message="The bounded review produced no testable finding; this is not a security guarantee.",
                         evidence=evidence,
                     )
                 )
-                result.cycles_completed += 1
+                result.cycles_completed += int(pass_number == passes_per_cycle)
+                if named_profile:
+                    continue
                 break
 
             unknown_paths = sorted(set(red.report.affected_paths) - set(cumulative_files))
@@ -680,7 +716,9 @@ async def execute_project_workflow(
                 dict(cumulative_files),
                 red.report.verification_script_python,
                 tuple(safe_project.regression_command),
-                label=f"cycle-{cycle}-pre",
+                label=f"cycle-{cycle}-pass-{pass_number}-pre"
+                if named_profile
+                else f"cycle-{cycle}-pre",
             )
             pre = normalize_snapshot_verification(pre_raw, bounds.max_evidence_chars)
             evidence.pre_verification = pre
@@ -706,12 +744,15 @@ async def execute_project_workflow(
                 result.cycle_reports.append(
                     ProjectCycleReport(
                         cycle=cycle,
+                        pass_number=pass_number,
                         status="inconclusive",
                         message="The pre-change probe was inconclusive; no changes were requested.",
                         evidence=evidence,
                     )
                 )
-                result.cycles_completed += 1
+                result.cycles_completed += int(pass_number == passes_per_cycle)
+                if named_profile:
+                    continue
                 break
             if pre.probe.blocked:
                 final = await agents.final_blue_report(
@@ -729,12 +770,15 @@ async def execute_project_workflow(
                 result.cycle_reports.append(
                     ProjectCycleReport(
                         cycle=cycle,
+                        pass_number=pass_number,
                         status="not_confirmed",
                         message="The original probe did not confirm the reported vulnerability; no changes were requested.",
                         evidence=evidence,
                     )
                 )
-                result.cycles_completed += 1
+                result.cycles_completed += int(pass_number == passes_per_cycle)
+                if named_profile:
+                    continue
                 break
 
             await log("blue", f"Cycle {cycle}: requesting bounded sanitation-only replacements.")
@@ -777,12 +821,13 @@ async def execute_project_workflow(
                 result.cycle_reports.append(
                     ProjectCycleReport(
                         cycle=cycle,
+                        pass_number=pass_number,
                         status="rolled_back",
                         message=validation.reason,
                         evidence=evidence,
                     )
                 )
-                result.cycles_completed += 1
+                result.cycles_completed += int(pass_number == passes_per_cycle)
                 continue
 
             candidate_files = dict(cumulative_files)
@@ -798,7 +843,9 @@ async def execute_project_workflow(
                 candidate_files,
                 red.report.verification_script_python,
                 tuple(safe_project.regression_command),
-                label=f"cycle-{cycle}-patched",
+                label=f"cycle-{cycle}-pass-{pass_number}-patched"
+                if named_profile
+                else f"cycle-{cycle}-patched",
             )
             patched = normalize_snapshot_verification(patched_raw, bounds.max_evidence_chars)
             evidence.patched_verification = patched
@@ -836,7 +883,11 @@ async def execute_project_workflow(
                             candidate_files,
                             independent_red.report.verification_script_python,
                             tuple(safe_project.regression_command),
-                            label=f"cycle-{cycle}-independent-red",
+                            label=(
+                                f"cycle-{cycle}-pass-{pass_number}-independent-red"
+                                if named_profile
+                                else f"cycle-{cycle}-independent-red"
+                            ),
                         )
                         evidence.independent_verification = normalize_snapshot_verification(
                             independent_raw, bounds.max_evidence_chars
@@ -897,6 +948,7 @@ async def execute_project_workflow(
                 verified_history.append(
                     {
                         "cycle": cycle,
+                        "pass_number": pass_number,
                         "vulnerability": red.report.vulnerability,
                         "changed_paths": sorted(replacements),
                         "pre_probe_exit": pre.probe.exit_code,
@@ -918,6 +970,7 @@ async def execute_project_workflow(
             result.cycle_reports.append(
                 ProjectCycleReport(
                     cycle=cycle,
+                    pass_number=pass_number,
                     status=status,
                     message=message,
                     changed_paths=sorted(replacements) if retained else [],
@@ -925,7 +978,7 @@ async def execute_project_workflow(
                     evidence=evidence,
                 )
             )
-            result.cycles_completed += 1
+            result.cycles_completed += int(pass_number == passes_per_cycle)
 
         statuses = [report.status for report in result.cycle_reports]
         if statuses and all(status == "no_finding" for status in statuses):

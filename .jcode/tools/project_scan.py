@@ -115,7 +115,12 @@ def fake_transport(request, *, source_import=False):
     payload = json.loads(body["messages"][1]["content"])
     assert str(ROOT) not in body["messages"][1]["content"], "Host path leaked to inference"
     system = body["messages"][0]["content"]
-    cycle = payload.get("cycle", 1)
+    review = payload.get("review", {})
+    cycle = (
+        (review["cycle"] - 1) * 2 + review["pass_number"]
+        if review.get("profile_key", "custom") != "custom"
+        else payload.get("cycle", 1)
+    )
     candidate = {
         "vulnerability": "SQL injection" if cycle == 1 else "expression injection",
         "affected_paths": ["src/boundaries.py"],
@@ -193,7 +198,7 @@ def create_project(project):
     (project / ".env").write_text("TEST_SECRET=must-not-be-snapshotted\n")
 
 
-async def run(output, *, live=False, cycles=2, source_import=False):
+async def run(output, *, live=False, cycles=2, source_import=False, scan_profile="custom"):
     config = (
         load_config()
         if live
@@ -211,7 +216,7 @@ async def run(output, *, live=False, cycles=2, source_import=False):
             command=["python3", "app.py"],
             test_command=["python3", "test_contract.py"],
             contract="HTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
-            cycles=cycles,
+            **({"cycles": cycles} if scan_profile == "custom" else {"scan_profile": scan_profile}),
             allow_remote_inference=live and config.inference_mode != "local",
         )
 
@@ -244,6 +249,10 @@ async def run(output, *, live=False, cycles=2, source_import=False):
         assert report["cycles_completed"] == spec.cycles, report
         cycles = report.get("cycles", report.get("cycle_reports", []))
         assert all(item["status"] == "retained" for item in cycles), report
+        if scan_profile != "custom":
+            assert [(item["cycle"], item["pass_number"]) for item in cycles] == [(1, 1), (1, 2)]
+            assert "?', (raw,)" in report["cumulative_diff"]
+            assert "raw.isdecimal()" in report["cumulative_diff"]
         assert report.get("cleanup_ok", report.get("cleanup", {}).get("succeeded")), report
         assert report.get("diff", report.get("cumulative_diff", "")), report
         print(
@@ -262,6 +271,12 @@ def main():
     )
     parser.add_argument("--cycles", type=int, default=2, choices=range(1, 21))
     parser.add_argument(
+        "--scan-profile",
+        choices=["custom", "extra_light"],
+        default="custom",
+        help="extra_light proves two distinct patches in one R/B/R/B cycle",
+    )
+    parser.add_argument(
         "--source-import-probes",
         action="store_true",
         help="Exercise pure-Python source imports instead of HTTP in deterministic mode",
@@ -276,6 +291,7 @@ def main():
             live=args.live,
             cycles=args.cycles,
             source_import=args.source_import_probes,
+            scan_profile=args.scan_profile,
         )
     )
 

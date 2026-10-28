@@ -164,3 +164,40 @@ checks the pure-Python import path through real Docker. `--live --cycles 1` inst
 uses the configured real Muse endpoint and incurs API usage, sending only the
 generated fixture source. Export the trusted `.env` as described in DEVELOPMENT.md
 first. Use separate `--output-dir` paths to preserve evidence from each attempt.
+
+## Cycle-based profiles and two-pass evidence (2026-10-28)
+
+Project intensity is not a time limit. See [SCAN_PROFILES.md](SCAN_PROFILES.md)
+for the profile catalog and [DISCOVERY_TEAMS.md](DISCOVERY_TEAMS.md) for actual
+Muse leader/worker orchestration. `ProjectSpec.scan_profile` is independent of
+the existing model-selection profile.
+
+`execute_project_workflow()` runs two complete remediation rounds per named
+cycle. `ProjectCycleReport.cycle` identifies the outer cycle and `pass_number`
+identifies round 1 or 2. Consequently, `cycle_reports` has two entries per
+completed named cycle, while `cycles_completed` increments only after pass 2.
+Do not equate the number of report entries with the number of cycles. Each
+round retains the existing independent red audit and final blue evidence report
+in addition to the discovery and patch stages. These audits are not substitutes
+for the second actual patch-capable round.
+
+Every retained replacement updates the immutable cumulative snapshot before the
+next remediation round. Each named profile continues through its selected
+rounds after a no-finding, blocked, or inconclusive probe, but never asks Blue to
+patch an unproven finding. Docker or inference failures still stop safely and
+cleanup runs. Legacy custom requests keep their former single-round/early-stop
+behavior. Sandbox labels include both cycle and pass for named profiles.
+
+Mechanical acceptance command:
+
+```sh
+.venv/bin/python .jcode/tools/project_scan.py --scan-profile extra_light \
+  --output-dir reports/cycle-profile-acceptance
+```
+
+This uses actual Docker targets and verifier containers and the real Muse HTTP
+client with deterministic model replies. It confirms two distinct vulnerability
+patches in one cycle, that the second starts from the first retained snapshot,
+that original host files stay unchanged, and that cleanup succeeds. It does not
+measure live-model discovery quality. Never substitute the final blue report
+for the second patch call, or stop a named scan on the first empty finding.
