@@ -68,6 +68,45 @@ async def run_demo_build(
                 "green",
                 f"Greenhouse could not reach threat intel ({type(exc).__name__}); building from patterns.",
             )
+        # CVE endpoint series: exact records + EPSS per requested id.
+        if intent.cve_ids:
+            try:
+                from research import cve_records as _cve_records
+                from workflow import blocking as _blocking
+
+                cve_hits = await _blocking(_cve_records, intent.cve_ids)
+                intel = list(cve_hits) + list(intel)
+                await emit(
+                    "green",
+                    f"Greenhouse pulled {len(cve_hits)} CVE records "
+                    f"({', '.join(intent.cve_ids[:4])}).",
+                )
+            except Exception as exc:
+                await emit(
+                    "green",
+                    f"Greenhouse CVE lookup unavailable ({type(exc).__name__}); "
+                    "themes only.",
+                )
+        # Web context: named types + free text via bot-tolerant JSON API.
+        web_queries = list(intent.named_types) + list(intent.free_text)
+        if web_queries:
+            try:
+                from research import web_notes as _web_notes
+                from workflow import blocking as _blocking2
+
+                notes = await _blocking2(_web_notes, web_queries)
+                intel = list(intel) + list(notes)
+                await emit(
+                    "green",
+                    f"Greenhouse read {len(notes)} web notes "
+                    f"({', '.join(web_queries[:3])}).",
+                )
+            except Exception as exc:
+                await emit(
+                    "green",
+                    f"Greenhouse web lookup unavailable ({type(exc).__name__}); "
+                    "skipping.",
+                )
     else:
         await emit("green", "Greenhouse building from static flaw patterns (offline).")
     if intent.vulns or intent.build_brief:

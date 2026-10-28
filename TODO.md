@@ -104,29 +104,36 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
 
 ## I. Green intent + web/CVE research depth (brief 2026-10-28-laws-green-research)
 
-- [.] I1. Green builder: "What do you want to build?" + "Vulnerabilities to
+- [x] I1. Green builder: "What do you want to build?" + "Vulnerabilities to
       implement" dashboard prompts (CVE ids, named types, or free text).
       Files: `static/index.html`, `static/app.js`, `main.py` (`run_demo_build`).
-      Proof: UI scan showing both prompts; WS carries both fields.
-- [ ] I2. Intent interpreter: green/research agents parse the vuln field into
+      Proof: `test_demo_build_prompts_for_brief_and_vulns` +
+      `test_demo_request_accepts_brief_and_vulns_fields`.
+- [x] I2. Intent interpreter: green/research agents parse the vuln field into
       CVE ids vs named types vs free text and plan research accordingly.
       Files: `demo_gen.py` (new `parse_build_intent`), tests.
-      Proof: unit test on mixed input ("CVE-2024-3094, sqli, weird header thing").
-- [ ] I3. CVE endpoint series for green/research: NVD + OSV + GHSA already
-      keyless; add CIRCL CVE lookup + EPSS scoring per CVE id so builders see
-      severity/context. Files: `intel_search.py`, `research.py`, tests.
-      Proof: live keyless fetch of a known CVE id with EPSS score attached.
-- [ ] I4. Real web search for green/research: keyless, bot-tolerant web
-      endpoint (no scraping wars) for named types + free text, same
-      never-raises + caps discipline as `research.py`. Files: new
-      `web_search.py` or extended `research.py`, tests with canned fixtures.
-      Proof: canned test + one live probe.
-- [ ] I5. Green prompt upgrade: Greenhouse system prompt consumes build
+      Proof: `test_parse_build_intent_splits_cve_named_free` et al.
+- [x] I3. CVE endpoint series for green/research: `cve_records` in
+      `research.py` fans each CVE id out to CIRCL + OSV + EPSS (+ GHSA by id),
+      keyless, never-raises, deduped. Live probe: CVE-2024-3094 returned
+      circl+osv+epss(0.909). Green builder calls it when intent has CVE ids.
+      Files: `research.py`, `main.py`, `tests/test_scanners.py`.
+      Proof: `test_cve_records_series_never_raises_and_dedupes` (+ live probe).
+- [x] I4. Real web search for green/research: `web_notes` in `research.py`
+      uses the Wikipedia JSON API only (search + intro extracts — no HTML
+      scraping, no bot wars), same pacing/backoff/caps/never-raises discipline.
+      Green builder calls it for named types + free text. Live probe: "SQL
+      injection" returned its definition extract.
+      Files: `research.py`, `main.py`, `tests/test_scanners.py`.
+      Proof: `test_web_notes_canned_search_plus_extract` (+ live probe).
+- [x] I5. Green prompt upgrade: Greenhouse system prompt consumes build
       intent + CVE records + web notes and implements the requested flaws.
       Files: `demo_gen.py` (`DEMO_GEN_SYSTEM_PROMPT` + payload), tests.
-      Proof: offline generation test with canned intel shows requested vuln class.
-- [ ] I6. Research sidecar upgrade: red/blue digests consume the same
-      CVE + web context for grounding. Files: `prompts.py`, `agents.py`,
-      `workflow.py` (`_gather_research`), tests. Proof: digest test with CVE context.
+      Proof: `test_generate_demo_project_carries_intent_into_payload`.
+- [x] I6. Research sidecar upgrade: `_gather_research` runs the contract
+      through `parse_build_intent` — CVE ids get the `cve_records` series,
+      substantive named types/descriptive text get `web_notes`; both land in
+      records + digests. Files: `workflow.py`, `tests/test_workflow.py`.
+      Proof: `test_research_gather_adds_cve_and_web_records`.
 - [ ] I7. Small features that fall out: keep each cheap, tested, shippable
       (record here as they land).
