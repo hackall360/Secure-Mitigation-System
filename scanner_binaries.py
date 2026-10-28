@@ -54,6 +54,20 @@ from sms_scan_parse import cwe_list, ref_list
 MAX_SCAN_BYTES = 8 * 1024 * 1024
 DEFAULT_TIMEOUT = 300.0
 
+# Scanner perf: which()-cache + stdout cap.
+# Resolving binaries hits PATH on every call; cache the lookup per process
+# so repeated runs do not re-scan PATH. Oversize stdout degrades before
+# json.loads so one huge report cannot blow memory.
+_WHICH_CACHE: dict[str, str | None] = {}
+STDOUT_CAP_BYTES = MAX_SCAN_BYTES
+
+
+def _cached_which(binary: str) -> str | None:
+    """PATH lookup with a per-process cache. None when absent."""
+    if binary not in _WHICH_CACHE:
+        _WHICH_CACHE[binary] = shutil.which(binary)
+    return _WHICH_CACHE[binary]
+
 
 @dataclass
 class ScannerRecord:
@@ -80,7 +94,7 @@ def _run_json(
     binary: str, args: list[str], *, timeout: float = DEFAULT_TIMEOUT
 ) -> dict | list | None:
     """Run a scanner binary, return parsed JSON. None on any failure."""
-    exe = shutil.which(binary)
+    exe = _cached_which(binary)
     if not exe:
         return None
     try:
@@ -91,7 +105,7 @@ def _run_json(
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
-    if not proc.stdout or len(proc.stdout) > MAX_SCAN_BYTES:
+    if not proc.stdout or len(proc.stdout) > STDOUT_CAP_BYTES:
         return None
     try:
         return json.loads(proc.stdout.decode("utf-8", "replace"))
@@ -101,7 +115,7 @@ def _run_json(
 
 def available(binary: str) -> bool:
     """True when the scanner binary resolves on PATH."""
-    return shutil.which(binary) is not None
+    return _cached_which(binary) is not None
 
 
 def parse_trivy_report(payload: dict | list) -> list[ScannerRecord]:
@@ -277,7 +291,7 @@ def run_dependency_check(
     outdir = Path(output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     report = outdir / "dependency-check-report.json"
-    exe = shutil.which("dependency-check.sh") or shutil.which("dependency-check")
+    exe = _cached_which("dependency-check.sh") or _cached_which("dependency-check")
     if not exe:
         return []
     with tempfile.TemporaryFile() as null:
