@@ -117,46 +117,83 @@ class BuildIntent(BaseModel):
         return [*self.cve_ids, *self.named_types, *self.free_text]
 
 
-def parse_build_intent(*, build_brief: str = "", vulns: str = "", theme: str = "") -> BuildIntent:
+def parse_build_intent(
+    *,
+    build_brief: str | Sequence[str] | None = "",
+    vulns: str | Sequence[str] | None = "",
+    theme: str | Sequence[str] | None = "",
+) -> BuildIntent:
     """Split user intent into CVE ids, named vuln types, and free text.
 
     Pure string surgery: no network, no model, never raises on weird input.
     CVE ids match CVE-YYYY-NNNN(+); named types match VULN_TYPES keys
     (case-insensitive, punctuation-tolerant); leftovers stay free text for
     web search. Duplicates collapse, order preserved, everything bounded.
+
+    Forgiving: each field accepts a string, a list of strings, or None.
+    Separators include commas, semicolons, pipes, slashes, plus signs,
+    ampersands, "and"/"plus" words, newlines, and numbered/bullet prefixes.
+    One chunk may hold several CVE ids and/or several named types.
     """
-    brief = " ".join(str(build_brief or "").split())[:500]
-    themes = [w for w in str(theme or "").split() if w][:6]
-    raw_parts = [p.strip() for p in str(vulns or "").replace(";", ",").split(",")]
+
+    def _text(value: str | Sequence[str] | None, sep: str = ", ") -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (list, tuple, set, frozenset)):
+            bits = [str(v or "").strip() for v in value]
+            return sep.join(b for b in bits if b)
+        return str(value or "")
+
+    brief = " ".join(_text(build_brief, " ").split())[:500]
+    themes: list[str] = []
+    _seen_themes: set[str] = set()
+    for bit in re.split(r"[,;|\n\r]+", _text(theme)):
+        for word in bit.split():
+            key = word.lower()
+            if key not in _seen_themes and len(themes) < 6:
+                _seen_themes.add(key)
+                themes.append(word)
+    raw_parts = re.split(r"[,;|\n\r]+", _text(vulns))
     cve_ids: list[str] = []
     named_types: list[str] = []
     free_text: list[str] = []
-    for part in raw_parts:
-        if not part:
-            continue
-        found = [c.upper() for c in CVE_RE.findall(part)]
-        for cve in found:
-            if cve not in cve_ids and len(cve_ids) < 8:
-                cve_ids.append(cve)
-        remainder = CVE_RE.sub(" ", part)
-        norm = re.sub(r"[^a-z0-9 ]", " ", remainder.lower())
-        norm = " ".join(norm.split())
-        if not norm:
-            continue
-        canonical = VULN_TYPES.get(norm)
-        if canonical is None:
-            # Try substring: "sqli vuln" still maps to SQL injection.
+    _seen_free: set[str] = set()
+    for chunk in raw_parts:
+        subs = re.split(r"\s*(?:/|\+|&)\s*|\s+(?:and|plus)\s+", chunk, flags=re.IGNORECASE)
+        for sub in subs:
+            part = re.sub(r"^(?:\(?\d+[.)\]:]\s*|[-*\u2022>]\s*)+", "", sub.strip())
+            if not part:
+                continue
+            found = [c.upper() for c in CVE_RE.findall(part)]
+            for cve in found:
+                if cve not in cve_ids and len(cve_ids) < 8:
+                    cve_ids.append(cve)
+            remainder = CVE_RE.sub(" ", part)
+            norm = re.sub(r"[^a-z0-9 ]", " ", remainder.lower())
+            norm = " ".join(norm.split())
+            if not norm:
+                continue
+            matched: list[str] = []
             for alias, canon in VULN_TYPES.items():
-                if alias in norm or norm in alias:
-                    canonical = canon
-                    break
-        if canonical is not None:
-            if canonical not in named_types and len(named_types) < 8:
-                named_types.append(canonical)
-        elif len(part) <= 120 and len(free_text) < 8:
-            clean = " ".join(part.split())[:120]
-            if clean and clean not in free_text:
-                free_text.append(clean)
+                if canon in matched:
+                    continue
+                alias_norm = " ".join(re.sub(r"[^a-z0-9 ]", " ", alias.lower()).split())
+                if not alias_norm:
+                    continue
+                whole = re.search(r"(?<![a-z0-9])" + re.escape(alias_norm) + r"(?![a-z0-9])", norm)
+                if whole is not None or (len(norm) >= 3 and norm in alias_norm):
+                    matched.append(canon)
+            if matched:
+                for canon in matched:
+                    if canon not in named_types and len(named_types) < 8:
+                        named_types.append(canon)
+            elif len(part) <= 120:
+                clean = " ".join(part.split())[:120].rstrip("!?.").strip()
+                if len(clean) >= 2 and len(free_text) < 8 and clean.lower() not in _seen_free:
+                    _seen_free.add(clean.lower())
+                    free_text.append(clean)
     return BuildIntent(
         build_brief=brief,
         themes=themes,
