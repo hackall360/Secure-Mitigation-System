@@ -7,10 +7,10 @@ import json
 import random
 import re
 import time
-from typing import TypeVar
+from typing import Annotated, TypeVar
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from config import PurpleBoxConfig, require_api_key
 from pricing import CallUsage, usage_from_response
@@ -29,8 +29,21 @@ class AgentError(RuntimeError):
     """An API or schema failure, with no credentials/provider body in the message."""
 
 
+# Shared item constraints: strip padding, then reject blank/oversize entries.
+# Scalar fields keep their own Field() bounds below; these aliases only make
+# the list-item rules explicit so one blank entry cannot slip through.
+QueryStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+PatternStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+CweStr = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=16, pattern=r"(?i)^CWE-\d{1,5}$"
+    ),
+]
+
+
 class RedTeamFinding(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     vulnerability_class: str = Field(min_length=1, max_length=256)
     sink_location: str = Field(min_length=1, max_length=512)
     analysis_summary: str = Field(min_length=1, max_length=8192)
@@ -38,7 +51,7 @@ class RedTeamFinding(BaseModel):
 
 
 class BlueTeamPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     sanitization_strategy: str = Field(min_length=1, max_length=8192)
     diff_summary: str = Field(min_length=1, max_length=8192)
     patched_file_content: str = Field(min_length=1, max_length=65_536)
@@ -47,19 +60,19 @@ class BlueTeamPatch(BaseModel):
 class RedResearchDigest(BaseModel):
     """Research-only output: grounded queries + patterns, never work product."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-    queries: list[str] = Field(min_length=1, max_length=4)
-    attack_patterns: list[str] = Field(default_factory=list, max_length=4)
-    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    queries: list[QueryStr] = Field(min_length=1, max_length=4)
+    attack_patterns: list[PatternStr] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[CweStr] = Field(default_factory=list, max_length=4)
 
 
 class BlueResearchDigest(BaseModel):
     """Research-only output: grounded fix patterns, never a patch."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
-    queries: list[str] = Field(min_length=1, max_length=4)
-    fix_patterns: list[str] = Field(default_factory=list, max_length=4)
-    cwe_hints: list[str] = Field(default_factory=list, max_length=4)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    queries: list[QueryStr] = Field(min_length=1, max_length=4)
+    fix_patterns: list[PatternStr] = Field(default_factory=list, max_length=4)
+    cwe_hints: list[CweStr] = Field(default_factory=list, max_length=4)
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)

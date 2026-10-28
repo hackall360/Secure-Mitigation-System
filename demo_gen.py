@@ -19,9 +19,9 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Annotated, Any, Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from projects import ProjectSpec
 from sms_budget import check_payload_budget
@@ -47,13 +47,27 @@ Rules:
 """
 
 
+# Shared item constraints: strip padding, then reject blank/oversize entries
+# so one padded or empty entry cannot slip into the generated project spec.
+NoteStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+CveIdStr = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=24, pattern=r"(?i)^CVE-\d{4}-\d{4,7}$"
+    ),
+]
+IntentItemStr = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+
+
 class DemoProjectFiles(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     app_py: str = Field(min_length=1, max_length=12_288)
     test_contract_py: str = Field(min_length=1, max_length=12_288)
     contract: str = Field(min_length=1, max_length=4096)
-    flaw_notes: list[str] = Field(default_factory=list, max_length=8)
-    cve_inspiration: list[str] = Field(default_factory=list, max_length=8)
+    flaw_notes: list[NoteStr] = Field(default_factory=list, max_length=8)
+    cve_inspiration: list[CveIdStr] = Field(default_factory=list, max_length=8)
 
 
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -110,16 +124,36 @@ class BuildIntent(BaseModel):
     web search. build_brief + themes describe the demo app itself.
     """
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     build_brief: str = Field(default="", max_length=500)
-    themes: list[str] = Field(default_factory=list, max_length=8)
-    cve_ids: list[str] = Field(default_factory=list, max_length=8)
-    named_types: list[str] = Field(default_factory=list, max_length=8)
-    free_text: list[str] = Field(default_factory=list, max_length=8)
+    themes: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+    cve_ids: list[CveIdStr] = Field(default_factory=list, max_length=8)
+    named_types: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+    free_text: list[IntentItemStr] = Field(default_factory=list, max_length=8)
+
+    @field_validator("cve_ids", mode="before")
+    @classmethod
+    def _upper_cve_ids(cls, value: Any) -> Any:
+        """Normalize CVE ids to canonical upper case before strict checks run."""
+        if isinstance(value, list):
+            return [item.upper() if isinstance(item, str) else item for item in value]
+        return value
 
     @property
     def vulns(self) -> list[str]:
         return [*self.cve_ids, *self.named_types, *self.free_text]
+
+
+def _text(value: str | Sequence[str] | None, sep: str = ", ") -> str:
+    """Coerce brief/vuln/theme input to text. Strings pass through, lists join, None empties."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set, frozenset)):
+        bits = [str(v or "").strip() for v in value]
+        return sep.join(b for b in bits if b)
+    return str(value or "")
 
 
 def parse_build_intent(
@@ -140,17 +174,6 @@ def parse_build_intent(
     ampersands, "and"/"plus" words, newlines, and numbered/bullet prefixes.
     One chunk may hold several CVE ids and/or several named types.
     """
-
-    def _text(value: str | Sequence[str] | None, sep: str = ", ") -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, (list, tuple, set, frozenset)):
-            bits = [str(v or "").strip() for v in value]
-            return sep.join(b for b in bits if b)
-        return str(value or "")
-
     brief = " ".join(_text(build_brief, " ").split())[:500]
     themes: list[str] = []
     _seen_themes: set[str] = set()
@@ -159,7 +182,7 @@ def parse_build_intent(
             key = word.lower()
             if key not in _seen_themes and len(themes) < 6:
                 _seen_themes.add(key)
-                themes.append(word)
+                themes.append(word[:120])
     raw_parts = re.split(r"[,;|\n\r]+", _text(vulns))
     cve_ids: list[str] = []
     named_types: list[str] = []
