@@ -213,3 +213,15 @@ with 12 events each and zero leftover containers.
 Trap seen while writing it: `BlueTeamPatch` requires a `diff_summary` field. A stub
 without it made every fixture end in `status=error` right after the patch request,
 which looked like a workflow/Docker failure but was a schema error in the stub.
+
+### Acceptance through the real dashboard (2026-10-27)
+
+Real Chrome clicked the PHP target card and **Run verification** on the real
+FastAPI server. That opened the real WebSocket, ran `execute_purple_workflow`, and
+created real Docker sandboxes. Only `MetaMuseClient` was replaced by `KnownMuse`
+from `.jcode/tools/offline_scan.py`. Observed: status "Boundary check passed", all 7
+pipeline stages done, facts Baseline passed / Exit 0 reachable / Regression passed /
+Exit 1 blocked / Resources removed, diff +5 -0, 37 s. Afterwards `--docker-status`
+showed 0 leftover containers. Without a key, `main.py --scan` exits 1 with the
+"META_MUSE_API_KEY is required" message before touching Docker.
+Not yet exercised: real Muse inference, which is blocked until a key is supplied.
