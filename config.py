@@ -16,6 +16,7 @@ class ConfigurationError(ValueError):
 class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
     meta_base_url: str = "https://api.meta.ai/v1"
+    inference_mode: str = "hosted"
     red_team_model: str = "muse-spark-1.3"
     blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
@@ -34,12 +35,26 @@ class PurpleBoxConfig:
     max_source_bytes: int = 65_536
 
     def validate(self) -> None:
+        if self.inference_mode not in ("hosted", "local"):
+            raise ConfigurationError("PURPLEBOX_INFERENCE_MODE must be hosted or local.")
         url = urlsplit(self.meta_base_url)
         hostname = url.hostname or ""
         allowed = hostname == "api.meta.ai" or any(
             hostname.endswith(suffix) for suffix in (".baseten.co", ".api.baseten.co", ".modal.run")
         )
-        if (
+        local = self.inference_mode == "local"
+        if local and (
+            url.scheme not in ("http", "https")
+            or hostname not in ("127.0.0.1", "::1")
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
+        ):
+            raise ConfigurationError(
+                "Local Muse inference requires an explicit 127.0.0.1 or [::1] HTTP(S) endpoint."
+            )
+        if not local and (
             url.scheme != "https"
             or not allowed
             or url.username
@@ -85,6 +100,7 @@ def load_config() -> PurpleBoxConfig:
             meta_base_url=os.getenv("META_MUSE_BASE_URL", "https://api.meta.ai/v1")
             .strip()
             .rstrip("/"),
+            inference_mode=os.getenv("PURPLEBOX_INFERENCE_MODE", "hosted").strip().lower(),
             red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3").strip(),
             blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "180")),
@@ -111,7 +127,7 @@ def load_config() -> PurpleBoxConfig:
 
 def require_api_key(config: PurpleBoxConfig) -> None:
     config.validate()
-    if not config.meta_api_key:
+    if config.inference_mode != "local" and not config.meta_api_key:
         raise ConfigurationError(
-            "META_MUSE_API_KEY is required for scans. PurpleBox uses Meta Muse only."
+            "META_MUSE_API_KEY is required for scans. Secure Mitigation System uses Meta Muse only."
         )

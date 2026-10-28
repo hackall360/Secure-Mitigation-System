@@ -10,7 +10,23 @@ from docker.errors import APIError
 
 from config import PurpleBoxConfig
 from docker_manager import DockerSandboxManager, SandboxError
+from projects import ProjectSpec, snapshot_project
 from registry import BASE_DIR
+
+
+def project_spec(tmp_path):
+    (tmp_path / "src").mkdir(exist_ok=True)
+    executable = tmp_path / "src" / "serve.py"
+    executable.write_text("print('ready')\n", encoding="utf-8")
+    executable.chmod(0o755)
+    return ProjectSpec.model_validate(
+        {
+            "path": str(tmp_path),
+            "command": ["python3", "/workspace/src/serve.py"],
+            "test_command": ["python3", "-m", "unittest"],
+            "contract": "The service remains available.",
+        }
+    )
 
 
 @pytest.mark.parametrize("filename", ["../secret", "/tmp/evil", "x/y", "x\\y", ".", ".."])
@@ -40,6 +56,9 @@ def test_staging_and_verifier_limits_and_cleanup():
     result = manager.run_isolated_verifier(network, "import sys\nsys.exit(1)")
     assert result.exit_code == 1
     assert client.networks.create.call_args.kwargs["internal"] is True
+    assert client.networks.create.call_args.kwargs["options"] == {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+    }
     create_stage, create_runtime = client.containers.create.call_args_list
     assert create_stage.kwargs["network_mode"] == "none"
     stage.start.assert_not_called()
@@ -78,6 +97,22 @@ def test_verifier_timeout_is_inconclusive_and_removed():
     with pytest.raises(SandboxError, match="inconclusive"):
         manager.run_isolated_verifier(MagicMock(), "import sys\nsys.exit(1)")
     runtime.remove.assert_called_once_with(force=True)
+    assert runtime not in manager.containers
+    assert stage not in manager.containers
+
+
+def test_verifier_success_untracks_both_containers():
+    client, stage, runtime = MagicMock(), MagicMock(), MagicMock()
+    client.containers.create.side_effect = [stage, runtime]
+    stage.put_archive.return_value = True
+    stage.commit.return_value = MagicMock()
+    runtime.wait.return_value = {"StatusCode": 1}
+    runtime.logs.return_value = b"blocked"
+    manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
+    result = manager.run_isolated_verifier(MagicMock(), "import sys\nsys.exit(1)")
+    assert result.exit_code == 1
+    assert runtime not in manager.containers
+    assert stage not in manager.containers
 
 
 def test_cleanup_attempts_network_after_container_failure():
@@ -140,3 +175,87 @@ def test_stale_cleanup_is_label_scoped_and_keeps_base_images():
     client.networks.list.assert_called_once_with(filters={"label": "purplebox.session"})
     client.images.list.assert_called_once_with(name="purplebox-clone-cache")
     client.images.remove.assert_called_once_with(image="sha256:x", force=True)
+
+
+def test_project_tar_preserves_nested_paths_and_executable_bits(tmp_path):
+    snapshot = snapshot_project(project_spec(tmp_path))
+    data = DockerSandboxManager._create_project_tar(snapshot)
+    with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+        members = {member.name: member for member in archive.getmembers()}
+        assert members["src"].isdir() and members["src"].mode == 0o555
+        assert members["src/serve.py"].isfile()
+        assert members["src/serve.py"].mode == 0o755
+        assert members["src/serve.py"].uid == 10001
+        assert archive.extractfile(members["src/serve.py"]).read() == b"print('ready')\n"
+
+
+def test_start_project_uses_preloaded_image_fresh_snapshot_and_hardening(tmp_path):
+    client, stage, runtime = MagicMock(), MagicMock(), MagicMock()
+    client.images.get.return_value.attrs = {"Config": {"Env": ["PATH=/usr/bin"], "Volumes": None}}
+    client.containers.create.side_effect = [stage, runtime]
+    stage.put_archive.return_value = True
+    network = MagicMock(name="network")
+    network.name = "isolated-net"
+    spec = project_spec(tmp_path)
+    snapshot = snapshot_project(spec)
+    manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
+
+    container, image = manager.start_project(network, spec, snapshot)
+
+    assert container is runtime
+    assert image.startswith("purplebox-clone-cache:")
+    client.images.get.assert_called_once_with(spec.image)
+    create_stage, create_runtime = client.containers.create.call_args_list
+    assert create_stage.kwargs["network_mode"] == "none"
+    assert create_stage.kwargs["entrypoint"] == []
+    assert create_stage.kwargs["healthcheck"] == {"test": ["NONE"]}
+    assert create_runtime.kwargs["command"] == list(spec.command)
+    assert create_runtime.kwargs["working_dir"] == "/workspace"
+    assert create_runtime.kwargs["read_only"] is True
+    assert create_runtime.kwargs["entrypoint"] == []
+    assert create_runtime.kwargs["healthcheck"] == {"test": ["NONE"]}
+    assert not ({"ports", "volumes", "privileged", "devices"} & create_runtime.kwargs.keys())
+    runtime.start.assert_called_once()
+
+
+def test_project_probe_has_separate_bounded_output_and_timeout(tmp_path):
+    client, stage, runtime = MagicMock(), MagicMock(), MagicMock()
+    client.images.get.return_value.attrs = {"Config": {"Env": ["PATH=/usr/bin"], "Volumes": None}}
+    client.containers.create.side_effect = [stage, runtime]
+    stage.put_archive.return_value = True
+    runtime.wait.side_effect = TimeoutError()
+    runtime.logs.side_effect = lambda **kwargs: b"out" if kwargs["stdout"] else b"err"
+    spec = project_spec(tmp_path)
+    snapshot = snapshot_project(spec)
+    manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
+
+    result = manager.run_project_check(
+        MagicMock(name="network"), spec, snapshot, script="raise SystemExit(0)"
+    )
+
+    assert result.timed_out is True and result.exit_code is None
+    assert result.stdout == "out" and result.stderr == "err"
+    runtime.remove.assert_called_once_with(force=True)
+    create_stage, create_runtime = client.containers.create.call_args_list
+    assert create_stage.args[0] == "purplebox-verifier-base:latest"
+    assert create_runtime.kwargs["command"][:5] == ["python3", "-I", "-B", "-u", "-c"]
+    assert "sys.path.append('/workspace')" in create_runtime.kwargs["command"][5]
+    assert create_runtime.kwargs["working_dir"] == "/workspace"
+    assert create_runtime.kwargs["read_only"] is True
+    assert create_runtime.kwargs["networking_config"]
+
+
+@pytest.mark.parametrize(
+    "image_config,match",
+    [
+        ({"Volumes": {"/data": {}}}, "declares volumes"),
+        ({"Env": ["PATH=/usr/bin", "API_TOKEN=embedded"]}, "secret-like"),
+    ],
+)
+def test_project_image_rejects_host_volumes_and_embedded_secrets(image_config, match):
+    client = MagicMock()
+    client.images.get.return_value.attrs = {"Config": image_config}
+    manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
+    with pytest.raises(SandboxError, match=match):
+        manager._require_preloaded_image("local/project:latest")
+    client.containers.create.assert_not_called()

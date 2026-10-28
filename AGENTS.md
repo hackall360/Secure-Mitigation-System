@@ -115,6 +115,34 @@ transports (Trivy, Grype, OSV-Scanner, Dependency-Check, Dependency-Track).
 - **Document the traps.** If something looked correct and wasn't, that is
   the highest-value note you can leave. Wrong assumption + actual evidence.
 
+## 3.1. Sub-agents (accelerate freely)
+
+Muse Spark (`muse-spark-1.3-contributor`) is CHEAP and does good work. Use
+sub-agents aggressively to parallelize: up to 10 at once, typically 3–5.
+
+- **How to spawn (jcode swarm):** first `swarm list_models` to confirm the
+  route, then spawn with the model pinned exactly:
+  `swarm spawn label:"<short role>" model:"muse-spark-1.3-contributor"
+  prompt:"<tight brief: repo path, branch, exact task, no-write vs write>"`.
+  Copy the model id verbatim — guessed ids fail loudly with a round trip.
+- **Targeting the model:** always pass
+  `model:"muse-spark-1.3-contributor"`. It rides the same Meta Model API
+  credentials as this session, so auth never breaks. Never use a generic or
+  guessed model id for contributor work.
+- **Brief tightly.** One unit of work per agent: survey X, resolve conflict
+  in file Y, write tests for Z. State the branch, the files, whether writes
+  are allowed, and the expected report shape. Keep it under a page.
+- **Isolate with git worktrees when agents touch files:** e.g.
+  `git worktree add /tmp/wt-<role> <branch>` per agent, one worktree per
+  writer, read-only agents share the main checkout. Remove worktrees when
+  done (`git worktree remove /tmp/wt-<role>`). Never let two writers share a
+  checkout.
+- **Coordinate, don't duplicate.** The spawner owns the merge: workers
+  report findings/diffs back, the spawner applies and gates. Workers in
+  normal mode must not spawn their own sub-agents.
+- **Gate before ship.** Sub-agent output is untrusted until the full gate
+  passes on the merged result.
+
 ## 4. Definition of done
 
 - `python3 .jcode/tools/dev.py check` passes (lint, format, compile,
