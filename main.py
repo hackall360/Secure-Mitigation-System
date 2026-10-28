@@ -94,8 +94,7 @@ async def run_demo_build(
             except Exception as exc:
                 await emit(
                     "green",
-                    f"Greenhouse CVE lookup unavailable ({type(exc).__name__}); "
-                    "themes only.",
+                    f"Greenhouse CVE lookup unavailable ({type(exc).__name__}); themes only.",
                 )
         # Web context: named types + free text via bot-tolerant JSON API.
         web_queries = list(intent.named_types) + list(intent.free_text)
@@ -108,14 +107,12 @@ async def run_demo_build(
                 intel = list(intel) + list(notes)
                 await emit(
                     "green",
-                    f"Greenhouse read {len(notes)} web notes "
-                    f"({', '.join(web_queries[:3])}).",
+                    f"Greenhouse read {len(notes)} web notes ({', '.join(web_queries[:3])}).",
                 )
             except Exception as exc:
                 await emit(
                     "green",
-                    f"Greenhouse web lookup unavailable ({type(exc).__name__}); "
-                    "skipping.",
+                    f"Greenhouse web lookup unavailable ({type(exc).__name__}); skipping.",
                 )
     else:
         await emit("green", "Greenhouse building from static flaw patterns (offline).")
@@ -841,6 +838,9 @@ def main() -> int:
         help="Remove leftover Secure Mitigation System session resources",
     )
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
+    commands.add_argument(
+        "--tui", action="store_true", help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)"
+    )
     commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(
         "--project", type=Path, help="Scan a local source directory without modifying it"
@@ -1054,18 +1054,24 @@ def main() -> int:
             "expect higher token usage per call."
         )
     if args.red_agents >= 10 or args.blue_agents >= 10:
-        intensity_warnings.append("warning: team size >= 10 is heavy; consider a named scan profile.")
-    if not args.project and not args.ai_demo and (
-        args.image
-        or args.command
-        or args.test_command
-        or args.contract
-        or args.scan_profile != "custom"
-        or args.cycles is not None
-        or args.allow_remote_inference
-        or args.cve_scan
-        or args.deep_assessment
-        or args.offline_cve
+        intensity_warnings.append(
+            "warning: team size >= 10 is heavy; consider a named scan profile."
+        )
+    if (
+        not args.project
+        and not args.ai_demo
+        and (
+            args.image
+            or args.command
+            or args.test_command
+            or args.contract
+            or args.scan_profile != "custom"
+            or args.cycles is not None
+            or args.allow_remote_inference
+            or args.cve_scan
+            or args.deep_assessment
+            or args.offline_cve
+        )
     ):
         parser.error("Project options require --project (ai-demo carries its own intensity flags)")
     try:
@@ -1097,7 +1103,9 @@ def main() -> int:
         for warning in intensity_warnings:
             print(warning, file=sys.stderr)
         if file_values:
-            print(f"[SYSTEM] Loaded CLI defaults from {args.config}{with_config and ''}", flush=True)
+            print(
+                f"[SYSTEM] Loaded CLI defaults from {args.config}{with_config and ''}", flush=True
+            )
         if args.init_images:
             with DockerSandboxManager(settings) as manager:
                 manager.ensure_base_images()
@@ -1118,6 +1126,10 @@ def main() -> int:
         if args.serve:
             uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
             return 0
+        if args.tui:
+            from tui import main as _tui_main
+
+            return _tui_main([])
         if args.scan:
             return asyncio.run(
                 cli_runner(

@@ -297,8 +297,6 @@ class RedAnalysisArtifacts(BaseModel):
     leader_plan: ReviewTeamPlan | None = None
 
 
-
-
 def build_source_batches(
     documents: Sequence[SourceDocument], *, max_batch_bytes: int
 ) -> tuple[list[SourceBatch], ContextCoverage]:

@@ -10,7 +10,7 @@ order — each is short and load-bearing:
 
 1. `AGENTS.md` (this file) — the LAW index: what is mandatory and where it lives.
 2. `LAWS.md` — the six LAWs in full: branch flow, verbatim record, TODO states, sandbox/intel discipline, proof before ship, sub-agent discipline.
-3. `docs/WORKFLOWS.md` — the rules, routines, and habits that serve the LAWs: how to work, spawn agents, document traps, use the toolbox.
+3. `docs/guides/WORKFLOWS.md` — the rules, routines, and habits that serve the LAWs: how to work, spawn agents, document traps, use the toolbox.
 
 LAWs expand into rules, workflows, and habits. Anything marked LAW is
 load-bearing. Everything else is guidance that serves the LAWs.
@@ -66,12 +66,12 @@ transports (Trivy, Grype, OSV-Scanner, Dependency-Check, Dependency-Track).
 LAW 4 is the whole policy. One addition: persona is tone only — safety
 overrides apply no matter what voice the red/blue/green agents use.
 
-## 3. How to work — see `docs/WORKFLOWS.md`
+## 3. How to work — see `docs/guides/WORKFLOWS.md`
 
 Routines that serve LAWs 2, 3, 5: todo discipline, research-before-implement,
 toolbox, write-down-what-you-learn, commit-as-you-go, document-the-traps.
 
-## 3.1. Sub-agents — see LAW 6 (`docs/WORKFLOWS.md` has the mechanics)
+## 3.1. Sub-agents — see LAW 6 (`docs/guides/WORKFLOWS.md` has the mechanics)
 
 ## 4. Definition of done — see LAW 5
 

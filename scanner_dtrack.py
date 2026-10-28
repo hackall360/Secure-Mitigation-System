@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import random
 import time
 import urllib.parse
 
@@ -151,7 +152,7 @@ def scan_packages(
         return []
     token = token_resp["token"]
     project_uuid: str | None = None
-    for _ in range(poll_tries):
+    for attempt in range(poll_tries):
         status = _request(
             base,
             key,
@@ -163,7 +164,9 @@ def scan_packages(
         if isinstance(status, dict) and status.get("processing") is False:
             project_uuid = str(status.get("project") or "") or None
             break
-        time.sleep(5)
+        # Exponential backoff with jitter: fast exit when the server is
+        # quick, bounded patience when it is slow. Never infinite.
+        time.sleep(min(2**attempt, 30) + random.uniform(0, 1.0))
     lookup = project_uuid or project_name
     findings = _request(
         base,

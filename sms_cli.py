@@ -59,8 +59,13 @@ class LoadError(ValueError):
 
 
 def _coerce_value(key: str, value: object) -> object:
-    if key in ("research", "intel_offline", "allow_remote_inference", "deep_assessment",
-               "offline_cve"):
+    if key in (
+        "research",
+        "intel_offline",
+        "allow_remote_inference",
+        "deep_assessment",
+        "offline_cve",
+    ):
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
@@ -154,6 +159,7 @@ def _env_values() -> dict:
 
 # ---------- ANSI (NO_COLOR aware) ----------
 
+
 def _color_enabled(use_color: bool | None = None) -> bool:
     if use_color is not None:
         return bool(use_color)
@@ -195,13 +201,13 @@ def status_color(status: str, use_color: bool | None = None) -> str:
 
 # ---------- stderr spinner/progress ----------
 
+
 class Spinner:
     """Non-blocking stderr progress indicator; silent unless a TTY (or forced)."""
 
     FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
-    def __init__(self, message: str = "Scanning", enabled: bool | None = None,
-                 stream=None) -> None:
+    def __init__(self, message: str = "Scanning", enabled: bool | None = None, stream=None) -> None:
         self.message = message
         self.stream = stream or sys.stderr
         if enabled is None:
@@ -254,6 +260,7 @@ class Spinner:
 
 
 # ---------- fact + usage tables ----------
+
 
 def _probe_label(exit_code: object) -> str:
     if exit_code == 0:
