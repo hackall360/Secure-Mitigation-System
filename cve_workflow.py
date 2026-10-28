@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,9 +20,7 @@ from deep_scan import (
     summarize_osv_vuln,
 )
 from projects import ProjectSnapshot, ProjectSpec, snapshot_project
-from workflow import blocking
-
-Emit = Callable[[str, str], Awaitable[None]]
+from sms_async import Emit, blocking, make_log
 
 
 class CveScanReport(BaseModel):
@@ -70,11 +68,7 @@ async def execute_cve_scan(
     - Muse deep assessment requires a key unless local inference; disabled by default.
     """
 
-    async def log(team: str, message: str) -> None:
-        try:
-            await emit(team, message)
-        except Exception:
-            pass
+    log = make_log(emit)
 
     settings = config or load_config()
     if isinstance(project, ProjectSpec):

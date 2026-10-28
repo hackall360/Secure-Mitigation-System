@@ -4,82 +4,25 @@ import asyncio
 import threading
 
 import pytest
-from test_patches import node_patch
+from helpers import (
+    FakeFixtureMuse as FakeMuse,
+)
+from helpers import (
+    FakeFixtureSandbox as FakeSandbox,
+)
+from helpers import (
+    ResearchFakeFixtureMuse as ResearchFakeMuse,
+)
+from helpers import (
+    run_fixture_workflow as run,
+)
+from helpers import (
+    silent_emit,
+)
 
-from agents import BlueTeamPatch, RedTeamFinding
 from config import PurpleBoxConfig
-from docker_manager import SandboxError, VerificationResult
-from registry import TARGETS_REGISTRY
+from docker_manager import SandboxError
 from workflow import execute_purple_workflow
-
-
-class FakeMuse:
-    def __init__(self):
-        self.blue_calls = 0
-        self.closed = False
-
-    async def run_red_team_analysis(self, *args):
-        return RedTeamFinding(
-            vulnerability_class="test boundary",
-            sink_location="app.js",
-            analysis_summary="Test-only injected agent.",
-            verification_script_python="import sys\nsys.exit(0)",
-        )
-
-    async def run_blue_team_sanitizer(self, *args):
-        self.blue_calls += 1
-        return BlueTeamPatch(
-            sanitization_strategy="Validate IDs",
-            diff_summary="Add a guard",
-            patched_file_content=node_patch(TARGETS_REGISTRY["node_query_sink"].read_source()),
-        )
-
-    async def aclose(self):
-        self.closed = True
-
-
-class FakeSandbox:
-    def __init__(self, codes):
-        self.codes = iter(codes)
-        self.closed = False
-        self.replaced = False
-
-    def require_base_images(self):
-        return None
-
-    def create_isolated_network(self):
-        return "test-network"
-
-    def start_cloneable_target(self, *args):
-        return "container", "snapshot"
-
-    def replace_target(self, *args):
-        self.replaced = True
-        return "patched-container", "patched-snapshot"
-
-    def run_isolated_verifier(self, *args):
-        return VerificationResult(next(self.codes), "test evidence")
-
-    def close(self):
-        self.closed = True
-
-
-async def silent_emit(team, message):
-    return None
-
-
-async def run(codes, emit=silent_emit, sandbox=None):
-    sandbox = sandbox or FakeSandbox(codes)
-    muse = FakeMuse()
-    result = await execute_purple_workflow(
-        "node_query_sink",
-        emit,
-        config=PurpleBoxConfig(meta_api_key="unit-test-key"),
-        sandbox_factory=lambda settings: sandbox,
-        muse_factory=lambda settings: muse,
-    )
-    assert sandbox.closed and muse.closed
-    return result, sandbox, muse
 
 
 async def test_complete_success_requires_both_checks():
@@ -203,36 +146,6 @@ async def test_result_carries_usage_and_cost_from_the_client():
     assert "usage" in result.model_dump() and result.model_dump()["cost_usd"] == 0.003
 
 
-class ResearchFakeMuse(FakeMuse):
-    """FakeMuse plus research sidecar methods returning grounded digests."""
-
-    def __init__(self):
-        super().__init__()
-        self.red_research_calls = 0
-        self.blue_research_calls = 0
-
-    async def run_red_research(self, sink_description, intel_records):
-        from agents import RedResearchDigest
-
-        self.red_research_calls += 1
-        assert isinstance(intel_records, list)
-        return RedResearchDigest(
-            queries=["test query"],
-            attack_patterns=["grounded pattern"],
-            cwe_hints=["CWE-78"],
-        )
-
-    async def run_blue_research(self, sink_description, intel_records):
-        from agents import BlueResearchDigest
-
-        self.blue_research_calls += 1
-        return BlueResearchDigest(
-            queries=["test query"],
-            fix_patterns=["grounded fix"],
-            cwe_hints=["CWE-78"],
-        )
-
-
 async def test_research_schemas_reject_work_product():
     """Research digests cannot carry findings, patches, or scripts."""
     import pytest
@@ -350,7 +263,6 @@ def test_research_record_truncates_and_source_fallback_order():
     rec = _research.ResearchRecord(source="osv", summary="x" * 5000)
     assert len(rec.summary) == 1500
     assert "html.duckduckgo" not in _research.__doc__
-
 
 
 async def test_research_gather_adds_cve_and_web_records(monkeypatch):

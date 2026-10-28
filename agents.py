@@ -64,27 +64,42 @@ class BlueResearchDigest(BaseModel):
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 
 
+# Agent transport perf: schema cache + stream cap.
+# model_json_schema() rebuilds the JSON-schema dict on every call; cache it
+# per response-model class so repeated red/blue calls reuse one object.
+# Streaming bodies are capped by one shared helper (single cap constant).
+_SCHEMA_CACHE: dict[type, dict] = {}
+STREAM_CAP_BYTES = 1_048_576
+
+
+def _schema_for(model_cls: type[ResponseModel]) -> dict:
+    """Cached JSON schema dict for a response-model class."""
+    cached = _SCHEMA_CACHE.get(model_cls)
+    if cached is None:
+        cached = model_cls.model_json_schema()
+        _SCHEMA_CACHE[model_cls] = cached
+    return cached
+
+
 def _extract_json_object(text: str) -> str:
-    """Return the outermost JSON object from text, stripping fences without mutating literals.
+    """Return the first balanced JSON object from text, single pass.
 
     - Strips wrapping Markdown fences ``` or ```json if present.
-    - Otherwise extracts the outermost {...} deterministically, respecting string literals
-      and escapes, so braces inside strings do not affect boundary detection.
+    - Otherwise extracts the first balanced {...} in one forward scan that
+      respects string literals and escapes, so braces inside strings do not
+      affect boundary detection. No re-scan, no trial parses here: the
+      caller validates via schema parsing.
     """
     if "\x00" in text:
         raise ValueError("Response contains NUL bytes.")
     stripped = text.strip()
-    # Strip Markdown fences cleanly.
     fence_match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?\s*```\s*", stripped, flags=re.DOTALL)
     if fence_match:
         stripped = fence_match.group(1).strip()
-        # After fence removal, still extract outer object if extra surrounding text remains.
-    # Find outermost { ... } respecting strings.
     in_string = False
     escape = False
     depth = 0
     start_idx = -1
-    end_idx = -1
     for idx, ch in enumerate(stripped):
         if in_string:
             if escape:
@@ -94,59 +109,17 @@ def _extract_json_object(text: str) -> str:
             elif ch == '"':
                 in_string = False
             continue
-        else:
-            if ch == '"':
-                in_string = True
-                continue
-            if ch == "{":
-                if depth == 0:
-                    start_idx = idx
-                depth += 1
-            elif ch == "}":
-                if depth > 0:
-                    depth -= 1
-                    if depth == 0 and start_idx != -1:
-                        end_idx = idx
-                        # Don't break; keep searching for outermost last balanced close.
-                        # For deterministic outermost, continue to find final depth-0 close.
-                        # But if there are multiple top-level objects, last close is outermost end.
-                        # For single object, first start and final end is correct.
-                        pass
-    if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
-        # Find the last depth-0 closing brace overall.
-        # Re-scan to find the final balanced close for the first object.
-        # Simpler: use last balanced close found.
-        candidate = stripped[start_idx : end_idx + 1]
-        # Validate it's parseable; if not, fallback to stripped.
-        try:
-            json.loads(candidate)
-            return candidate
-        except Exception:
-            pass
-        # If candidate not valid, try first balanced segment.
-        depth = 0
-        in_string = False
-        escape = False
-        for idx, ch in enumerate(stripped[start_idx:], start=start_idx):
-            if in_string:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_string = False
-                continue
-            else:
-                if ch == '"':
-                    in_string = True
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        return stripped[start_idx : idx + 1]
-        return stripped[start_idx : end_idx + 1]
-    # No braces found; return stripped for validation to fail with schema error.
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start_idx = idx
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start_idx != -1:
+                    return stripped[start_idx : idx + 1]
     return stripped
 
 
@@ -206,9 +179,20 @@ class MetaMuseClient:
                 "type": "json_schema",
                 "json_schema": {
                     "name": schema.__name__,
-                    "schema": schema.model_json_schema(),
+                    "schema": _schema_for(schema),
                 },
             }
+
+            async def _read_capped(resp) -> bytearray:
+                """Drain a streaming body up to STREAM_CAP_BYTES."""
+                bounded = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    bounded.extend(chunk)
+                    if len(bounded) > STREAM_CAP_BYTES:
+                        del bounded[STREAM_CAP_BYTES:]
+                        break
+                return bounded
+
             try:
                 async with self.client.stream(
                     "POST",
@@ -218,11 +202,7 @@ class MetaMuseClient:
                     if response.status_code in (429, 502, 503, 504) and attempt == 0:
                         # Record usage if possible before retrying.
                         try:
-                            body = bytearray()
-                            async for chunk in response.aiter_bytes():
-                                body.extend(chunk)
-                                if len(body) > 1_048_576:
-                                    break
+                            body = await _read_capped(response)
                             try:
                                 data = json.loads(body) if body else {}
                             except Exception:
@@ -242,11 +222,9 @@ class MetaMuseClient:
                         raise AgentError(
                             f"Muse API returned HTTP {response.status_code}; check endpoint, model access, and key."
                         )
-                    body = bytearray()
-                    async for chunk in response.aiter_bytes():
-                        body.extend(chunk)
-                        if len(body) > 1_048_576:
-                            raise AgentError("Muse response exceeded the 1 MiB limit.")
+                    body = await _read_capped(response)
+                    if len(body) >= STREAM_CAP_BYTES:
+                        raise AgentError("Muse response exceeded the 1 MiB limit.")
                 data = json.loads(body)
                 self.usage.append(
                     usage_from_response(role, model, data, time.monotonic() - started)

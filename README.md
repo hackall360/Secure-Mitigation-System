@@ -197,8 +197,9 @@ The original checkout is read-only to Secure Mitigation System and is never moun
 To continue on a later run, review/apply the exported patch yourself and scan that
 checkout again. No hidden conversation or cross-run state is reused.
 
-See [project intake and runtime requirements](docs/PROJECTS.md) and
-[workflow, evidence, and context limits](docs/PROJECT_WORKFLOW.md).
+See [project intake and runtime requirements](docs/guides/PROJECTS.md) and
+[workflow, evidence, and context limits](docs/architecture/PROJECT_WORKFLOW.md).
+Full map: [docs/index.md](docs/index.md).
 
 ### Private and offline operation
 
@@ -351,7 +352,7 @@ static/              Dashboard (app.js, index.html, app.css)
 targets/             Three intentionally vulnerable fixtures
 tests/               Unit + API tests
 .jcode/tools/        dev.py, offline_scan.py, ui_scan.py, scans
-docs/                DEVELOPMENT.md, PROJECTS.md, SCAN_PROFILES.md, ...
+docs/                guides/, architecture/, reference/, decisions/ (see docs/index.md)
 AGENTS.md            Contributor working agreement (branch law, invariants)
 TODO.md              The work queue
 ```

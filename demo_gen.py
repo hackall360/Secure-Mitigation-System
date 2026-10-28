@@ -24,6 +24,7 @@ from typing import Any, Mapping, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from projects import ProjectSpec
+from sms_budget import check_payload_budget
 
 DEMO_GEN_SYSTEM_PROMPT = """You are Greenhouse, a cheerful builder who does not care about security at all. You grow demo projects for a defensive security showcase.
 Design a SMALL, SELF-CONTAINED demo web service (Python stdlib http.server only, no third-party deps) that demonstrates input-boundary flaws for a red/blue exercise.
@@ -179,8 +180,6 @@ async def generate_demo_project(
     build_brief describes the app; vulns lists the flaw families/CVEs to
     implement. Both reach the generator so Greenhouse builds what was asked.
     """
-    import json as _json
-
     wanted = [str(v)[:120] for v in (vulns or [])][:8]
     payload = {
         "theme": theme[:256],
@@ -189,9 +188,7 @@ async def generate_demo_project(
         "intel_context": [dict(c) for c in intel_context[:20]],
         "response_schema": DemoProjectFiles.model_json_schema(),
     }
-    size = len(_json.dumps(payload).encode("utf-8"))
-    if size > max_payload_bytes:
-        raise ValueError("Demo generation payload exceeds the context budget.")
+    check_payload_budget(payload, max_payload_bytes, "Demo generation")
     return await client._request(
         client.config.red_team_model,
         DEMO_GEN_SYSTEM_PROMPT,
