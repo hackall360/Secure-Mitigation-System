@@ -3,10 +3,10 @@
 ## Initial scaffold import
 
 - Date: 2026-10-27.
-- Source: `purplebox-scaffold.zip`, originally in `/home/sponge/Downloads/`.
+- Source: `secure-mitigation-scaffold.zip`, originally in `/home/sponge/Downloads/`.
 - Archive SHA-256: `d4a3abbb0efb486c7b8040b4344541804afabc731eda9abb375c07b5dc5e0629`.
 - Branch: `feature/initial-scaffolding`, based on `develop` at `8bb2dc6`.
-- Import commit: `2594b90` (`feat: import initial PurpleBox scaffold`).
+- Import commit: `2594b90` (`feat: import initial Secure Mitigation System scaffold`).
 - Removed the archive's enclosing `purplebox/` directory so the application lives
   at the repository root. All 34 non-ignore files were verified byte-identical
   to the archive after import. The existing `.gitignore` was preserved and the

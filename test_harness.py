@@ -179,7 +179,7 @@ async def api_checks() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="PurpleBox self-test harness")
+    parser = argparse.ArgumentParser(description="Secure Mitigation System self-test harness")
     parser.add_argument(
         "--docker",
         action="store_true",

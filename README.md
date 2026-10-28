@@ -1,4 +1,4 @@
-# PurpleBox
+# Secure Mitigation System
 
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
@@ -51,7 +51,7 @@ set +a
 python main.py --serve --port 8000
 ```
 
-`.env` is ignored by Git and is **not loaded automatically**. PurpleBox reads
+`.env` is ignored by Git and is **not loaded automatically**. Secure Mitigation System reads
 `META_MUSE_API_KEY`, even though Meta's examples call the variable `MODEL_API_KEY`.
 No keys are sent to Docker, written to reports, returned by health checks, or displayed
 in the UI. A real scan sends the selected fixture source to the configured Muse endpoint.
@@ -70,7 +70,7 @@ Original fixture files are never overwritten by a scan.
 
 ## Scan your own repository
 
-Use an existing local checkout. PurpleBox deliberately does not clone URLs, execute
+Use an existing local checkout. Secure Mitigation System deliberately does not clone URLs, execute
 Git hooks, run repository Dockerfiles, or download dependencies during a scan.
 Prepare a trusted runtime image with the required tools and dependencies beforehand.
 The bundled target image provides Python, Node.js, and PHP, not every framework.
@@ -92,7 +92,7 @@ The default is **one cycle**, with a maximum of 20. The dashboard's **Local proj
 mode accepts the same settings. Paths refer to the server's local filesystem.
 Each CLI project run creates a private report directory with evidence and a
 cumulative candidate diff. UI reports and patches can be downloaded separately.
-The original checkout is read-only to PurpleBox and is never mounted into containers.
+The original checkout is read-only to Secure Mitigation System and is never mounted into containers.
 To continue on a later run, review/apply the exported patch yourself and scan that
 checkout again. No hidden conversation or cross-run state is reused.
 
@@ -107,8 +107,8 @@ Filename-based secret exclusions are a precaution, not a secret scanner. Audit y
 source before authorizing hosted inference. Reports can contain sensitive code.
 
 For offline inference, run an operator-provided **Muse-compatible local server**
-before starting PurpleBox, with models, runtime images, and dependencies already
-available. PurpleBox does not install or download a model server:
+before starting Secure Mitigation System, with models, runtime images, and dependencies already
+available. Secure Mitigation System does not install or download a model server:
 
 ```bash
 export PURPLEBOX_INFERENCE_MODE=local

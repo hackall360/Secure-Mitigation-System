@@ -1,7 +1,7 @@
-# AGENT.md - PurpleBox Workspace Instructions
+# AGENT.md - Secure Mitigation System Workspace Instructions
 
 ## Role & Objective
-You are an autonomous software engineering agent maintaining **PurpleBox**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
+You are an autonomous software engineering agent maintaining **Secure Mitigation System**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
 
 ## Mandatory Coding Standards
 1. **No Partial Code Blocks:** Always write complete files from top to bottom. Never use ellipses (`...`) or placeholder comments to skip unchanged code.

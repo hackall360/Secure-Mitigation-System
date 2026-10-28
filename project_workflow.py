@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import difflib
 import hashlib
@@ -258,6 +259,67 @@ def coerce_project(project: ProjectWorkflowInput | Mapping[str, Any] | Any) -> P
         raise ProjectWorkflowError("Project intake did not provide a valid safe snapshot.") from exc
 
 
+_PRIORITY_SUFFIX_RANK0 = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".php",
+        ".go",
+        ".rs",
+        ".rb",
+        ".java",
+        ".c",
+        ".cpp",
+        ".sql",
+        ".cnf",
+        ".conf",
+        ".ini",
+        ".yaml",
+        ".yml",
+        ".toml",
+    }
+)
+
+
+def _priority_rank(path: str) -> int:
+    lowered = path.lower()
+    parts = lowered.split("/")
+    name = parts[-1] if parts else lowered
+    suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ""
+    is_test = (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or "/test/" in lowered
+        or "/tests/" in lowered
+        or "/__tests__/" in lowered
+        or ".test." in lowered
+        or ".spec." in lowered
+    )
+    if is_test:
+        return 1
+    if suffix in _PRIORITY_SUFFIX_RANK0 and "test" not in lowered and "docs" not in lowered:
+        # Exclude test/ or docs/ from rank 0 even if suffix matches.
+        if (
+            "/test" in lowered
+            or lowered.startswith("test")
+            or "/docs/" in lowered
+            or lowered.startswith("docs/")
+        ):
+            return 1
+        return 0
+    if suffix in {".md", ".txt", ".rst", ".css", ".html", ".svg", ".json"}:
+        return 2
+    # Default: treat unknown as rank 1 (context awareness) unless docs/assets.
+    if "/docs/" in lowered or lowered.startswith("docs/"):
+        return 2
+    return 1
+
+
+def priority_rank(path: str, text: str | None = None) -> tuple[int, str]:
+    return (_priority_rank(path), path)
+
+
 def _snapshot_context(
     spec: ProjectSpec, snapshot: ProjectSnapshot, limits: ProjectWorkflowLimits
 ) -> tuple[ProjectWorkflowInput, list[str], list[str]]:
@@ -266,8 +328,17 @@ def _snapshot_context(
     omitted: list[str] = []
     notes: list[str] = []
     selected_bytes = 0
+    candidates: list[tuple[tuple[int, str], str, bytes]] = []
     for path in sorted(snapshot.files):
         content = snapshot.files[path]
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            omitted.append(path)
+            continue
+        candidates.append((priority_rank(path, text), path, content))
+    candidates.sort(key=lambda item: item[0])
+    for _, path, content in candidates:
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:
@@ -348,17 +419,84 @@ class DockerProjectSandbox:
         target = None
         try:
             target, _image = self.manager.start_project(self.network, self.spec, snapshot)
-            regression = self.manager.run_project_check(
+            # Best-effort readiness poll up to 2 seconds (mirrors workflow READY_SCRIPT).
+            try:
+                import time
+
+                from docker_manager import READY_SCRIPT
+
+                deadline = time.monotonic() + 2.0
+                while time.monotonic() < deadline:
+                    try:
+                        ready = target.exec_run(["python3", "-c", READY_SCRIPT])
+                        if getattr(ready, "exit_code", 1) == 0:
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(0.2)
+            except Exception:
+                pass
+            regression_check = self.manager.run_project_check(
                 self.network, self.spec, snapshot, command=list(self.spec.test_command)
             )
-            probe = self.manager.run_project_check(
+            regression_ev = _check_evidence(regression_check, 131_072)
+            if regression_ev.exit_code != 0:
+                # Do not run probe if baseline regression already fails.
+                probe_ev = ExecutionEvidence(exit_code=2, output="Regression failed before probe.")
+                return SnapshotVerification(
+                    probe=probe_ev, regression=regression_ev, fresh_target=True
+                )
+            probe_check = self.manager.run_project_check(
                 self.network, self.spec, snapshot, script=verification_script_python
             )
-            return SnapshotVerification(
-                probe=_check_evidence(probe, 131_072),
-                regression=_check_evidence(regression, 131_072),
-                fresh_target=True,
-            )
+            probe_ev = _check_evidence(probe_check, 131_072)
+            # Critical addition: post-probe liveness against same still-running target.
+            # A probe returning blocked (1) must not earn success if it crashed the service.
+            if probe_ev.exit_code == 1:
+                post_probe_ev = None
+                try:
+                    # Prefer exec inside the same still-running target when available.
+                    exec_run = getattr(target, "exec_run", None)
+                    if callable(exec_run):
+                        try:
+                            # Run the regression command via exec argv (no shell interpolation).
+                            # Use shlex join to avoid interpolation; exec_run does not use shell.
+                            result = exec_run(list(self.spec.test_command))
+                            code = getattr(result, "exit_code", None)
+                            out = ""
+                            try:
+                                output = getattr(result, "output", b"")
+                                if isinstance(output, (bytes, bytearray)):
+                                    out = bytes(output).decode("utf-8", errors="replace")
+                                else:
+                                    out = str(output)
+                            except Exception:
+                                out = ""
+                            if isinstance(code, int):
+                                post_probe_ev = ExecutionEvidence(
+                                    exit_code=code, output=_bounded(out[-16384:], 131072)
+                                )
+                        except Exception:
+                            post_probe_ev = None
+                except Exception:
+                    post_probe_ev = None
+                if post_probe_ev is None:
+                    try:
+                        post_check = self.manager.run_project_check(
+                            self.network, self.spec, snapshot, command=list(self.spec.test_command)
+                        )
+                        post_probe_ev = _check_evidence(post_check, 131_072)
+                    except Exception:
+                        post_probe_ev = None
+                if post_probe_ev is not None and post_probe_ev.exit_code != 0:
+                    # Override regression so a crashed/deadlocked service triggers rollback.
+                    regression_ev = ExecutionEvidence(
+                        exit_code=post_probe_ev.exit_code,
+                        output=_bounded(
+                            "Post-probe regression failed:\n" + post_probe_ev.output, 131072
+                        ),
+                    )
+            return SnapshotVerification(probe=probe_ev, regression=regression_ev, fresh_target=True)
         finally:
             if target is not None:
                 self.manager.stop_project(target)
@@ -409,6 +547,28 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
     )
 
 
+def _extract_signatures(source: str) -> tuple[dict[str, int], set[str]]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise ValueError(f"Invalid Python syntax: {exc}") from exc
+    funcs: dict[str, int] = {}
+    classes: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funcs[node.name] = len(node.args.args)
+        elif isinstance(node, ast.ClassDef):
+            classes.add(node.name)
+    return funcs, classes
+
+
+_DANGEROUS_SINKS = {
+    ".py": ["eval(", "exec(", "os.system(", "subprocess.Popen("],
+    ".js": ["eval(", "exec(", "child_process"],
+    ".php": ["eval(", "exec(", "shell_exec(", "system(", "passthru(", "os.system("],
+}
+
+
 def validate_replacements(
     proposal: BlueProposal,
     current_files: Mapping[str, str],
@@ -453,12 +613,80 @@ def validate_replacements(
             ), {}
         if replacement.replacement_content == original:
             return ReplacementValidation(accepted=False, reason="Replacement is a no-op."), {}
-        changed_bytes += len(replacement.replacement_content.encode("utf-8"))
+        content = replacement.replacement_content
+        if "\x00" in content:
+            return ReplacementValidation(
+                accepted=False, reason="Replacement contains NUL bytes."
+            ), {}
+        if content.lstrip().startswith("```"):
+            return ReplacementValidation(
+                accepted=False, reason="Replacement starts with markdown fences."
+            ), {}
+        # License header preservation
+        for line in original.splitlines():
+            if (
+                "Required Notice:" in line or "polyformproject.org/licenses/" in line
+            ) and line not in content:
+                return ReplacementValidation(
+                    accepted=False, reason="Replacement removed a required license notice."
+                ), {}
+        # Surgical edit ratio guard
+        before_lines, after_lines = original.splitlines(), content.splitlines()
+        changes = sum(
+            max(i2 - i1, j2 - j1)
+            for op, i1, i2, j1, j2 in difflib.SequenceMatcher(
+                a=before_lines, b=after_lines
+            ).get_opcodes()
+            if op != "equal"
+        )
+        budget = max(60, int(len(before_lines) * 0.35))
+        if changes > budget:
+            return ReplacementValidation(
+                accepted=False,
+                reason="Replacement exceeds surgical sanitization line-change budget.",
+            ), {}
+        # Python AST signature guard
+        if replacement.path.endswith(".py"):
+            try:
+                orig_funcs, orig_classes = _extract_signatures(original)
+            except ValueError:
+                orig_funcs, orig_classes = {}, set()
+            try:
+                new_funcs, new_classes = _extract_signatures(content)
+            except ValueError:
+                return ReplacementValidation(
+                    accepted=False, reason="Replacement contains invalid Python syntax."
+                ), {}
+            for name, param_count in orig_funcs.items():
+                if name not in new_funcs:
+                    return ReplacementValidation(
+                        accepted=False, reason=f"Replacement deleted function: {name}"
+                    ), {}
+                if new_funcs[name] != param_count:
+                    return ReplacementValidation(
+                        accepted=False, reason=f"Replacement altered parameters of: {name}"
+                    ), {}
+            for name in orig_classes:
+                if name not in new_classes:
+                    return ReplacementValidation(
+                        accepted=False, reason=f"Replacement deleted class: {name}"
+                    ), {}
+        # Dangerous primitive guard
+        import pathlib as _pathlib
+
+        suffix = _pathlib.PurePosixPath(replacement.path).suffix.lower()
+        sinks = _DANGEROUS_SINKS.get(suffix, [])
+        for sink in sinks:
+            if sink in content and sink not in original:
+                return ReplacementValidation(
+                    accepted=False, reason=f"Replacement introduces forbidden sink: {sink}"
+                ), {}
+        changed_bytes += len(content.encode("utf-8"))
         if changed_bytes > max_changed_bytes:
             return ReplacementValidation(
                 accepted=False, reason="Replacement byte limit exceeded."
             ), {}
-        changed[replacement.path] = replacement.replacement_content
+        changed[replacement.path] = content
     return (
         ReplacementValidation(
             accepted=True,

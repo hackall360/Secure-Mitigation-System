@@ -1,6 +1,6 @@
 # Local project intake and sandbox execution
 
-PurpleBox can snapshot an arbitrary local source repository without mounting it into
+Secure Mitigation System can snapshot an arbitrary local source repository without mounting it into
 Docker or modifying its files. The implementation is split between `projects.py`
 and project-specific methods on `DockerSandboxManager` in `docker_manager.py`.
 
@@ -99,7 +99,7 @@ session containers, networks, and committed snapshot images.
 Project execution never builds a Dockerfile, pulls an image, downloads dependencies,
 uses host binds, publishes ports, mounts the Docker socket, or starts the staging
 container. The requested project image must already exist locally. Before use,
-PurpleBox rejects images declaring `Config.Volumes`, because Docker can create
+Secure Mitigation System rejects images declaring `Config.Volumes`, because Docker can create
 anonymous host-side volumes, and rejects images embedding secret-like environment
 variable names. Runtime and staging override inherited entrypoints and disable
 inherited health checks.
@@ -111,7 +111,7 @@ Source enters through a deterministic tar archive owned by UID/GID 10001. No hos
 path is exposed to the container.
 
 These controls reduce accidental and application-level escape paths, but containers
-share the host kernel. PurpleBox is not a hostile-code virtual-machine boundary. Run
+share the host kernel. Secure Mitigation System is not a hostile-code virtual-machine boundary. Run
 it only with trusted preloaded runtime images and on a Docker host whose compromise
 would not be catastrophic.
 

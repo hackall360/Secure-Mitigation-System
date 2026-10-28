@@ -133,16 +133,31 @@ def fake_transport(request, *, source_import=False):
         "analysis_summary": "Independent bounded review found no new candidate.",
         "limitations": ["Deterministic test reply, not a real security assessment."],
     }
-    if "batch" in payload:
+    if "requested_worker_count" in payload:
         answer = {
-            "candidates": [] if payload.get("phase") == "verification" else [candidate],
+            "strategy": "Assign independent bounded review scopes.",
+            "assignments": [
+                {
+                    "agent_index": index,
+                    "focus": f"scope {index}",
+                    "objective": "Inspect only supplied source or verified evidence.",
+                }
+                for index in range(1, payload["requested_worker_count"] + 1)
+            ],
+            "limitations": ["Deterministic model reply, not a live security assessment."],
+        }
+    elif "batch" in payload:
+        answer = {
+            "candidates": []
+            if payload.get("phase") == "verification" or cycle > 2
+            else [candidate],
             "observations": [],
             "no_candidate_reason": "Deterministic test review",
         }
     elif "evidence_digests" in payload:
         answer = (
             no_finding
-            if payload.get("phase") == "verification"
+            if payload.get("phase") == "verification" or cycle > 2
             else {
                 "outcome": "finding",
                 "vulnerability": candidate["vulnerability"],
@@ -248,15 +263,33 @@ async def run(output, *, live=False, cycles=2, source_import=False, scan_profile
         assert result.success, report.get("message")
         assert report["cycles_completed"] == spec.cycles, report
         cycles = report.get("cycles", report.get("cycle_reports", []))
-        assert all(item["status"] == "retained" for item in cycles), report
+        expected_statuses = ["retained"] * min(len(cycles), 2)
+        expected_statuses += ["no_finding"] * max(0, len(cycles) - 2)
+        assert [item["status"] for item in cycles] == expected_statuses, report
         if scan_profile != "custom":
-            assert [(item["cycle"], item["pass_number"]) for item in cycles] == [(1, 1), (1, 2)]
+            assert [(item["cycle"], item["pass_number"]) for item in cycles] == [
+                (cycle, pass_number)
+                for cycle in range(1, spec.cycles + 1)
+                for pass_number in (1, 2)
+            ]
             assert "?', (raw,)" in report["cumulative_diff"]
             assert "raw.isdecimal()" in report["cumulative_diff"]
         assert report.get("cleanup_ok", report.get("cleanup", {}).get("succeeded")), report
         assert report.get("diff", report.get("cumulative_diff", "")), report
+        if scan_profile == "ultra_heavy":
+            roles = [call.role for call in result.usage.calls]
+            for team in ("red", "blue"):
+                assert any(f"project_{team}_leader_plan" in role for role in roles)
+                assert any("leader_synthesis" in role and team in role for role in roles)
+                assert all(
+                    any(f"worker_{index}" in role and team in role for role in roles)
+                    for index in range(1, 6)
+                )
+            assert all(
+                len(item.evidence.red.leader_plan.assignments) == 5 for item in result.cycle_reports
+            )
         print(
-            f"PASS: {spec.cycles} retained cycle(s), original source unchanged, isolated execution, independent contexts, cleanup; inference={'live' if live else 'deterministic'}",
+            f"PASS: {spec.cycles} completed cycle(s), original source unchanged, isolated execution, independent contexts, cleanup; inference={'live' if live else 'deterministic'}",
             flush=True,
         )
 
@@ -272,9 +305,9 @@ def main():
     parser.add_argument("--cycles", type=int, default=2, choices=range(1, 21))
     parser.add_argument(
         "--scan-profile",
-        choices=["custom", "extra_light"],
+        choices=["custom", "extra_light", "ultra_heavy"],
         default="custom",
-        help="extra_light proves two distinct patches in one R/B/R/B cycle",
+        help="Named profiles prove two distinct patches, ultra_heavy also exercises leader/worker teams",
     )
     parser.add_argument(
         "--source-import-probes",

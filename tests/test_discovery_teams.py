@@ -134,8 +134,7 @@ async def test_named_profiles_send_cumulative_focus_that_expands_by_cycle_and_pa
         if len(focuses) == 3:
             assert focuses[2][: len(focuses[1])] == focuses[1]
         assert all(
-            len(left) <= len(right)
-            for left, right in zip(focuses, focuses[1:], strict=False)
+            len(left) <= len(right) for left, right in zip(focuses, focuses[1:], strict=False)
         )
         assert all("leader_plan" not in call["role"] for call in muse.calls)
 
@@ -155,8 +154,7 @@ async def test_ultra_heavy_red_uses_model_plan_five_workers_and_leader_synthesis
     roles = [call["role"] for call in muse.calls]
     assert roles[0] == "project_red_leader_plan_cycle_1"
     assert roles[1:6] == [
-        f"project_red_initial_evidence_cycle_1_batch_0_worker_{index}"
-        for index in range(1, 6)
+        f"project_red_initial_evidence_cycle_1_batch_0_worker_{index}" for index in range(1, 6)
     ]
     assert roles[6] == "project_red_initial_leader_synthesis_cycle_1"
     assert len(artifacts.batch_evidence) == 5
@@ -213,9 +211,7 @@ async def test_ultra_heavy_blue_uses_five_workers_and_sanitation_only_leader_syn
 
 def test_configure_review_keeps_requested_interface_and_validates_bounds():
     runner = ProjectAgentRunner(TeamMuse(), CONFIG)
-    runner.configure_review(
-        profile_key="ultra_heavy", cycle=1, red_agents=5, blue_agents=5
-    )
+    runner.configure_review(profile_key="ultra_heavy", cycle=1, red_agents=5, blue_agents=5)
 
     for kwargs in (
         {"profile_key": "light", "cycle": 0},

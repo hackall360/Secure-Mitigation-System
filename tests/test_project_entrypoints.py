@@ -68,6 +68,28 @@ def test_project_socket_passes_spec_and_profile(tmp_path, monkeypatch):
     assert seen[0][1].red_team_model == seen[0][1].blue_team_model
 
 
+def test_project_socket_derives_named_scan_cycles(tmp_path, monkeypatch):
+    seen = []
+
+    async def workflow(spec, emit, **kwargs):
+        seen.append(spec)
+        return fake_result()
+
+    monkeypatch.setattr(main, "execute_project_workflow", workflow)
+    payload = project_payload(tmp_path)
+    payload.pop("cycles")
+    payload.update({"scan_profile": "medium", "red_agents": 7, "blue_agents": 6})
+    with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
+        with client.websocket_connect(
+            "ws://localhost/ws/project", headers={"origin": "http://localhost"}
+        ) as socket:
+            socket.send_json(payload)
+            assert socket.receive_json()["status"] == "verified"
+    assert seen[0].scan_profile == "medium"
+    assert seen[0].cycles == 5
+    assert (seen[0].red_agents, seen[0].blue_agents) == (7, 6)
+
+
 @pytest.mark.parametrize("origin", ["https://attacker.example", "null", ""])
 def test_project_socket_rejects_cross_origin(origin):
     with TestClient(main.create_app(), base_url="http://localhost") as client:
@@ -156,6 +178,8 @@ def test_cli_project_exports_private_report_and_patch(tmp_path, monkeypatch):
     )
     assert main.main() == 0
     assert seen[0].cycles == 2
+    assert seen[0].scan_profile == "custom"
+    assert seen[0].red_agents == seen[0].blue_agents == 5
     report = next(output.glob("*/report.json"))
     assert json.loads(report.read_text())["status"] == "verified"
     assert report.stat().st_mode & 0o777 == 0o600
@@ -165,6 +189,72 @@ def test_cli_project_exports_private_report_and_patch(tmp_path, monkeypatch):
 
 def test_cli_requires_project_runtime_contract(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.argv", ["main.py", "--project", str(tmp_path)])
+    with pytest.raises(SystemExit) as error:
+        main.main()
+    assert error.value.code == 2
+
+
+def test_cli_named_scan_profile_is_independent_from_model_profile(tmp_path, monkeypatch):
+    seen = []
+
+    async def workflow(spec, emit, **kwargs):
+        seen.append((spec, kwargs["config"]))
+        return fake_result()
+
+    monkeypatch.setattr(main, "execute_project_workflow", workflow)
+    monkeypatch.setattr(main, "load_config", lambda: PurpleBoxConfig())
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py",
+            "--project",
+            str(tmp_path),
+            "--command",
+            '["python3", "app.py"]',
+            "--test-command",
+            '["python3", "-m", "unittest"]',
+            "--contract",
+            "Preserve API",
+            "--scan-profile",
+            "heavy",
+            "--profile",
+            "economy",
+            "--red-agents",
+            "8",
+            "--blue-agents",
+            "6",
+            "--output-dir",
+            str(tmp_path / "reports"),
+        ],
+    )
+    assert main.main() == 0
+    spec, config = seen[0]
+    assert spec.scan_profile == "heavy"
+    assert spec.cycles == 8
+    assert (spec.red_agents, spec.blue_agents) == (8, 6)
+    assert config.red_team_model == config.blue_team_model
+
+
+def test_cli_rejects_cycles_conflicting_with_named_scan_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "load_config", lambda: PurpleBoxConfig())
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py",
+            "--project",
+            str(tmp_path),
+            "--command",
+            '["python3", "app.py"]',
+            "--test-command",
+            '["python3", "-m", "unittest"]',
+            "--contract",
+            "Preserve API",
+            "--scan-profile",
+            "medium",
+            "--cycles",
+            "3",
+        ],
+    )
     with pytest.raises(SystemExit) as error:
         main.main()
     assert error.value.code == 2

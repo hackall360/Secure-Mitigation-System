@@ -7,17 +7,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#07070c">
-  <title>PurpleBox · Boundary verification</title>
+  <title>Secure Mitigation System · Boundary verification</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <div class="backdrop" aria-hidden="true"><div class="grid-glow"></div><div class="orb orb-red"></div><div class="orb orb-blue"></div></div>
+  <div class="backdrop" aria-hidden="true"><div class="grid-glow"></div><div class="orb orb-red"></div><div class="orb orb-blue"></div></div><div class="scanline" aria-hidden="true"></div>
   <a class="skip" href="#main">Skip to dashboard</a>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="PurpleBox home"><span class="mark" aria-hidden="true"><span></span></span>PurpleBox<span class="version">0.1</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.1</span></a>
       <div class="top-status">
         <span class="chip" id="chip-key" data-state="pending" title="Muse API key in server environment"><i></i>API key</span>
         <span class="chip" id="chip-docker" data-state="pending" title="Docker daemon and base images"><i></i>Docker</span>
@@ -31,7 +31,7 @@
         <div>
           <p class="eyebrow">Input sanitization · Boundary verification</p>
           <h1>Find the boundary.<br><span class="gradient">Verify the fix.</span></h1>
-          <p class="lede">Red agent proves an input sink is reachable. Blue agent proposes a minimal sanitization patch. Docker sandboxes check both, then disappear.</p>
+          <p class="lede">Red agent proves an input sink is reachable. Blue agent proposes a minimal sanitization patch. Docker sandboxes check both, then disappear.</p><div class="hype-ticker" aria-hidden="true"><span class="hype-chip">Live sandbox telemetry</span><span class="hype-chip">Red boundary proof</span><span class="hype-chip">Blue sanitization</span><span class="hype-chip">Evidence gated</span></div>
         </div>
         <dl class="stats" aria-label="Session summary">
           <div><dt>Status</dt><dd id="status" class="status" role="status" data-state="idle">Checking setup</dd></div>
@@ -56,12 +56,23 @@
           <select id="target-select" class="visually-hidden" tabindex="-1" aria-hidden="true" disabled></select>
         </div>
         <form id="project-form" class="project-form" hidden novalidate>
-          <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the PurpleBox server.</small></div>
+          <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>
           <div class="field wide"><label for="project-image">Preloaded sandbox image</label><input id="project-image" name="image" required placeholder="purplebox-node:latest" autocomplete="off"></div>
           <div class="field"><label for="project-command">Start command <span>JSON argv</span></label><textarea id="project-command" name="command" required rows="3" spellcheck="false" placeholder='["npm", "start"]'></textarea></div>
           <div class="field"><label for="project-test-command">Regression test command <span>JSON argv</span></label><textarea id="project-test-command" name="test_command" required rows="3" spellcheck="false" placeholder='["npm", "test", "--", "--runInBand"]'></textarea></div>
           <div class="field wide"><label for="project-contract">Behavior contract</label><textarea id="project-contract" name="contract" required rows="4" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
-          <div class="field compact"><label for="project-cycles">Cycles</label><input id="project-cycles" name="cycles" type="number" min="1" max="20" value="1" required></div>
+          <div class="field"><label for="project-scan-profile">Scan intensity</label><select id="project-scan-profile" name="scan_profile">
+            <option value="extra_light" selected>Extra light</option>
+            <option value="light">Light</option>
+            <option value="medium">Medium</option>
+            <option value="heavy">Heavy</option>
+            <option value="super_heavy">Super heavy</option>
+            <option value="ultra_heavy">Ultra heavy</option>
+            <option value="custom">Custom</option>
+          </select><small id="project-scan-description">1 cycle · one cycle runs Red, Blue, Red, Blue.</small></div>
+          <div class="field compact"><label for="project-cycles">Cycles</label><input id="project-cycles" name="cycles" type="number" min="1" max="20" value="1" readonly required><small>Derived from intensity unless Custom is selected.</small></div>
+          <div class="field compact"><label for="project-red-agents">Red agents</label><input id="project-red-agents" name="red_agents" type="number" min="1" max="12" value="5" required></div>
+          <div class="field compact"><label for="project-blue-agents">Blue agents</label><input id="project-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" required></div>
           <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
@@ -74,7 +85,7 @@
           <p id="target-description" class="target-description">Connecting to the local orchestrator.</p>
           <div class="actions">
             <button id="stop-btn" class="btn ghost" hidden>Stop scan</button>
-            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run demo verification</span><span aria-hidden="true" class="arrow">→</span></button>
+            <button id="run-btn" class="btn primary" disabled><span class="btn-pulse" aria-hidden="true"></span><span id="run-label">Run demo verification</span><span aria-hidden="true" class="arrow"><svg class="icon" viewBox="0 0 16 16"><path d="M2 8h11M9 3.5L13.5 8 9 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
           </div>
         </div>
         <div id="setup" class="setup" role="status" hidden></div>
@@ -100,22 +111,22 @@
         <article class="card panel red" data-team="red">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">R</span><div><h2>Boundary auditor</h2><span id="red-model" class="model">Muse</span></div></div>
-            <div class="panel-tools"><span class="team-label">Red team</span><button class="icon-btn" data-copy="red" title="Copy red team trace" aria-label="Copy red team trace">⧉</button></div>
+            <div class="panel-tools"><span class="team-label">Red team</span><button class="icon-btn" data-copy="red" title="Copy red team trace" aria-label="Copy red team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true">◎</span>Waiting for a target.<br><span>Analysis and boundary evidence will appear here.</span></p></div>
+          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>Waiting for a target.<br><span>Analysis and boundary evidence will appear here.</span></p></div>
         </article>
         <article class="card panel blue" data-team="blue">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">B</span><div><h2>Input sanitizer</h2><span id="blue-model" class="model">Muse</span></div></div>
-            <div class="panel-tools"><span class="team-label">Blue team</span><button class="icon-btn" data-copy="blue" title="Copy blue team trace" aria-label="Copy blue team trace">⧉</button></div>
+            <div class="panel-tools"><span class="team-label">Blue team</span><button class="icon-btn" data-copy="blue" title="Copy blue team trace" aria-label="Copy blue team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true">◇</span>Waiting for a confirmed boundary.<br><span>Sanitization changes and regression results appear here.</span></p></div>
+          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Waiting for a confirmed boundary.<br><span>Sanitization changes and regression results appear here.</span></p></div>
         </article>
       </section>
 
       <section id="result-panel" class="card result" data-status="idle" hidden aria-live="polite">
         <div class="result-main">
-          <span class="result-icon" aria-hidden="true"></span>
+          <span class="result-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <div><p class="eyebrow">Scan result</p><h2 id="result-title"></h2><p id="result-message"></p></div>
           <div class="result-actions"><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch ↓</button><button id="download-btn" class="btn ghost">Download JSON report ↓</button></div>
         </div>
@@ -132,7 +143,7 @@
         </div>
         <div id="cycle-reports" class="cycle-reports" hidden><h3>Cycle reports</h3><div id="cycle-list"></div></div>
         <details id="diff-wrap" class="diff-wrap" hidden>
-          <summary>Candidate patch <span id="diff-stats"></span><button class="icon-btn" id="copy-diff" type="button" title="Copy diff" aria-label="Copy diff">⧉</button></summary>
+          <summary>Candidate patch <span id="diff-stats"></span><button class="icon-btn" id="copy-diff" type="button" title="Copy diff" aria-label="Copy diff"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></summary>
           <pre id="diff" class="diff" tabindex="0" aria-label="Candidate unified diff"></pre>
         </details>
       </section>
@@ -147,7 +158,7 @@
               <button class="filter" data-filter="red" aria-pressed="false">Red</button>
               <button class="filter" data-filter="blue" aria-pressed="false">Blue</button>
             </div>
-            <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity">⧉</button>
+            <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           </div>
         </header>
         <div id="sys-log" class="log system-log" role="log" aria-label="Sandbox activity"><p class="empty">Ready when you are. Each scan creates and removes its own Docker resources.</p></div>

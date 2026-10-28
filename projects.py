@@ -13,7 +13,9 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from scan_profiles import SCAN_PROFILES
 
 if TYPE_CHECKING:
     from config import PurpleBoxConfig
@@ -78,13 +80,38 @@ class ProjectSpec(BaseModel):
     command: list[str] = Field(min_length=1, max_length=64)
     test_command: list[str] = Field(min_length=1, max_length=64)
     contract: str = Field(min_length=1, max_length=32_768)
+    scan_profile: str = "custom"
     cycles: int = Field(default=1, ge=1, le=20)
+    red_agents: int = Field(default=5, ge=1, le=12)
+    blue_agents: int = Field(default=5, ge=1, le=12)
     context_budget: int = Field(
         default=DEFAULT_CONTEXT_BUDGET,
         ge=MIN_CONTEXT_BUDGET,
         le=MAX_CONTEXT_BUDGET,
     )
     allow_remote_inference: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_scan_profile(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        profile_key = data.get("scan_profile", "custom")
+        if profile_key == "custom":
+            return data
+        if not isinstance(profile_key, str) or profile_key not in SCAN_PROFILES:
+            raise ValueError(f"Unknown scan profile: {profile_key!r}.")
+        profile_cycles = SCAN_PROFILES[profile_key].cycles
+        if "cycles" in data:
+            explicit_cycles = data["cycles"]
+            if type(explicit_cycles) is not int or explicit_cycles != profile_cycles:
+                raise ValueError(
+                    f"Scan profile {profile_key!r} requires integer {profile_cycles} cycles; "
+                    "omit cycles or provide the matching value."
+                )
+        data["cycles"] = profile_cycles
+        return data
 
     @field_validator("path", mode="before")
     @classmethod
@@ -145,6 +172,31 @@ class ProjectSnapshot:
     binary_files: tuple[str, ...]
     digest: str
     total_bytes: int
+
+
+_SECRET_CONTENT_PATTERNS = [
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
+    re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
+    re.compile(r"\bgh[prous]_[A-Za-z0-9_]{36,}\b"),
+    re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b"),
+    re.compile(r"\bsk_live_[0-9a-zA-Z]{24,}\b"),
+    re.compile(r"\bsk-ant-[0-9a-zA-Z-_]{20,}\b"),
+]
+
+
+def _contains_secret_material(content: bytes) -> bool:
+    """Detect inline secret material in UTF-8 decodable files."""
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    # Quick pre-filter to avoid regex on every file.
+    if not any(
+        token in text for token in ("PRIVATE KEY", "AKIA", "ASIA", "gh", "xox", "sk_live", "sk-ant")
+    ):
+        # Still check BEGIN pattern which contains PRIVATE KEY; already covered.
+        return False
+    return any(pattern.search(text) for pattern in _SECRET_CONTENT_PATTERNS)
 
 
 def _is_secret_file(name: str) -> bool:
@@ -290,6 +342,9 @@ def snapshot_project(
             if len(files) >= max_files:
                 raise ValueError(f"project contains more than {max_files} included files")
             content = _read_regular_file(Path(entry.path), entry_stat, max_file_bytes)
+            if _contains_secret_material(content):
+                skipped[relative_text] = "secret or credential content pattern"
+                continue
             if sum(len(item) for item in files.values()) + len(content) > max_total_bytes:
                 raise ValueError(f"project snapshot exceeds {max_total_bytes} bytes")
             mode = 0o755 if entry_stat.st_mode & 0o111 else 0o644

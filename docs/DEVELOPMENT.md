@@ -299,7 +299,7 @@ in the tree (former commit `82e702c`) and then in **all history**:
 - Pushed with `--force-with-lease=refs/heads/develop:3fdb331...`. `main` was untouched.
 - A fresh clone of GitHub had 0 matches in any file of any commit, in any message or
   author, and in raw pack blobs.
-- Backups made before the rewrite: `~/purplebox-pre-rewrite-backup-20261028T003810.{git,bundle}`.
+- Backups made before the rewrite: `~/secure-mitigation-pre-rewrite-backup-20261028T003810.{git,bundle}`.
   **They still contain the old name.** Delete them once you are satisfied.
 - Residual: GitHub still serves old commits by exact ID (e.g. `/commit/3fdb331` returns
   HTTP 200) until garbage collection. The repo is private with no PRs or forks, so only

@@ -1,6 +1,6 @@
 # Arbitrary-project workflow
 
-PurpleBox reviews an immutable snapshot of a local project without writing model output back to the source tree. The implementation is split between `project_agents.py` (stateless Muse roles and context batching) and `project_workflow.py` (Docker evidence gates, cycles, rollback, accounting, and reports).
+Secure Mitigation System reviews an immutable snapshot of a local project without writing model output back to the source tree. The implementation is split between `project_agents.py` (stateless Muse roles and context batching) and `project_workflow.py` (Docker evidence gates, cycles, rollback, accounting, and reports).
 
 ## Public entry point
 
@@ -201,3 +201,42 @@ patches in one cycle, that the second starts from the first retained snapshot,
 that original host files stay unchanged, and that cleanup succeeds. It does not
 measure live-model discovery quality. Never substitute the final blue report
 for the second patch call, or stop a named scan on the first empty finding.
+
+## Deep static + CVE scanning (2026-10-28)
+
+`deep_scan.py` and `cve_workflow.py` add an in-depth scanner alongside the
+probe/patch workflow:
+
+- Deterministic local static signals (eval/exec, deserialization, SQL
+  concatenation, shell sinks, TLS disabled, hardcoded secrets, cleartext HTTP,
+  debug flags) with CWE hints. Signals are triage hypotheses, never confirmed
+  vulnerabilities.
+- Dependency inventory from `requirements.txt`, `package.json`, and lockfiles,
+  queried against OSV.dev (`/v1/querybatch` + `/v1/vulns`) for CVE aliases,
+  CVSS severity, and fixed versions. OSV needs no key. Sources: https://osv.dev
+  and https://google.github.io/osv.dev/api/.
+- Optional Muse deep assessment (`DeepVulnReport`) that prioritizes reachable
+  paths and describes isolated verification probes with benign markers. It never
+  authorizes destructive payloads, persistence, exfiltration, or escapes, and
+  never replaces Docker probe evidence.
+
+CLI:
+
+```sh
+python main.py --project /path/to/repo \
+  --command '["python3", "app.py"]' \
+  --test-command '["python3", "-m", "unittest"]' \
+  --contract 'Preserve behavior' \
+  --cve-scan --offline-cve
+
+python main.py --project /path/to/repo \
+  --command '["python3", "app.py"]' \
+  --test-command '["python3", "-m", "unittest"]' \
+  --contract 'Preserve behavior' \
+  --cve-scan --deep-assessment
+```
+
+`--cve-scan` runs the deep scanner instead of probe/patch verification.
+`--offline-cve` skips OSV network lookup. `--deep-assessment` adds Muse triage
+and spends inference credit. Reports include `report.json` and `SUMMARY.md`
+with static signals, dependencies, CVE records, and advisory assessment.

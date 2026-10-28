@@ -2,6 +2,7 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """Resource-scoped Docker execution. Never run fixture or model code on the host."""
 
+import hashlib
 import io
 import re
 import tarfile
@@ -10,10 +11,11 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from docker.errors import DockerException, ImageNotFound, NotFound
-from docker.types import LogConfig
+from docker.types import LogConfig, Ulimit
 from requests.exceptions import ReadTimeout
 
 import docker
+from checks import validate_verifier_script
 from config import PurpleBoxConfig
 from projects import (
     MAX_PROJECT_BYTES,
@@ -117,7 +119,7 @@ def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
 
 
 def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
-    """Remove only PurpleBox session resources left by a crash. Base images are kept."""
+    """Remove only Secure Mitigation System session resources left by a crash. Base images are kept."""
     client = client if client is not None else docker.from_env(timeout=60)
     removed = {"containers": 0, "networks": 0, "snapshots": 0}
     label = {"label": "purplebox.session"}
@@ -140,9 +142,10 @@ class DockerSandboxManager:
             client if client is not None else docker.from_env(timeout=config.docker_timeout_seconds)
         )
         self.session_id = uuid.uuid4().hex
-        self.containers = []
-        self.networks = []
-        self.images = []
+        self.containers: list = []
+        self.networks: list = []
+        self.images: list[str] = []
+        self._snapshot_cache: dict[tuple[str, ...], str] = {}
 
     def __enter__(self):
         return self
@@ -193,6 +196,11 @@ class DockerSandboxManager:
             "environment": {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"},
             "labels": {"purplebox.session": self.session_id, "purplebox.role": role},
             "log_config": LogConfig(type="json-file", config={"max-size": "1m", "max-file": "1"}),
+            "ulimits": [
+                Ulimit(name="nofile", soft=256, hard=256),
+                Ulimit(name="core", soft=0, hard=0),
+            ],
+            "ipc_mode": "none",
         }
 
     @staticmethod
@@ -289,6 +297,15 @@ class DockerSandboxManager:
     def _snapshot(self, base: str, directory: str, filename: str, content: str, role: str) -> str:
         # Staging containers NEVER start. Injection precedes the read-only runtime.
         # This also avoids put_archive failures on an already read-only root filesystem.
+        cache_key = (
+            base,
+            directory,
+            filename,
+            hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            role,
+        )
+        if cache_key in self._snapshot_cache:
+            return self._snapshot_cache[cache_key]
         archive = self._create_tar_bytes(filename, content)
         stage = self.client.containers.create(
             base,
@@ -305,9 +322,14 @@ class DockerSandboxManager:
             # Register the tag before commit so cleanup can recover from a timeout.
             self.images.append(image_name)
             stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            self._snapshot_cache[cache_key] = image_name
             return image_name
         finally:
-            stage.remove(force=True)
+            try:
+                stage.remove(force=True)
+            finally:
+                if stage in self.containers:
+                    self.containers.remove(stage)
 
     def _runtime(
         self,
@@ -369,9 +391,15 @@ class DockerSandboxManager:
     def replace_target(self, previous, snapshot: str, network, target: Target, source: str):
         # Fresh process and immutable filesystem; no pkill or shell command interpolation.
         previous.remove(force=True)
+        if previous in self.containers:
+            self.containers.remove(previous)
         return self.start_cloneable_target(network, target, source, base_image=snapshot)
 
     def run_isolated_verifier(self, network, script: str) -> VerificationResult:
+        try:
+            validate_verifier_script(script)
+        except ValueError as exc:
+            raise SandboxError(str(exc)) from exc
         try:
             compile(script, "verify.py", "exec")
         except (SyntaxError, ValueError) as exc:
@@ -401,7 +429,7 @@ class DockerSandboxManager:
             loaded = self.client.images.get(image)
         except ImageNotFound as exc:
             raise SandboxError(
-                f"Project image {image!r} is not preloaded; PurpleBox never pulls or builds it."
+                f"Project image {image!r} is not preloaded; Secure Mitigation System never pulls or builds it."
             ) from exc
         config = loaded.attrs.get("Config") or {}
         if config.get("Volumes"):
@@ -428,6 +456,14 @@ class DockerSandboxManager:
         *,
         verifier_script: str | None = None,
     ) -> str:
+        cache_key = (
+            base,
+            snapshot.digest,
+            role,
+            hashlib.sha256((verifier_script or "").encode("utf-8")).hexdigest(),
+        )
+        if cache_key in self._snapshot_cache:
+            return self._snapshot_cache[cache_key]
         self._require_preloaded_image(base)
         source_archive = self._create_project_tar(snapshot)
         script_archive = (
@@ -453,9 +489,14 @@ class DockerSandboxManager:
             image_name = f"{self.config.clone_repo_prefix}:{tag}"
             self.images.append(image_name)
             stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            self._snapshot_cache[cache_key] = image_name
             return image_name
         finally:
-            stage.remove(force=True)
+            try:
+                stage.remove(force=True)
+            finally:
+                if stage in self.containers:
+                    self.containers.remove(stage)
 
     def start_project(self, network, spec: ProjectSpec, snapshot: ProjectSnapshot):
         """Start one fresh target from a committed in-memory source snapshot."""
@@ -497,6 +538,10 @@ class DockerSandboxManager:
             raise ValueError("Project check command must not be empty.")
 
         if script is not None:
+            try:
+                validate_verifier_script(script)
+            except ValueError as exc:
+                raise SandboxError(str(exc)) from exc
             try:
                 compile(script, "verify.py", "exec")
             except (SyntaxError, ValueError) as exc:

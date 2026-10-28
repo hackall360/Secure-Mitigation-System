@@ -16,6 +16,14 @@ const RESULT_LABELS = {
   error: 'Scan could not complete'
 };
 const MAX_ENTRIES = 300;
+const SCAN_PROFILE_CYCLES = {
+  extra_light: 1,
+  light: 3,
+  medium: 5,
+  heavy: 8,
+  super_heavy: 12,
+  ultra_heavy: 12
+};
 
 let targets = {};
 let socket = null;
@@ -26,6 +34,7 @@ let timer = null;
 let eventCount = 0;
 let currentStage = -1;
 let activeFilter = 'all';
+let popCount = 0;
 let profiles = [];
 let selectedProfile = 'custom';
 let sourceMode = 'demo';
@@ -108,6 +117,31 @@ function append(area, line) {
   if (pinned) area.scrollTop = area.scrollHeight;
 }
 
+function spawnTerminalPop(team, text) {
+  try {
+    if (document.querySelectorAll('.terminal-pop').length >= 3) document.querySelector('.terminal-pop').remove();
+    const pop = document.createElement('div');
+    pop.className = 'terminal-pop';
+    const titles = { red: 'red-team · boundary probe', blue: 'blue-team · sanitizer', system: 'orchestrator · sandbox' };
+    pop.style.right = `${18 + (popCount % 3) * 316}px`;
+    pop.style.bottom = '86px';
+    popCount += 1;
+    const head = document.createElement('header');
+    ['r','y','g'].forEach(() => head.append(document.createElement('i')));
+    const label = document.createElement('span');
+    label.textContent = titles[team] || titles.system;
+    label.style.marginLeft = '6px';
+    head.append(label);
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const pre = document.createElement('pre');
+    pre.textContent = String(text).slice(0, 280);
+    pop.append(head, pre, bar);
+    document.body.append(pop);
+    setTimeout(() => pop.remove(), 4200);
+  } catch { /* decorative only */ }
+}
+
 function writeLine(team, text) {
   const known = team === 'red' || team === 'blue' ? team : 'system';
   if (known !== 'system') {
@@ -116,6 +150,7 @@ function writeLine(team, text) {
   }
   // The activity timeline records every event so it can be filtered.
   append(logs.system, buildEntry(known, text, true));
+  if (team !== 'system' || /Cycle|probe|patch|regression|cleanup|Docker|Muse/i.test(String(text))) spawnTerminalPop(team, text);
   eventCount += 1;
   el('event-count').textContent = String(eventCount);
   advanceStage(known, String(text));
@@ -282,18 +317,36 @@ function parseArgv(id, label, errors) {
   }
 }
 
+function updateScanProfile() {
+  const key = el('project-scan-profile').value;
+  const cycles = SCAN_PROFILE_CYCLES[key];
+  const custom = key === 'custom';
+  el('project-cycles').readOnly = !custom;
+  if (!custom) el('project-cycles').value = String(cycles);
+  const cycleLabel = cycles === 1 ? '1 cycle' : `${cycles} cycles`;
+  el('project-scan-description').textContent = custom
+    ? 'Legacy compatibility mode · choose 1 to 20 single-pass cycles.'
+    : `${cycleLabel} · each cycle runs Red, Blue, Red, Blue with cumulative focus${key === 'ultra_heavy' ? ' and bounded automatic discovery from the first pass' : ''}.`;
+}
+
 function projectSpec() {
   const errors = [];
-  el('project-form').querySelectorAll('input, textarea').forEach((node) => node.removeAttribute('aria-invalid'));
+  el('project-form').querySelectorAll('input, textarea, select').forEach((node) => node.removeAttribute('aria-invalid'));
   const path = el('project-path').value.trim();
   const image = el('project-image').value.trim();
   const contract = el('project-contract').value.trim();
+  const scanProfile = el('project-scan-profile').value;
   const cycles = Number(el('project-cycles').value);
+  const redAgents = Number(el('project-red-agents').value);
+  const blueAgents = Number(el('project-blue-agents').value);
   const contextBudget = Number(el('project-budget').value);
   if (!path.startsWith('/')) { el('project-path').setAttribute('aria-invalid', 'true'); errors.push('Repository path must be absolute and start with /.'); }
   if (!image) { el('project-image').setAttribute('aria-invalid', 'true'); errors.push('Preloaded sandbox image is required.'); }
   if (!contract) { el('project-contract').setAttribute('aria-invalid', 'true'); errors.push('Behavior contract is required.'); }
+  if (scanProfile !== 'custom' && !Object.hasOwn(SCAN_PROFILE_CYCLES, scanProfile)) { el('project-scan-profile').setAttribute('aria-invalid', 'true'); errors.push('Choose a valid scan intensity.'); }
   if (!Number.isInteger(cycles) || cycles < 1 || cycles > 20) { el('project-cycles').setAttribute('aria-invalid', 'true'); errors.push('Cycles must be a whole number from 1 to 20.'); }
+  if (!Number.isInteger(redAgents) || redAgents < 1 || redAgents > 12) { el('project-red-agents').setAttribute('aria-invalid', 'true'); errors.push('Red agents must be a whole number from 1 to 12.'); }
+  if (!Number.isInteger(blueAgents) || blueAgents < 1 || blueAgents > 12) { el('project-blue-agents').setAttribute('aria-invalid', 'true'); errors.push('Blue agents must be a whole number from 1 to 12.'); }
   if (!Number.isInteger(contextBudget) || contextBudget < 1024 || contextBudget > 131072) { el('project-budget').setAttribute('aria-invalid', 'true'); errors.push('Context budget must be a whole number from 1024 to 131072.'); }
   if (inferenceMode !== 'local' && !el('allow-remote').checked) errors.push('Confirm that source may be sent to the configured Muse endpoint.');
   const command = parseArgv('project-command', 'Start command', errors);
@@ -301,11 +354,11 @@ function projectSpec() {
   el('project-errors').hidden = errors.length === 0;
   el('project-errors').textContent = errors.join(' ');
   if (errors.length) return null;
-  return { path, image, command, test_command: testCommand, contract, cycles, context_budget: contextBudget, allow_remote_inference: inferenceMode !== 'local' && el('allow-remote').checked };
+  return { path, image, command, test_command: testCommand, contract, scan_profile: scanProfile, cycles, red_agents: redAgents, blue_agents: blueAgents, context_budget: contextBudget, allow_remote_inference: inferenceMode !== 'local' && el('allow-remote').checked };
 }
 
 function lockProjectForm(locked) {
-  el('project-form').querySelectorAll('input, textarea').forEach((node) => { node.disabled = locked; });
+  el('project-form').querySelectorAll('input, textarea, select').forEach((node) => { node.disabled = locked; });
   document.querySelectorAll('.mode').forEach((node) => { node.disabled = locked; });
 }
 
@@ -424,7 +477,7 @@ function renderCycles(cycles) {
     details.className = 'cycle-report';
     if (index === cycles.length - 1) details.open = true;
     const summary = document.createElement('summary');
-    summary.textContent = `Cycle ${cycle.cycle || index + 1}${cycle.status ? ` · ${cycle.status}` : ''}`;
+    summary.textContent = `Cycle ${cycle.cycle || index + 1}${cycle.pass_number ? ` · pass ${cycle.pass_number}` : ''}${cycle.status ? ` · ${cycle.status}` : ''}`;
     const body = document.createElement('div');
     body.className = 'cycle-body';
     [['Report', cycle.report || cycle.message], ['Evidence', cycle.evidence], ['Diff', cycle.diff]].forEach(([heading, value]) => {
@@ -562,7 +615,7 @@ function startScan() {
   socket = new WebSocket(sourceMode === 'project' ? `${base}/ws/project${profileQuery}` : `${base}/ws/combat/${encodeURIComponent(key)}${profileQuery}`);
   if (spec) socket.onopen = () => {
     socket.send(JSON.stringify(spec));
-    writeLine('system', `Project specification accepted by connection · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} requested.`);
+    writeLine('system', `Project specification accepted · ${spec.scan_profile} intensity · ${spec.cycles} cycle${spec.cycles === 1 ? '' : 's'} · ${spec.red_agents} red / ${spec.blue_agents} blue agents.`);
   };
   socket.onmessage = (event) => {
     try {
@@ -608,6 +661,7 @@ function stopScan() {
 
 el('run-btn').addEventListener('click', startScan);
 el('stop-btn').addEventListener('click', stopScan);
+el('project-scan-profile').addEventListener('change', updateScanProfile);
 document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => setSourceMode(button.dataset.mode)));
 
 el('download-btn').addEventListener('click', () => {
@@ -620,7 +674,7 @@ el('download-btn').addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `purplebox-${latestResult.target || latestResult.project || 'project'}-report.json`;
+  anchor.download = `secure-mitigation-${latestResult.target || latestResult.project || 'project'}-report.json`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');
@@ -677,4 +731,5 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+updateScanProfile();
 initialize();

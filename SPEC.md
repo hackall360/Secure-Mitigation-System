@@ -1,4 +1,4 @@
-# PurpleBox: Autonomous Input-Sanitization & Boundary Verification System
+# Secure Mitigation System: Autonomous Input-Sanitization & Boundary Verification System
 **Technical Specification & AI Agent Bootstrap Document (`SPEC.md`)**
 
 ---
@@ -19,7 +19,7 @@
   4. Concise project write-up detailing the problem, target users, and how Meta's Muse models power the workflow.
 
 ### 1.2 Product Scope & "Trojan Horse" Boundaries
-PurpleBox is a local, containerized Purple-Team orchestration engine designed for solo developers to detect known input-handling weaknesses in local project folders, verify input reachability in an isolated sandbox, and apply surgical **input-sanitization patches**.
+Secure Mitigation System is a local, containerized Purple-Team orchestration engine designed for solo developers to detect known input-handling weaknesses in local project folders, verify input reachability in an isolated sandbox, and apply surgical **input-sanitization patches**.
 
 To protect commercial intellectual property while delivering a high-impact hackathon demonstration, the system enforces strict architectural boundaries:
 1. **Sanitization-Only Patching:** The Blue Team agent is strictly prohibited from refactoring application architecture, changing database schemas, or rewriting business logic. It may only introduce input validation, type casting, allowlist filtering, context-appropriate escaping, parameterized query wrappers, or hardened configuration directives immediately upstream of a vulnerable sink.
@@ -42,7 +42,7 @@ This repository is governed under the **PolyForm Noncommercial License 1.0.0** (
 
 ## 3. Container Architecture: Cloneable Base Images & Strict Isolation
 
-To achieve sub-second spin-up times and strict separation between the **Target Service** and the **Verification Runner**, PurpleBox uses pre-built, cloneable local Docker images connected over an ephemeral, air-gapped internal bridge network.
+To achieve sub-second spin-up times and strict separation between the **Target Service** and the **Verification Runner**, Secure Mitigation System uses pre-built, cloneable local Docker images connected over an ephemeral, air-gapped internal bridge network.
 
 ```
 +-----------------------------------------------------------------------+
@@ -59,7 +59,7 @@ To achieve sub-second spin-up times and strict separation between the **Target S
 |                                                                       |
 |  +---------------------------------+  +----------------------------+  |
 |  | Target Service Container        |  | Verification Container     |  |
-|  | Image: purplebox-target-base    |  | Image: purplebox-verifier  |  |
+|  | Image: purplebox-target-base    |  | Image: secure-mitigation-verifier  |  |
 |  | Role: Runs target app (PHP,     |  | Role: Executes safe input  |  |
 |  |       Node.js, or MySQL config) |< |       boundary checks      |  |
 |  | Caps: DROP ALL, no-new-privs    |  | Caps: DROP ALL, read-only  |  |
@@ -122,10 +122,10 @@ Any AI coding agent operating on this repository must obey the following enginee
 If an AI agent is instructed to initialize the workspace or generate `AGENT.md` files, it must create a root `AGENT.md` (and optional sub-directory `AGENT.md` files inside `targets/`) using the exact template below:
 
 ```markdown
-# AGENT.md - PurpleBox Workspace Instructions
+# AGENT.md - Secure Mitigation System Workspace Instructions
 
 ## Role & Objective
-You are an autonomous software engineering agent maintaining **PurpleBox**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
+You are an autonomous software engineering agent maintaining **Secure Mitigation System**, a containerized vulnerability verification and input-sanitization system built for the Meta Global AI Developer Hackathon.
 
 ## Mandatory Coding Standards
 1. **No Partial Code Blocks:** Always write complete files from top to bottom. Never use ellipses (`...`) or placeholder comments to skip unchanged code.
@@ -143,7 +143,7 @@ You are an autonomous software engineering agent maintaining **PurpleBox**, a co
 
 ## 7. Complete Starter Codebase
 
-Below are the complete, runnable core files that form the backbone of PurpleBox.
+Below are the complete, runnable core files that form the backbone of Secure Mitigation System.
 
 ### 7.1 `requirements.txt`
 ```text
@@ -202,14 +202,14 @@ def require_api_key(config: PurpleBoxConfig) -> None:
     if not config.meta_api_key:
         sys.stderr.write(
             "[FATAL] META_MUSE_API_KEY environment variable is required.\n"
-            "PurpleBox exclusively runs on Meta Muse models.\n"
+            "Secure Mitigation System exclusively runs on Meta Muse models.\n"
         )
         raise RuntimeError("Missing META_MUSE_API_KEY environment variable.")
 ```
 
 ### 7.3 `prompts.py`
 ```python
-RED_TEAM_SYSTEM_PROMPT = """You are the PurpleBox Red Team Boundary Verification Agent, powered by Meta Muse.
+RED_TEAM_SYSTEM_PROMPT = """You are the Secure Mitigation System Red Team Boundary Verification Agent, powered by Meta Muse.
 Your job is to inspect target source code or configuration files for known input-handling vulnerabilities (such as unsanitized query interpolation, unvalidated command arguments, path traversal sinks, or insecure configuration flags).
 
 STRICT OPERATIONAL RULES:
@@ -226,7 +226,7 @@ STRICT OPERATIONAL RULES:
 }
 Do not wrap the JSON in markdown fences or include any text outside the JSON object."""
 
-BLUE_TEAM_SYSTEM_PROMPT = """You are the PurpleBox Blue Team Input-Sanitization Agent, powered by Meta Muse.
+BLUE_TEAM_SYSTEM_PROMPT = """You are the Secure Mitigation System Blue Team Input-Sanitization Agent, powered by Meta Muse.
 Your job is to patch vulnerable source code or configuration files strictly by adding input sanitization, boundary validation, parameterization, or safe configuration defaults.
 
 STRICT OPERATIONAL RULES:
@@ -514,7 +514,7 @@ from config import load_config
 from docker_manager import DockerSandboxManager
 from agents import MetaMuseClient
 
-app = FastAPI(title="PurpleBox Orchestrator")
+app = FastAPI(title="Secure Mitigation System Orchestrator")
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 TARGETS_DIR = BASE_DIR / "targets"
@@ -728,7 +728,7 @@ async def cli_runner(target_key: str) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="PurpleBox: Meta Muse Containerized Sanitization Orchestrator"
+        description="Secure Mitigation System: Meta Muse Containerized Sanitization Orchestrator"
     )
     parser.add_argument(
         "--init-images",
@@ -784,7 +784,7 @@ if __name__ == "__main__":
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PurpleBox // Meta Muse Security Sanitizer</title>
+    <title>Secure Mitigation System // Meta Muse Security Sanitizer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .term-font { font-family: 'Courier New', Courier, monospace; }
@@ -797,7 +797,7 @@ if __name__ == "__main__":
     <header class="flex flex-wrap justify-between items-center pb-4 border-b border-slate-800 gap-4">
         <div>
             <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-rose-500 via-purple-400 to-sky-400">
-                PurpleBox // Meta Muse Orchestrator
+                Secure Mitigation System // Meta Muse Orchestrator
             </h1>
             <p class="text-slate-400 text-xs mt-1">
                 Isolated Cloneable Container Verification &amp; Surgical Input-Sanitization Engine

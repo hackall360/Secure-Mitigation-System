@@ -1,4 +1,4 @@
-# PurpleBox license
+# Secure Mitigation System license
 
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 

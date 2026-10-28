@@ -35,7 +35,7 @@
   browser evidence-summary traps. No permissive JSON repair or provider fallback
   was added. Local schema validation still rejects malformed responses.
 - Private generated evidence lives under ignored `reports/`. Test-only dashboard
-  and inference servers were stopped after acceptance. No PurpleBox containers,
+  and inference servers were stopped after acceptance. No Secure Mitigation System containers,
   session networks, or snapshot images remained in the final inspection.
 
 ## Operator prerequisites, not bundled services
@@ -73,7 +73,7 @@ final acceptance above where their environment or validation status differs.
   readiness, local non-consent, and context-bound checks. FastAPI tests exercise
   project WebSockets, disconnect cleanup, shared scan locking, input rejection,
   and private CLI report exports. These are not visual browser acceptance tests.
-- Post-run Docker inspection found no PurpleBox containers or session networks.
+- Post-run Docker inspection found no Secure Mitigation System containers or session networks.
 - Arbitrary projects require a compatible preloaded image, dependencies, startup
   command, regression command, and behavior contract. No clone, package download,
   automatic patch application, universal-language support, VM-grade containment,

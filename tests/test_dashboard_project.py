@@ -10,12 +10,14 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "static" / "app.js"
+INDEX = SCRIPT.with_name("index.html")
 NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="Node is needed for JavaScript checks")
 
 
 def evaluate(body):
     script = SCRIPT.read_text()
+    constants = script[script.index("const SCAN_PROFILE_CYCLES") : script.index("let targets")]
     functions = script[
         script.index("function parseArgv(") : script.index("function lockProjectForm(")
     ]
@@ -26,13 +28,16 @@ def evaluate(body):
         script.index("function summaryEvidence(") : script.index("function showResult(")
     ]
     usage = script[script.index("function formatCost(") : script.index("function renderCycles(")]
+    render_cycles = script[
+        script.index("function renderCycles(") : script.index("function summaryEvidence(")
+    ]
     harness = r"""
 const assert = require('node:assert/strict');
 const nodes = new Map();
 function el(id) {
   if (!nodes.has(id)) nodes.set(id, {
     value: '', checked: false, hidden: false, required: true, disabled: false,
-    textContent: '', dataset: {}, label: {hidden: false},
+    textContent: '', readOnly: false, dataset: {}, label: {hidden: false},
     setAttribute() {}, removeAttribute() {}, querySelectorAll() { return []; },
     closest() { return this.label; }
   });
@@ -51,12 +56,19 @@ function fill() {
   el('project-contract').value = 'Preserve API';
   el('project-command').value = '["python3", "app.py"]';
   el('project-test-command').value = '["python3", "-m", "unittest"]';
+  el('project-scan-profile').value = 'extra_light';
   el('project-cycles').value = '1';
+  el('project-red-agents').value = '5';
+  el('project-blue-agents').value = '5';
   el('project-budget').value = '32768';
 }
 """
     subprocess.run(
-        [NODE, "-e", harness + functions + initialize + summary + usage + body],
+        [
+            NODE,
+            "-e",
+            harness + constants + functions + initialize + summary + usage + render_cycles + body,
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -85,6 +97,64 @@ inferenceMode = 'local';
 el('project-budget').value = {json.dumps(str(budget))};
 assert.equal(projectSpec(), null);
 assert.match(el('project-errors').textContent, /1024 to 131072/);
+    """)
+
+
+def test_scan_intensity_derives_cycles_and_custom_restores_legacy_editing():
+    evaluate("""
+fill();
+inferenceMode = 'local';
+updateScanProfile();
+assert.equal(el('project-cycles').readOnly, true);
+assert.equal(projectSpec().scan_profile, 'extra_light');
+assert.equal(projectSpec().cycles, 1);
+assert.equal(projectSpec().red_agents, 5);
+assert.equal(projectSpec().blue_agents, 5);
+el('project-scan-profile').value = 'ultra_heavy';
+updateScanProfile();
+assert.equal(el('project-cycles').value, '12');
+assert.match(el('project-scan-description').textContent, /Red, Blue, Red, Blue/);
+assert.match(el('project-scan-description').textContent, /bounded automatic discovery/);
+el('project-scan-profile').value = 'custom';
+updateScanProfile();
+assert.equal(el('project-cycles').readOnly, false);
+el('project-cycles').value = '9';
+assert.equal(projectSpec().cycles, 9);
+    """)
+
+
+def test_dashboard_markup_defaults_to_extra_light_and_five_agent_teams():
+    markup = INDEX.read_text()
+    assert '<option value="extra_light" selected>' in markup
+    assert 'id="project-cycles"' in markup and "readonly" in markup
+    assert 'id="project-red-agents"' in markup and 'name="red_agents"' in markup
+    assert 'id="project-blue-agents"' in markup and 'name="blue_agents"' in markup
+    assert markup.count('max="12" value="5"') >= 2
+
+
+def test_cycle_result_label_includes_named_profile_pass_number():
+    evaluate("""
+const list = el('cycle-list');
+list.children = [];
+list.replaceChildren = () => { list.children = []; };
+list.append = (node) => list.children.push(node);
+global.document = {createElement: (tag) => ({
+  tagName: tag, className: '', open: false, textContent: '', children: [],
+  append(...nodes) { this.children.push(...nodes); }
+})};
+renderCycles([{cycle: 2, pass_number: 1, status: 'retained'}]);
+assert.equal(list.children[0].children[0].textContent, 'Cycle 2 · pass 1 · retained');
+""")
+
+
+@pytest.mark.parametrize("field,value", [("project-red-agents", 0), ("project-blue-agents", 13)])
+def test_team_sizes_match_backend_bounds(field, value):
+    evaluate(f"""
+fill();
+inferenceMode = 'local';
+el({json.dumps(field)}).value = {json.dumps(str(value))};
+assert.equal(projectSpec(), null);
+assert.match(el('project-errors').textContent, /agents must be a whole number from 1 to 12/);
 """)
 
 

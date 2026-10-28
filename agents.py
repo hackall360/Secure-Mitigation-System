@@ -2,7 +2,9 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """One inference transport, explicitly addressed to a configured Muse endpoint."""
 
+import asyncio
 import json
+import re
 import time
 from typing import TypeVar
 
@@ -12,6 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from config import PurpleBoxConfig, require_api_key
 from pricing import CallUsage, usage_from_response
 from prompts import BLUE_TEAM_SYSTEM_PROMPT, RED_TEAM_SYSTEM_PROMPT
+
+# Alias for branding migration; both names refer to the same config type.
+SecureMitigationSystemConfig = PurpleBoxConfig
 
 
 class AgentError(RuntimeError):
@@ -34,6 +39,92 @@ class BlueTeamPatch(BaseModel):
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
+
+
+def _extract_json_object(text: str) -> str:
+    """Return the outermost JSON object from text, stripping fences without mutating literals.
+
+    - Strips wrapping Markdown fences ``` or ```json if present.
+    - Otherwise extracts the outermost {...} deterministically, respecting string literals
+      and escapes, so braces inside strings do not affect boundary detection.
+    """
+    if "\x00" in text:
+        raise ValueError("Response contains NUL bytes.")
+    stripped = text.strip()
+    # Strip Markdown fences cleanly.
+    fence_match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?\s*```\s*", stripped, flags=re.DOTALL)
+    if fence_match:
+        stripped = fence_match.group(1).strip()
+        # After fence removal, still extract outer object if extra surrounding text remains.
+    # Find outermost { ... } respecting strings.
+    in_string = False
+    escape = False
+    depth = 0
+    start_idx = -1
+    end_idx = -1
+    for idx, ch in enumerate(stripped):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        else:
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == "{":
+                if depth == 0:
+                    start_idx = idx
+                depth += 1
+            elif ch == "}":
+                if depth > 0:
+                    depth -= 1
+                    if depth == 0 and start_idx != -1:
+                        end_idx = idx
+                        # Don't break; keep searching for outermost last balanced close.
+                        # For deterministic outermost, continue to find final depth-0 close.
+                        # But if there are multiple top-level objects, last close is outermost end.
+                        # For single object, first start and final end is correct.
+                        pass
+    if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+        # Find the last depth-0 closing brace overall.
+        # Re-scan to find the final balanced close for the first object.
+        # Simpler: use last balanced close found.
+        candidate = stripped[start_idx : end_idx + 1]
+        # Validate it's parseable; if not, fallback to stripped.
+        try:
+            json.loads(candidate)
+            return candidate
+        except Exception:
+            pass
+        # If candidate not valid, try first balanced segment.
+        depth = 0
+        in_string = False
+        escape = False
+        for idx, ch in enumerate(stripped[start_idx:], start=start_idx):
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return stripped[start_idx : idx + 1]
+        return stripped[start_idx : end_idx + 1]
+    # No braces found; return stripped for validation to fail with schema error.
+    return stripped
 
 
 class MetaMuseClient:
@@ -72,61 +163,108 @@ class MetaMuseClient:
         }
         if self.config.reasoning_effort:
             body["reasoning_effort"] = self.config.reasoning_effort
+        else:
+            body["temperature"] = 0.1
         return body
 
     async def _request(
         self, model: str, system: str, payload: dict, schema: type[ResponseModel], role: str = ""
     ) -> ResponseModel:
-        started = time.monotonic()
-        # Meta's Chat Completions endpoint constrains decoding through response_format,
-        # not a schema embedded only in prompt text. Keep exactly one schema on wire.
-        user_payload = dict(payload)
-        user_payload.pop("response_schema", None)
-        request_body = self._body(model, system, user_payload)
-        request_body["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema.__name__,
-                "schema": schema.model_json_schema(),
-            },
-        }
-        try:
-            async with self.client.stream(
-                "POST",
-                "chat/completions",
-                json=request_body,
-            ) as response:
-                if response.status_code != 200:
-                    raise AgentError(
-                        f"Muse API returned HTTP {response.status_code}; check endpoint, model access, and key."
-                    )
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > 1_048_576:
-                        raise AgentError("Muse response exceeded the 1 MiB limit.")
-            data = json.loads(body)
-            self.usage.append(usage_from_response(role, model, data, time.monotonic() - started))
-            choice = data["choices"][0]
-            if choice.get("finish_reason") == "length":
-                raise AgentError(
-                    "Muse ran out of output tokens before finishing (reasoning counts toward "
-                    "the limit). Raise META_MUSE_MAX_TOKENS or lower META_MUSE_REASONING_EFFORT."
+        # Bounded retry for transient HTTP codes while recording every completed response.
+        last_error: Exception | None = None
+        for attempt in range(2):
+            started = time.monotonic()
+            # Meta's Chat Completions endpoint constrains decoding through response_format,
+            # not a schema embedded only in prompt text. Keep exactly one schema on wire.
+            user_payload = dict(payload)
+            user_payload.pop("response_schema", None)
+            request_body = self._body(model, system, user_payload)
+            request_body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "schema": schema.model_json_schema(),
+                },
+            }
+            try:
+                async with self.client.stream(
+                    "POST",
+                    "chat/completions",
+                    json=request_body,
+                ) as response:
+                    if response.status_code in (429, 502, 503, 504) and attempt == 0:
+                        # Record usage if possible before retrying.
+                        try:
+                            body = bytearray()
+                            async for chunk in response.aiter_bytes():
+                                body.extend(chunk)
+                                if len(body) > 1_048_576:
+                                    break
+                            try:
+                                data = json.loads(body) if body else {}
+                            except Exception:
+                                data = {}
+                            # Only record if body looks like a model response.
+                            if isinstance(data, dict) and "usage" in data:
+                                self.usage.append(
+                                    usage_from_response(
+                                        role, model, data, time.monotonic() - started
+                                    )
+                                )
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.5)
+                        continue
+                    if response.status_code != 200:
+                        raise AgentError(
+                            f"Muse API returned HTTP {response.status_code}; check endpoint, model access, and key."
+                        )
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > 1_048_576:
+                            raise AgentError("Muse response exceeded the 1 MiB limit.")
+                data = json.loads(body)
+                self.usage.append(
+                    usage_from_response(role, model, data, time.monotonic() - started)
                 )
-            if choice.get("finish_reason") not in (None, "stop"):
-                raise AgentError("Muse returned an incomplete response.")
-            content = choice["message"]["content"]
-            if not isinstance(content, str):
-                raise AgentError("Muse did not return text JSON.")
-            return schema.model_validate_json(content)
-        except httpx.HTTPError as exc:
+                choice = data["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    raise AgentError(
+                        "Muse ran out of output tokens before finishing (reasoning counts toward "
+                        "the limit). Raise META_MUSE_MAX_TOKENS or lower META_MUSE_REASONING_EFFORT."
+                    )
+                if choice.get("finish_reason") not in (None, "stop"):
+                    raise AgentError("Muse returned an incomplete response.")
+                content = choice["message"]["content"]
+                if not isinstance(content, str):
+                    raise AgentError("Muse did not return text JSON.")
+                # Strip fences and extract JSON before schema validation.
+                cleaned = _extract_json_object(content)
+                try:
+                    return schema.model_validate_json(cleaned)
+                except (ValidationError, ValueError) as exc:
+                    # Usage already recorded above; re-raise as AgentError.
+                    raise AgentError(
+                        "Muse returned invalid JSON or an unexpected response schema."
+                    ) from exc
+            except httpx.HTTPError as exc:
+                last_error = exc
+                raise AgentError(
+                    "Muse request failed or timed out; no fallback provider was contacted."
+                ) from exc
+            except AgentError:
+                raise
+            except (KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
+                raise AgentError(
+                    "Muse returned invalid JSON or an unexpected response schema."
+                ) from exc
+        # If loop exhausted via transient retry without success, raise last transient.
+        if last_error is not None:
             raise AgentError(
                 "Muse request failed or timed out; no fallback provider was contacted."
-            ) from exc
-        except (KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
-            raise AgentError(
-                "Muse returned invalid JSON or an unexpected response schema."
-            ) from exc
+            ) from last_error
+        raise AgentError("Muse API returned a transient error after retry.")
 
     async def run_red_team_analysis(
         self, filename: str, source_code: str, contract: str = ""

@@ -116,5 +116,5 @@ def require_api_key(config: PurpleBoxConfig) -> None:
     config.validate()
     if config.inference_mode != "local" and not config.meta_api_key:
         raise ConfigurationError(
-            "META_MUSE_API_KEY is required for scans. PurpleBox uses Meta Muse only."
+            "META_MUSE_API_KEY is required for scans. Secure Mitigation System uses Meta Muse only."
         )
