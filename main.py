@@ -579,10 +579,20 @@ async def cli_runner(
         _out(f"Status: {status_color(str(result.status), use_color)}")
     for call in result.usage.calls:
         cost = "price unknown" if call.cost_usd is None else f"${call.cost_usd:.4f}"
+        # Per-call transparency: which Muse model is active, which phase
+        # (usage role) it served, and how it reasons — token counts from the
+        # usage payload plus the reasoning share of its output tokens.
+        output_tokens = max(int(getattr(call, "completion_tokens", 0) or 0), 0)
+        reasoning_tokens = max(int(getattr(call, "reasoning_tokens", 0) or 0), 0)
+        reasoning_share = (
+            reasoning_tokens / output_tokens if output_tokens > 0 else 0.0
+        )
         print(
             f"[USAGE ] {call.role or '?'} {call.model}: {call.prompt_tokens} in, "
-            f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning), "
-            f"{call.seconds:.1f}s, {cost}",
+            f"{call.completion_tokens} out ({call.reasoning_tokens} reasoning, "
+            f"{reasoning_share:.0%} of output), "
+            f"{call.seconds:.1f}s, {cost} "
+            f"[model {call.model} active on {call.role or '?'} phase]",
             flush=True,
             file=sys.stderr,
         )
