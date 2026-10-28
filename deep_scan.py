@@ -361,19 +361,3 @@ async def muse_deep_assessment(
         role="deep_vuln_assessment",
         max_payload_bytes=max_payload_bytes,
     )
-
-
-@dataclass
-class CveScanResult:
-    """Offline intermediate: static signals + OSV summaries before Muse triage.
-
-    `query_osv_batch` / `fetch_osv_vuln` shape the transport; the CVE
-    workflow promotes the surviving records into `CveScanReport`.
-    """
-
-    static_findings: list[StaticFinding] = field(default_factory=list)
-    dependencies: list[dict[str, str]] = field(default_factory=list)
-    osv_results: list[dict[str, Any]] = field(default_factory=list)
-    cve_summaries: list[dict[str, Any]] = field(default_factory=list)
-    deep_report: DeepVulnReport | None = None
-    errors: list[str] = field(default_factory=list)
