@@ -239,3 +239,36 @@ dist/
 .env.*
 !.env.example
 !example.env
+
+# ---- Secure Mitigation System project artifacts (never commit) ----
+# Scan outputs: reports contain source code, model output, candidate patches.
+reports/
+*.patch
+!targets/**/*.patch
+# Headless-browser E2E screenshots (default to repo root or /tmp).
+ui-scan*.png
+*-scan.png
+e2e-*.png
+screenshot*.png
+# Dependency-Check output (JSON/XML/HTML reports + local H2 DB).
+dependency-check-report.*
+depcheck/
+dcreport/
+odc-data/
+# OSV-Scanner / Trivy / Grype local report dumps.
+osv-scanner-*.json
+trivy-*.json
+trivy-*.sarif
+grype-*.json
+sbom.*.json
+bom.xml
+# Browser/driver runtime logs and profiles.
+geckodriver.log
+chromedriver.log
+*.har
+# Agent scratch and local tooling state.
+.jcode/scratch/
+.jcode/tools/__pycache__/
+*.tmp
+.DS_Store
+Thumbs.db
