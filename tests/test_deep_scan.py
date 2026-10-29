@@ -1454,6 +1454,8 @@ def test_w8v2_1_stale_signals_do_not_boost_rank(monkeypatch):
     with no signals: _queue_evidence reads both as absent, so _fast_lane_rank
     must order them by the id tiebreak only. Real enrich+rank path.
     """
+def test_w8v2_5_stale_token_marks_expired_not_absent(monkeypatch):
+    """W8 item 6 RED: stale (>1d) KEV/EPSS via real enrich path renders stale:<date>, not absent."""
     import datetime as _dt
 
     import modules.workflows.cve_workflow as _cw
@@ -1503,9 +1505,62 @@ def test_w8v2_1_stale_signals_do_not_boost_rank(monkeypatch):
     # Raw numeric fields stay (fail-closed lives in the readers, not the store).
     assert boosted["kev_listed"] is True
     assert boosted["epss_percentile"] == 0.99
-    # Evidence reads the stale boost as absent on both records...
-    assert "kev:absent" in _cw._queue_evidence(boosted)
-    assert "epss:absent" in _cw._queue_evidence(boosted)
+    # Evidence reads the stale boost as stale:<date> (w8v2-5 token), never as a live signal...
+    assert f"kev:stale:{stale}" in _cw._queue_evidence(boosted)
+    assert f"epss:stale:{stale}" in _cw._queue_evidence(boosted)
     # ...so rank must agree: stale boost never outranks; id tiebreak decides.
     ordered = sorted([boosted, plain], key=_cw._fast_lane_rank)
     assert [s["id"] for s in ordered] == ["GHSA-aaa", "GHSA-zzz"]
+
+
+def test_w8v2_5_stale_token_marks_expired_not_absent(monkeypatch):
+    """W8 item 6 RED: stale (>1d) KEV/EPSS via real enrich path renders stale:<date>, not absent."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+
+    def fake_kev(cve_id):
+        return ResearchRecord(
+            source="kev",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"kev_listed": True, "kev_date": stale},
+        )
+
+    def fake_epss(cve_id):
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95", "epss_date": stale},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.95
+    ev = _cw._queue_evidence(summary)
+    assert f"kev:stale:{stale}" in ev
+    assert f"epss:stale:{stale}" in ev
+    assert "absent" not in ev
+
+
+def test_w8v2_5_absent_stays_for_never_signalled(monkeypatch):
+    """W8 item 6: truly missing KEV/EPSS (no signal) still renders absent, never stale."""
+    import modules.workflows.cve_workflow as _cw
+
+    monkeypatch.setattr(_cw, "kev_lookup", lambda cve_id: None)
+    monkeypatch.setattr(_cw, "epss_score", lambda cve_id: None)
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    ev = _cw._queue_evidence(summary)
+    assert "kev:absent" in ev and "epss:absent" in ev
+    assert "stale" not in ev

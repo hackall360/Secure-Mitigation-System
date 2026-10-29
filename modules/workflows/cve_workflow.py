@@ -83,15 +83,31 @@ def _source_fresh(raw: object) -> bool:
     return (today - stamped).days <= _SOURCE_FRESH_DAYS
 
 
+def _signal_token(present: bool, raw: object, fresh_label: str) -> str:
+    """Three-state signal token: absent (never signalled) vs fresh vs stale.
+
+    `absent` stays for truly missing signals. A present signal whose stamped
+    date proves it older than 1 day renders `stale:<YYYY-MM-DD>` so reviewers
+    can separate expired intel from never-signalled. Undated present signals
+    stay fresh: enrichment fetches them live inline.
+    """
+    if not present:
+        return "absent"
+    if _source_fresh(raw):
+        return fresh_label
+    return f"stale:{str(raw or '').strip()[:10]}"
+
+
 def _queue_evidence(summary: dict[str, Any]) -> str:
     """One-line auditable tie-break record for a fast-lane ranked summary.
 
     Pure function of the enriched summary: reach score, first fixed version,
     KEV listing, EPSS percentile. Absence is recorded explicitly so the queue
     order is auditable whether signals fired or not. Bounded, deterministic.
-    Stale-dated (>1 day) KEV/EPSS signals read as absent while the
-    enriched numeric fields stay untouched (ordering is fail-closed too).
-    Undated signals stay: enrichment fetches them live inline.
+    Stale-dated (>1 day) KEV/EPSS signals render as stale:<date> with the
+    proven-old date while the enriched numeric fields stay untouched
+    (ordering is fail-closed too). Undated signals stay: enrichment fetches
+    them live inline.
     """
     try:
         reach_s = str(int(summary.get("reach_score") or 0))
@@ -99,16 +115,16 @@ def _queue_evidence(summary: dict[str, Any]) -> str:
         reach_s = "?"
     fixed = summary.get("fixed_versions") or []
     fix_s = str(fixed[0])[:40] if fixed else "none"
-    kev_s = (
-        "listed"
-        if summary.get("kev_listed") is True and _source_fresh(summary.get("kev_date"))
-        else "absent"
+    kev_s = _signal_token(
+        summary.get("kev_listed") is True,
+        summary.get("kev_date"),
+        "listed",
     )
     try:
         pct = float(summary.get("epss_percentile", ""))
         epss_s = (
-            f"{pct:.2f}"
-            if 0.0 <= pct <= 1.0 and _source_fresh(summary.get("epss_date"))
+            _signal_token(0.0 <= pct <= 1.0, summary.get("epss_date"), f"{pct:.2f}")
+            if 0.0 <= pct <= 1.0
             else "absent"
         )
     except (TypeError, ValueError):
