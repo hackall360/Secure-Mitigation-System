@@ -639,9 +639,7 @@ class DockerProjectSandbox:
                     )
                     mutations_ev = _check_evidence(mutation_check, 131_072)
             except Exception:
-                mutations_ev = ExecutionEvidence(
-                    exit_code=2, output="Mutations check did not run."
-                )
+                mutations_ev = ExecutionEvidence(exit_code=2, output="Mutations check did not run.")
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.

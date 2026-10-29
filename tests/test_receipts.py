@@ -6,18 +6,12 @@ import hashlib
 import json
 
 from helpers import (
-    FakeFixtureSandbox,
     FakeProjectMuse,
     FakeProjectSandbox,
-    ResearchFakeFixtureMuse,
     project_verification,
     run_fixture_workflow,
     run_project_workflow,
-    silent_emit,
 )
-
-from modules.core.config import PurpleBoxConfig
-from modules.workflows.workflow import execute_purple_workflow
 
 
 async def test_fixture_verified_cycle_records_machine_readable_receipt():
@@ -63,7 +57,9 @@ async def test_fixture_receipt_exports_alongside_patch():
 
 async def test_project_retained_cycle_records_machine_readable_receipt():
     muse = FakeProjectMuse(red_outcomes=["finding", "no_finding"])
-    sandbox = FakeProjectSandbox([project_verification(1), project_verification(0), project_verification(1)])
+    sandbox = FakeProjectSandbox(
+        [project_verification(1), project_verification(0), project_verification(1)]
+    )
     result = await run_project_workflow(muse=muse, sandbox=sandbox)
     report = result.cycle_reports[0]
     assert report.status == "retained"

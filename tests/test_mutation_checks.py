@@ -133,9 +133,7 @@ def test_mutation_php_reject_counts_as_pass():
     def strict(url: str):
         host = _php_unquote(url)
         if host in ("localhost", "127.0.0.1"):
-            return 200, json.dumps(
-                {"status": "ok", "host": host, "diagnostic": host}
-            ).encode()
+            return 200, json.dumps({"status": "ok", "host": host, "diagnostic": host}).encode()
         return 400, b'{"status":"error"}'
 
     code, _ = _run_script(script, strict)
@@ -265,6 +263,7 @@ async def test_mutation_php_workflow_rolls_back_on_mutation_failure():
     from helpers import FakeProjectMuse as FakeMuse
     from helpers import FakeProjectSandbox as FakeSandbox
     from helpers import run_project_workflow as run_workflow
+
     from modules.workflows.project_workflow import ExecutionEvidence, SnapshotVerification
 
     def verification(probe: int, regression: int, mutations: int | None):
@@ -296,6 +295,7 @@ async def test_mutation_mysql_workflow_retains_on_mutation_pass():
     from helpers import FakeProjectMuse as FakeMuse
     from helpers import FakeProjectSandbox as FakeSandbox
     from helpers import run_project_workflow as run_workflow
+
     from modules.workflows.project_workflow import ExecutionEvidence, SnapshotVerification
 
     def verification(probe: int, regression: int, mutations: int | None):
