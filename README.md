@@ -65,8 +65,12 @@ python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, 
 
 Muse *Greenhouse* generates a novel flawed service from live NVD intel, then
 red breaks it in Docker and blue fixes it — no staged fixture, no canned
-finding. More scans: `--scan`, `--project`, `--cve-scan`, `--tui`; full flag
-reference in [`docs/reference/CLI.md`](docs/reference/CLI.md).
+finding. More scans: `--scan`, `--project`, `--cve-scan`, `--tui`,
+`--mcp-snippet` (external AI clients via `POST /mcp`), `--sweep-passes 3`
+(standard + deep + threat-actor), `--binary-target` (compiled ELF/Mach-O/PE
+through the reversing harness); full flag reference in
+[`docs/reference/CLI.md`](docs/reference/CLI.md) and the production deep
+dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## AI narrative: ~90% Muse-built
 

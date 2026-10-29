@@ -16,6 +16,9 @@ wave specs, receipts, guards, isolation mechanics, and the module map.
 - [Wave 2 (SPEC 14.8)](#wave-2-spec-148)
 - [Wave 5 (SPEC 14.9)](#wave-5-spec-149)
 - [What is implemented](#what-is-implemented)
+- [MCP snippet bridge (Milestone 2)](#mcp-snippet-bridge-milestone-2)
+- [Multi-pass sweep (Milestone 3)](#multi-pass-sweep-milestone-3)
+- [Binary sweep (Milestone 4)](#binary-sweep-milestone-4)
 - [Configuration](#configuration)
 - [Isolation](#isolation)
 - [Tests and acceptance](#tests-and-acceptance)
@@ -92,6 +95,66 @@ Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, di
 | Cleanup | Resource tracking, cancellation-aware worker joins, cleanup independent of UI logging |
 
 The PHP fixture uses `printf` for a deterministic local diagnostic (no external requests). The MySQL fixture is a served config file — no database server is started.
+
+## MCP snippet bridge (Milestone 2)
+
+`POST /mcp` speaks JSON-RPC over Streamable HTTP (`initialize`, `tools/list`,
+`tools/call`, `ping`; unknown methods get `-32601`). The single tool,
+`submit_code_snippet` (`modules/services/mcp_bridge.py`), accepts a bounded
+snippet (`javascript`/`python`/`php`, 64 KiB, bare filename, mandatory
+contract) and runs it through the existing `execute_purple_workflow` via an
+ephemeral `mcp_snippet` fixture target: the snippet reuses its language
+fixture's runtime + trusted baseline (`snippet_baseline_key`), source and
+baseline scripts patched in for the key only and restored in `finally`.
+The structured result returns `status`, `pre_probe_exit`/`post_probe_exit`,
+`regression_passed`, `cleanup_ok`, and the `VerdictReceipt` (or nulls).
+Docker evidence alone decides; oversize/unknown-language/unknown-tool calls
+fail with JSON-RPC errors, never a scan. Surfaces: CLI `--mcp-snippet` /
+`--snippet-language`, dashboard MCP mode (`submitMcpSnippet` POSTs the same
+call), TUI help line, `docs/reference/{CLI,DASHBOARD}.md` rows.
+Live proof: node fixture bytes via `/mcp` returned `pre=0 post=1 verified`
+with the receipt sha pinned and zero leftover containers.
+
+## Multi-pass sweep (Milestone 3)
+
+`modules/workflows/sweep.py:execute_sweep_scan` runs `standard → deep →
+threat_actor` passes over the same sandboxed target and never stops at the
+first finding. Each pass is the full loop: red pass analysis
+(`agents.run_red_team_pass_analysis` selects `RED_TEAM` / `RED_DEEP_SWEEP` /
+`RED_THREAT_ACTOR` prompts), Docker probe (exit 0/1/2), blue guarded patch
+against the current cumulative source on exit 0, regression, re-probe, final
+health. Exit 1 clears a pass with no blue call; exit 2 fails the sweep
+closed. `verified` requires every pass to hold; each confirmed pass records
+its own `VerdictReceipt`. Depth control: CLI `--sweep-passes 1-3` (default
+legacy single loop), WS `?sweep_passes=2|3`, dashboard Sweep depth selector
+(`summaryEvidence` rolls `pass_results` into `N/M passes hold`), TUI
+`--sweep-passes`. Live proof: node fixture 3-pass real Docker run, P1
+`pre=0/post=1` receipt-pinned, P2/P3 clear under the cumulative allowlist,
+`verified`, zero leftovers.
+
+## Binary sweep (Milestone 4)
+
+`docker/Dockerfile.binary` (pinned digest + locked `file`/`binutils`/`xxd`,
+non-root, read-only roots) feeds `docker_manager` binary plumbing:
+`binary_base_image` config, pin coverage in `_assert_dockerfiles_pinned`,
+build/ensure of the third image, `_create_binary_tar` (strict basenames,
+capped total), `start/replace_binary_harness` (tar into stopped containers,
+read-only runtime, harness as PID 1, `target-service` alias on the isolated
+network), and `binary_static_profile` (`file`/`strings`/`readelf` in-sandbox,
+bounded text). `modules/services/binary_intake.py` validates ELF/Mach-O/PE
+magic, the 8 MiB cap, bare names, and a mandatory contract — never executing
+on the host. `docker/binary_harness.py` (trusted, in-sandbox only) serves
+HTTP, runs the binary as a subprocess with bounded argv/stdin and a 5-second
+timeout, and pre-rejects inputs matching `reject:` mitigation rules.
+`modules/workflows/binary_sweep.py:execute_binary_sweep` profiles, baselines
+the harness, then runs the same 3-pass loop: probe exit 0 requests blue
+mitigation rules (`extract_mitigation_rules` keeps only `reject:` lines,
+8 KiB budget), the harness restarts mitigated, and the probe re-runs —
+per-pass `VerdictReceipt` over the mitigation sha. Surfaces: CLI
+`--binary-target`, WS `/ws/binary` (base64 first frame), dashboard Binary
+sweep mode, TUI `--binary-target`. Live proof: static ELF (821 KiB) 3-pass
+real Docker run, P1 `pre=0/post=1` receipt-pinned, P2/P3 clear, `verified`,
+zero leftovers.
 
 ## Configuration
 
