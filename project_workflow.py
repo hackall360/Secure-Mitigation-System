@@ -89,6 +89,36 @@ class SnapshotVerification(BaseModel):
     probe: ExecutionEvidence
     regression: ExecutionEvidence
     fresh_target: bool = True
+    properties: ExecutionEvidence | None = None
+
+
+def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
+    """Fail-closed normal-contract property gate: True unless properties ran and failed.
+
+    ``None`` properties means the fixture has no property contract (arbitrary
+    projects) or the check did not run, so the gate passes and the existing
+    regression requirement decides. Any recorded properties exit other than 0
+    fails the gate; missing/inconclusive evidence never upgrades a verdict.
+    """
+    if isinstance(verification, SnapshotVerification):
+        properties = verification.properties
+    elif isinstance(verification, Mapping):
+        properties = verification.get("properties")
+    else:
+        properties = getattr(verification, "properties", None)
+    if properties is None:
+        return True
+    if isinstance(properties, ExecutionEvidence):
+        return properties.exit_code == 0
+    if isinstance(properties, Mapping):
+        try:
+            return int(properties.get("exit_code")) == 0
+        except (TypeError, ValueError):
+            return False
+    try:
+        return int(properties.exit_code) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 class ProjectSandbox(Protocol):
@@ -457,6 +487,28 @@ class DockerProjectSandbox:
                 self.network, self.spec, snapshot, script=verification_script_python
             )
             probe_ev = _check_evidence(probe_check, 131_072)
+            # Wave 8 R1: property normal-contract checks run in the same
+            # capped container mechanism after regression green, mirroring the
+            # probe call shape. The fixture id is the spec contract's first
+            # line only when it names a known fixture; anything else skips
+            # (properties stays None) so arbitrary projects are unaffected.
+            properties_ev: ExecutionEvidence | None = None
+            try:
+                from checks import project_property_script, property_fixture_supported
+
+                fixture_id = (self.spec.contract or "").splitlines()[0].strip()
+                if property_fixture_supported(fixture_id):
+                    property_check = self.manager.run_project_check(
+                        self.network,
+                        self.spec,
+                        snapshot,
+                        script=project_property_script(fixture_id),
+                    )
+                    properties_ev = _check_evidence(property_check, 131_072)
+            except Exception:
+                properties_ev = ExecutionEvidence(
+                    exit_code=2, output="Properties check did not run."
+                )
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.
@@ -504,7 +556,12 @@ class DockerProjectSandbox:
                             "Post-probe regression failed:\n" + post_probe_ev.output, 131072
                         ),
                     )
-            return SnapshotVerification(probe=probe_ev, regression=regression_ev, fresh_target=True)
+            return SnapshotVerification(
+                probe=probe_ev,
+                regression=regression_ev,
+                fresh_target=True,
+                properties=properties_ev,
+            )
         finally:
             if target is not None:
                 self.manager.stop_project(target)
@@ -534,17 +591,24 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
             probe=_normalize_execution(value.probe, limit),
             regression=_normalize_execution(value.regression, limit),
             fresh_target=value.fresh_target,
+            properties=None
+            if value.properties is None
+            else _normalize_execution(value.properties, limit),
         )
     if isinstance(value, Mapping):
+        properties = value.get("properties")
         return SnapshotVerification(
             probe=_normalize_execution(value["probe"], limit),
             regression=_normalize_execution(value["regression"], limit),
             fresh_target=bool(value.get("fresh_target", True)),
+            properties=None if properties is None else _normalize_execution(properties, limit),
         )
+    properties = getattr(value, "properties", None)
     return SnapshotVerification(
         probe=_normalize_execution(value.probe, limit),
         regression=_normalize_execution(value.regression, limit),
         fresh_target=bool(getattr(value, "fresh_target", True)),
+        properties=None if properties is None else _normalize_execution(properties, limit),
     )
 
 
@@ -1219,6 +1283,10 @@ async def execute_project_workflow(
                 # (baseline exit 0 via the L895 raise + patched exit 0 above), so it
                 # changes no retain/rollback verdict — it only records the check.
                 and evidence.differential_passed
+                # Wave 8 R1 fail-closed property gate: a recorded properties
+                # exit other than 0 vetoes the retain even when the probe is
+                # blocked and regression is green (properties None skips).
+                and property_gate_passed(patched)
             )
             if independent_same_finding:
                 independent_check = evidence.independent_verification
@@ -1228,6 +1296,7 @@ async def execute_project_workflow(
                     and independent_check.fresh_target
                     and independent_check.probe.blocked
                     and independent_check.regression.exit_code == 0
+                    and property_gate_passed(independent_check)
                 )
             disposition = "retained" if retained else "rolled_back"
             try:
