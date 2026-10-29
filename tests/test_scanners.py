@@ -405,6 +405,7 @@ def test_kev_lookup_canned_match_and_miss(monkeypatch):
     """O2 red: kev_lookup finds cveID in the CISA KEV catalog, else None."""
     import research as _research
 
+    _research._kev_cache_clear()
     catalog = {
         "count": 1,
         "vulnerabilities": [
@@ -428,10 +429,85 @@ def test_kev_lookup_canned_match_and_miss(monkeypatch):
     assert _research.kev_lookup("bogus!!") is None
 
 
+def test_kev_lookup_caches_catalog_across_ids(monkeypatch):
+    """Q2: two kev_lookup calls for different ids trigger exactly one fetch."""
+    import research as _research
+
+    _research._kev_cache_clear()
+    catalog = {
+        "count": 1,
+        "vulnerabilities": [
+            {
+                "cveID": "CVE-2024-3094",
+                "vulnerabilityName": "XZ Utils Backdoor",
+                "shortDescription": "XZ backdoor.",
+                "dueDate": "2024-05-02",
+                "knownRansomwareCampaignUse": "Unknown",
+            }
+        ],
+    }
+    calls = {"n": 0}
+
+    def fake_get(*a, **k):
+        calls["n"] += 1
+        return catalog
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    try:
+        rec = _research.kev_lookup("CVE-2024-3094")
+        assert rec is not None and rec.source == "kev"
+        assert _research.kev_lookup("CVE-2024-9999") is None
+        assert calls["n"] == 1
+    finally:
+        _research._kev_cache_clear()
+
+
+def test_kev_lookup_failures_not_cached_then_success(monkeypatch):
+    """Q2: RuntimeError / non-dict fetches are NOT cached; next call retries."""
+    import research as _research
+
+    _research._kev_cache_clear()
+    catalog = {
+        "count": 1,
+        "vulnerabilities": [
+            {
+                "cveID": "CVE-2024-3094",
+                "vulnerabilityName": "XZ Utils Backdoor",
+                "shortDescription": "XZ backdoor.",
+                "dueDate": "2024-05-02",
+                "knownRansomwareCampaignUse": "Unknown",
+            }
+        ],
+    }
+    calls = {"n": 0}
+    mode = {"kind": "raise"}
+
+    def fake_get(*a, **k):
+        calls["n"] += 1
+        if mode["kind"] == "raise":
+            raise RuntimeError("down")
+        if mode["kind"] == "nondict":
+            return ["not", "a", "dict"]
+        return catalog
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    try:
+        assert _research.kev_lookup("CVE-2024-3094") is None
+        mode["kind"] = "nondict"
+        assert _research.kev_lookup("CVE-2024-3094") is None
+        mode["kind"] = "ok"
+        rec = _research.kev_lookup("CVE-2024-3094")
+        assert rec is not None and rec.source == "kev"
+        assert calls["n"] == 3
+    finally:
+        _research._kev_cache_clear()
+
+
 def test_kev_lookup_transport_failure_degrades_to_none(monkeypatch):
     """O2 red: KEV oversize-cap/transport failure degrades to None, never raises."""
     import research as _research
 
+    _research._kev_cache_clear()
     monkeypatch.setattr(
         _research, "_get_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
     )

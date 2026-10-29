@@ -346,11 +346,24 @@ KEV_CATALOG_URL = (
 # RuntimeError, never raised.
 
 
-def kev_lookup(cve_id: str) -> ResearchRecord | None:
-    """CISA KEV known-exploited flag for one CVE. No key, never raises."""
-    safe = sanitize_cve_id(cve_id)
-    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
-        return None
+# Per-process KEV catalog cache (Wave 7 Q2): None means unfetched; a dict
+# maps uppercased CVE id -> raw catalog item. Only a successfully parsed
+# catalog populates it — transport failures and malformed payloads leave it
+# None so the next call retries.
+_KEV_CACHE: dict[str, dict] | None = None
+
+
+def _kev_cache_clear() -> None:
+    """Reset the KEV catalog cache (test helper; production never calls it)."""
+    global _KEV_CACHE
+    _KEV_CACHE = None
+
+
+def _kev_catalog() -> dict[str, dict] | None:
+    """Fetch (once) and index the CISA KEV catalog. None on any failure."""
+    global _KEV_CACHE
+    if _KEV_CACHE is not None:
+        return _KEV_CACHE
     try:
         from sms_http import MAX_MAX_BYTES
 
@@ -362,24 +375,40 @@ def kev_lookup(cve_id: str) -> ResearchRecord | None:
     vulns = payload.get("vulnerabilities")
     if not isinstance(vulns, list):
         return None
+    index: dict[str, dict] = {}
     for item in vulns:
         if not isinstance(item, dict):
             continue
-        if str(item.get("cveID", "")).strip().upper() != safe:
-            continue
-        return ResearchRecord(
-            source="kev",
-            cve_id=safe,
-            title=str(item.get("vulnerabilityName") or safe)[:256],
-            summary=str(item.get("shortDescription") or "")[:1500],
-            references=tuple([str(item.get("notes") or "")[:256]] if item.get("notes") else ()),
-            extra={
-                "kev_listed": True,
-                "due_date": str(item.get("dueDate") or "")[:32],
-                "ransomware": str(item.get("knownRansomwareCampaignUse") or "")[:32],
-            },
-        )
-    return None
+        key = str(item.get("cveID", "")).strip().upper()
+        if key and key not in index:
+            index[key] = item
+    _KEV_CACHE = index
+    return index
+
+
+def kev_lookup(cve_id: str) -> ResearchRecord | None:
+    """CISA KEV known-exploited flag for one CVE. No key, never raises."""
+    safe = sanitize_cve_id(cve_id)
+    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
+        return None
+    catalog = _kev_catalog()
+    if catalog is None:
+        return None
+    item = catalog.get(safe)
+    if item is None:
+        return None
+    return ResearchRecord(
+        source="kev",
+        cve_id=safe,
+        title=str(item.get("vulnerabilityName") or safe)[:256],
+        summary=str(item.get("shortDescription") or "")[:1500],
+        references=tuple([str(item.get("notes") or "")[:256]] if item.get("notes") else ()),
+        extra={
+            "kev_listed": True,
+            "due_date": str(item.get("dueDate") or "")[:32],
+            "ransomware": str(item.get("knownRansomwareCampaignUse") or "")[:32],
+        },
+    )
 
 
 def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
