@@ -49,6 +49,27 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 
 CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability (KEV-listed +5, EPSS percentile >=0.9 +5 tie-breaks).
 
+## Wave 2 (SPEC 14.8) output — no new flags
+
+Verified via `.venv/bin/python main.py --help` 2026-10-29: Wave 2 adds no
+CLI flags. It adds output rows/sections/files, all sourced from live result
+fields (never synthesized):
+
+| Surface | Location | Rows / behavior |
+|---|---|---|
+| `fact_table` rows | `sms_cli.py:611` via `format_wave2_facts` (`sms_cli.py:290`) | `Receipt`, `Guard rationales`, `Fast-lane top`, `Mutations` (each `Not reported` when the result carries no such evidence). |
+| `--output-dir` extra file | `main.py:854-861` via `_extract_wave2_receipt` | `receipt.json`: top-level `receipt` (VerdictReceipt) or first cycle `receipt` (CycleReceipt); legacy `verdict_receipt` fallback; mode 0600. |
+| Markdown report sections | `main.py:1063-1084` | `## Verdict receipt`, `## Guard rationales`, `## Mutation probes` — emitted only when the fact is reported. |
+| TUI suffix | `tui.py:244` `describe_wave2` | Appends `[receipt ...] [guards ...] [mutations ...]` tokens to the result line, probing the same fields as `format_wave2_facts`. |
+
+`format_wave2_facts` read order per item: Receipt = `result.receipt` (or any
+`cycle.receipt`), legacy `verdict_receipt`; Guards = top-level
+`guard_rationale` then each cycle `evidence.replacement_validation.guard_rationale`,
+legacy `guard_rationales`; Fast-lane top = `fast_lane_top` string else first
+`vulnerabilities[]` entry `queue_evidence` (else `reach_score`/`fixed_versions`/KEV/EPSS
+composite); Mutations = cycle `evidence.{patched,pre}_verification.mutations`
+`ExecutionEvidence` (`N/M held|failed (exit N)`), legacy `mutation_evidence`.
+
 ## CVE scan notes
 
 - `--fast-lane` orders findings by reach tier: `reach_score` desc, patched (`fixed_versions`) first, then id.

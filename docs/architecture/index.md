@@ -9,5 +9,6 @@ System design: repo map, project workflow, scan profiles, discovery teams.
 - [WAVE2.md](WAVE2.md) — reachability scoring, fast lane, liveness, demo flow, gaps
 - [WAVE5.md](WAVE5.md) — GHSA cve_id fix, KEV signal, tie-break band, differential gate, tiering
 - [WAVE8.md](WAVE8.md) — KEV/EPSS enrichment, KEV cache, property gate, LOW bundle, shape trap
+- [WAVE9.md](WAVE9.md) — Wave 2 data flow: receipts/export, guard rationale, topping, mutation gate chain, gate order, shape TRAP
 
 Up: [docs/index.md](../index.md)

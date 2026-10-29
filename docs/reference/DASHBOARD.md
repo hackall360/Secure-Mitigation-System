@@ -26,4 +26,16 @@ are side-effect-scoped layers. CSP-safe throughout: `textContent` and
 | WebSocket `onmessage` | Routes `payload.team`/`payload.msg` to `writeLine`; unreadable events get a system line |
 | `socket.onerror` / close | System lines; server finishes cleanup before next scan |
 
+## Wave 2 (SPEC 14.8) panels (`renderW2v2`, `static/app.js:807`)
+
+All collectors are defensive (optional fields, odd shapes degrade to null,
+never throw). DOM ids verified in `static/index.html:202-217`.
+
+| Fact / panel | DOM ids | Render fn | Source fields |
+|---|---|---|---|
+| Verdict receipt (`Verdict receipt` row) | `fact-receipt`, `download-receipt-btn` | `w2v2Receipt` (`app.js:674`) | `result.receipt` (VerdictReceipt) or first `cycle.receipt` (CycleReceipt); legacy `verdict_receipt`. Text: `fixture`, `probe pre/post`, `regression passed` (or `baseline/patched` exits), `differential passed`, `properties passed`, `sha <16>`. Button downloads live receipt as JSON (license notice wrapper, `app.js:1255`); hidden when no receipt. |
+| Guard rationales | `fact-guards`, `guard-rationales` + `guard-list` | `w2v2Guards` (`app.js:707`) | Top-level `guard_rationale`, then each cycle `evidence.replacement_validation.guard_rationale` / `evidence.guard_rationale` (`guard_id`/`reason`/`trigger`); legacy `guard_rationales` list. Max 3 cycles, max 8 shown; wrap unhidden only when non-empty. |
+| Fast-lane topping | `fact-topping`, `fast-lane-topping` + `topping-list` | `w2v2Topping` (`app.js:747`) | First 10 `vulnerabilities[]` with `queue_evidence` or `reach_score`: `id`/`cves[0]`, `queue_evidence` (else `reach N`), `fixed_versions[0]`, `KEV-listed`, `EPSS x.xx`, `reach_evidence[]` sub-list. |
+| Mutation probes | `fact-mutations`, `mutation-evidence` + `mutation-text` | `w2v2Mutation` (`app.js:766`) | Cycle `evidence.{patched,pre}_verification.mutations` `ExecutionEvidence` (`N/M held|failed (exit N)` parsed from output); legacy `mutation_evidence`/`mutations` dict. Wrap unhidden only when present. |
+
 Related: [MODULES.md](MODULES.md), [CLI.md](CLI.md).
