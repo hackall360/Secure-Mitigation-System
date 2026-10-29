@@ -50,4 +50,13 @@ for the repo map and [guides/DEVELOPMENT.md](../guides/DEVELOPMENT.md) for setup
 | Mutation/property gates | `modules/workflows/project_workflow.py:101,131` | `mutation_gate_passed()` / `property_gate_passed()`: fail-closed, `None` evidence passes (no contract) and defers to regression; any non-zero exit fails the retain decision. Evidence on `SnapshotVerification.mutations` / `.properties`. |
 | Fast-lane topping fields | `modules/workflows/cve_workflow.py:33,317` | Ranked summaries carry `reach_score`, `reach_evidence`, `queue_evidence` (via `_queue_evidence`), `fixed_versions`, `kev_listed`, `epss_percentile`. Sort tier: `-reach_score`, fix availability, KEV, then id. |
 
+## Wave 5 (SPEC 14.9) surfaces
+
+| Symbol | Location | Fields / role |
+|---|---|---|
+| `_source_fresh` | `modules/workflows/cve_workflow.py:66` | Freshness gate for `queue_evidence`: true unless a stamped ISO date proves the signal older than `_SOURCE_FRESH_DAYS = 1`; missing/unparseable/future dates count as fresh (fetched live inline). Applied to `kev_date` / `epss_date` in `_queue_evidence` (`cve_workflow.py:104,111`); stamps set in `_enrich_reach_signals` (`cve_workflow.py:186,202`). |
+| `FAST_LANE_EXCLUDED_SOURCES` / `assert_fast_lane_source_allowed` | `modules/workflows/cve_workflow.py:39,42` | `frozenset({"euvd"})`; fail-closed assert at each fast-lane consultation site (`kev`/`epss` calls) — raises `AssertionError` on excluded sources, returns `True` otherwise so allowed sources never block the scan. |
+| `FROZEN_MUTATION_POOL_SHA256` / `mutation_pool_snapshot` / `_assert_frozen_pool` | `modules/core/checks.py:267,286,295` | Frozen digest of the canonical per-contract mutation-id pools; snapshot keyed by fixture; asserted byte-identical at both mutation-script entry points (`checks.py:438,560`). Drift raises `ValueError` fail-closed. |
+| `EDIT_BUDGET_LINES` / `is_solver_synthesized_shape` | `modules/core/patches.py:10,27` | 60-line surgical edit budget (unchanged); solver-shape detector over `_SOLVER_SHAPE_MARKERS` rejects SemFix/DirectFix-style patches (`guard_id="solver_synthesized_shape"`, `patches.py:81`) while template-shaped sanitization flows through the existing guards (`edit_budget_exceeded` at `patches.py:108`). |
+
 Related: [CLI.md](CLI.md) (flags), [DASHBOARD.md](DASHBOARD.md) (panels/hooks map).

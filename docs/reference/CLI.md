@@ -70,6 +70,20 @@ legacy `guard_rationales`; Fast-lane top = `fast_lane_top` string else first
 composite); Mutations = cycle `evidence.{patched,pre}_verification.mutations`
 `ExecutionEvidence` (`N/M held|failed (exit N)`), legacy `mutation_evidence`.
 
+## Wave 5 (SPEC 14.9) output — no new flags
+
+Verified via `.venv/bin/python main.py --help` 2026-10-29: SPEC 14.9 adds no
+CLI flags (`--fast-lane`, `--context-budget` text unchanged; `--context-budget`
+is the per-call source context budget, unrelated to the 60-line edit budget).
+Behavior surfaces through existing rows only:
+
+| Behavior | Existing surface | How it shows |
+|---|---|---|
+| Queue freshness (`_source_fresh`, `cve_workflow.py:66`) | `fact_table` fast-lane row / `queue_evidence` string | Stale-dated (>1 day) KEV/EPSS signals read as `kev:absent` / `epss:absent` inside the same `reach:N fix:X kev:Y epss:Z` string; numeric `reach_score`/`epss_percentile` fields untouched. |
+| EUVD exclusion (`FAST_LANE_EXCLUDED_SOURCES`, `assert_fast_lane_source_allowed`) | None (fail-closed only) | Raises `AssertionError` if a future wiring consults `euvd`; no CLI row, never blocks allowed sources. |
+| Template/solver-shape guard (`is_solver_synthesized_shape`, `patches.py:27`) | `Guard rationales` row (`guard_id="solver_synthesized_shape"`) | Same `guard_rationale` `{guard_id, reason, trigger}` shape; 60-line `EDIT_BUDGET_LINES` unchanged. |
+| Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
+
 ## CVE scan notes
 
 - `--fast-lane` orders findings by reach tier: `reach_score` desc, patched (`fixed_versions`) first, then id.
