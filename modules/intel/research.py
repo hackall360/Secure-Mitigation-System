@@ -338,7 +338,13 @@ def epss_score(cve_id: str) -> ResearchRecord | None:
         cve_id=safe,
         title=f"EPSS {row.get('epss', '?')} (percentile {row.get('percentile', '?')})",
         summary=f"Exploit-prediction score {row.get('epss')} dated {row.get('date', '')}.",
-        extra={"epss": str(row.get("epss", "")), "percentile": str(row.get("percentile", ""))},
+        extra={
+            "epss": str(row.get("epss", "")),
+            "percentile": str(row.get("percentile", "")),
+            # Live score date (W5 item 1): the fast lane drops EPSS older
+            # than 1 day from queue_evidence. Empty when the API omits it.
+            "epss_date": str(row.get("date") or "")[:32],
+        },
     )
 
 
@@ -411,6 +417,10 @@ def kev_lookup(cve_id: str) -> ResearchRecord | None:
             "kev_listed": True,
             "due_date": str(item.get("dueDate") or "")[:32],
             "ransomware": str(item.get("knownRansomwareCampaignUse") or "")[:32],
+            # Source date (W5 item 1): KEV catalog dateAdded for this CVE.
+            # The fast lane drops listings older than 1 day from
+            # queue_evidence (fail-closed absent). Empty when omitted.
+            "kev_date": str(item.get("dateAdded") or "")[:32],
         },
     )
 
