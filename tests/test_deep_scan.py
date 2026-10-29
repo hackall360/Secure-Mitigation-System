@@ -693,6 +693,114 @@ def test_cross_platform_compat_guards():
     assert hits == [], hits
 
 
+def test_reachability_score_fuses_fixed_range_with_sink_adjacency():
+    from deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-xxxx",
+        "cves": ["CVE-2024-1234"],
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "fixed_versions": ["2.0"],
+    }
+    findings = [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert isinstance(score, int) and 0 <= score <= 100
+    assert score >= 60
+    blob = " ".join(evidence).lower()
+    assert "fixed" in blob and "cwe-502" in blob
+
+
+def test_reachability_score_low_without_fix_or_matching_sink():
+    from deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-yyyy",
+        "cves": ["CVE-2024-5678"],
+        "summary": "Some widget flaw",
+        "details": "No weakness identifier recorded.",
+        "fixed_versions": [],
+    }
+    findings = [
+        StaticFinding(
+            rule_id="js-innerhtml",
+            title="Unsanitized DOM sink",
+            severity="medium",
+            path="web.js",
+            line=1,
+            snippet="el.innerHTML = user;",
+            cwe="CWE-79",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert isinstance(score, int) and score <= 20
+    assert isinstance(evidence, list) and evidence
+
+
+def test_reachability_score_absent_signals_never_raise():
+    from deep_scan import reachability_score
+
+    summary = {
+        "id": "GHSA-zzzz",
+        "cves": [],
+        "summary": "Unreviewed record",
+        "details": "No details available.",
+        "fixed_versions": [],
+    }
+    score, evidence = reachability_score(summary, [])
+    assert score <= 20
+    blob = " ".join(evidence).lower()
+    assert "no fixed version" in blob and "no sink" in blob
+
+
+async def test_cve_scan_attaches_reach_score_to_each_summary(monkeypatch):
+    import deep_scan as _ds
+    from cve_workflow import execute_cve_scan
+
+    def fake_post(url, payload, timeout=30.0, tries=3, max_bytes=0):
+        assert url == _ds.OSV_QUERY_URL
+        return {"results": [{"vulns": [{"id": "GHSA-xxxx"}]}]}
+
+    def fake_get(url, timeout=30.0, tries=3, max_bytes=0):
+        return {
+            "id": "GHSA-xxxx",
+            "summary": "Unsafe deserialization in widget",
+            "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+            "aliases": ["CVE-2024-1234"],
+            "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+            "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}],
+            "references": [],
+        }
+
+    monkeypatch.setattr(_ds, "paced_post_json", fake_post)
+    monkeypatch.setattr(_ds, "paced_get_json", fake_get)
+
+    async def emit(team, message):
+        return None
+
+    files = {
+        "requirements.txt": "widget==1.0.0\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await execute_cve_scan(files, emit, include_osv=True, include_deep_assessment=False)
+    assert report.success
+    assert len(report.vulnerabilities) == 1
+    summary = report.vulnerabilities[0]
+    assert isinstance(summary["reach_score"], int) and 0 <= summary["reach_score"] <= 100
+    assert summary["reach_score"] >= 60
+    assert isinstance(summary["reach_evidence"], list) and summary["reach_evidence"]
+
+
 def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
     """deep_scan OSV calls use sms_http paced helpers; oversize batch capped."""
     import deep_scan as _ds
