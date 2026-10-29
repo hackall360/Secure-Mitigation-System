@@ -669,8 +669,8 @@ def test_w5v2_1_stale_sources_dropped_from_queue_evidence(monkeypatch):
     assert summary["kev_listed"] is True
     assert summary["epss_percentile"] == 0.95
     ev = _cw._queue_evidence(summary)
-    assert "kev:absent" in ev
-    assert "epss:absent" in ev
+    assert f"kev:stale:{stale}" in ev
+    assert f"epss:stale:{stale}" in ev
 
 
 def test_w5v2_1_fresh_sources_kept_in_queue_evidence(monkeypatch):
@@ -798,4 +798,4 @@ async def test_w5v2_1_fast_lane_stale_never_blocks_scan(monkeypatch):
     assert report.success
     assert len(report.vulnerabilities) == 1
     ev = report.vulnerabilities[0].get("queue_evidence", "")
-    assert "kev:absent" in ev and "epss:absent" in ev
+    assert "kev:stale:" in ev and "epss:stale:" in ev
