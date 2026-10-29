@@ -48,7 +48,7 @@ LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 # Single source of truth for the release version (LAW 12: 0.major.minor).
 # Every surface renders this: FastAPI metadata, /api/health, --version,
 # dashboard footer. Bump per LAW 12 on every shipped change set.
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 
 def _demo_build_failure(exc: BaseException) -> dict:

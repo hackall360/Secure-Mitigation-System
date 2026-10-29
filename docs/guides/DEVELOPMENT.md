@@ -414,3 +414,49 @@ Spark. Baseline and regression passed, the pre-patch probe reached the boundary,
 the post-patch probe was blocked, and cleanup left zero containers. The dashboard
 reported 11,647 tokens across two calls and estimated cost $0.041. Model pricing is
 an estimate, not an invoice. Screenshot was checked at desktop width.
+
+### Dashboard workspace design (0.3.0)
+
+The dashboard remains a dependency-free, CSP-safe document. `static/index.html`
+owns semantic sections and every existing control ID. `static/app.js` owns scan
+state and `setSourceMode()`. Mode radios use roving tabindex and arrow/Home/End
+keys per https://www.w3.org/WAI/ARIA/apg/patterns/radio/. Arrow navigation keeps
+focus on the radio, while clicking Green build preserves focus-to-brief.
+
+`static/app.css` ends with the **Verification workspace** presentation layer.
+It intentionally leaves earlier scan-state selectors in place, including error,
+verified, disabled, hidden, and reduced-motion protections. Its palette uses navy
+surfaces and seaglass selection accents, with red/blue reserved for teams. The
+workspace rail becomes a sticky compact navigation bar below 760px. All four
+trace areas are keyboard-focusable. No remote fonts, assets, or dependencies are
+needed. Version `0.3.0` adds section navigation and accessible mode interaction,
+with the same version in `main.APP_VERSION`, the dashboard, and README badge.
+
+Run the real browser matrix from the repository root:
+
+```sh
+.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser chrome --design-check --shot reports/ui-after-chrome.png
+.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox --design-check --shot reports/ui-after-firefox.png
+python3 .jcode/tools/dev.py check
+```
+
+`--design-check` operates mode switching, section navigation, and log focus before
+running the existing real WebSocket/Docker verification. It checks control bounds
+at 1440, 768, 390, and 320 requested widths and writes width-suffixed screenshots.
+Chrome additionally checks reduced-motion styling. Firefox may constrain its
+minimum native window size. Offline replaces only Muse, not sandbox execution.
+
+Traps discovered during this change:
+
+- The migrated workflow lives in `modules.workflows.workflow`, not top-level
+  `workflow` or `modules.core.workflow`. `ui_scan.py` embeds Python in
+  `OFFLINE_SERVER`, so ordinary import checking had missed the stale import.
+  `test_offline_browser_bootstrap_imports_current_modules` executes those imports.
+- Use `.venv/bin/python` for `ui_scan.py`, not system Python. Chrome's CDP client
+  needs the project's installed `websockets`; Firefox's stdlib path can conceal
+  the wrong-interpreter problem by succeeding without that package.
+- Firefox commits native anchor navigation asynchronously. The shared design
+  assertion yields after each click before checking the exact fragment. A
+  synchronous hash assertion passed Chrome and falsely failed Firefox.
+- WebDriver HTTP errors now expose the returned error message instead of hiding
+  JavaScript assertion failures behind a generic HTTP 500.

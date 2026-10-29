@@ -3,7 +3,7 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 ![Tests](https://img.shields.io/badge/dev.py_check-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688?logo=fastapi&logoColor=white)

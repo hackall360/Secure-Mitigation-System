@@ -393,6 +393,7 @@ function setSourceMode(mode) {
     const active = button.dataset.mode === mode;
     button.classList.toggle('active', active);
     button.setAttribute('aria-checked', String(active));
+    button.tabIndex = active ? 0 : -1;
   });
   el('demo-config').hidden = mode !== 'demo';
   el('demo-build-config').hidden = mode !== 'demo-build';
@@ -1002,6 +1003,22 @@ el('allow-remote').addEventListener('change', (event) => {
   if (event.target.checked) event.target.removeAttribute('aria-invalid');
 });
 document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => setSourceMode(button.dataset.mode)));
+// APG radio-group navigation: one tab stop, arrows select and keep focus in the group.
+// Explicit clicks still retain Green build's existing focus-to-brief affordance.
+document.querySelector('.mode-switch').addEventListener('keydown', (event) => {
+  if (socket || event.altKey || event.ctrlKey || event.metaKey) return;
+  const directions = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+  if (!(event.key in directions) && event.key !== 'Home' && event.key !== 'End') return;
+  const buttons = [...document.querySelectorAll('.mode:not(:disabled)')];
+  const index = buttons.indexOf(event.target);
+  if (index < 0) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+    : (index + directions[event.key] + buttons.length) % buttons.length;
+  setSourceMode(buttons[next].dataset.mode);
+  buttons[next].focus({ preventScroll: true });
+});
+
 
 el('download-btn').addEventListener('click', () => {
   if (!latestResult) return;

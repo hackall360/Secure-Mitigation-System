@@ -110,10 +110,67 @@ READOUT = """JSON.stringify({
     (l) => l.innerText.split(String.fromCharCode(10)).join(' | ')),
 })"""
 
+
+# Real-page assertions shared by both browser engines, before starting the scan.
+DESIGN_CHECK = """(async () => {
+  const check = (ok, message) => { if (!ok) throw new Error(message); };
+  const mode = document.getElementById('mode-demo');
+  mode.click(); mode.focus();
+  mode.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+  check(document.getElementById('mode-demo-build').getAttribute('aria-checked') === 'true',
+    'ArrowRight must select Green build');
+  check(document.activeElement.id === 'mode-demo-build', 'Arrow navigation must retain radio focus');
+  check(!document.getElementById('demo-build-config').hidden, 'Green fields must be visible');
+  document.getElementById('mode-project').click();
+  check(!document.getElementById('project-form').hidden, 'Project fields must be visible');
+  document.getElementById('mode-demo').click();
+  check(!document.getElementById('demo-config').hidden, 'Demo targets must be restored');
+  check([...document.querySelectorAll('.mode')].filter(n => n.tabIndex === 0).length === 1,
+    'Mode switch needs one tab stop');
+  for (const link of document.querySelectorAll('.workspace-rail nav a')) {
+    const section = document.querySelector(link.getAttribute('href'));
+    check(section, 'Navigation target must exist');
+    link.click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    check(location.hash === link.hash, 'Navigation must reach its actual section');
+  }
+  check(document.querySelectorAll('.workspace-rail nav a').length === 4, 'Four section links');
+  for (const id of ['red-log', 'blue-log', 'sys-log', 'comms-log']) {
+    const log = document.getElementById(id);
+    log.focus(); check(document.activeElement === log, 'Logs must accept keyboard focus');
+  }
+  document.getElementById('mode-demo').focus();
+  window.scrollTo({top: 0, behavior: 'instant'});
+  return true;
+})()"""
+
+LAYOUT_CHECK = """(() => {
+  const width = document.documentElement.clientWidth;
+  if (document.documentElement.scrollWidth > width + 1) throw new Error('Page overflows');
+  for (const selector of ['.mode', '.target', '.workspace-rail nav a', '#run-btn']) {
+    for (const node of document.querySelectorAll(selector)) {
+      const r = node.getBoundingClientRect();
+      if (r.width < 1 || r.left < -1 || r.right > width + 1)
+        throw new Error('Unreachable control: ' + selector);
+    }
+  }
+  for (const mode of ['demo-build', 'project', 'demo']) {
+    document.querySelector('[data-mode="' + mode + '"]').click();
+    for (const node of document.querySelectorAll('.field input, .field select, .field textarea')) {
+      if (!node.getClientRects().length) continue;
+      const r = node.getBoundingClientRect();
+      if (r.left < -1 || r.right > width + 1) throw new Error('Form control overflows: ' + node.id);
+    }
+  }
+  window.scrollTo({top: 0, behavior: 'instant'});
+  return true;
+})()"""
+
 OFFLINE_SERVER = """
 import sys
 sys.path.insert(0, {root!r}); sys.path.insert(0, {tools!r})
-import uvicorn, main, workflow
+import uvicorn, main
+from modules.workflows import workflow
 from modules.core.config import PurpleBoxConfig
 from offline_scan import KnownMuse
 real = workflow.execute_purple_workflow
@@ -156,7 +213,14 @@ def start_server(port: int, offline: bool) -> subprocess.Popen:
     raise SystemExit("Server did not become ready.")
 
 
-async def drive(port: int, target: str, shot: Path, devtools: int, profile: str | None) -> dict:
+async def drive(
+    port: int,
+    target: str,
+    shot: Path,
+    devtools: int,
+    profile: str | None,
+    design_check: bool = False,
+) -> dict:
     import websockets  # installed in the project venv
 
     tabs = None
@@ -181,7 +245,9 @@ async def drive(port: int, target: str, shot: Path, devtools: int, profile: str 
                     return message.get("result", message)
 
         async def js(expression):
-            result = await call("Runtime.evaluate", expression=expression, returnByValue=True)
+            result = await call(
+                "Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=True
+            )
             if "exceptionDetails" in result:
                 raise RuntimeError(result["result"].get("description", "page script failed"))
             return result["result"].get("value")
@@ -195,6 +261,41 @@ async def drive(port: int, target: str, shot: Path, devtools: int, profile: str 
         )
         await call("Page.navigate", url=f"http://localhost:{port}/")
         await asyncio.sleep(2)
+        if design_check:
+            await js(DESIGN_CHECK)
+            for width in (1440, 768, 390, 320):
+                await call(
+                    "Emulation.setDeviceMetricsOverride",
+                    width=width,
+                    height=1000,
+                    deviceScaleFactor=1,
+                    mobile=False,
+                )
+                await asyncio.sleep(0.2)
+                await js(LAYOUT_CHECK)
+                height = await js("document.documentElement.scrollHeight")
+                image = await call(
+                    "Page.captureScreenshot",
+                    format="png",
+                    captureBeyondViewport=True,
+                    clip={"x": 0, "y": 0, "width": width, "height": height, "scale": 1},
+                )
+                shot.with_stem(shot.stem + f"-{width}").write_bytes(base64.b64decode(image["data"]))
+            await call(
+                "Emulation.setEmulatedMedia",
+                features=[{"name": "prefers-reduced-motion", "value": "reduce"}],
+            )
+            await js(
+                "if (getComputedStyle(document.querySelector('.node')).animationName !== 'none') "
+                "throw new Error('Reduced motion not honored')"
+            )
+            await call(
+                "Emulation.setDeviceMetricsOverride",
+                width=1440,
+                height=2200,
+                deviceScaleFactor=1,
+                mobile=False,
+            )
         await js(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
         if profile:
             await js(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
@@ -220,8 +321,12 @@ def wd_request(driver_base: str, method: str, path: str, body: dict | None = Non
         headers={"Content-Type": "application/json"},
         method=method,
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = json.load(error).get("value", {})
+        raise RuntimeError(f"WebDriver {detail.get('error')}: {detail.get('message')}") from error
 
 
 def drive_firefox(
@@ -231,6 +336,7 @@ def drive_firefox(
     profile: str | None,
     gd_port: int,
     firefox_binary: str | None,
+    design_check: bool = False,
 ) -> dict:
     """Drive the dashboard in headless Firefox via local geckodriver.
 
@@ -304,6 +410,36 @@ def drive_firefox(
             if execute("return document.getElementById('run-btn') !== null"):
                 break
             time.sleep(0.5)
+        if design_check:
+            checked = wd_request(
+                base,
+                "POST",
+                f"/session/{session}/execute/async",
+                {
+                    "script": "const done = arguments[0]; ("
+                    + DESIGN_CHECK
+                    + ").then(() => done({ok: true}), e => done({error: e.message}));",
+                    "args": [],
+                },
+            )["value"]
+            if checked.get("error"):
+                raise RuntimeError(checked["error"])
+            for width in (1440, 768, 390, 320):
+                wd_request(
+                    base,
+                    "POST",
+                    f"/session/{session}/window/rect",
+                    {"width": width, "height": 1000},
+                )
+                execute("return " + LAYOUT_CHECK)
+                shot.with_stem(shot.stem + f"-{width}").write_bytes(
+                    base64.b64decode(
+                        wd_request(base, "GET", f"/session/{session}/screenshot")["value"]
+                    )
+                )
+            wd_request(
+                base, "POST", f"/session/{session}/window/rect", {"width": 1440, "height": 2200}
+            )
         execute(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
         if profile:
             execute(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
@@ -349,6 +485,11 @@ def main() -> int:
     parser.add_argument("--devtools-port", type=int, default=9335)
     parser.add_argument("--shot", type=Path, default=Path(tempfile.gettempdir()) / "ui-scan.png")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument(
+        "--design-check",
+        action="store_true",
+        help="Check keyboard navigation and responsive layouts before the scan",
+    )
     parser.add_argument("--profile", choices=["economy", "balanced", "quality"])
     parser.add_argument(
         "--browser",
@@ -384,6 +525,7 @@ def main() -> int:
                 args.profile,
                 args.geckodriver_port,
                 firefox_binary,
+                args.design_check,
             )
         finally:
             try:
@@ -422,7 +564,14 @@ def main() -> int:
     try:
         result = asyncio.run(
             asyncio.wait_for(
-                drive(args.port, args.target, args.shot, args.devtools_port, args.profile),
+                drive(
+                    args.port,
+                    args.target,
+                    args.shot,
+                    args.devtools_port,
+                    args.profile,
+                    args.design_check,
+                ),
                 timeout=660,
             )
         )
