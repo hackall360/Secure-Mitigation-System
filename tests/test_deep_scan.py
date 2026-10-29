@@ -1454,6 +1454,8 @@ def test_w8v2_1_stale_signals_do_not_boost_rank(monkeypatch):
     with no signals: _queue_evidence reads both as absent, so _fast_lane_rank
     must order them by the id tiebreak only. Real enrich+rank path.
     """
+
+
 def test_w8v2_5_stale_token_marks_expired_not_absent(monkeypatch):
     """W8 item 6 RED: stale (>1d) KEV/EPSS via real enrich path renders stale:<date>, not absent."""
     import datetime as _dt
