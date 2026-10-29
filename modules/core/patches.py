@@ -7,6 +7,34 @@ import difflib
 
 from modules.core.registry import Target
 
+EDIT_BUDGET_LINES = 60
+"""Maximum surgical edit budget; SPEC 14.9 item 3 never widens it."""
+
+_SOLVER_SHAPE_MARKERS = (
+    "check-sat",
+    "declare-const",
+    "declare-fun",
+    "assert-valid",
+    "get-model",
+    "z3 import",
+    "from z3 import",
+    "import z3",
+    "semfix",
+    "directfix",
+)
+
+
+def is_solver_synthesized_shape(patched: str) -> bool:
+    """Detect solver-synthesized edit shapes (SemFix/DirectFix style).
+
+    Template-shaped sanitization inputs (regex allowlists, strict casts,
+    400-reject blocks) contain none of these markers and flow through the
+    unchanged 60-line guards. Anything carrying solver markers is rejected;
+    the check inspects the patch text only, never probe output (LAW 4).
+    """
+    lowered = patched.lower()
+    return any(marker in lowered for marker in _SOLVER_SHAPE_MARKERS)
+
 
 class PatchRejected(ValueError):
     """The patch exceeds the scaffold's supported edit surface.
@@ -50,6 +78,17 @@ def validate_patch(target: Target, original: str, patched: str) -> str:
             "Patch is not a complete supported source file.",
             guard_id="malformed_patch",
         )
+    if is_solver_synthesized_shape(patched):
+        marker = next(
+            (m for m in _SOLVER_SHAPE_MARKERS if m in patched.lower()),
+            "solver marker",
+        )
+        raise PatchRejected(
+            "Patch carries a solver-synthesized shape; only template-shaped "
+            "sanitization inside the 60-line budget is accepted.",
+            guard_id="solver_synthesized_shape",
+            trigger=f"solver marker: {marker}",
+        )
     for notice in original.splitlines():
         if (
             "Required Notice:" in notice or "polyformproject.org/licenses/" in notice
@@ -66,11 +105,11 @@ def validate_patch(target: Target, original: str, patched: str) -> str:
         for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=before, b=after).get_opcodes()
         if op != "equal"
     )
-    if changes > 60:
+    if changes > EDIT_BUDGET_LINES:
         raise PatchRejected(
             "Patch exceeds the 60-line surgical edit budget.",
             guard_id="edit_budget_exceeded",
-            trigger=f"{changes} changed lines over 60-line budget",
+            trigger=f"{changes} changed lines over {EDIT_BUDGET_LINES}-line budget",
         )
 
     if target.key == "mysql_insecure_conf":
