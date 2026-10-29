@@ -338,3 +338,12 @@ def test_demo_build_prompts_for_brief_and_vulns():
     assert 'id="demo-vulns"' in markup
     assert "Vulnerabilities to implement" in markup
     assert "CVEs, named types, or free text" in markup
+
+
+def test_demo_hardening_controls_exist():
+    """L3: demo-size/flaw-count/seed widgets sit by the other demo controls."""
+    markup = INDEX.read_text()
+    for widget in ('id="demo-size"', 'id="demo-flaw-count"', 'id="demo-seed"'):
+        assert widget in markup
+    assert 'name="demo_size"' in markup
+    assert 'name="flaw_count"' in markup

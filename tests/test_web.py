@@ -268,3 +268,42 @@ def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
     assert seen.get("red_agents") == 5
     assert seen.get("blue_agents") == 5
     assert seen.get("context_budget") == 32768
+
+
+def test_demo_request_accepts_hardening_fields_with_clamps(monkeypatch):
+    """L3: the demo socket parses demo_size/flaw_count/seed with server clamps."""
+    import json as _json
+
+    import main as _main
+
+    seen = {}
+
+    async def fake_build(emit, config, **kwargs):
+        seen.update(kwargs)
+        await emit("green", "done")
+        return {"status": "no_findings", "message": "probe", "project": "ai-demo"}
+
+    monkeypatch.setattr(_main, "run_demo_build", fake_build)
+    app = _main.create_app(PurpleBoxConfig(meta_api_key="k"))
+    from fastapi.testclient import TestClient as _TC
+
+    with _TC(app, base_url="http://localhost") as client:
+        headers = {"origin": "http://localhost"}
+        with client.websocket_connect("ws://localhost/ws/demo", headers=headers) as socket:
+            socket.send_text(
+                _json.dumps(
+                    {
+                        "theme": "xss",
+                        "demo_size": "bogus",
+                        "flaw_count": 99,
+                        "seed": 7,
+                    }
+                )
+            )
+            while True:
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    break
+    assert seen.get("demo_size") == "standard"
+    assert seen.get("flaw_count") == 8
+    assert seen.get("seed") == 7

@@ -84,6 +84,9 @@ async def run_demo_build(
     context_budget: int = 32768,
     research: bool = False,
     research_scanners: tuple = (),
+    demo_size: str = "standard",
+    flaw_count: int | None = None,
+    seed: int | None = None,
 ):
     """Green builder for the dashboard: generate a demo project, then red/blue it.
 
@@ -166,6 +169,9 @@ async def run_demo_build(
                 theme=" ".join(themes),
                 build_brief=intent.build_brief,
                 vulns=intent.vulns,
+                size=demo_size,
+                flaw_count=flaw_count,
+                seed=seed,
             )
         except (AgentError, ValueError, TypeError, OSError) as exc:
             # Invalid generation output (bad syntax, unsafe content, budget
@@ -440,6 +446,19 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         )
                     except (TypeError, ValueError):
                         demo_red, demo_blue, demo_budget = 5, 5, 32768
+                    demo_size = str(request.get("demo_size", "") or "")
+                    if demo_size not in ("small", "standard"):
+                        demo_size = "standard"
+                    try:
+                        _flaw = request.get("flaw_count", None)
+                        demo_flaw_count = None if _flaw is None else max(1, min(8, int(_flaw)))
+                    except (TypeError, ValueError):
+                        demo_flaw_count = None
+                    try:
+                        _seed = request.get("seed", None)
+                        demo_seed = None if _seed is None else int(_seed)
+                    except (TypeError, ValueError):
+                        demo_seed = None
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
                         {
@@ -462,6 +481,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     red_agents=demo_red,
                     blue_agents=demo_blue,
                     context_budget=demo_budget,
+                    demo_size=demo_size,
+                    flaw_count=demo_flaw_count,
+                    seed=demo_seed,
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
@@ -557,6 +579,9 @@ async def ai_demo_runner(
     research: bool = False,
     research_scanners: str = "",
     allow_remote_inference: bool = False,
+    demo_size: str = "standard",
+    flaw_count: int | None = None,
+    demo_seed: int | None = None,
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
@@ -618,6 +643,9 @@ async def ai_demo_runner(
             theme=" ".join(themes),
             build_brief=_intent.build_brief,
             vulns=_intent.vulns,
+            size=demo_size,
+            flaw_count=flaw_count,
+            seed=demo_seed,
         )
     finally:
         try:
@@ -1130,6 +1158,24 @@ def main() -> int:
         help="Generate AI demo without live NVD lookup (uses static flaw patterns)",
     )
     parser.add_argument(
+        "--demo-size",
+        choices=["small", "standard"],
+        default="standard",
+        help="Greenhouse demo size: small (fewer routes) or standard (full set)",
+    )
+    parser.add_argument(
+        "--flaw-count",
+        type=int,
+        default=None,
+        help="Bound the requested demo flaws to 1..8 (default: keep them all; clamps)",
+    )
+    parser.add_argument(
+        "--demo-seed",
+        type=int,
+        default=None,
+        help="Variation nonce for AI demo generation (reproducibility hint)",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -1183,6 +1229,9 @@ def main() -> int:
         "intel_offline": False,
         "build_brief": "",
         "vulns": "",
+        "demo_size": "standard",
+        "flaw_count": None,
+        "demo_seed": None,
         "research": False,
         "research_scanners": "",
         "allow_remote_inference": False,
@@ -1228,6 +1277,12 @@ def main() -> int:
         parser.error("--intel-theme requires --ai-demo")
     if args.intel_offline and not args.ai_demo:
         parser.error("--intel-offline requires --ai-demo")
+    if args.demo_size != defaults["demo_size"] and not args.ai_demo:
+        parser.error("--demo-size requires --ai-demo")
+    if args.flaw_count is not None and not args.ai_demo:
+        parser.error("--flaw-count requires --ai-demo")
+    if args.demo_seed is not None and not args.ai_demo:
+        parser.error("--demo-seed requires --ai-demo")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")
@@ -1354,6 +1409,11 @@ def main() -> int:
                     research=args.research,
                     research_scanners=args.research_scanners,
                     allow_remote_inference=args.allow_remote_inference,
+                    demo_size=args.demo_size,
+                    flaw_count=(
+                        None if args.flaw_count is None else max(1, min(8, args.flaw_count))
+                    ),
+                    demo_seed=args.demo_seed,
                     out_format=out_format,
                     show_usage=args.show_usage,
                 )

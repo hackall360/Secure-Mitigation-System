@@ -949,7 +949,14 @@ function startDemoBuild() {
       const offline = inferenceMode === 'local'
         || (el('demo-offline') && el('demo-offline').checked)
         || !(el('demo-allow-remote') && el('demo-allow-remote').checked);
-      socket.send(JSON.stringify({ theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: offline, scan_profile: (el('demo-scan-profile') && el('demo-scan-profile').value) || 'extra_light', cycles: Number((el('demo-cycles') && el('demo-cycles').value) || 1), red_agents: Number((el('demo-red-agents') && el('demo-red-agents').value) || 5), blue_agents: Number((el('demo-blue-agents') && el('demo-blue-agents').value) || 5), context_budget: Number((el('demo-budget') && el('demo-budget').value) || 32768) }));
+      const flawRaw = (el('demo-flaw-count') && el('demo-flaw-count').value || '').trim();
+      const seedRaw = (el('demo-seed') && el('demo-seed').value || '').trim();
+      const demoSize = (el('demo-size') && el('demo-size').value) || 'standard';
+      const payload = { theme: (el('demo-theme') && el('demo-theme').value || '').slice(0, 200), build_brief: (el('demo-build-brief') && el('demo-build-brief').value || '').slice(0, 500), vulns: (el('demo-vulns') && el('demo-vulns').value || '').slice(0, 500), intel_offline: offline, scan_profile: (el('demo-scan-profile') && el('demo-scan-profile').value) || 'extra_light', cycles: Number((el('demo-cycles') && el('demo-cycles').value) || 1), red_agents: Number((el('demo-red-agents') && el('demo-red-agents').value) || 5), blue_agents: Number((el('demo-blue-agents') && el('demo-blue-agents').value) || 5), context_budget: Number((el('demo-budget') && el('demo-budget').value) || 32768) };
+      payload.demo_size = demoSize === 'small' ? 'small' : 'standard';
+      if (flawRaw !== '' && Number.isFinite(Number(flawRaw))) payload.flaw_count = Math.max(1, Math.min(8, Math.trunc(Number(flawRaw))));
+      if (seedRaw !== '' && Number.isFinite(Number(seedRaw))) payload.seed = Math.trunc(Number(seedRaw));
+      socket.send(JSON.stringify(payload));
     } catch { return; }
     writeLine('green', 'Greenhouse is growing a fresh demo. Stand by for seedlings.');
   };

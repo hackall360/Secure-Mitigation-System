@@ -110,3 +110,71 @@ def test_generate_demo_project_carries_intent_into_payload(monkeypatch):
     assert files.cve_inspiration == ["CVE-2024-3094"]
     assert "notes app" in captured["payload"]["build_brief"]
     assert "CVE-2024-3094" in captured["payload"]["requested_vulns"]
+
+
+def _run_generate(**kwargs):
+    """Shared fake-client harness: capture the Muse payload, return (files, payload)."""
+    import asyncio as _aio
+
+    import demo_gen as _dg
+
+    captured = {}
+
+    class FakeClient:
+        config = type("C", (), {"red_team_model": "muse-spark-1.3"})()
+
+        async def _request(self, model, system, payload, schema, **kwargs):
+            captured["payload"] = payload
+            captured["system"] = system
+            return _dg.DemoProjectFiles(
+                app_py="x = 1\n",
+                test_contract_py="assert True\n",
+                contract="c",
+            )
+
+    files = _aio.run(_dg.generate_demo_project(FakeClient(), intel_context=[], **kwargs))
+    return files, captured["payload"], captured["system"]
+
+
+def test_generate_demo_project_flaw_count_slices_wanted():
+    """L3: flaw_count=2 with 5 vulns -> payload requested_vulns len 2."""
+    _, payload, _ = _run_generate(
+        vulns=["a", "b", "c", "d", "e"],
+        flaw_count=2,
+    )
+    assert len(payload["requested_vulns"]) == 2
+    assert payload["flaw_count"] == 2
+
+
+def test_generate_demo_project_flaw_count_clamps_to_8():
+    """L3: flaw_count=99 clamps to 8, never raises, payload capped."""
+    _, payload, _ = _run_generate(
+        vulns=["v%d" % i for i in range(10)],
+        flaw_count=99,
+    )
+    assert payload["flaw_count"] == 8
+    assert len(payload["requested_vulns"]) == 8
+
+
+def test_generate_demo_project_bad_size_falls_back_and_seed_passes_through():
+    """L3: size='bogus' -> payload demo_size 'standard', seed passed through."""
+    _, payload, _ = _run_generate(vulns=["a", "b"], size="bogus", seed=42)
+    assert payload["demo_size"] == "standard"
+    assert payload["seed"] == 42
+
+
+def test_generate_demo_project_defaults_match_current_behavior():
+    """L3: defaults -> demo_size 'standard', flaw_count == len(requested)."""
+    _, payload, system = _run_generate(vulns=["a", "b", "c"])
+    assert payload["demo_size"] == "standard"
+    assert payload["flaw_count"] == len(payload["requested_vulns"]) == 3
+    assert payload["seed"] is None
+    assert "demo_size" in system and "variation nonce" in system
+
+
+def test_generate_demo_project_never_raises_on_garbage():
+    """L3: invalid flaw_count/size/seed types never raise, fall back sanely."""
+    _, payload, _ = _run_generate(vulns=["a"], size=123, flaw_count="xx", seed="yy")
+    assert payload["demo_size"] == "standard"
+    assert payload["requested_vulns"] == ["a"]
+    assert payload["seed"] is None
