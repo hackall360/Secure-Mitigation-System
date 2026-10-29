@@ -76,11 +76,16 @@ sys.exit(0)
 # checks but widen the net beyond fixed equality asserts: known-good ids
 # must stay 200 while seeded-random ids stay empty/not-found, benign args
 # must stay stable under repetition, and audited config keys must survive
-# re-read. Aliases accept both the task brief ids and the registry keys.
+# re-read. Each registry id maps to the check matching its real service:
+# node_query_sink asserts the JSON envelope of targets/node_query_sink/app.js
+# while project_lookup_text asserts the plain-text contract of
+# project-workflow demo apps (exact names for known ids, empty bodies for
+# random ids). node_eval_service is not a registry key (registry.py keys are
+# node_query_sink/php_command_sink/mysql_insecure_conf) so it is not listed.
 _PROPERTY_FIXTURES = frozenset(
     {
-        "node_eval_service",
         "node_query_sink",
+        "project_lookup_text",
         "php_command_sink",
         "mysql_config_audit",
         "mysql_insecure_conf",
@@ -113,12 +118,14 @@ def project_property_script(fixture_id: str) -> str:
             "import sys\n"
             f"print('Unknown property fixture: {fixture_id} (INCONCLUSIVE: no "
             "normal-contract properties defined; evidence: fixture id matched "
-            "none of node_eval_service/php_command_sink/mysql_config_audit)')\n"
+            "none of node_query_sink/project_lookup_text/php_command_sink/mysql_config_audit)')\n"
             "sys.exit(2)\n"
         )
     node_ids = _property_node_ids(20261029)
-    if fixture_id in ("node_eval_service", "node_query_sink"):
-        target = "node_eval_service"
+    if fixture_id == "node_query_sink":
+        target = "node_query_sink"
+    elif fixture_id == "project_lookup_text":
+        target = "project_lookup_text"
     elif fixture_id == "php_command_sink":
         target = "php_command_sink"
     else:
@@ -147,7 +154,7 @@ def fail(message):
 
 try:
     target = TARGET_VALUE
-    if target == 'node_eval_service':
+    if target == 'node_query_sink':
         # Two known-good ids stay 200 and non-empty; seeded random ids must
         # return no rows (empty result set, not the 404 route).
         for account_id in (101, 102):
@@ -166,6 +173,25 @@ try:
                 fail('random id %d returned HTTP %d, want an empty result set' % (account_id, error.code))
             if response.get('count') != 0 or response.get('results') != []:
                 fail('random id %d leaked rows, want an empty result set' % account_id)
+    elif target == 'project_lookup_text':
+        # Project-workflow plain-text shape: exact names for known ids,
+        # empty body (200) for seeded random ids, never rows or an error page.
+        for account_id, want in ((101, 'Alice'), (102, 'Bob')):
+            try:
+                body = get('/lookup?id=' + str(account_id))
+            except urllib.error.HTTPError as error:
+                fail('known id %d returned HTTP %d, want 200 with its exact name' % (account_id, error.code))
+            if body != want:
+                fail('known id %d returned %r, want %r' % (account_id, body[:60], want))
+        for account_id in RANDOM_IDS:
+            try:
+                body = get('/lookup?id=' + str(account_id))
+            except urllib.error.HTTPError as error:
+                if error.code == 400:
+                    fail('random id %d was blocked with HTTP 400, want an empty 200 body' % account_id)
+                fail('random id %d returned HTTP %d, want an empty body' % (account_id, error.code))
+            if body != '':
+                fail('random id %d leaked rows %r, want an empty body' % (account_id, body[:60]))
     elif target == 'php_command_sink':
         # Benign hosts stay successful and byte-stable under repetition.
         seen = {}
