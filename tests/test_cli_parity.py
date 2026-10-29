@@ -419,3 +419,181 @@ def test_config_file_accepts_hardening_keys(tmp_path):
         "flaw_count": 3,
         "demo_seed": 7,
     }
+
+
+# --- Wave 2 items 1-4 tri-surface integration (SPEC 14.8, LAW 8/9 RED) ---
+# Defensive probes: Wave 2 fields may be absent (parallel agents); every
+# accessor must degrade silently, never raise on missing/odd-shaped fields.
+
+
+def _w2v2_receipt_result(**over):
+    """Fixture result carrying Wave 2 receipt + guard + mutation evidence."""
+    from types import SimpleNamespace
+
+    payload = {
+        "target": "node_query_sink",
+        "status": "verified",
+        "message": "Probe blocked",
+        "diff": "--- a/app.js\n+++ b/app.js\n",
+        "cleanup_ok": True,
+        "pre_exit_code": 0,
+        "post_exit_code": 1,
+        "baseline_passed": True,
+        "regression_passed": True,
+        "cycles": [],
+        "total_tokens": 3,
+        "cost_usd": 0.0001,
+        "verdict_receipt": {
+            "fixture": "node_query_sink",
+            "pre_exit_code": 0,
+            "post_exit_code": 1,
+            "regression": "passed",
+            "differential": "passed",
+            "properties": "passed",
+            "patch_hash": "abc123",
+        },
+        "guard_rationales": [
+            {"guard": "no-new-sinks", "protected_line": "eval(", "reason": "blocked"}
+        ],
+        "mutation_evidence": {"mutations": 8, "failures": 0, "verdict": "passed"},
+    }
+    payload.update(over)
+    return SimpleNamespace(
+        **payload,
+        usage=ScanUsage(),
+        success=True,
+        model_dump=lambda: dict(payload),
+    )
+
+
+def _w2v2_fast_lane_report():
+    """CVE report with reach/KEV/EPSS fast-lane topping evidence."""
+    from types import SimpleNamespace
+
+    payload = {
+        "target": "p",
+        "status": "completed",
+        "message": "Fast lane: ok",
+        "static_findings": [],
+        "dependencies": [],
+        "vulnerabilities": [
+            {
+                "id": "CVE-2024-0001",
+                "cves": ["CVE-2024-0001"],
+                "reach_score": 85,
+                "reach_evidence": ["sink adjacency (+40)", "KEV listed (+5)"],
+                "fixed_versions": ["1.2.3"],
+                "kev_listed": True,
+                "epss_percentile": 0.97,
+            }
+        ],
+        "deep_assessment": None,
+        "errors": [],
+    }
+    return SimpleNamespace(
+        **payload,
+        usage=ScanUsage(),
+        success=True,
+        model_dump=lambda: dict(payload),
+    )
+
+
+def test_w2v2_receipt_facts_degrade_silently_without_fields():
+    """Item 1: absent receipt -> 'Not reported'; present -> fixture + hash."""
+    from sms_cli import format_wave2_facts
+
+    facts = format_wave2_facts(_result(), use_color=False)
+    assert facts["receipt"] == "Not reported"
+    assert facts["guard_rationales"] == "Not reported"
+    assert facts["mutations"] == "Not reported"
+    facts = format_wave2_facts(_w2v2_receipt_result(), use_color=False)
+    assert "node_query_sink" in facts["receipt"]
+    assert "abc123" in facts["receipt"]
+    assert "no-new-sinks" in facts["guard_rationales"]
+    assert "0/8" in facts["mutations"]
+
+
+def test_w2v2_fact_table_includes_wave2_rows():
+    """LAW 8 CLI surface: fact table always shows the four Wave 2 rows."""
+    from sms_cli import fact_table
+
+    table = fact_table(_result(), use_color=False)
+    for row in ("Receipt", "Guard rationales", "Fast-lane top", "Mutations"):
+        assert row in table
+
+
+def test_w2v2_write_run_report_exports_receipt_json():
+    """Item 1: run report writes receipt.json when verdict_receipt present."""
+    report = _w2v2_receipt_result().model_dump()
+    run_dir = main.write_run_report(tmp_path_report_dir(), report, "# summary")
+    receipt = (run_dir / "receipt.json").read_text()
+    assert "node_query_sink" in receipt
+    assert "patch_hash" in receipt
+
+
+def tmp_path_report_dir():
+    import tempfile
+    from pathlib import Path
+
+    return Path(tempfile.mkdtemp())
+
+
+def test_w2v2_summary_markdown_has_wave2_sections():
+    """SUMMARY.md carries topping + guard + mutation sections when present."""
+    result = _w2v2_receipt_result()
+    settings = PurpleBoxConfig()
+    summary = main._build_summary_markdown("node_query_sink", None, settings, result)
+    assert "Verdict receipt" in summary
+    assert "Guard rationales" in summary
+    assert "Mutation probes" in summary
+
+
+def test_w2v2_summary_markdown_degrades_without_fields():
+    """Absent Wave 2 fields: summary still builds, no Wave 2 sections."""
+    result = _result()
+    settings = PurpleBoxConfig()
+    summary = main._build_summary_markdown("node_query_sink", None, settings, result)
+    assert "Verdict receipt" not in summary
+    assert "node_query_sink" in summary
+
+
+def test_w2v2_fast_lane_topping_summary_section():
+    """Item 3: CVE summary renders reach/KEV/EPSS topping evidence."""
+    result = _w2v2_fast_lane_report()
+    settings = PurpleBoxConfig()
+    summary = main._build_cve_summary_markdown("p", settings, result)
+    assert "Fast-lane topping" in summary
+    assert "CVE-2024-0001" in summary
+    assert "85" in summary
+    assert "1.2.3" in summary
+
+
+def test_w2v2_tui_describe_result_carries_wave2_tokens():
+    """TUI surface: result line carries receipt/mutation tokens; degrades clean."""
+    import tui as _tui
+
+    out = _tui.describe_result(_result())
+    assert "node_query_sink" in out and "verified" in out
+    out = _tui.describe_result(_w2v2_receipt_result())
+    assert "receipt" in out.lower() or "abc123" in out or "mutation" in out.lower()
+
+
+def test_w2v2_probes_never_raise_on_garbage():
+    """Defensive contract: odd-shaped fields never raise on any surface."""
+    from types import SimpleNamespace
+
+    import tui as _tui
+    from sms_cli import format_wave2_facts
+
+    garbage = SimpleNamespace(
+        target="t",
+        status="verified",
+        message="ok",
+        usage=ScanUsage(),
+        verdict_receipt=["not", "a", "dict"],
+        guard_rationales="a string, not a list",
+        mutation_evidence=42,
+        fast_lane=None,
+    )
+    assert format_wave2_facts(garbage, use_color=False)["receipt"] == "Not reported"
+    assert "verified" in _tui.describe_result(garbage)

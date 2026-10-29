@@ -287,6 +287,151 @@ def _probe_label(exit_code: object) -> str:
     return f"Exit {exit_code}"
 
 
+def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
+    """Wave 2 items 1-4 fact rows (SPEC 14.8). Read-only defensive probes.
+
+    Each Wave 2 producer (agents 1-4) may or may not have landed its fields
+    yet; every accessor below degrades to "Not reported" on missing or
+    odd-shaped values and never raises. Keys probed (all optional):
+    ``verdict_receipt`` (item 1: fixture/pre/post/regression/differential/
+    properties/patch_hash dict or object), ``guard_rationales`` (item 2:
+    list of {guard, protected_line, reason}), ``mutation_evidence`` (item 4:
+    {mutations, failures, verdict} dict or object), and fast-lane topping
+    (item 3: ``fast_lane_top`` string, else first ``vulnerabilities`` entry
+    with reach_score/reach_evidence). No probe scripts or payloads surface.
+    """
+    _ = use_color  # rows are plain facts; color applied by fact_table caller
+    facts = {
+        "receipt": "Not reported",
+        "guard_rationales": "Not reported",
+        "fast_lane_top": "Not reported",
+        "mutations": "Not reported",
+    }
+    get = lambda name, default=None: getattr(result, name, default)  # noqa: E731
+    model_dump = getattr(result, "model_dump", None)
+    dumped: dict = {}
+    try:
+        if callable(model_dump):
+            maybe = model_dump()
+            if isinstance(maybe, dict):
+                dumped = maybe
+    except Exception:
+        dumped = {}
+
+    def _field(name: str):
+        value = get(name, None)
+        if value is None and isinstance(dumped, dict):
+            value = dumped.get(name)
+        return value
+
+    def _as_dict(value: object) -> dict:
+        if isinstance(value, dict):
+            return value
+        to_dict = getattr(value, "model_dump", None)
+        if callable(to_dict):
+            try:
+                maybe = to_dict()
+                if isinstance(maybe, dict):
+                    return maybe
+            except Exception:
+                pass
+        return {}
+
+    # Item 1: execution-oracle verdict receipt.
+    try:
+        receipt = _as_dict(_field("verdict_receipt"))
+        if receipt:
+            parts = []
+            fixture = receipt.get("fixture") or receipt.get("target")
+            if fixture:
+                parts.append(str(fixture)[:64])
+            pre = receipt.get("pre_exit_code")
+            post = receipt.get("post_exit_code")
+            if pre is not None or post is not None:
+                parts.append(f"probe {pre}/{post}")
+            for key in ("regression", "differential", "properties"):
+                val = receipt.get(key)
+                if val:
+                    parts.append(f"{key} {val}")
+            patch_hash = receipt.get("patch_hash") or receipt.get("patch_sha")
+            if patch_hash:
+                parts.append(f"hash {str(patch_hash)[:16]}")
+            if parts:
+                facts["receipt"] = " · ".join(parts)[:200]
+    except Exception:
+        pass
+
+    # Item 2: sanitization-guard rationale export.
+    try:
+        rationales = _field("guard_rationales")
+        if rationales is None:
+            rationales = _field("guard_evidence")
+        items = list(rationales) if isinstance(rationales, (list, tuple)) else []
+        shown = []
+        for item in items[:3]:
+            row = _as_dict(item) if not isinstance(item, str) else {}
+            if isinstance(item, str):
+                shown.append(item[:80])
+                continue
+            guard = row.get("guard") or row.get("rule") or row.get("check")
+            line = row.get("protected_line") or row.get("line") or ""
+            if guard:
+                shown.append(f"{guard}: {line}"[:80] if line else str(guard)[:80])
+        if shown:
+            extra = f" +{len(items) - 3} more" if len(items) > 3 else ""
+            facts["guard_rationales"] = "; ".join(shown)[:200] + extra
+    except Exception:
+        pass
+
+    # Item 3: reachable+fixable fast-lane topping.
+    try:
+        top = _field("fast_lane_top")
+        if isinstance(top, str) and top.strip():
+            facts["fast_lane_top"] = top.strip()[:200]
+        else:
+            vulns = _field("vulnerabilities")
+            first = None
+            if isinstance(vulns, (list, tuple)) and vulns:
+                first = _as_dict(vulns[0]) if not isinstance(vulns[0], str) else {}
+            if first:
+                label = (
+                    first.get("id") or (first.get("cves") or [None])[0]
+                    if isinstance(first.get("cves"), list)
+                    else first.get("id")
+                )
+                label = label or first.get("id") or "top vuln"
+                score = first.get("reach_score")
+                fixed = first.get("fixed_versions")
+                fixed_str = ""
+                if isinstance(fixed, (list, tuple)) and fixed:
+                    fixed_str = f" fix {str(fixed[0])[:32]}"
+                kev = " KEV" if first.get("kev_listed") else ""
+                epss = first.get("epss_percentile")
+                epss_str = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                facts["fast_lane_top"] = f"{label} reach {score}{fixed_str}{kev}{epss_str}"[:200]
+    except Exception:
+        pass
+
+    # Item 4: bounded mutation-count probes.
+    try:
+        mutation = _as_dict(_field("mutation_evidence"))
+        if not mutation:
+            mutation = _as_dict(_field("mutations"))
+        if mutation:
+            total = mutation.get("mutations") or mutation.get("count") or mutation.get("total")
+            failures = mutation.get("failures") or mutation.get("failed") or 0
+            verdict = mutation.get("verdict") or mutation.get("status") or ""
+            try:
+                facts["mutations"] = f"{int(failures)}/{int(total)} failed"
+            except (TypeError, ValueError):
+                facts["mutations"] = str(verdict)[:80] or "reported"
+            if verdict:
+                facts["mutations"] = f"{facts['mutations']} ({verdict})"[:200]
+    except Exception:
+        pass
+    return facts
+
+
 def format_facts(result: object, use_color: bool | None = None) -> dict:
     """Fact rows for a fixture or project result (already-redacted inputs only)."""
     get = lambda name, default=None: getattr(result, name, default)  # noqa: E731
@@ -317,6 +462,10 @@ def format_facts(result: object, use_color: bool | None = None) -> dict:
 def fact_table(result: object, use_color: bool | None = None) -> str:
     """Aligned two-column fact table for terminal output."""
     facts = format_facts(result, use_color=use_color)
+    try:
+        wave2 = format_wave2_facts(result, use_color=use_color)
+    except Exception:
+        wave2 = {}
     rows = [
         ("Target", facts["target"]),
         ("Status", status_color(facts["status"], use_color)),
@@ -325,6 +474,10 @@ def fact_table(result: object, use_color: bool | None = None) -> str:
         ("Pre-probe", facts["pre_probe"]),
         ("Post-probe", facts["post_probe"]),
         ("Regression", facts["regression"]),
+        ("Receipt", wave2.get("receipt", "Not reported")),
+        ("Guard rationales", wave2.get("guard_rationales", "Not reported")),
+        ("Fast-lane top", wave2.get("fast_lane_top", "Not reported")),
+        ("Mutations", wave2.get("mutations", "Not reported")),
         ("Cycles", facts["cycles"]),
         ("Research records", facts["research_records"]),
         ("Cleanup", facts["cleanup"]),

@@ -661,6 +661,151 @@ function renderCycles(cycles, records) {
   });
 }
 
+/* ---------- Wave 2 items 1-4 defensive collectors (SPEC 14.8) ----------
+   Read-only probes: every field optional, absent/odd shapes degrade to
+   null (never throw). Surfaces: receipt facts + receipt.json download,
+   guard rationale list, fast-lane topping list, mutation evidence facts. */
+
+function w2v2AsRecord(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  return null;
+}
+
+function w2v2Receipt(payload) {
+  try {
+    const receipt = w2v2AsRecord(payload && payload.verdict_receipt);
+    if (!receipt) return null;
+    const parts = [];
+    const fixture = receipt.fixture || receipt.target;
+    if (fixture) parts.push(String(fixture).slice(0, 64));
+    if (receipt.pre_exit_code !== undefined || receipt.post_exit_code !== undefined) {
+      parts.push(`probe ${receipt.pre_exit_code}/${receipt.post_exit_code}`);
+    }
+    ['regression', 'differential', 'properties'].forEach((key) => {
+      if (receipt[key]) parts.push(`${key} ${receipt[key]}`);
+    });
+    const hash = receipt.patch_hash || receipt.patch_sha;
+    if (hash) parts.push(`hash ${String(hash).slice(0, 16)}`);
+    return parts.length ? parts.join(' · ').slice(0, 200) : null;
+  } catch { return null; }
+}
+
+function w2v2Guards(payload) {
+  try {
+    const raw = (payload && (payload.guard_rationales || payload.guard_evidence)) || null;
+    if (!Array.isArray(raw) || !raw.length) return [];
+    return raw.slice(0, 8).map((item) => {
+      if (typeof item === 'string') return { text: item.slice(0, 80) };
+      const row = w2v2AsRecord(item) || {};
+      const guard = row.guard || row.rule || row.check || 'guard';
+      const line = row.protected_line || row.line || '';
+      const reason = row.reason || row.action || '';
+      return { guard: String(guard).slice(0, 80), line: String(line).slice(0, 80), reason: String(reason).slice(0, 160) };
+    });
+  } catch { return []; }
+}
+
+function w2v2Topping(payload) {
+  try {
+    const vulns = payload && payload.vulnerabilities;
+    if (!Array.isArray(vulns) || !vulns.length) return [];
+    return vulns.slice(0, 10)
+      .map((v) => w2v2AsRecord(v))
+      .filter((v) => v && v.reach_score !== undefined && v.reach_score !== null)
+      .map((v) => ({
+        id: String((v.cves && v.cves[0]) || v.id || 'vuln').slice(0, 40),
+        score: v.reach_score,
+        fixed: Array.isArray(v.fixed_versions) ? v.fixed_versions.slice(0, 4) : [],
+        kev: Boolean(v.kev_listed),
+        epss: typeof v.epss_percentile === 'number' ? v.epss_percentile : null,
+        evidence: Array.isArray(v.reach_evidence) ? v.reach_evidence.slice(0, 4).map((e) => String(e).slice(0, 160)) : []
+      }));
+  } catch { return []; }
+}
+
+function w2v2Mutation(payload) {
+  try {
+    const row = w2v2AsRecord(payload && (payload.mutation_evidence || payload.mutations));
+    if (!row) return null;
+    const total = row.mutations ?? row.count ?? row.total;
+    const failures = row.failures ?? row.failed ?? 0;
+    const verdict = row.verdict || row.status || '';
+    if (typeof total === 'number') return { text: `${failures}/${total} failed${verdict ? ` (${verdict})` : ''}`.slice(0, 200), failures, total, verdict: String(verdict).slice(0, 40) };
+    if (verdict) return { text: String(verdict).slice(0, 80), failures: 0, total: 0, verdict: String(verdict).slice(0, 40) };
+    return null;
+  } catch { return null; }
+}
+
+function renderW2v2(payload) {
+  try {
+    const receipt = w2v2Receipt(payload);
+    fact('fact-receipt', receipt || 'Not reported', receipt ? true : undefined);
+    const guards = w2v2Guards(payload);
+    fact('fact-guards', guards.length ? guards.map((g) => g.text || `${g.guard}${g.line ? `: ${g.line}` : ''}`).join('; ').slice(0, 200) : 'Not reported', guards.length ? true : undefined);
+    const list = el('guard-list');
+    if (list) {
+      list.replaceChildren();
+      guards.forEach((g) => {
+        const item = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = g.text || g.guard;
+        item.append(name);
+        if (!g.text && (g.line || g.reason)) {
+          const detail = document.createElement('span');
+          detail.textContent = [g.line, g.reason].filter(Boolean).join(' — ');
+          item.append(document.createTextNode(' '), detail);
+        }
+        list.append(item);
+      });
+      const wrap = el('guard-rationales');
+      if (wrap) wrap.hidden = guards.length === 0;
+    }
+    const topping = w2v2Topping(payload);
+    fact('fact-topping', topping.length ? `${topping[0].id} reach ${topping[0].score}` : 'Not reported', topping.length ? true : undefined);
+    const topList = el('topping-list');
+    if (topList) {
+      topList.replaceChildren();
+      topping.forEach((t) => {
+        const item = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = `${t.id} · reach ${t.score}`;
+        item.append(name);
+        const bits = [];
+        if (t.fixed.length) bits.push(`fix ${t.fixed[0]}`);
+        if (t.kev) bits.push('KEV-listed');
+        if (t.epss !== null) bits.push(`EPSS ${t.epss.toFixed(2)}`);
+        if (bits.length) {
+          const detail = document.createElement('span');
+          detail.textContent = ` ${bits.join(' · ')}`;
+          item.append(detail);
+        }
+        if (t.evidence.length) {
+          const sub = document.createElement('ul');
+          t.evidence.forEach((line) => {
+            const row = document.createElement('li');
+            row.textContent = line;
+            sub.append(row);
+          });
+          item.append(sub);
+        }
+        topList.append(item);
+      });
+      const wrap = el('fast-lane-topping');
+      if (wrap) wrap.hidden = topping.length === 0;
+    }
+    const mutation = w2v2Mutation(payload);
+    fact('fact-mutations', mutation ? mutation.text : 'Not reported', mutation ? true : undefined);
+    const mWrap = el('mutation-evidence');
+    if (mWrap) {
+      mWrap.hidden = !mutation;
+      const mText = el('mutation-text');
+      if (mText && mutation) mText.textContent = mutation.text;
+    }
+    const receiptBtn = el('download-receipt-btn');
+    if (receiptBtn) receiptBtn.hidden = !receipt;
+  } catch { /* defensive render: facts keep prior values */ }
+}
+
 function summaryEvidence(payload) {
   if (!Array.isArray(payload.cycle_reports)) return payload;
   const cycles = payload.cycle_reports;
@@ -720,6 +865,7 @@ function showResult(payload) {
   fact('fact-regression', evidence.regression_passed === undefined ? 'Not reported' : evidence.regression_passed ? 'Passed' : 'Not passed', evidence.regression_passed);
   fact('fact-post', ...(evidence.post_summary ? [evidence.post_summary, evidence.post_good] : probeLabel(evidence.post_exit_code)));
   fact('fact-cleanup', cleanupOk ? 'Resources removed' : 'Inspect Docker', cleanupOk);
+  renderW2v2(payload);
   renderUsage(displayPayload);
   renderCycles(cycles, payload.research_records);
   if (diff) {
@@ -1036,6 +1182,26 @@ el('download-btn').addEventListener('click', () => {
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Report downloaded');
+});
+
+el('download-receipt-btn').addEventListener('click', () => {
+  // LAW 8: live state only — exports the verdict receipt from the current
+  // result payload (hidden when absent); never synthesizes evidence.
+  if (!latestResult || !latestResult.verdict_receipt) { toast('No verdict receipt in this result'); return; }
+  const receipt = {
+    notice: 'Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.',
+    license_url: 'https://polyformproject.org/licenses/noncommercial/1.0.0',
+    verdict_receipt: latestResult.verdict_receipt
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `verdict-receipt-${latestResult.target || latestResult.project || 'scan'}.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Verdict receipt downloaded');
 });
 
 el('download-patch-btn').addEventListener('click', () => {
