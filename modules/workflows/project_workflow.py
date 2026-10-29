@@ -177,7 +177,9 @@ def repeat_stability_passed(verification: SnapshotVerification | Mapping[str, An
     if repeat is None:
         return True
     try:
-        first = int(regression["exit_code"] if isinstance(regression, Mapping) else regression.exit_code)
+        first = int(
+            regression["exit_code"] if isinstance(regression, Mapping) else regression.exit_code
+        )
         second = int(repeat["exit_code"] if isinstance(repeat, Mapping) else repeat.exit_code)
     except (TypeError, ValueError, AttributeError):
         return False
@@ -838,8 +840,7 @@ class DockerProjectSandbox:
                             output=_bounded(
                                 "Repeat-stability mismatch: regression exits "
                                 f"{regression_ev.exit_code} then "
-                                f"{repeat_ev.exit_code}; failing closed.\n"
-                                + repeat_ev.output,
+                                f"{repeat_ev.exit_code}; failing closed.\n" + repeat_ev.output,
                                 131072,
                             ),
                         )

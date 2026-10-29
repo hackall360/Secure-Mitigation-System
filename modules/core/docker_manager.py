@@ -35,8 +35,7 @@ class SandboxError(RuntimeError):
 # `docker inspect python:3.12-alpine3.22` (RepoDigests) on 2026-10-29; both
 # Dockerfiles and both build/ensure paths below must use this exact reference.
 PINNED_PYTHON_BASE = (
-    "python:3.12-alpine3.22"
-    "@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322"
+    "python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322"
 )
 
 

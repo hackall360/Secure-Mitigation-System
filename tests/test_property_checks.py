@@ -537,4 +537,3 @@ def test_base_image_digest_and_apk_versions_are_pinned():
     target = (BASE_DIR / "docker/Dockerfile.target").read_text(encoding="utf-8")
     assert "nodejs=22.23.4-r0" in target
     assert "php84=8.4.27-r0" in target
-
