@@ -298,3 +298,188 @@ async def test_docker_sandbox_attaches_property_evidence(tmp_path):
     assert result.properties.exit_code == 0
     assert len(scripts) == 2
     assert "Property checks passed" in scripts[1]
+
+
+# Wave 8 items 7+8 (horse + llama): repeat-stability net + digest pin (RED first).
+
+
+def _verification_with_repeat(
+    probe_exit: int, regression_exit: int, repeat_exit: int | None
+) -> SnapshotVerification:
+    """Blocked-probe project verification with an optional second regression run."""
+    return SnapshotVerification(
+        probe=ExecutionEvidence(exit_code=probe_exit, output="blocked"),
+        regression=ExecutionEvidence(exit_code=regression_exit, output="regression"),
+        fresh_target=True,
+        properties=None,
+        mutations=None,
+        repeat_regression=None
+        if repeat_exit is None
+        else ExecutionEvidence(exit_code=repeat_exit, output="repeat"),
+    )
+
+
+def test_repeat_stability_gate_truth_table_is_fail_closed():
+    """Horse: identical exits pass, any mismatch vetoes, an unrun net skips."""
+    from modules.workflows.project_workflow import repeat_stability_passed
+
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, 0)) is True
+    assert repeat_stability_passed(_verification_with_repeat(1, 1, 1)) is True
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, 1)) is False
+    assert repeat_stability_passed(_verification_with_repeat(1, 1, 0)) is False
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, None)) is True
+
+
+async def test_repeat_mismatch_rolls_back_verified_patch():
+    """Horse fail-first: blocked probe + green regression still rolls back on repeat exit 1."""
+    from helpers import FakeProjectMuse as FakeMuse
+    from helpers import FakeProjectSandbox as FakeSandbox
+    from helpers import run_project_workflow as run_workflow
+
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            _verification_with_repeat(1, 0, 0),
+            _verification_with_repeat(0, 0, 0),
+            # patched snapshot: probe blocked + regression green, repeat mismatched.
+            _verification_with_repeat(1, 0, 1),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "rolled_back"
+    assert result.cycle_reports[0].evidence.patched_verification.repeat_regression.exit_code == 1
+
+
+async def test_repeat_match_retains_when_properties_and_mutations_absent():
+    """Horse guard: a matching repeat run must not veto an otherwise verified retain."""
+    from helpers import FakeProjectMuse as FakeMuse
+    from helpers import FakeProjectSandbox as FakeSandbox
+    from helpers import run_project_workflow as run_workflow
+
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            _verification_with_repeat(1, 0, 0),
+            _verification_with_repeat(0, 0, 0),
+            _verification_with_repeat(1, 0, 0),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "retained"
+
+
+async def test_docker_sandbox_runs_regression_twice_for_arbitrary_project(tmp_path):
+    """Horse: unknown contract (properties+mutations None) runs regression twice in-sandbox."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="Arbitrary project with no fixture contract.",
+    )
+    snapshot = snapshot_project(spec)
+    command_runs: list[list[str] | None] = []
+    script_runs: list[str] = []
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            if script is not None:
+                script_runs.append(script)
+                return ProjectCheckResult(exit_code=0, stdout="blocked", stderr="")
+            command_runs.append(command)
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(0)",
+        ["python", "-m", "pytest"],
+        label="repeat-stability",
+    )
+    assert result.properties is None
+    assert result.mutations is None
+    assert result.repeat_regression is not None
+    assert result.repeat_regression.exit_code == 0
+    assert len(command_runs) == 2
+    assert result.regression.exit_code == 0
+
+
+async def test_docker_sandbox_repeat_mismatch_poisons_regression(tmp_path):
+    """Horse fail-closed: a mismatched repeat run turns regression inconclusive (exit 2)."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="Arbitrary project with no fixture contract.",
+    )
+    snapshot = snapshot_project(spec)
+    command_exits = iter([0, 1])
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            if script is not None:
+                return ProjectCheckResult(exit_code=0, stdout="blocked", stderr="")
+            return ProjectCheckResult(exit_code=next(command_exits), stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(0)",
+        ["python", "-m", "pytest"],
+        label="repeat-mismatch",
+    )
+    assert result.repeat_regression is not None
+    assert result.repeat_regression.exit_code == 1
+    assert result.regression.exit_code == 2
+
+
+def test_base_image_digest_and_apk_versions_are_pinned():
+    """Llama: Dockerfiles pin the digest-verified base and lock apk versions; manager agrees."""
+    from modules.core import docker_manager as manager_module
+    from modules.core.registry import BASE_DIR
+
+    pinned = manager_module.PINNED_PYTHON_BASE
+    assert "@sha256:" in pinned
+    for name in ("docker/Dockerfile.target", "docker/Dockerfile.verifier"):
+        content = (BASE_DIR / name).read_text(encoding="utf-8")
+        assert pinned in content, name
+    target = (BASE_DIR / "docker/Dockerfile.target").read_text(encoding="utf-8")
+    assert "nodejs=22.23.4-r0" in target
+    assert "php84=8.4.27-r0" in target
