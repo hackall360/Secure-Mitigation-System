@@ -1378,3 +1378,70 @@ async def test_fast_lane_topping_ranks_fixable_first_with_audit_evidence(monkeyp
     assert "epss:0.99" in report.vulnerabilities[0]["queue_evidence"]
     assert "kev:listed" in report.vulnerabilities[0]["queue_evidence"]
     assert "fix:none" in report.vulnerabilities[2]["queue_evidence"]
+
+
+async def test_fast_lane_explicitly_excludes_euvd(monkeypatch):
+    """14.9.1 (Lane 5): fast lane never consults EUVD, asserted not absent.
+
+    Competitor playbooks assume EUVD API coverage, but EUVD is unreachable
+    (site 200, API returns SPA HTML 2026-10-29) with no verified keyless JSON
+    endpoint, so the fast lane excludes it and fails closed instead of
+    hallucinating coverage. Exclusion must never block the scan.
+    """
+    import pytest as _pytest
+
+    import modules.workflows.cve_workflow as _cw
+
+    # Explicit exclusion list names EUVD.
+    assert "euvd" in _cw.FAST_LANE_EXCLUDED_SOURCES
+    # Assertion path fails closed on any EUVD consultation attempt...
+    for bad in ("euvd", "EUVD", " EUVD "):
+        with _pytest.raises(AssertionError, match="EUVD"):
+            _cw.assert_fast_lane_source_allowed(bad)
+    # ...while allowed keyless sources pass (never blocks the scan).
+    for ok in ("osv", "kev", "epss"):
+        _cw.assert_fast_lane_source_allowed(ok)
+
+    # The fast-lane path executes the assertion for every consulted source.
+    consulted: list[str] = []
+    real_assert = _cw.assert_fast_lane_source_allowed
+
+    def _spy(source):
+        consulted.append(str(source))
+        return real_assert(source)
+
+    monkeypatch.setattr(_cw, "assert_fast_lane_source_allowed", _spy)
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": "GHSA-xxxx"}]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: dict(_q1_osv_record()))
+    monkeypatch.setattr(_cw, "kev_lookup", lambda cve_id: None)
+    monkeypatch.setattr(_cw, "epss_score", lambda cve_id: None)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {
+            "requirements.txt": "widget==1.0.0\n",
+            "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+        },
+        emit,
+        fast_lane=True,
+    )
+    assert report.success
+    assert set(consulted) >= {"osv", "kev", "epss"}
+    assert "euvd" not in consulted
+    import json as _json
+
+    assert "euvd" not in _json.dumps(report.model_dump()).lower()
+    assert all("euvd" not in v for v in report.vulnerabilities)

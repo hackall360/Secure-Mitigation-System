@@ -29,6 +29,31 @@ from modules.workflows.deep_scan import (
 # carries an auditable KEV/EPSS tie-break evidence string.
 FAST_LANE_MAX_INTAKE = 10
 
+# SPEC 14.9 item 1 (Lane 5): EUVD stays out of the fast lane. Competitor
+# playbooks assume EUVD API coverage, but EUVD is unreachable as a keyless
+# JSON source (site 200, API returns SPA HTML 2026-10-29; no verified keyless
+# JSON endpoint), so the fast lane excludes it and fails closed instead of
+# hallucinating coverage. Named explicitly so the exclusion is asserted, not
+# merely absent. Never blocks the scan: allowed sources pass through.
+FAST_LANE_EXCLUDED_SOURCES = frozenset({"euvd"})
+
+
+def assert_fast_lane_source_allowed(source: str) -> bool:
+    """Fail closed if the fast lane ever consults an excluded source (EUVD).
+
+    Raises AssertionError on excluded sources; returns True otherwise so
+    allowed keyless sources (osv/kev/epss) never block the scan. Called at
+    each fast-lane consultation site so a future EUVD wiring trips loudly.
+    """
+    name = str(source or "").strip().lower()
+    if name in FAST_LANE_EXCLUDED_SOURCES:
+        raise AssertionError(
+            f"EUVD is excluded from the fast lane: no verified keyless JSON "
+            f"endpoint (site 200, API returns SPA HTML 2026-10-29); "
+            f"failing closed instead of hallucinating coverage (got {source!r})."
+        )
+    return True
+
 
 def _queue_evidence(summary: dict[str, Any]) -> str:
     """One-line auditable tie-break record for a fast-lane ranked summary.
@@ -110,6 +135,7 @@ def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
     first = next((c for c in cves if isinstance(c, str) and c), "")
     if not first:
         return summary
+    assert_fast_lane_source_allowed("kev")
     try:
         kev = kev_lookup(first)
     except Exception:
@@ -120,6 +146,7 @@ def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
                 summary["kev_listed"] = True
         except Exception:
             pass
+    assert_fast_lane_source_allowed("epss")
     try:
         epss = epss_score(first)
     except Exception:
@@ -199,6 +226,7 @@ async def execute_cve_scan(
     errors: list[str] = []
     if include_osv and deps:
         try:
+            assert_fast_lane_source_allowed("osv")
             await log("system", "Deep scan: querying OSV.dev for known CVEs (no key required).")
             batch = await blocking(query_osv_batch, deps)
             results = batch.get("results") or []
