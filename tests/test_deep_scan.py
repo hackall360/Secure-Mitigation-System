@@ -52,6 +52,156 @@ def test_summarize_osv_vuln_extracts_cve_cvss_and_fixes():
     assert summary["fixed_versions"] == ["2.0"]
 
 
+async def test_fast_lane_forces_off_deep_assessment_and_nvd(monkeypatch):
+    """L4 red: fast_lane=True forces include_deep_assessment/include_nvd off."""
+    import cve_workflow as _cw
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse/NVD must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"app.py": "x = 1\n"},
+        emit,
+        include_osv=False,
+        include_deep_assessment=True,
+        include_nvd=True,
+        fast_lane=True,
+    )
+    assert report.success
+    assert report.deep_assessment is None
+    assert report.message.startswith("Fast lane: ")
+
+
+async def test_fast_lane_sorts_vulnerabilities_by_id(monkeypatch):
+    """L4 red: fast_lane sorts vulnerabilities deterministically by id."""
+    import cve_workflow as _cw
+
+    summaries = [
+        {
+            "id": "GHSA-zzz",
+            "summary": "z",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+        {
+            "id": "GHSA-aaa",
+            "summary": "a",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+    ]
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {
+            "results": [{"vulns": [{"id": "GHSA-zzz"}, {"id": "GHSA-aaa"}]} for _ in deps]
+        },
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: {"id": vid})
+    monkeypatch.setattr(
+        _cw, "summarize_osv_vuln", lambda rec: next(s for s in summaries if s["id"] == rec["id"])
+    )
+    real_blocking = _cw.blocking
+
+    async def _guarded_blocking(fn, *args, **kwargs):
+        if getattr(fn, "__name__", "") in ("nvd_lookup", "osv_lookup_by_cve"):
+            raise AssertionError("NVD stage must not run on the fast lane")
+        return await real_blocking(fn, *args, **kwargs)
+
+    monkeypatch.setattr(_cw, "blocking", _guarded_blocking)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        emit,
+        include_deep_assessment=True,
+        include_nvd=True,
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-aaa", "GHSA-zzz"]
+    assert report.deep_assessment is None
+    assert all("nvd" not in v and "nvd_error" not in v for v in report.vulnerabilities)
+    assert report.message.startswith("Fast lane: ")
+
+
+async def test_fast_lane_caps_max_osv_details(monkeypatch):
+    """L4 red: fast_lane caps max_osv_details to min(given, 10)."""
+    import cve_workflow as _cw
+
+    seen: dict = {}
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": f"GHSA-{i:03d}"} for i in range(15)]}]},
+    )
+
+    def _fetch(vid):
+        seen[vid] = True
+        return {"id": vid}
+
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", _fetch)
+    monkeypatch.setattr(
+        _cw,
+        "summarize_osv_vuln",
+        lambda rec: {
+            "id": rec["id"],
+            "summary": "",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+    )
+
+    from cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        emit,
+        max_osv_details=25,
+        fast_lane=True,
+    )
+    assert report.success
+    assert len(report.vulnerabilities) == 10
+    assert len(seen) == 10
+
+
 async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
     from cve_workflow import execute_cve_scan
 

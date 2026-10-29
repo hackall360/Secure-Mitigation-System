@@ -670,6 +670,7 @@ async def cli_runner(
     cve_scan: bool = False,
     deep_assessment: bool = False,
     offline_cve: bool = False,
+    fast_lane: bool = False,
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
@@ -703,6 +704,7 @@ async def cli_runner(
             include_osv=not offline_cve,
             include_deep_assessment=deep_assessment,
             include_nvd=True,
+            fast_lane=fast_lane,
         )
         _out(f"[SYSTEM] {cve_result.message}")
         for vuln in cve_result.vulnerabilities[:20]:
@@ -1103,6 +1105,11 @@ def main() -> int:
         help="Skip OSV network lookup; static signals only",
     )
     parser.add_argument(
+        "--fast-lane",
+        action="store_true",
+        help="CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD",
+    )
+    parser.add_argument(
         "--build-brief",
         default="",
         help="What the AI demo should build (bounded to 500 chars; flows into intent parsing)",
@@ -1181,6 +1188,7 @@ def main() -> int:
         "allow_remote_inference": False,
         "offline_cve": False,
         "deep_assessment": False,
+        "fast_lane": False,
         "output_dir": None,
         "port": 8000,
         "format": "table",
@@ -1258,6 +1266,7 @@ def main() -> int:
             or args.cve_scan
             or args.deep_assessment
             or args.offline_cve
+            or args.fast_lane
         )
     ):
         parser.error("Project options require --project (ai-demo carries its own intensity flags)")
@@ -1395,6 +1404,7 @@ def main() -> int:
                     cve_scan=args.cve_scan,
                     deep_assessment=args.deep_assessment,
                     offline_cve=args.offline_cve,
+                    fast_lane=args.fast_lane,
                     out_format=out_format,
                     show_usage=args.show_usage,
                 )

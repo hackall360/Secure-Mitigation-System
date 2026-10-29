@@ -40,6 +40,7 @@ CONFIG_KEYS = (
     "allow_remote_inference",
     "offline_cve",
     "deep_assessment",
+    "fast_lane",
     "output_dir",
     "port",
     "format",
@@ -65,6 +66,7 @@ def _coerce_value(key: str, value: object) -> object:
         "allow_remote_inference",
         "deep_assessment",
         "offline_cve",
+        "fast_lane",
     ):
         if isinstance(value, bool):
             return value

@@ -59,6 +59,7 @@ async def execute_cve_scan(
     include_deep_assessment: bool = False,
     max_osv_details: int = 25,
     include_nvd: bool = False,
+    fast_lane: bool = False,
 ) -> CveScanReport:
     """Run static signals + optional OSV CVE lookup + optional Muse deep triage.
 
@@ -66,9 +67,18 @@ async def execute_cve_scan(
       or a single file path string examined with its parent as context is NOT loaded (caller provides mapping).
     - OSV lookup requires network access to api.osv.dev; disable with include_osv=False for offline.
     - Muse deep assessment requires a key unless local inference; disabled by default.
+    - `fast_lane` is an opt-in disclosure fast lane: it forces
+      `include_deep_assessment=False` and `include_nvd=False`, caps
+      `max_osv_details` to min(given, 10), sorts vulnerabilities by id, and
+      prefixes the message with "Fast lane: ". Same shape, never raises.
     """
 
     log = make_log(emit)
+
+    if fast_lane:
+        include_deep_assessment = False
+        include_nvd = False
+        max_osv_details = min(max_osv_details, 10)
 
     settings = config or load_config()
     if isinstance(project, ProjectSpec):
@@ -210,10 +220,14 @@ async def execute_cve_scan(
         except Exception as exc:
             errors.append(f"NVD enrichment failed: {type(exc).__name__}")
     cve_count = len(summaries)
+    if fast_lane:
+        summaries.sort(key=lambda s: s.get("id") or "")
     message = (
         f"Deep scan completed: {len(static_findings)} static signals, "
         f"{len(deps)} dependencies, {cve_count} CVE records."
     )
+    if fast_lane:
+        message = f"Fast lane: {message}"
     if errors:
         message += f" {len(errors)} lookup warnings."
     await log("system", message)
