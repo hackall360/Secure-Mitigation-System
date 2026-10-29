@@ -878,6 +878,25 @@ function renderW2v2(payload) {
 }
 
 function summaryEvidence(payload) {
+  if (Array.isArray(payload.pass_results) && payload.pass_results.length) {
+    // Sweep payload: roll per-pass Docker exits into the shared summary shape.
+    const passes = payload.pass_results;
+    const held = passes.filter((p) => p.cleared || (p.receipt && p.post_exit_code === 1 && p.regression_passed)).length;
+    const pres = passes.map((p) => p.pre_exit_code).filter((c) => c !== null && c !== undefined);
+    const posts = passes.map((p) => p.post_exit_code).filter((c) => c !== null && c !== undefined);
+    return {
+      ...payload,
+      baseline_passed: payload.baseline_passed,
+      pre_exit_code: pres.length === 1 ? pres[0] : undefined,
+      post_exit_code: posts.length === 1 ? posts[posts.length - 1] : undefined,
+      regression_passed: passes.every((p) => p.cleared || p.regression_passed),
+      pre_summary: pres.length > 1 ? `${pres.filter((c) => c === 0).length}/${pres.length} reachable` : undefined,
+      post_summary: posts.length > 1 ? `${posts.filter((c) => c === 1).length}/${posts.length} blocked` : undefined,
+      pre_good: pres.every((c) => c === 0),
+      post_good: posts.every((c) => c === 1),
+      sweep_summary: `${held}/${passes.length} passes hold`,
+    };
+  }
   if (!Array.isArray(payload.cycle_reports)) return payload;
   const cycles = payload.cycle_reports;
   const before = cycles.map((cycle) => cycle.evidence && cycle.evidence.pre_verification).filter(Boolean);
@@ -910,6 +929,8 @@ function renderResultMeta(payload, evidence, cycles) {
   if (Array.isArray(cycles) && cycles.length) {
     const kept = cycles.filter((cycle) => cycle && cycle.status === 'retained').length;
     parts.push(`${kept}/${cycles.length} cycles verified`);
+  } else if (evidence.sweep_summary) {
+    parts.push(evidence.sweep_summary);
   } else if (payload.status) {
     parts.push(payload.status === 'verified' ? '1/1 verified' : '0/1 verified');
   }
@@ -957,6 +978,8 @@ function showResult(payload) {
 function socketQuery() {
   const params = [];
   if (profiles.length) params.push(`profile=${encodeURIComponent(selectedProfile)}`);
+  const sweep = el('sweep-passes');
+  if (sweep && sweep.value !== '1') params.push(`sweep_passes=${encodeURIComponent(sweep.value)}`);
   if (el('research-toggle') && el('research-toggle').checked) {
     params.push('research=on');
     if (el('research-scanners-toggle') && el('research-scanners-toggle').checked) {

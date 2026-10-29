@@ -38,6 +38,7 @@ from modules.services.mcp_bridge import (
 from modules.services.projects import ProjectSpec
 from modules.workflows.cve_workflow import execute_cve_scan
 from modules.workflows.project_workflow import execute_project_workflow, redact_report_for_user
+from modules.workflows.sweep import execute_sweep_scan, redact_sweep_result_for_user
 from modules.workflows.workflow import execute_purple_workflow, redact_fixture_result_for_user
 from sms_cli import (
     LoadError,
@@ -454,6 +455,16 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 scan_config = dataclasses.replace(
                     scan_config, research_enabled=True, research_scanners=wanted
                 )
+            # Dashboard opt-in mirrors --sweep-passes: absent/single = legacy
+            # single loop, 2/3 = multi-pass sweep. Anything else refuses.
+            sweep_raw = socket.query_params.get("sweep_passes")
+            if sweep_raw in (None, "", "1"):
+                sweep_depth: int | None = None
+            elif sweep_raw in ("2", "3"):
+                sweep_depth = int(sweep_raw)
+            else:
+                await socket.close(code=1008)
+                return
         except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
@@ -566,7 +577,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     seed=demo_seed,
                 )
             else:
-                coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
+                if sweep_depth is not None:
+                    coroutine = execute_sweep_scan(
+                        target_key, emit, config=scan_config, max_passes=sweep_depth
+                    )
+                else:
+                    coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
             # Connect preamble: the UI renders plain log frames immediately,
             # so this hello + profile snapshot means it never sits blank
             # while Docker/Muse warm up. Profiles are fixed keys, never model
@@ -600,12 +616,17 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         from modules.workflows.project_workflow import (
                             redact_report_for_user as _redact_proj,
                         )
+                        from modules.workflows.sweep import (
+                            SweepScanResult as _SweepResult,
+                        )
                         from modules.workflows.workflow import (
                             redact_fixture_result_for_user as _redact_fixt,
                         )
 
                         if target_key is None:
                             safe = _redact_proj(result)
+                        elif isinstance(result, _SweepResult):
+                            safe = redact_sweep_result_for_user(result)
                         else:
                             safe = _redact_fixt(result)
                     except Exception:
@@ -962,6 +983,7 @@ async def cli_runner(
     fast_lane: bool = False,
     out_format: str = "table",
     show_usage: bool = False,
+    sweep_passes: int | None = None,
 ) -> int:
     use_color: bool | None = None
     json_mode = out_format == "json"
@@ -1019,8 +1041,17 @@ async def cli_runner(
         return 0 if cve_result.success else 1
     if project is None:
         with Spinner("Verifying fixture boundary"):
-            result = await execute_purple_workflow(target_key, emit, config=settings)
-        user_report = redact_fixture_result_for_user(result)
+            if sweep_passes is not None:
+                result = await execute_sweep_scan(
+                    target_key,
+                    emit,
+                    config=settings,
+                    max_passes=max(1, min(3, sweep_passes)),
+                )
+                user_report = redact_sweep_result_for_user(result)
+            else:
+                result = await execute_purple_workflow(target_key, emit, config=settings)
+                user_report = redact_fixture_result_for_user(result)
     else:
         with Spinner("Verifying project boundary"):
             result = await execute_project_workflow(project, emit, config=settings)
@@ -1463,6 +1494,12 @@ def main() -> int:
         default=None,
         help="Snippet language for --mcp-snippet (default: inferred from file extension)",
     )
+    parser.add_argument(
+        "--sweep-passes",
+        type=int,
+        default=None,
+        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor; default 1, single finding loop)",
+    )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--image", help="Already-loaded runtime image containing offline dependencies"
@@ -1673,6 +1710,10 @@ def main() -> int:
         parser.error("--flaw-count requires --ai-demo")
     if args.demo_seed is not None and not args.ai_demo:
         parser.error("--demo-seed requires --ai-demo")
+    if args.sweep_passes is not None and not args.scan:
+        parser.error("--sweep-passes requires --scan")
+    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 3:
+        parser.error("--sweep-passes must be between 1 and 3")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")
@@ -1794,6 +1835,7 @@ def main() -> int:
                     args.research_scanners,
                     out_format=out_format,
                     show_usage=args.show_usage,
+                    sweep_passes=args.sweep_passes,
                 )
             )
         if args.ai_demo:

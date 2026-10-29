@@ -17,8 +17,10 @@ from modules.core.pricing import CallUsage, usage_from_response
 from modules.core.prompts import (
     BLUE_RESEARCH_SYSTEM_PROMPT,
     BLUE_TEAM_SYSTEM_PROMPT,
+    RED_DEEP_SWEEP_SYSTEM_PROMPT,
     RED_RESEARCH_SYSTEM_PROMPT,
     RED_TEAM_SYSTEM_PROMPT,
+    RED_THREAT_ACTOR_SYSTEM_PROMPT,
 )
 
 # Alias for branding migration; both names refer to the same config type.
@@ -339,6 +341,31 @@ class MetaMuseClient:
                 "filename": filename,
                 "source": source_code,
                 "fixture_contract": contract,
+            },
+            RedTeamFinding,
+            role="red",
+        )
+
+    async def run_red_team_pass_analysis(
+        self, pass_id: str, filename: str, source_code: str, contract: str = ""
+    ) -> RedTeamFinding:
+        """Sweep red pass: standard reuses the P1 prompt, deep/threat-actor use theirs."""
+        if pass_id == "deep":
+            system = RED_DEEP_SWEEP_SYSTEM_PROMPT
+        elif pass_id == "threat_actor":
+            system = RED_THREAT_ACTOR_SYSTEM_PROMPT
+        elif pass_id == "standard":
+            system = RED_TEAM_SYSTEM_PROMPT
+        else:
+            raise AgentError(f"Unknown sweep pass: {pass_id}.")
+        return await self._request(
+            self.config.red_team_model,
+            system,
+            {
+                "filename": filename,
+                "source": source_code,
+                "fixture_contract": contract,
+                "sweep_pass": pass_id,
             },
             RedTeamFinding,
             role="red",

@@ -130,6 +130,7 @@
           <span class="profile-label" id="profile-label">Models</span>
           <div id="profile-list" class="profiles" role="radiogroup" aria-labelledby="profile-label"></div>
         </div>
+        <div class="field compact"><label for="sweep-passes">Sweep depth</label><select id="sweep-passes" name="sweep_passes"><option value="1" selected>Single finding (legacy)</option><option value="2">2 passes (standard + deep)</option><option value="3">3 passes (+ threat-actor)</option></select><small>Multi-pass sweep runs every pass and patches each confirmed boundary.</small></div>
         <div class="run-row">
           <p id="target-description" class="target-description">Pick a bundled fixture, press Run — red proves the flaw in Docker, blue patches it.</p>
           <div class="actions">

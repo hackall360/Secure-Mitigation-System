@@ -369,15 +369,32 @@ def run_plain(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
+    parser.add_argument(
+        "--sweep-passes",
+        type=int,
+        default=None,
+        help="Multi-pass sweep depth 1-3 (default: single finding loop)",
+    )
     args = parser.parse_args(argv)
+    from modules.workflows.sweep import execute_sweep_scan
     from modules.workflows.workflow import (
         execute_purple_workflow,  # lazy import for stdlib-only module top
     )
 
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
-    print(f"Secure Mitigation System [plain mode] fixture={args.fixture}")
+    depth = "sweep" if args.sweep_passes else "single"
+    print(f"Secure Mitigation System [plain mode] fixture={args.fixture} {depth}")
     try:
-        result = asyncio.run(execute_purple_workflow(args.fixture, queue_emit(event_queue)))
+        if args.sweep_passes:
+            result = asyncio.run(
+                execute_sweep_scan(
+                    args.fixture,
+                    queue_emit(event_queue),
+                    max_passes=max(1, min(3, args.sweep_passes)),
+                )
+            )
+        else:
+            result = asyncio.run(execute_purple_workflow(args.fixture, queue_emit(event_queue)))
     except Exception as exc:
         print(f"scan failed ({type(exc).__name__})")
         return 1
