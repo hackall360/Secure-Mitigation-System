@@ -450,3 +450,78 @@ async def test_docker_sandbox_records_mutations_on_shared_run(tmp_path):
     # Probe (1) + one combined properties/mutations run (2): no extra container runs.
     assert len(scripts) == 2
     assert "Mutation checks passed" in scripts[1]
+
+
+# SPEC 14.9 item 2 (Wave 5, Lane 2 keep) RED: frozen-pool determinism guard.
+# Fuzz4All/TitanFuzz chase coverage with novel input storms; we pin
+# deterministic per-contract mutants byte-identical across runs, proving
+# robustness inside the verify loop. Any nondeterminism source fails closed.
+
+FROZEN_POOL_DIGEST = "faf483183d8de114182ebe7cbb92909f00e09f4a19af7920cceaa89ddb27e5cc"
+
+
+def _fresh_process_pools() -> dict:
+    """Recompute mutation pools in a brand-new interpreter (cross-run proof)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    code = (
+        "import json;"
+        "from modules.core.checks import mutation_pool_snapshot;"
+        "print(json.dumps(mutation_pool_snapshot(), sort_keys=True))"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr[-500:]
+    return json.loads(proc.stdout)
+
+
+def test_frozen_pool_digest_marker_byte_identical_across_runs():
+    """Pools match the frozen digest in-process AND in a fresh interpreter,
+    and every fixture script carries the digest marker (verify-loop evidence).
+    TRAP: node = JSON envelope ids, php = plain-text host args,
+    mysql = config re-read paths; never mix shapes."""
+    import hashlib
+
+    from modules.core.checks import (
+        MUTATION_SEED,
+        _mutation_mysql_paths,
+        _mutation_node_ids,
+        _mutation_php_hosts,
+        project_mutation_script,
+        project_property_mutation_script,
+    )
+
+    live = {
+        "mysql_insecure_conf": _mutation_mysql_paths(),
+        "node_query_sink": _mutation_node_ids(MUTATION_SEED),
+        "php_command_sink": _mutation_php_hosts(),
+    }
+    assert (
+        len(live["node_query_sink"])
+        == len(live["php_command_sink"])
+        == len(live["mysql_insecure_conf"])
+        == MUTATION_COUNT
+    )
+    canon = json.dumps(live, sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(canon).hexdigest() == FROZEN_POOL_DIGEST
+    assert _fresh_process_pools() == json.loads(json.dumps(live, sort_keys=True))
+    for fixture in ("node_query_sink", "php_command_sink", "mysql_insecure_conf"):
+        assert FROZEN_POOL_DIGEST in project_mutation_script(fixture)
+    assert FROZEN_POOL_DIGEST in project_property_mutation_script("node_query_sink")
+
+
+def test_mutation_guard_fails_closed_on_pool_drift(monkeypatch):
+    """Any nondeterminism source (here: drifted php pool) fails script build."""
+    import modules.core.checks as checks
+
+    monkeypatch.setattr(checks, "_mutation_php_hosts", lambda: ["localhost"])
+    with pytest.raises(ValueError, match="[Ff]rozen|[Nn]ondeterminism|[Dd]rift"):
+        checks.project_mutation_script("php_command_sink")
