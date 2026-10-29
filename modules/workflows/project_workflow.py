@@ -93,6 +93,7 @@ class SnapshotVerification(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     probe: ExecutionEvidence
     regression: ExecutionEvidence
+    repeat_regression: ExecutionEvidence | None = None
     fresh_target: bool = True
     properties: ExecutionEvidence | None = None
     mutations: ExecutionEvidence | None = None
@@ -154,6 +155,33 @@ def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] 
         return int(properties.exit_code) == 0
     except (TypeError, ValueError):
         return False
+
+
+def repeat_stability_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
+    """Fail-closed repeat-stability gate: the two sandbox regression runs must agree.
+
+    ``None`` repeat evidence means the net did not run (fixture path or an old
+    record), so the gate skips and the existing gates decide. A recorded repeat
+    exit other than the first regression exit vetoes the retain; unobserved
+    evidence never upgrades a verdict.
+    """
+    if isinstance(verification, SnapshotVerification):
+        regression = verification.regression
+        repeat = verification.repeat_regression
+    elif isinstance(verification, Mapping):
+        regression = verification.get("regression")
+        repeat = verification.get("repeat_regression")
+    else:
+        regression = getattr(verification, "regression", None)
+        repeat = getattr(verification, "repeat_regression", None)
+    if repeat is None:
+        return True
+    try:
+        first = int(regression["exit_code"] if isinstance(regression, Mapping) else regression.exit_code)
+        second = int(repeat["exit_code"] if isinstance(repeat, Mapping) else repeat.exit_code)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return first == second
 
 
 class ProjectSandbox(Protocol):
@@ -610,11 +638,19 @@ class DockerProjectSandbox:
                 self.network, self.spec, snapshot, command=list(self.spec.test_command)
             )
             regression_ev = _check_evidence(regression_check, 131_072)
+            # Wave 8 item 7 (horse): placeholder — the generic repeat-stability
+            # net runs after the probe (below), reusing the post-probe
+            # regression check as its second run so ghost-probe liveness keeps
+            # its single post-probe container run. Set after evidence lands.
+            repeat_ev: ExecutionEvidence | None = None
             if regression_ev.exit_code != 0:
                 # Do not run probe if baseline regression already fails.
                 probe_ev = ExecutionEvidence(exit_code=2, output="Regression failed before probe.")
                 return SnapshotVerification(
-                    probe=probe_ev, regression=regression_ev, fresh_target=True
+                    probe=probe_ev,
+                    regression=regression_ev,
+                    repeat_regression=repeat_ev,
+                    fresh_target=True,
                 )
             probe_check = self.manager.run_project_check(
                 self.network, self.spec, snapshot, script=verification_script_python
@@ -698,6 +734,7 @@ class DockerProjectSandbox:
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.
+            post_probe_ev = None
             if probe_ev.exit_code in (1, 2):
                 post_probe_ev = None
                 exec_observed = False
@@ -760,9 +797,64 @@ class DockerProjectSandbox:
                             "Post-probe regression failed:\n" + post_probe_ev.output, 131072
                         ),
                     )
+            # Wave 8 item 7 (horse): generic repeat-stability net for arbitrary
+            # projects — zero fixture knowledge. Only when no property or
+            # mutation contract fired (both None): reuse the post-probe liveness
+            # regression run as the second run when the probe ran it (exits 1
+            # or 2 via exec or fallback); for a reachable probe (exit 0) run
+            # the preserved regression command once more in the capped sandbox.
+            # Identical exits pass; a mismatch poisons regression to
+            # inconclusive (exit 2) so a flaky service rolls back. Fixture
+            # paths leave repeat None so the gate skips.
+            try:
+                from modules.core.checks import (
+                    mutation_fixture_supported as _repeat_mutation_supported,
+                )
+                from modules.core.checks import (
+                    property_fixture_supported as _repeat_property_supported,
+                )
+
+                _repeat_fixture_id = (self.spec.contract or "").splitlines()[0].strip()
+                _arbitrary = not _repeat_property_supported(
+                    _repeat_fixture_id
+                ) and not _repeat_mutation_supported(_repeat_fixture_id)
+            except Exception:
+                _arbitrary = False
+            if _arbitrary and properties_ev is None and mutations_ev is None:
+                try:
+                    if post_probe_ev is not None:
+                        repeat_ev = post_probe_ev
+                    else:
+                        repeat_check = self.manager.run_project_check(
+                            self.network,
+                            self.spec,
+                            snapshot,
+                            command=list(self.spec.test_command),
+                        )
+                        repeat_ev = _check_evidence(repeat_check, 131_072)
+                    if repeat_ev.exit_code != regression_ev.exit_code:
+                        regression_ev = ExecutionEvidence(
+                            exit_code=2,
+                            output=_bounded(
+                                "Repeat-stability mismatch: regression exits "
+                                f"{regression_ev.exit_code} then "
+                                f"{repeat_ev.exit_code}; failing closed.\n"
+                                + repeat_ev.output,
+                                131072,
+                            ),
+                        )
+                except Exception:
+                    repeat_ev = ExecutionEvidence(
+                        exit_code=2, output="Repeat-stability run did not complete."
+                    )
+                    regression_ev = ExecutionEvidence(
+                        exit_code=2,
+                        output="Repeat-stability run did not complete; failing closed.",
+                    )
             return SnapshotVerification(
                 probe=probe_ev,
                 regression=regression_ev,
+                repeat_regression=repeat_ev,
                 fresh_target=True,
                 properties=properties_ev,
                 mutations=mutations_ev,
@@ -795,6 +887,9 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
         return SnapshotVerification(
             probe=_normalize_execution(value.probe, limit),
             regression=_normalize_execution(value.regression, limit),
+            repeat_regression=None
+            if value.repeat_regression is None
+            else _normalize_execution(value.repeat_regression, limit),
             fresh_target=value.fresh_target,
             properties=None
             if value.properties is None
@@ -806,18 +901,22 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
     if isinstance(value, Mapping):
         properties = value.get("properties")
         mutations = value.get("mutations")
+        repeat = value.get("repeat_regression")
         return SnapshotVerification(
             probe=_normalize_execution(value["probe"], limit),
             regression=_normalize_execution(value["regression"], limit),
+            repeat_regression=None if repeat is None else _normalize_execution(repeat, limit),
             fresh_target=bool(value.get("fresh_target", True)),
             properties=None if properties is None else _normalize_execution(properties, limit),
             mutations=None if mutations is None else _normalize_execution(mutations, limit),
         )
     properties = getattr(value, "properties", None)
     mutations = getattr(value, "mutations", None)
+    repeat = getattr(value, "repeat_regression", None)
     return SnapshotVerification(
         probe=_normalize_execution(value.probe, limit),
         regression=_normalize_execution(value.regression, limit),
+        repeat_regression=None if repeat is None else _normalize_execution(repeat, limit),
         fresh_target=bool(getattr(value, "fresh_target", True)),
         properties=None if properties is None else _normalize_execution(properties, limit),
         mutations=None if mutations is None else _normalize_execution(mutations, limit),
@@ -1554,6 +1653,15 @@ async def execute_project_workflow(
                 # mutations exit other than 0 vetoes the retain (mutations
                 # None skips, e.g. arbitrary projects).
                 and mutation_gate_passed(patched)
+                # Wave 8 item 7 (horse) repeat-stability net: for arbitrary
+                # projects (properties None and mutations None) the sandbox
+                # runs the regression command twice and the two exits must
+                # agree; a recorded mismatch vetoes the retain. Fixture paths
+                # already set properties/mutations, so the gate skips there.
+                and (
+                    (patched.properties is not None or patched.mutations is not None)
+                    or repeat_stability_passed(patched)
+                )
             )
             if independent_same_finding:
                 independent_check = evidence.independent_verification

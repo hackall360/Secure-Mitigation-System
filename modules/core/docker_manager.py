@@ -31,6 +31,15 @@ class SandboxError(RuntimeError):
     """Docker setup, execution, or cleanup failed."""
 
 
+# Wave 8 item 8 (llama): supply-chain pin. Digest verified offline via
+# `docker inspect python:3.12-alpine3.22` (RepoDigests) on 2026-10-29; both
+# Dockerfiles and both build/ensure paths below must use this exact reference.
+PINNED_PYTHON_BASE = (
+    "python:3.12-alpine3.22"
+    "@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322"
+)
+
+
 @dataclass(frozen=True)
 class VerificationResult:
     exit_code: int
@@ -96,8 +105,19 @@ def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
                 pass
 
 
+def _assert_dockerfiles_pinned() -> None:
+    """Fail closed if either Dockerfile drifts off the pinned digest base."""
+    for filename in ("Dockerfile.target", "Dockerfile.verifier"):
+        content = (BASE_DIR / "docker" / filename).read_text(encoding="utf-8")
+        if PINNED_PYTHON_BASE not in content:
+            raise SandboxError(
+                f"{filename} is not pinned to {PINNED_PYTHON_BASE}; refusing to build."
+            )
+
+
 def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
     """Rebuild both base images unconditionally, e.g. after a Dockerfile change."""
+    _assert_dockerfiles_pinned()
     client = client if client is not None else docker.from_env(timeout=600)
     built = []
     for tag, filename in (
@@ -164,6 +184,7 @@ class DockerSandboxManager:
         self.close()
 
     def ensure_base_images(self) -> None:
+        _assert_dockerfiles_pinned()
         self.client.ping()
         for tag, filename in (
             (self.config.target_base_image, "Dockerfile.target"),
