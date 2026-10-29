@@ -95,6 +95,37 @@ class SnapshotVerification(BaseModel):
     regression: ExecutionEvidence
     fresh_target: bool = True
     properties: ExecutionEvidence | None = None
+    mutations: ExecutionEvidence | None = None
+
+
+def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
+    """Fail-closed mutation-count gate: True unless mutations ran and failed.
+
+    ``None`` mutations means the fixture has no mutation contract (arbitrary
+    projects, or php/mysql pending the parallel lane) or the check did not
+    run, so the gate passes and the existing regression requirement decides.
+    Any recorded mutations exit other than 0 fails the gate; missing or
+    inconclusive evidence never upgrades a verdict.
+    """
+    if isinstance(verification, SnapshotVerification):
+        mutations = verification.mutations
+    elif isinstance(verification, Mapping):
+        mutations = verification.get("mutations")
+    else:
+        mutations = getattr(verification, "mutations", None)
+    if mutations is None:
+        return True
+    if isinstance(mutations, ExecutionEvidence):
+        return mutations.exit_code == 0
+    if isinstance(mutations, Mapping):
+        try:
+            return int(mutations.get("exit_code")) == 0
+        except (TypeError, ValueError):
+            return False
+    try:
+        return int(mutations.exit_code) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
@@ -498,11 +529,32 @@ class DockerProjectSandbox:
             # line only when it names a known fixture; anything else skips
             # (properties stays None) so arbitrary projects are unaffected.
             properties_ev: ExecutionEvidence | None = None
+            mutations_ev: ExecutionEvidence | None = None
+            mutations_attempted = False
             try:
-                from modules.core.checks import project_property_script, property_fixture_supported
+                from modules.core.checks import (
+                    mutation_fixture_supported,
+                    project_property_mutation_script,
+                    project_property_script,
+                    property_fixture_supported,
+                )
 
                 fixture_id = (self.spec.contract or "").splitlines()[0].strip()
-                if property_fixture_supported(fixture_id):
+                if mutation_fixture_supported(fixture_id):
+                    # Wave 2 item 4: one combined property+mutation run in the
+                    # same capped container as regression — no extra container
+                    # runs; both evidences share the combined fail-closed exit.
+                    mutations_attempted = True
+                    combined_check = self.manager.run_project_check(
+                        self.network,
+                        self.spec,
+                        snapshot,
+                        script=project_property_mutation_script(fixture_id),
+                    )
+                    combined_ev = _check_evidence(combined_check, 131_072)
+                    properties_ev = combined_ev
+                    mutations_ev = combined_ev
+                elif property_fixture_supported(fixture_id):
                     property_check = self.manager.run_project_check(
                         self.network,
                         self.spec,
@@ -514,6 +566,10 @@ class DockerProjectSandbox:
                 properties_ev = ExecutionEvidence(
                     exit_code=2, output="Properties check did not run."
                 )
+                if mutations_attempted:
+                    mutations_ev = ExecutionEvidence(
+                        exit_code=2, output="Mutation check did not run."
+                    )
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.
@@ -566,6 +622,7 @@ class DockerProjectSandbox:
                 regression=regression_ev,
                 fresh_target=True,
                 properties=properties_ev,
+                mutations=mutations_ev,
             )
         finally:
             if target is not None:
@@ -599,21 +656,28 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
             properties=None
             if value.properties is None
             else _normalize_execution(value.properties, limit),
+            mutations=None
+            if value.mutations is None
+            else _normalize_execution(value.mutations, limit),
         )
     if isinstance(value, Mapping):
         properties = value.get("properties")
+        mutations = value.get("mutations")
         return SnapshotVerification(
             probe=_normalize_execution(value["probe"], limit),
             regression=_normalize_execution(value["regression"], limit),
             fresh_target=bool(value.get("fresh_target", True)),
             properties=None if properties is None else _normalize_execution(properties, limit),
+            mutations=None if mutations is None else _normalize_execution(mutations, limit),
         )
     properties = getattr(value, "properties", None)
+    mutations = getattr(value, "mutations", None)
     return SnapshotVerification(
         probe=_normalize_execution(value.probe, limit),
         regression=_normalize_execution(value.regression, limit),
         fresh_target=bool(getattr(value, "fresh_target", True)),
         properties=None if properties is None else _normalize_execution(properties, limit),
+        mutations=None if mutations is None else _normalize_execution(mutations, limit),
     )
 
 
@@ -1292,6 +1356,9 @@ async def execute_project_workflow(
                 # exit other than 0 vetoes the retain even when the probe is
                 # blocked and regression is green (properties None skips).
                 and property_gate_passed(patched)
+                # Wave 2 item 4 fail-closed mutation gate: a recorded mutations
+                # exit other than 0 vetoes the retain (mutations None skips).
+                and mutation_gate_passed(patched)
             )
             if independent_same_finding:
                 independent_check = evidence.independent_verification
@@ -1302,6 +1369,7 @@ async def execute_project_workflow(
                     and independent_check.probe.blocked
                     and independent_check.regression.exit_code == 0
                     and property_gate_passed(independent_check)
+                    and mutation_gate_passed(independent_check)
                 )
             disposition = "retained" if retained else "rolled_back"
             try:
