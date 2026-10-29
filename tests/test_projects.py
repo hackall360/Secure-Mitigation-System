@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import PurpleBoxConfig
-from projects import ProjectSpec, replace_snapshot_files, snapshot_project
+from modules.core.config import PurpleBoxConfig
+from modules.services.projects import ProjectSpec, replace_snapshot_files, snapshot_project
 
 
 def spec_for(path: Path, **overrides) -> ProjectSpec:

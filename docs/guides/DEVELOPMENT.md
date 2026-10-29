@@ -34,11 +34,8 @@ If Docker is missing or an image build fails, `docker-status` reports
 fails before touching Muse. Real scans (`main.py --scan`) are a separate,
 keyed step — see "Keys and inference" below.
 
-Note: on this tree `check` currently stops at `ruff format --check` on
-`main.py:842` (the `--tui` help line exceeds the line width; tests and lint
-pass — 309 passed). The documented `check` wording is unchanged; only this
-note records the actual state so the judge is not surprised. Fixing that one
-line is intentionally left out of this hunk.
+`ruff format --check` and `ruff check` pass on this tree (128 files formatted,
+lint clean).
 
 ## Prerequisites and bootstrap
 
@@ -106,7 +103,7 @@ The lock was resolved for Python 3.12 on Linux x86_64. Other platforms must be
 validated independently. It does not lock operating-system packages in images.
 The Dockerfiles currently use `python:3.12-alpine3.22` and Alpine package names,
 so a future uncached rebuild can resolve different image/package versions.
-`ensure_base_images()` in `docker_manager.py` builds only missing tags. After
+`ensure_base_images()` in `modules/core/docker_manager.py` builds only missing tags. After
 editing a Dockerfile or `docker/runner.py`, rebuild explicitly:
 
 ```sh
@@ -179,7 +176,7 @@ a valid account key to test those separately. No visual browser review or
 performance benchmark was performed. Docker's internal bridge blocks the tested
 public TCP paths but is not proof of host isolation. Fixtures remain a development
 scaffold, not a safe execution boundary for arbitrary hostile repositories.
-The original `VALIDATION.md` remains a historical scaffold report; this section
+The original [`archive/VALIDATION.md`](../archive/VALIDATION.md) remains a historical scaffold report; this section
 supersedes its Docker-unavailable statement for this machine only.
 
 ## Environment template and ignore policy
@@ -200,7 +197,7 @@ with copy buttons, filterable activity timeline, result facts, and a colored
 candidate diff. All model output is inserted with `textContent` only; a test in
 `tests/test_web.py` forbids `innerHTML`.
 
-Trap: pipeline stages are inferred from message strings emitted in `workflow.py`.
+Trap: pipeline stages are inferred from message strings emitted in `modules/workflows/workflow.py`.
 If you reword those `log(...)` messages, update `advanceStage()` too, or the
 pipeline will stop advancing (the scan itself still works).
 
@@ -222,7 +219,7 @@ diff, filters, keyboard selection, and no horizontal overflow on mobile.
 | `python3 .jcode/tools/dev.py offline-scan` | `.jcode/tools/offline_scan.py`: runs the production `execute_purple_workflow` through real Docker for every fixture with only Muse replaced by known outputs. Exit 0 only if all three are `verified` with cleanup. About 110 s. |
 
 Code: `docker_status()`, `build_base_images()`, `remove_stale_resources()` in
-`docker_manager.py`. `/api/health` now returns a `docker` object
+`modules/core/docker_manager.py`. `/api/health` now returns a `docker` object
 (`state`: `ready` / `images_missing` / `unavailable`). The dashboard shows a Docker
 chip and keeps **Run verification** disabled unless both the API key and Docker are ready.
 
@@ -414,3 +411,79 @@ Spark. Baseline and regression passed, the pre-patch probe reached the boundary,
 the post-patch probe was blocked, and cleanup left zero containers. The dashboard
 reported 11,647 tokens across two calls and estimated cost $0.041. Model pricing is
 an estimate, not an invoice. Screenshot was checked at desktop width.
+
+### Dashboard workspace design (0.3.0)
+
+The dashboard remains a dependency-free, CSP-safe document. `static/index.html`
+owns semantic sections and every existing control ID. `static/app.js` owns scan
+state and `setSourceMode()`. Mode radios use roving tabindex and arrow/Home/End
+keys per https://www.w3.org/WAI/ARIA/apg/patterns/radio/. Arrow navigation keeps
+focus on the radio, while clicking Green build preserves focus-to-brief.
+
+`static/app.css` ends with the **Verification workspace** presentation layer.
+It intentionally leaves earlier scan-state selectors in place, including error,
+verified, disabled, hidden, and reduced-motion protections. Its palette uses navy
+surfaces and seaglass selection accents, with red/blue reserved for teams. The
+workspace rail becomes a sticky compact navigation bar below 760px. All four
+trace areas are keyboard-focusable. No remote fonts, assets, or dependencies are
+needed. Version `0.3.0` adds section navigation and accessible mode interaction,
+with the same version in `main.APP_VERSION`, the dashboard, and README badge.
+
+Run the real browser matrix from the repository root:
+
+```sh
+.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser chrome --design-check --shot reports/ui-after-chrome.png
+.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox --design-check --shot reports/ui-after-firefox.png
+python3 .jcode/tools/dev.py check
+```
+
+`--design-check` operates mode switching, section navigation, and log focus before
+running the existing real WebSocket/Docker verification. It checks control bounds
+at 1440, 768, 390, and 320 requested widths and writes width-suffixed screenshots.
+Chrome additionally checks reduced-motion styling. Firefox may constrain its
+minimum native window size. Offline replaces only Muse, not sandbox execution.
+
+Traps discovered during this change:
+
+- The migrated workflow lives in `modules.workflows.workflow`, not top-level
+  `workflow` or `modules.core.workflow`. `ui_scan.py` embeds Python in
+  `OFFLINE_SERVER`, so ordinary import checking had missed the stale import.
+  `test_offline_browser_bootstrap_imports_current_modules` executes those imports.
+- Use `.venv/bin/python` for `ui_scan.py`, not system Python. Chrome's CDP client
+  needs the project's installed `websockets`; Firefox's stdlib path can conceal
+  the wrong-interpreter problem by succeeding without that package.
+- Firefox commits native anchor navigation asynchronously. The shared design
+  assertion yields after each click before checking the exact fragment. A
+  synchronous hash assertion passed Chrome and falsely failed Firefox.
+- WebDriver HTTP errors now expose the returned error message instead of hiding
+  JavaScript assertion failures behind a generic HTTP 500.
+
+#### Measured outcome, not just screenshot inspection
+
+`.venv/bin/python .jcode/tools/ui_design_metrics.py --baseline d7763fa` loads
+both revisions' actual HTML/CSS in headless Chrome at 1440px and 390px. It isolates
+presentation by removing scripts from temporary copies, so it cannot start scans
+or make API calls. It measures computed colors, element geometry, actual focus
+acceptance, and rendered decorative animations, then asserts improvements.
+Original source files are never overwritten. Browser, server and snapshots are
+owned by the command and cleaned up on exit.
+
+Observed 2026-10-29 (`reports/ui-design-metrics.json`):
+
+| Criterion | Before | After | Outcome |
+| --- | --- | --- | --- |
+| Project-path placeholder contrast | 3.07:1 | 6.90:1 | Now exceeds 4.5:1 normal-text contrast threshold |
+| Mode selector rows, desktop | 2 | 1 | Three equal choices share one row |
+| Mode selector rows, 390px | 3 | 1 | All modes remain available without three stacked rows |
+| Trace areas accepting keyboard focus | 0 of 4 | 4 of 4 | Every log can be reached and scrolled with a keyboard |
+| Rendered ambient/decorative CSS animations | 11 | 0 | Removes continual visual distraction outside scan state |
+| Direct section-navigation links | 0 | 4 | Setup, pipeline, agents and activity directly reachable |
+
+These are concrete readability and interaction improvements, not a claim that
+user aesthetic preference or task-completion time was measured. Contrast here is
+for the opaque project-path input and its placeholder, not a full WCAG audit.
+Animation counts are not a CPU benchmark. The isolated presentation measurement
+complements, rather than replaces, the real Chrome/Firefox `ui_scan.py` runs:
+those operated the controls and completed Docker scans, with unchanged verdict,
+seven completed stages, probe exits 0 then 1, baseline/regression passes, patch
+stats `+6 -1`, and confirmed resource cleanup in both before/after runs.

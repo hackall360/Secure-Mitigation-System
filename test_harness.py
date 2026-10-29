@@ -6,12 +6,12 @@ import argparse
 import asyncio
 import json
 
-from agents import BlueTeamPatch, MetaMuseClient, RedTeamFinding
-from checks import ISOLATION_SCRIPT, normal_behavior_script
-from config import load_config
-from docker_manager import DockerSandboxManager
-from patches import validate_patch
-from registry import TARGETS_REGISTRY
+from modules.core.agents import BlueTeamPatch, MetaMuseClient, RedTeamFinding
+from modules.core.checks import ISOLATION_SCRIPT, normal_behavior_script
+from modules.core.config import load_config
+from modules.core.docker_manager import DockerSandboxManager
+from modules.core.patches import validate_patch
+from modules.core.registry import TARGETS_REGISTRY
 
 
 def check(condition: bool, message: str) -> None:

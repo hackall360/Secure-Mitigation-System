@@ -135,8 +135,8 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       substantive named types/descriptive text get `web_notes`; both land in
       records + digests. Files: `workflow.py`, `tests/test_workflow.py`.
       Proof: `test_research_gather_adds_cve_and_web_records`.
-- [ ] I7. Small features that fall out: keep each cheap, tested, shippable
-      (record here as they land).
+- [/] I7. Small features that fall out: keep each cheap, tested, shippable
+      (record here as they land). Standing bucket, closes per-item: landed so far per I/L/O/Q/R sections; nothing open at 2026-10-29 finish-up.
 
 ## J. LAW 7 single-server + key check (brief 2026-10-28-startup-law, rerun 2026-10-28-compliance-rerun)
 
@@ -163,3 +163,101 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       Files: `LAWS.md`, `TODO.md`, `.jcode/briefs/2026-10-28-compliance-rerun.md`.
       Proof: `serve_up_drill.py --port 18011` DRILL PASS + post-rebase gate
       321 passed + `test_dev_tool.py` 8 passed. Committed on branch, no merge.
+
+## L. Zero-day Wave 2 implementation (brief 2026-10-29-wave2-continuation; RESEARCH_V1.md + SPEC SS14)
+
+Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@214ed32` before edits.
+
+- [x] L1. Sink-adjacency reachability fusion: deterministic `reach_score` (0-100 int) + `reach_evidence` (list[str]) on CVE summaries.
+      Files: `deep_scan.py` (new pure `reachability_score(summary, static_findings)`), `cve_workflow.py` (attach per summary in `execute_cve_scan`), `tests/test_deep_scan.py`.
+      Fail-closed: no fixed version, no sink signal, no CVE match -> low score; absent signals never raise it. Novelty: Snyk/Endor does call-graph reachability, but we fuse OSV fixed-ranges + static sink adjacency keyless with no SaaS index.
+      Proof: 4 new tests red (ImportError/KeyError) then green; `tests/test_deep_scan.py` 20 passed + 5 pre-existing docker-import fails (unchanged from baseline 16+5); ruff check/format clean; subset suite 177 passed, 12 failed all pre-existing on clean tree.
+- [x] L2. Ghost-probe liveness, exit-2 gap: project workflow runs post-probe liveness whenever probe exit != 0 (today only exit==1), and names it in evidence.
+      Files: `project_workflow.py` (`verify_project_snapshot`), `tests/test_project_workflow.py`, `tests/helpers.py` only if seam requires.
+      Fixture workflow already has post-probe liveness (`workflow.py` final_health); do not duplicate it. Novelty: CodeMender PoC verify is flag-bypassable, but our ternary oracle stays fail-closed: inconclusive + dead target earns no credit.
+- [x] L3. Greenhouse hardening: bounded `size` (small|standard), `flaw_count` (1-8), `seed` (int) through demo generation, defaults = current behavior.
+      Files: `demo_gen.py`, `main.py` (WS /ws/demo + CLI --ai-demo flags), `sms_cli.py` CONFIG_KEYS, `static/index.html`, `static/app.js`, `tui.py` only if a demo surface exists there (scout says fixture-only: record parity gap, do not invent TUI demo mode), `tests/test_demo_gen.py`, `tests/test_cli_parity.py`, `tests/test_dashboard_project.py`/`test_web.py` as touched.
+      Novelty: competitors replay fixed fixtures, but we generate fresh intel-grounded targets per run with bounded variability.
+- [x] L4. CVE disclosure fast lane: `execute_cve_scan(..., fast_lane=True)` skips scanner-binary stage entirely (static + OSV only), deterministic ordering, never-raises preserved.
+      Files: `cve_workflow.py`, `tests/test_deep_scan.py`. CLI/WS wiring only if an existing CVE surface exists; otherwise core + test is the unit (record surface gap in report).
+      Novelty: KEV gives a 2-week catalog baseline, but we start from keyless OSV/CIRCL/GHSA/EPSS at scan time in minutes.
+- [x] L5. Merge writer branches (spawner owns merge, semantic resolution), full `dev.py check` green, LAW 12 version decision recorded, live proof where surfaces changed (offline_scan / ui_scan as applicable).
+      Files: merge of L1-L4 branches. Proof: gate output + live run artifact names.
+      Proof so far: merges a4ccc42/4f0be8e/e10a589/ad434e4 + semantic conflict fix in
+      tests/test_cli_parity.py; gate 351 passed (329 baseline + 22 new); offline_scan
+      3/3 verified; ui_scan firefox+chrome 'Boundary check passed'; browser-operated
+      demo-size/flaw-count/seed controls on :18099 (own server, killed after).
+      Closed 2026-10-29: all wt-w2-* worktrees removed (none remain); WS/TUI CVE fast-lane
+      surface gap + TUI demo-mode gap recorded in docs/architecture/WAVE2.md (Wave 3 docs M2).
+      LAW 12 bump 0.2.0 -> 0.3.0 stays deferred to ship; tracked only by M3.
+
+## M. Zero-day Wave 3 docs (blocked on L5 gate: 351 passed + live proof, done)
+
+- [x] M1. README + CLI reference for Wave 2: reach_score/reach_evidence, --fast-lane, --demo-size/--flaw-count/--demo-seed, ghost-probe exit-2 liveness note.
+      Files: `README.md`, `docs/reference/CLI.md`. Proof: links/flags verified against `main.py --help` output; gate green.
+- [x] M2. Architecture docs: reachability fusion + fast lane + liveness in `docs/architecture/` (extend PROJECT_WORKFLOW.md or new WAVE2 doc linked from docs index), surface gaps recorded (dashboard socketQuery omits dependency-track vs server 5-set; no WS/TUI CVE fast-lane surface; TUI has no demo mode).
+      Files: `docs/architecture/*`, `docs/INDEX.md` if present else record absence. Proof: grep for gap notes; gate green.
+- [x] M3. Ship invoked 2026-10-29: LAW 12 major bump 0.3.0 -> 0.4.0 (new capabilities: receipts, guard rationale, fast-lane topping, mutation probes, freshness/EUVD, templates, blueprint items 1-8, Wave 5 re-run); LAW 1 flow feature -> develop -> main, both pushed, end develop. Proof: ship commit message + gate 493 + live Docker proof.
+      Proof so far: README 1178cda, CLI dc7a4b6, arch d193d84 merged; gate 351 passed after docs merge.
+      Remains: user invokes ship; then bump APP_VERSION + surfaces, feature -> develop -> main, both pushes, end on develop.
+      Next unblocked work without ship: Wave 4 extended research (RESEARCH_V2) can start on this branch.
+
+## N. Zero-day Wave 4 extended research (brief 2026-10-28-zero-day-9wave item 4)
+
+- [x] N1. Five read-only lanes -> RESEARCH_V2.md: (a) re-verify Wave 1 recall-grounded claims (Semgrep autofix safety, Snyk rescan+unit-test verification, Endor/Snyk reachability) against live sources where reachable; (b) extended horizon: agentic remediation since Wave 1 (new entrants, benchmarks); (c) same-day patching economics/SLA data (KEV timelines, EPSS v5 follow-through); (d) sandbox/proof systems (eBPF, snapshot fuzzing, proof-carrying patches); (e) keyless intel evolution (OSV/GHSA/CIRCL changes).
+      Files: `RESEARCH_V2.md` only (research writes no code). Proof: RESEARCH_V2.md 12ec542 + addendum f5e92cc; gate green (docs-only).
+- [x] N2. SPEC delta for Wave 5 gated on RESEARCH_V2 (no implementation before it, strict sequencing). Proof: SPEC SS14.5 committed 3d37cfa before O1-O4 writers.
+
+## O. Zero-day Wave 5 implementation (blocked on RESEARCH_V2 + SPEC SS14.5, done)
+
+- [x] O1. GHSA `?cve_id=` lookup fix + epss/cvss_v4/first_patched_version consumption. Files: `research.py`, `tests/test_scanners.py`. Fail-first canned GHSA test. Proof: `feature/w5-ghsa a31ef56`; gate 367 passed; live XZ CVE GHSA record w/ patched version.
+- [x] O2. KEV 5th `cve_records` signal + reach_score likelihood tie-break (never lowers fail-closed floor). Files: `research.py`, `deep_scan.py`, `tests/test_scanners.py`, `tests/test_deep_scan.py`. Proof: `feature/w5-kev 7a5fdc8`; gate 367; live log4shell KEV title+due+ransomware.
+- [x] O3. Differential normal-contract gate (original vs patched equal class). Files: `workflow.py`/`project_workflow.py` narrow, tests. Proof: `feature/w5-differential e2768e6` explicit `CycleEvidence.differential_passed` both fates; gate 367.
+- [x] O4. Fast-lane SSVC tiering of output order. Files: `cve_workflow.py`, `tests/test_deep_scan.py`. Proof: `feature/w5-tier 2ba4100` sort key `(-reach_score, not has_fixed, id)`; gate 367.
+- [x] O5. Wave 6 expansion docs after O1-O4 gate green. Proof: merges `feature/w6-readme 8f297c6`, `w6-cli dd9545e`, `w6-arch a5caeff` (WAVE5.md); gate 367 passed.
+
+## P. Zero-day Waves 7-9 (blocked on RESEARCH_V3, pending)
+
+- [x] P1. Wave 7: RESEARCH_V3.md (freshness/compat defects + post-Wave-5 frontier), live-verified or labelled recall. Proof: RESEARCH_V3.md committed dd04172 with SPEC SS14.6.
+- [x] P2. Wave 7 or 8 implementation gated on SPEC delta for V3 (strict sequencing, fail-first). Proof: sections Q/R landed under SPEC SS14.6/SS14.7.
+- [x] P3. Wave 8 hardening: adversarial review of O1-O4 merges, edge tests. Proof: RESEARCH_V3 Lane A audit found dead KEV/EPSS tie-break; fixed Q1/Q2; LOW bundle R2; T1/T2 live-proof regression found+fixed.
+- [x] P4. Wave 9 adventure: child features spun from proven Wave 5 mechanics only. Proof: property/metamorphic contract checks (R1, child of O3 differential gate) + shape split (T2); VEX/SARIF/mutation counts cut as parity/non-proof per RESEARCH_V3 Lane C.
+
+## Q. Zero-day Wave 7 implementation (blocked on RESEARCH_V3 + SPEC SS14.6, done)
+
+- [x] Q1. Wire `kev_listed`/`epss_percentile` through `cve_workflow` enrichment into `reachability_score`; fail-first through real producer path; evidence strings live. Files: `cve_workflow.py`, `tests/test_deep_scan.py`.
+- [x] Q2. KEV per-process catalog cache in `research.kev_lookup`; fail-first cache test. Files: `research.py`, `tests/test_scanners.py`.
+- [x] Q3. Wave 8: property/metamorphic checks + LOW bundle (after Q1/Q2 gate green). Proof: section R (R1/R2 merged, gate 392, live project_scan 2/2).
+- [x] Q4. Wave 9: docs + adventure only if Q1-Q3 clean. Proof: R3 docs merged; adventure scoped to property-shape split (T2).
+
+## R. Zero-day Wave 8 (blocked on RESEARCH_V3 Lane C + SPEC SS14.7, done)
+
+- [x] R1. Property/metamorphic normal-contract checks wired into verification, recorded as evidence, fail-closed. Files: `checks.py` (`project_property_script`), `project_workflow.py` (`properties` + `property_gate_passed` in retain), `tests/test_property_checks.py` (13 tests). Proof: fail-first red (ImportError, gate-disabled rollback FAILED), standalone suite 385 passed. Opt-in: spec contract first line must name the fixture id (producer wiring done in `project_scan.py`).
+- [x] R2. LOW bundle: research fetch caps, epss sanitizer reuse, intel_search CVE shape. Files: `research.py`, `intel_search.py`, `cve_workflow.py`, `tests/test_scanners.py`. Fail-first each (red 3 failed, green post-fix).
+- [x] R3. Wave 9 docs after R1/R2 gate green. Proof: merges feature/w9-readme 1c8e414 + feature/w9-arch 6f69d59 (WAVE8.md + trap section); gate 392 passed. Adventure item cut per zero-day mandate: property-shape split was the shipped child feature of R1; nothing else cleared same-day-remediation bar.
+
+## S. Root de-bloat 3-wave refactor (briefs 2026-10-28-root-debloat-3wave-refactor, 2026-10-29-repo-refactor-s1s3-unblock; branch feature/root-debloat-wave2-migration)
+
+- [x] S1. Audit refresh on zero-day tree (baseline gate 392 passed pre-move): docs tree mapped (Moved shims at flat level, canonical content in architecture/guides/reference/decisions), 11 non-protected root .md classified (SPEC/GAP trio/RESEARCH trio -> categorized; AGENT.md/NOTE_E2E/VALIDATION.md -> archive; LICENSE.md kept at root), Wave 1 audit branch 39570ac verified to hold no domain-plan artifact (merge commit only), full internal import blast radius mapped (34 root .py + tests/tools/docker). Proof: brief 2026-10-29-repo-refactor-s1s3-unblock + this section.
+- [x] S2. Migration via git mv (history preserved): 11 .md into docs/{SPEC at top, research/, audits/, archive/}; 30 .py into modules/{core,workflows,intel,services,shared} + __init__.py; root keeps main.py, sms_cli.py, tui.py, test_harness.py + protected AGENTS.md/LAWS.md/TODO.md/README.md/LICENSE.md. Proof: git status rename entries.
+- [x] S3. Rewire + gate: all internal imports rewritten to modules.* (modules/tests/tools incl. 3 string-form seams: tui sys.modules, deep_scan source probe, web monkeypatch), BASE_DIR re-anchored to parents[2], isort config -> ["main","modules","test_harness","tui"], ruff --fix + format, gate 392 passed, offline_scan 3/3 verified, project_scan 2/2 retained, main.py --list-targets ok. Files: modules/**, main.py, tui.py, test_harness.py, tests/**, .jcode/tools/*.py, docs/index.md, README.md, docs/guides/DEVELOPMENT.md, docs/architecture/REPOSITORY.md, docs/archive/AGENT.md, pyproject.toml.
+
+## T. Finish-up 2026-10-29 (brief 2026-10-29-finish-up)
+
+- [x] T1. Wave 8 live-proof failure diagnosed: opt-in property script aliased project plain-text services to the fixture JSON-envelope script; properties exit 2 (JSONDecodeError) vetoed retain fail-closed. Evidence: reports/project-acceptance/project-acceptance.json cycle 1 properties exit_code 2, status rolled_back; standalone R1/R2 branch commits passed because neither had the merge-commit contract wiring.
+- [x] T2. Fix fail-first: split property scripts by real response shape (node_query_sink JSON envelope; new project_lookup_text plain text; phantom node_eval_service removed; project_scan contract retargeted). Files: `checks.py`, `tests/test_property_checks.py`, `.jcode/tools/project_scan.py`. Proof: writer RED (exit 2 unknown fixture) then 50 passed; merged gate 392 passed; live `project_scan.py` PASS 2/2 cycles retained, properties exit 0 both cycles.
+- [x] T3. Wave 9 docs merged (`1c8e414` README subsection, `6f69d59` WAVE8.md incl. property response-shape trap); TODO Q3/Q4/P1-P4/N1/N2/L5 closed with proof; gate 392 passed. I7 stays [/] standing bucket; M3 ship + S1-S3 de-bloat remain open by user gate, not omission.
+
+## Dashboard design refresh (2026-10-29, Jcode)
+
+- [x] Redesign `static/index.html`, `app.css`, and `app.js` as a responsive verification workspace (0.3.0). All 91 existing IDs and scan contracts preserved. Proof: `tests/test_dashboard_design.py` failed then passed; browser arrow-key test failed then passed; `dev.py check` green with 394 tests. Chrome + Firefox `ui_scan.py --offline --design-check` pass, including navigation, keyboard focus, all mode form bounds, and real Docker scans with cleanup. Before/after status, seven stages, facts, patch stats and model profile match. Evidence: `reports/ui-{before,after}-{chrome,firefox}.{json,png}`, width-suffixed screenshots, and `reports/ui-design-gate.txt`. Harness migration fix and verification procedure documented in `docs/guides/DEVELOPMENT.md`.
+
+- [x] Measure dashboard outcomes against baseline `d7763fa` with `.jcode/tools/ui_design_metrics.py`: at 1440px and 390px, placeholder contrast improves 3.07:1 to 6.90:1, mode rows improve 2/3 to 1, keyboard-focusable logs improve 0 to 4, and rendered decorative animations fall 11 to 0. All assertions pass. Evidence: `reports/ui-design-metrics.json`; measurement scope and limitations documented in `docs/guides/DEVELOPMENT.md`. These usability outcomes supplement the passing real-browser scan matrix, not a claim of measured subjective preference.
+
+## Wave 9 swarm close (2026-10-29; blueprint ZERO_DAY_BLUEPRINT.md@cb79d4d)
+
+- [x] W1. Wave 7 strategy: blueprint from 10 inward verdicts (frog/goat/lion/wolf/horse/koala/llama/mouse/otter/panda), panda SHIP/LABEL/CUT, 8-item Wave 8 build order. Files: `ZERO_DAY_BLUEPRINT.md`. Proof: commit `cb79d4d`.
+- [x] W2. Wave 8 items 1-3 (goat/wolf): rank freshness, frozen-pool build-failure veto, exec-required liveness. Proof: merges `1e6fc05` + `ef26ff8` + `39c5851`; gate green.
+- [x] W3. Wave 8 items 4-6 (koala): CycleReceipt ids + all-cycles export, GuardRationale linkage, `stale` token. Proof: merges `c2b70c3` + `61a2f59`; gate green.
+- [x] W4. Wave 8 items 7-8 (horse/llama): repeat-stability net + image digest pin. Proof: merge `3a9c98c` (`6b7bdf9`); gate 479 passed.
+- [x] W5. Executive architecture: `docs/architecture/ZERO_DAY.md` (verdicts, 8 items w/ file:line anchors, 394 -> 479 gate, offline_scan 3/3 + project_scan 2/2 live proof, honest gaps), linked from `docs/architecture/index.md` + `docs/index.md`. Proof: this section + gate 479.

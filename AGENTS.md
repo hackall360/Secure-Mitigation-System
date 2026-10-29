@@ -103,6 +103,9 @@ TODO.md              The work queue (feature branches only)
 
 ## 6. Branch and file ownership notes (LAW 1 applies)
 
+Dashboard visual/keyboard contracts and browser checks: see
+`docs/guides/DEVELOPMENT.md`, section **Dashboard workspace design (0.3.0)**.
+
 LAW 1 owns the branch rules. File notes: `TODO.md` and `.jcode/briefs/` are
 edited on feature branches and merged up like any other file; `.env` is never
 committed (`example.env` is the template); `reports/` and scratch screenshots

@@ -9,7 +9,7 @@ stay available as constructor/run parameters rather than forked classes.
 
 from collections import deque
 
-from config import PurpleBoxConfig
+from modules.core.config import PurpleBoxConfig
 
 TEST_API_KEY = "unit-test-key"
 TEST_CONFIG = PurpleBoxConfig(meta_api_key=TEST_API_KEY)
@@ -22,7 +22,7 @@ async def silent_emit(_team, _message):
 
 def project_verification(probe: int, regression: int = 0, output: str = "evidence"):
     """Build a fresh-target project SnapshotVerification for a FakeProjectSandbox."""
-    from project_workflow import ExecutionEvidence, SnapshotVerification
+    from modules.workflows.project_workflow import ExecutionEvidence, SnapshotVerification
 
     return SnapshotVerification(
         probe=ExecutionEvidence(exit_code=probe, output=output),
@@ -35,7 +35,7 @@ class FakeProjectMuse:
     """Stateless-role project agent double (union of per-file quirks as params)."""
 
     def __init__(self, *, red_outcomes=None, invalid_path=None, no_replacements=False):
-        from pricing import CallUsage
+        from modules.core.pricing import CallUsage
 
         self.red_outcomes = deque(red_outcomes or ["finding", "no_finding"])
         self.invalid_path = invalid_path
@@ -53,7 +53,7 @@ class FakeProjectMuse:
         ]
 
     async def _request(self, model, system, payload, schema, role=""):
-        from project_agents import (
+        from modules.services.project_agents import (
             BlueProposal,
             FileReplacement,
             FinalBlueReport,
@@ -167,7 +167,7 @@ async def run_project_workflow(*, muse, sandbox, cycles=1, project=None, limits=
 
     ``project`` defaults to the shared demo input so call sites can omit it.
     """
-    from project_workflow import ProjectWorkflowInput, execute_project_workflow
+    from modules.workflows.project_workflow import ProjectWorkflowInput, execute_project_workflow
 
     if project is None:
         project = ProjectWorkflowInput(
@@ -197,7 +197,7 @@ class FakeFixtureMuse:
         self.closed = False
 
     async def run_red_team_analysis(self, *args):
-        from agents import RedTeamFinding
+        from modules.core.agents import RedTeamFinding
 
         return RedTeamFinding(
             vulnerability_class="test boundary",
@@ -209,8 +209,8 @@ class FakeFixtureMuse:
     async def run_blue_team_sanitizer(self, *args):
         from test_patches import node_patch
 
-        from agents import BlueTeamPatch
-        from registry import TARGETS_REGISTRY
+        from modules.core.agents import BlueTeamPatch
+        from modules.core.registry import TARGETS_REGISTRY
 
         self.blue_calls += 1
         return BlueTeamPatch(
@@ -245,7 +245,7 @@ class FakeFixtureSandbox:
         return "patched-container", "patched-snapshot"
 
     def run_isolated_verifier(self, *args):
-        from docker_manager import VerificationResult
+        from modules.core.docker_manager import VerificationResult
 
         return VerificationResult(next(self.codes), "test evidence")
 
@@ -255,7 +255,7 @@ class FakeFixtureSandbox:
 
 async def run_fixture_workflow(codes, emit=silent_emit, sandbox=None, config=None):
     """Execute the purple fixture workflow with fakes and assert both halves closed."""
-    from workflow import execute_purple_workflow
+    from modules.workflows.workflow import execute_purple_workflow
 
     sandbox = sandbox or FakeFixtureSandbox(codes)
     muse = FakeFixtureMuse()
@@ -279,7 +279,7 @@ class ResearchFakeFixtureMuse(FakeFixtureMuse):
         self.blue_research_calls = 0
 
     async def run_red_research(self, sink_description, intel_records):
-        from agents import RedResearchDigest
+        from modules.core.agents import RedResearchDigest
 
         self.red_research_calls += 1
         assert isinstance(intel_records, list)
@@ -290,7 +290,7 @@ class ResearchFakeFixtureMuse(FakeFixtureMuse):
         )
 
     async def run_blue_research(self, sink_description, intel_records):
-        from agents import BlueResearchDigest
+        from modules.core.agents import BlueResearchDigest
 
         self.blue_research_calls += 1
         return BlueResearchDigest(

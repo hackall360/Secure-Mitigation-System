@@ -2,8 +2,8 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 import pytest
 
-from patches import PatchRejected, validate_patch
-from registry import TARGETS_REGISTRY
+from modules.core.patches import PatchRejected, validate_patch
+from modules.core.registry import TARGETS_REGISTRY
 
 
 def node_patch(source):

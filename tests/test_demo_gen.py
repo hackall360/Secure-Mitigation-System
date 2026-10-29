@@ -1,5 +1,5 @@
 def test_parse_build_intent_splits_cve_named_free():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(
         build_brief="a tiny notes app",
@@ -15,7 +15,7 @@ def test_parse_build_intent_splits_cve_named_free():
 
 
 def test_parse_build_intent_case_punctuation_duplicates():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="cve-2021-44228 log4shell; XSS!!!, sqli, SQL-INJECTION")
     assert intent.cve_ids == ["CVE-2021-44228"]
@@ -25,7 +25,7 @@ def test_parse_build_intent_case_punctuation_duplicates():
 
 
 def test_parse_build_intent_bare_cve_has_no_free_text():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="CVE-2024-3094")
     assert intent.cve_ids == ["CVE-2024-3094"]
@@ -40,7 +40,7 @@ def test_parse_build_intent_no_phantom_sinks_from_separator_fragments():
     traversal' — inventing a path-traversal sink the user never requested.
     Only the explicitly named command-injection survives.
     """
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="path/traversal plus command-injection")
     assert intent.named_types == ["OS command injection"]
@@ -55,7 +55,7 @@ def test_parse_build_intent_no_phantom_sinks_from_hypernyms():
     injection'/'header reflection', and 'site' inside 'cross site
     scripting' — inventing sinks the user never named.
     """
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     for hypernym in ("injection", "header", "site"):
         intent = parse_build_intent(vulns=hypernym)
@@ -65,7 +65,7 @@ def test_parse_build_intent_no_phantom_sinks_from_hypernyms():
 
 def test_parse_build_intent_whole_word_aliases_still_match():
     """aa09566 hunk 1: the whole-word restriction keeps every tested case green."""
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     assert parse_build_intent(vulns="sqli").named_types == ["SQL injection"]
     assert parse_build_intent(vulns="XSS!!!").named_types == ["cross-site scripting"]
@@ -79,7 +79,7 @@ def test_parse_build_intent_whole_word_aliases_still_match():
 
 def test_generate_demo_project_carries_intent_into_payload(monkeypatch):
     """I5 wiring: brief + requested flaws reach the generator payload."""
-    import demo_gen as _dg
+    import modules.services.demo_gen as _dg
 
     captured = {}
 
@@ -110,3 +110,71 @@ def test_generate_demo_project_carries_intent_into_payload(monkeypatch):
     assert files.cve_inspiration == ["CVE-2024-3094"]
     assert "notes app" in captured["payload"]["build_brief"]
     assert "CVE-2024-3094" in captured["payload"]["requested_vulns"]
+
+
+def _run_generate(**kwargs):
+    """Shared fake-client harness: capture the Muse payload, return (files, payload)."""
+    import asyncio as _aio
+
+    import modules.services.demo_gen as _dg
+
+    captured = {}
+
+    class FakeClient:
+        config = type("C", (), {"red_team_model": "muse-spark-1.3"})()
+
+        async def _request(self, model, system, payload, schema, **kwargs):
+            captured["payload"] = payload
+            captured["system"] = system
+            return _dg.DemoProjectFiles(
+                app_py="x = 1\n",
+                test_contract_py="assert True\n",
+                contract="c",
+            )
+
+    files = _aio.run(_dg.generate_demo_project(FakeClient(), intel_context=[], **kwargs))
+    return files, captured["payload"], captured["system"]
+
+
+def test_generate_demo_project_flaw_count_slices_wanted():
+    """L3: flaw_count=2 with 5 vulns -> payload requested_vulns len 2."""
+    _, payload, _ = _run_generate(
+        vulns=["a", "b", "c", "d", "e"],
+        flaw_count=2,
+    )
+    assert len(payload["requested_vulns"]) == 2
+    assert payload["flaw_count"] == 2
+
+
+def test_generate_demo_project_flaw_count_clamps_to_8():
+    """L3: flaw_count=99 clamps to 8, never raises, payload capped."""
+    _, payload, _ = _run_generate(
+        vulns=["v%d" % i for i in range(10)],
+        flaw_count=99,
+    )
+    assert payload["flaw_count"] == 8
+    assert len(payload["requested_vulns"]) == 8
+
+
+def test_generate_demo_project_bad_size_falls_back_and_seed_passes_through():
+    """L3: size='bogus' -> payload demo_size 'standard', seed passed through."""
+    _, payload, _ = _run_generate(vulns=["a", "b"], size="bogus", seed=42)
+    assert payload["demo_size"] == "standard"
+    assert payload["seed"] == 42
+
+
+def test_generate_demo_project_defaults_match_current_behavior():
+    """L3: defaults -> demo_size 'standard', flaw_count == len(requested)."""
+    _, payload, system = _run_generate(vulns=["a", "b", "c"])
+    assert payload["demo_size"] == "standard"
+    assert payload["flaw_count"] == len(payload["requested_vulns"]) == 3
+    assert payload["seed"] is None
+    assert "demo_size" in system and "variation nonce" in system
+
+
+def test_generate_demo_project_never_raises_on_garbage():
+    """L3: invalid flaw_count/size/seed types never raise, fall back sanely."""
+    _, payload, _ = _run_generate(vulns=["a"], size=123, flaw_count="xx", seed="yy")
+    assert payload["demo_size"] == "standard"
+    assert payload["requested_vulns"] == ["a"]
+    assert payload["seed"] is None

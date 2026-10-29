@@ -19,9 +19,9 @@ from helpers import (
     silent_emit,
 )
 
-from project_agents import ProjectAgentRunner
-from project_workflow import execute_project_workflow
-from projects import ProjectSpec
+from modules.services.project_agents import ProjectAgentRunner
+from modules.services.projects import ProjectSpec
+from modules.workflows.project_workflow import execute_project_workflow
 
 
 def make_spec(tmp_path, profile="extra_light", **overrides):

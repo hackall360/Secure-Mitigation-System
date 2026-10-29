@@ -3,7 +3,7 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 ![Tests](https://img.shields.io/badge/dev.py_check-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688?logo=fastapi&logoColor=white)
@@ -13,6 +13,23 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 ![Status](https://img.shields.io/badge/status-hackathon_edition-orange)
 
 > **Executive summary.** Secure Mitigation System is a red/blue input-boundary verification harness for code you own: a red-team Muse agent finds an input-handling weakness and proves it with a container exit code, a blue-team Muse agent writes a minimal sanitization patch, and trusted regression checks confirm the boundary holds. It exists for developers and security reviewers who need **evidence, not opinion** — every claim about a boundary is Docker output, and every container is removed afterward.
+
+## Why this exists (the 60-second version)
+
+One loop, evidence-gated (`modules/workflows/workflow.py:build_verdict_receipt`, `modules/workflows/project_workflow.py:build_cycle_receipt`):
+
+- **Red proves it.** A probe runs in an air-gapped container; exit `0` = boundary reached, `1` = blocked, `2` = inconclusive, fail-closed.
+- **Blue fixes only the boundary.** Sanitization-only patch under a 60-line budget (`modules/core/patches.py:EDIT_BUDGET_LINES`); rejected patches carry the firing guard (`project_workflow.py:GuardRationale`).
+- **Regression re-proves it.** Trusted normal-input checks re-run on original and patched targets; equal pass/fail class required (`project_workflow.py:differential_passed`), plus opt-in property gate (`property_gate_passed`) and 4-seed mutation gate (`modules/core/checks.py:MUTATION_SEED=20261029`, `mutation_gate_passed`).
+- Only all-green is `verified`/`retained`; every verdict ships a machine-readable receipt (`workflow.py:export_receipt_json`, `project_workflow.py:export_cycle_receipt_json`) pinning the exits and `patch_sha256`.
+
+Zero-day triage edge (`modules/workflows/cve_workflow.py`, flags `main.py:--cve-scan/--fast-lane/--deep-assessment/--offline-cve`):
+
+- **Reachable+fixable first.** `_fast_lane_rank` orders `(-reach_score, fix availability, kev_listed, epss_percentile, id)`; `_queue_evidence` prints the auditable tie-break `reach:{n} fix:{v} kev:{...} epss:{...}`.
+- **Freshness stamps.** KEV/EPSS signals carry `kev_date`/`epss_date`; older than `_SOURCE_FRESH_DAYS=1` read as absent, fail-closed. `FAST_LANE_EXCLUDED_SOURCES={euvd}` keeps unverified feeds out of the fast lane.
+- **Frozen inputs.** Mutation pools assert `FROZEN_MUTATION_POOL_SHA256` (`modules/core/checks.py`), so a re-run reproduces byte-identical inputs.
+
+Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, differential, topping, freshness, fast lane. LABEL = property (opt-in), mutation (shape check), templates (small diffs). CUT = frozen-pool digest hygiene, receipt JSON, rationale text, demo/greenhouse, scanners/sidecars, dashboard chrome — documentation labels, not deletions.
 
 ## Key Features
 
@@ -25,6 +42,41 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 - **Three surfaces, one workflow.** Dashboard (FastAPI + WebSocket), terminal UI (`--tui`), and CLI (`--scan` / `--project` / `--ai-demo` / `--cve-scan`) share the same async pipeline.
 - **Safe by construction.** Non-root users, dropped capabilities, CPU/RAM/PID caps, read-only roots, redacted owner-only artifacts, no secrets in Docker, reports, or UI.
 - **Live-tested.** `dev.py check` gate (lint, format, mocked unit tests, fixture checks) plus live Docker, real-Muse, and headless-browser (Chrome/Firefox) proofs.
+
+### Wave 2 (0.3.0, shipped 0.4.0)
+
+- **Reachability-ranked CVE output.** CVE scans attach `reach_score` (deterministic 0-100) plus `reach_evidence`, fusing OSV fixed-version ranges with static sink adjacency — keyless, no inference.
+- **CVE disclosure fast lane.** `--fast-lane` runs static + OSV only, in deterministic order, with no Muse or NVD calls.
+- **Tunable AI demos.** Greenhouse takes `--demo-size small|standard`, `--flaw-count 1..8`, and `--demo-seed`; the dashboard exposes the same as Demo size / Flaw count / Demo seed controls.
+- **Ghost-probe liveness for inconclusive probes.** The post-probe liveness check against the still-running target now covers inconclusive (`exit 2`) probes as well as blocked (`exit 1`) ones, so a crashed service cannot earn success.
+
+### Wave 5: trust signals (shipped)
+
+- **GHSA CVE-id lookup fix.** `ghsa_lookup_by_cve` queries `?cve_id=` (the old path sent CVE ids as `?package=`, silently degrading results); records now consume embedded `epss`, `cvss_severities` (v4 preferred), and `first_patched_version`. Never-raises preserved.
+- **KEV as fifth signal.** CISA KEV keyless JSON joins `cve_records` (exploited flag + due date); KEV/EPSS-percentile likelihood is tie-breaking evidence in `reachability_score` and never lowers the fail-closed sink/fixed-version floor.
+- **Differential normal-contract gate.** After patch + probe-block, trusted normal-input checks re-run against original and patched targets; equal pass/fail class required, recorded as explicit `CycleEvidence.differential_passed`, mismatch = not verified.
+- **Fast-lane tiering.** Output orders by actionability `(-reach_score, fix availability, id)` instead of id-sort alone. Gate: `dev.py check` 367 passed.
+
+### Wave 7-8: live signals + property contracts (shipped)
+
+- **KEV/EPSS via the real producer path.** `kev_listed`/`epss_percentile` are now wired through `cve_workflow` enrichment into `reachability_score` (previously Wave 5 tests stubbed the summary dict, so the dead `summarize_osv_vuln` path was invisible). Tie-break only; never lowers the fail-closed sink/fixed-version floor.
+- **Per-process KEV catalog cache.** `research.kev_lookup` fetches the CISA catalog once per process instead of per CVE id; fail-first cache test in `tests/test_scanners.py`.
+- **Property/metamorphic normal-contract checks.** Seeded deterministic scripts (`checks.project_property_script`, seed `20261029`) run after regression green and veto a retain on any non-zero exit (`property_gate_passed`); exceptions resolve to exit 2, fail-closed. Opt-in by contract first line naming the check id; anything else skips, so arbitrary projects are unaffected.
+- **Split scripts by real response shape.** `node_query_sink` asserts the JSON envelope; `project_lookup_text` asserts the plain-text contract (exact names for known ids, empty 200 body for seeded random ids); PHP hosts assert byte-stability under repetition; config keys assert idempotent re-read.
+- **LOW bundle.** Research fetch caps, EPSS sanitizer reuse, `intel_search` CVE shape. Gate: `dev.py check` 392 passed; live `project_scan` 2/2 retained with properties exit 0.
+
+### Wave 2 (SPEC 14.8)
+
+- **Verdict receipts.** Every verified fixture cycle records a `VerdictReceipt` (`modules/workflows/workflow.py`: `fixture`, `pre_exit_code`, `post_exit_code`, `regression_passed`, `differential_passed`, `property_exit_code`, `property_passed`, `patch_sha256`, `verified`; built by `build_verdict_receipt`, serialized by `export_receipt_json`); every retained project cycle records a `CycleReceipt` (`modules/workflows/project_workflow.py`: `fixture`, `pre_probe_exit`, `post_probe_exit`, `baseline_regression_exit`, `patched_regression_exit`, `differential_passed`, `property_exit`, `property_passed`, `patch_sha256`, `retained`; built by `build_cycle_receipt`, serialized by `export_cycle_receipt_json`, carried on `ProjectCycleReport.receipt`) exported alongside the candidate patch. Novelty: Dependabot/Snyk emit version-bump PRs with notes, we emit machine-readable exit-0/exit-1 execution receipts, advancing evidence-over-opinion verdicts. Same-day: a reviewer accepts the patch today because the receipt pins exactly which Docker exits the claim rests on.
+- **Guard rationale.** Rejected patches carry a structured `GuardRationale` (`guard_id`, `reason`, `trigger`) on `ReplacementValidation.guard_rationale` (`modules/workflows/project_workflow.py`). Novelty: Semgrep/Snyk Code emit AI draft fixes for human/rescan validation, we bind the fired guard and its trigger to each rejected patch, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees why the safe patch is the shape it is, with no guard-guessing round trip.
+- **Fast-lane topping.** `_fast_lane_rank` (`modules/workflows/cve_workflow.py`) orders reachable+fixable first — `(-reach_score, fix availability, kev_listed, epss_percentile, id)` — and `_queue_evidence` surfaces the auditable tie-break string `reach:{n} fix:{v} kev:{listed|absent} epss:{pct|absent}` read from `reach_score` / `fixed_versions` / `kev_listed` / `epss_percentile`. Novelty: NVD/OSV/EUVD rank by CVSS, we top reachable+fixable with KEV/EPSS evidence strings, advancing day-zero queue auditability. Same-day: the team patches reachable+fixable CVEs first, in an order anyone can re-derive.
+- **Mutation probes.** `modules/core/checks.py` runs N=4 (`MUTATION_COUNT = 4`) deterministic seeded (`MUTATION_SEED = 20261029`) per-contract mutations, fail-closed through `mutation_gate_passed` (exit 0 = held, 1 = mishandled, 2 = inconclusive): node shares one capped run via `project_property_mutation_script`, php/mysql run standalone via `project_mutation_script`, dispatched by `mutation_fixture_supported`. Novelty: open-ended fuzzers chase coverage with unbounded runs, we run four seeded contract mutations inside the existing capped check, advancing bounded boundary-shape confidence. Same-day: shape regressions in the patched target fail the cycle the day the patch lands, not after merge.
+
+### Wave 5 (SPEC 14.9)
+
+- **queue_evidence freshness.** `_queue_evidence` (`modules/workflows/cve_workflow.py`) gates KEV/EPSS signals through `_source_fresh` (`_SOURCE_FRESH_DAYS = 1`): per-source date stamps (`kev_date`, `epss_date`) older than 1 day read as absent — fail-closed, never blocks the scan — and `FAST_LANE_EXCLUDED_SOURCES` keeps EUVD out of the fast lane (no keyless JSON endpoint verified 2026-10-29). Novelty: CVSS-ranked feeds reuse stale exploit-probability vintages, we stamp each source date and drop day-old signals from the queue string, advancing triage-time freshness. Same-day: the team queues reachable+fixable CVEs today on signals stamped today, not last month's EPSS.
+- **Frozen-pool mutation inputs.** `modules/core/checks.py` pins every mutation id behind `FROZEN_MUTATION_POOL_SHA256`: pools are byte-identical across runs, with no live generative loop in-container (any offline pool proposal must freeze+seed before use). Novelty: generative red loops invent new cases per run and cannot re-derive a verdict, we freeze the seeded pool and assert its digest, advancing re-derivable boundary evidence. Same-day: a re-run today reproduces byte-identical mutation inputs, so a green gate means the same thing it meant yesterday.
+- **Guard-discipline template inputs.** Template-shaped inputs are allowed only inside the existing 60-line sanitization guards (`EDIT_BUDGET_LINES = 60`, `modules/core/patches.py`); the budget never widens and `is_solver_synthesized_shape` rejects solver-synthesized edits with a bound `GuardRationale`. Novelty: AI-fix tools accept solver-shaped rewrites and grow the diff to fit, we hold template inputs inside the fixed 60-line budget and name the rejecting guard, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees a small template-shaped diff today with the fired guard attached, not a re-architected file.
 
 ## Architecture / How It Works
 
@@ -218,7 +270,7 @@ python test_harness.py --api        # two real Muse calls (normal usage cost)
 .venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox
 ```
 
-Default tests are mocked (no Meta/Docker contact). See [`VALIDATION.md`](VALIDATION.md) for the acceptance runs and [`docs/guides/DEVELOPMENT.md`](docs/guides/DEVELOPMENT.md) for the environment, traps, and the browser matrix (Chrome/Chromium/Edge/Brave via CDP, Firefox via WebDriver).
+Default tests are mocked (no Meta/Docker contact). See [`docs/archive/VALIDATION.md`](docs/archive/VALIDATION.md) for the acceptance runs and [`docs/guides/DEVELOPMENT.md`](docs/guides/DEVELOPMENT.md) for the environment, traps, and the browser matrix (Chrome/Chromium/Edge/Brave via CDP, Firefox via WebDriver).
 
 <details>
 <summary><strong>Latest acceptance evidence (2026-10-28)</strong></summary>

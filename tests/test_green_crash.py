@@ -11,9 +11,9 @@ def _run(coro):
 
 def test_demo_build_returns_error_card_when_client_construction_fails(monkeypatch):
     """Missing/bad key config surfaces as an error result, not a raised crash."""
-    import agents as _agents
     import main as _main
-    from config import ConfigurationError, PurpleBoxConfig
+    import modules.core.agents as _agents
+    from modules.core.config import ConfigurationError, PurpleBoxConfig
 
     class RaisingClient:
         def __init__(self, config):
@@ -38,10 +38,10 @@ def test_demo_build_returns_error_card_when_client_construction_fails(monkeypatc
 
 def test_demo_build_returns_error_card_when_generation_is_invalid(monkeypatch):
     """Muse returning syntactically broken app.py yields an error card, not SyntaxError."""
-    import agents as _agents
-    import demo_gen as _dg
     import main as _main
-    from config import PurpleBoxConfig
+    import modules.core.agents as _agents
+    import modules.services.demo_gen as _dg
+    from modules.core.config import PurpleBoxConfig
 
     class FakeClient:
         def __init__(self, config):
@@ -81,7 +81,7 @@ def test_generate_demo_project_rejects_invalid_syntax():
     """Fail-fast boundary: broken Muse output raises ValueError naming the file."""
     import pytest as _pytest
 
-    import demo_gen as _dg
+    import modules.services.demo_gen as _dg
 
     class FakeClient:
         config = type("C", (), {"red_team_model": "muse-spark-1.3"})()
@@ -103,7 +103,7 @@ def test_materialize_demo_project_names_invalid_file(tmp_path):
     """Materialize names the broken file in a ValueError, never leaks SyntaxError."""
     import pytest as _pytest
 
-    from demo_gen import DemoProjectFiles, materialize_demo_project
+    from modules.services.demo_gen import DemoProjectFiles, materialize_demo_project
 
     bad = DemoProjectFiles(
         app_py="def broken(:\n",

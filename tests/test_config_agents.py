@@ -6,8 +6,8 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from agents import AgentError, MetaMuseClient, RedTeamFinding
-from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from modules.core.agents import AgentError, MetaMuseClient, RedTeamFinding
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 
 FINDING = {
     "vulnerability_class": "input validation",

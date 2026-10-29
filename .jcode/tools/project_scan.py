@@ -21,10 +21,10 @@ sys.path.insert(0, str(ROOT))
 
 import httpx
 
-from agents import MetaMuseClient
-from config import PurpleBoxConfig, load_config
-from project_workflow import execute_project_workflow
-from projects import ProjectSpec
+from modules.core.agents import MetaMuseClient
+from modules.core.config import PurpleBoxConfig, load_config
+from modules.services.projects import ProjectSpec
+from modules.workflows.project_workflow import execute_project_workflow
 
 APP = """from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -230,7 +230,7 @@ async def run(output, *, live=False, cycles=2, source_import=False, scan_profile
             path=project,
             command=["python3", "app.py"],
             test_command=["python3", "test_contract.py"],
-            contract="HTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
+            contract="project_lookup_text\nHTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
             **({"cycles": cycles} if scan_profile == "custom" else {"scan_profile": scan_profile}),
             allow_remote_inference=live and config.inference_mode != "local",
         )

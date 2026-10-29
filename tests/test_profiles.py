@@ -7,9 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from config import PurpleBoxConfig
 from main import create_app
-from profiles import ProfileError, apply_profile, available_profiles, default_profile
+from modules.core.config import PurpleBoxConfig
+from modules.core.profiles import ProfileError, apply_profile, available_profiles, default_profile
 
 BASETEN = replace(
     PurpleBoxConfig(),
@@ -69,7 +69,7 @@ def test_socket_uses_chosen_profile(monkeypatch):
     async def capture(target, emit, *, config=None, **kwargs):
         seen["models"] = (config.red_team_model, config.blue_team_model)
         await asyncio.sleep(0)
-        from workflow import ScanResult
+        from modules.workflows.workflow import ScanResult
 
         return ScanResult(target=target, status="not_confirmed", message="test")
 

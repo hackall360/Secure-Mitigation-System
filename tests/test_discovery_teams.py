@@ -1,9 +1,10 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 
-from config import PurpleBoxConfig
-from pricing import CallUsage
-from project_agents import (
+from modules.core.config import PurpleBoxConfig
+from modules.core.pricing import CallUsage
+from modules.core.scan_profiles import SCAN_PROFILES
+from modules.services.project_agents import (
     BlueProposal,
     FileReplacement,
     FinalBlueReport,
@@ -14,7 +15,6 @@ from project_agents import (
     ReviewTeamPlan,
     SourceDocument,
 )
-from scan_profiles import SCAN_PROFILES
 
 CONFIG = PurpleBoxConfig(meta_api_key="unit-test-key")
 

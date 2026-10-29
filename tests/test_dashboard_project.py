@@ -338,3 +338,22 @@ def test_demo_build_prompts_for_brief_and_vulns():
     assert 'id="demo-vulns"' in markup
     assert "Vulnerabilities to implement" in markup
     assert "CVEs, named types, or free text" in markup
+
+
+def test_demo_hardening_controls_exist():
+    """L3: demo-size/flaw-count/seed widgets sit by the other demo controls."""
+    markup = INDEX.read_text()
+    for widget in ('id="demo-size"', 'id="demo-flaw-count"', 'id="demo-seed"'):
+        assert widget in markup
+    assert 'name="demo_size"' in markup
+    assert 'name="flaw_count"' in markup
+
+
+def test_w5r2_dashboard_scanner_five_set_matches_cli_allowlist():
+    """MED static/app.js:960: dashboard socketQuery hardcodes 4 scanners while
+    the CLI/WS allowlist (main.py:380,620,743) is the 5-set incl
+    dependency-track. Dashboard research omits one scanner vs CLI."""
+    text = SCRIPT.read_text()
+    section = text[text.index("function socketQuery(") : text.index("return params.length")]
+    for scanner in ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"):
+        assert scanner in section, f"dashboard socketQuery missing {scanner!r}"

@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 import main
-from config import PurpleBoxConfig
-from projects import ProjectSpec
-from scan_profiles import SCAN_PROFILES, ScanProfile, focus_for_cycle
+from modules.core.config import PurpleBoxConfig
+from modules.core.scan_profiles import SCAN_PROFILES, ScanProfile, focus_for_cycle
+from modules.services.projects import ProjectSpec
 
 EXPECTED_CYCLES = {
     "extra_light": 1,

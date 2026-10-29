@@ -2,7 +2,7 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """Deep scan tests: static signals, manifests, OSV summarization, offline CVE workflow."""
 
-from deep_scan import (
+from modules.workflows.deep_scan import (
     extract_dependencies,
     run_static_scan,
     summarize_osv_vuln,
@@ -52,12 +52,272 @@ def test_summarize_osv_vuln_extracts_cve_cvss_and_fixes():
     assert summary["fixed_versions"] == ["2.0"]
 
 
+async def test_fast_lane_forces_off_deep_assessment_and_nvd(monkeypatch):
+    """L4 red: fast_lane=True forces include_deep_assessment/include_nvd off."""
+    import modules.workflows.cve_workflow as _cw
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse/NVD must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"app.py": "x = 1\n"},
+        emit,
+        include_osv=False,
+        include_deep_assessment=True,
+        include_nvd=True,
+        fast_lane=True,
+    )
+    assert report.success
+    assert report.deep_assessment is None
+    assert report.message.startswith("Fast lane: ")
+
+
+async def test_fast_lane_sorts_vulnerabilities_by_id(monkeypatch):
+    """L4 red: fast_lane sorts vulnerabilities deterministically by id."""
+    import modules.workflows.cve_workflow as _cw
+
+    summaries = [
+        {
+            "id": "GHSA-zzz",
+            "summary": "z",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+        {
+            "id": "GHSA-aaa",
+            "summary": "a",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+    ]
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {
+            "results": [{"vulns": [{"id": "GHSA-zzz"}, {"id": "GHSA-aaa"}]} for _ in deps]
+        },
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: {"id": vid})
+    monkeypatch.setattr(
+        _cw, "summarize_osv_vuln", lambda rec: next(s for s in summaries if s["id"] == rec["id"])
+    )
+    real_blocking = _cw.blocking
+
+    async def _guarded_blocking(fn, *args, **kwargs):
+        if getattr(fn, "__name__", "") in ("nvd_lookup", "osv_lookup_by_cve"):
+            raise AssertionError("NVD stage must not run on the fast lane")
+        return await real_blocking(fn, *args, **kwargs)
+
+    monkeypatch.setattr(_cw, "blocking", _guarded_blocking)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        emit,
+        include_deep_assessment=True,
+        include_nvd=True,
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-aaa", "GHSA-zzz"]
+    assert report.deep_assessment is None
+    assert all("nvd" not in v and "nvd_error" not in v for v in report.vulnerabilities)
+    assert report.message.startswith("Fast lane: ")
+
+
+async def test_fast_lane_caps_max_osv_details(monkeypatch):
+    """L4 red: fast_lane caps max_osv_details to min(given, 10)."""
+    import modules.workflows.cve_workflow as _cw
+
+    seen: dict = {}
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": f"GHSA-{i:03d}"} for i in range(15)]}]},
+    )
+
+    def _fetch(vid):
+        seen[vid] = True
+        return {"id": vid}
+
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", _fetch)
+    monkeypatch.setattr(
+        _cw,
+        "summarize_osv_vuln",
+        lambda rec: {
+            "id": rec["id"],
+            "summary": "",
+            "details": "",
+            "published": None,
+            "modified": None,
+            "aliases": [],
+            "cves": [],
+            "severity": [],
+            "fixed_versions": [],
+            "references": [],
+        },
+    )
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        emit,
+        max_osv_details=25,
+        fast_lane=True,
+    )
+    assert report.success
+    assert len(report.vulnerabilities) == 10
+    assert len(seen) == 10
+
+
+def _o4_summary(vid, fixed=(), cwe=None):
+    """O4 helper: minimal OSV summary with controllable fix/CWE signals."""
+    return {
+        "id": vid,
+        "summary": "",
+        "details": "",
+        "published": None,
+        "modified": None,
+        "aliases": [],
+        "cves": [],
+        "severity": [],
+        "fixed_versions": list(fixed),
+        "references": [],
+        "cwe": cwe,
+    }
+
+
+async def _o4_run(monkeypatch, summaries, vuln_ids, files, *, fast_lane):
+    """O4 helper: run execute_cve_scan with mocked OSV, real reachability scoring."""
+    import modules.workflows.cve_workflow as _cw
+
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": vid} for vid in vuln_ids]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: {"id": vid})
+    monkeypatch.setattr(
+        _cw, "summarize_osv_vuln", lambda rec: next(s for s in summaries if s["id"] == rec["id"])
+    )
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on this path")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    return await execute_cve_scan(files, emit, fast_lane=fast_lane)
+
+
+async def test_fast_lane_orders_higher_reach_first(monkeypatch):
+    """O4: fast_lane orders by actionability (reach_score) before id."""
+    summaries = [
+        _o4_summary("GHSA-aaa"),
+        _o4_summary("GHSA-zzz", fixed=["2.0"]),
+    ]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-aaa", "GHSA-zzz"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["reach_score"] for v in report.vulnerabilities] == [50, 10]
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
+async def test_fast_lane_ties_prefer_fixed_versions(monkeypatch):
+    """O4: equal reach_score orders summaries with fixed_versions first."""
+    summaries = [
+        _o4_summary("GHSA-zzz", fixed=["2.0"], cwe="CWE-79"),
+        _o4_summary("GHSA-aaa", cwe="CWE-502"),
+    ]
+    files = {
+        "requirements.txt": "jinja2==3.1.4\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await _o4_run(monkeypatch, summaries, ["GHSA-aaa", "GHSA-zzz"], files, fast_lane=True)
+    assert report.success
+    scores = [v["reach_score"] for v in report.vulnerabilities]
+    assert scores[0] == scores[1] == 50
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
+async def test_fast_lane_ties_fall_back_to_id(monkeypatch):
+    """O4: equal reach and fix status fall back to ascending id."""
+    summaries = [_o4_summary("GHSA-mmm"), _o4_summary("GHSA-zzz"), _o4_summary("GHSA-aaa")]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-mmm", "GHSA-zzz", "GHSA-aaa"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-aaa", "GHSA-mmm", "GHSA-zzz"]
+
+
+async def test_non_fast_lane_keeps_insertion_order(monkeypatch):
+    """O4: without fast_lane, order follows OSV insertion order (no tier sort)."""
+    summaries = [
+        _o4_summary("GHSA-zzz", fixed=["2.0"]),
+        _o4_summary("GHSA-aaa"),
+    ]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-zzz", "GHSA-aaa"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=False,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
 async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     (tmp_path / "app.py").write_text("import pickle\npickle.loads(x)\n", encoding="utf-8")
     (tmp_path / "requirements.txt").write_text("jinja2==3.1.4\n", encoding="utf-8")
-    from projects import ProjectSpec
+    from modules.services.projects import ProjectSpec
 
     spec = ProjectSpec.model_validate(
         {
@@ -80,7 +340,7 @@ async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
 
 
 def test_nvd_summarizer_extracts_cvss_cwe_description():
-    from intel_search import summarize_nvd_record, summarize_nvd_search
+    from modules.intel.intel_search import summarize_nvd_record, summarize_nvd_search
 
     item = {
         "cve": {
@@ -113,7 +373,7 @@ def test_nvd_summarizer_extracts_cvss_cwe_description():
 
 
 def test_demo_materialization_validates_and_builds_spec(tmp_path):
-    from demo_gen import DemoProjectFiles, materialize_demo_project
+    from modules.services.demo_gen import DemoProjectFiles, materialize_demo_project
 
     files = DemoProjectFiles(
         app_py="from http.server import BaseHTTPRequestHandler, HTTPServer\nprint('ok')\n",
@@ -134,8 +394,8 @@ def test_demo_materialization_validates_and_builds_spec(tmp_path):
 
 
 def test_user_reports_never_contain_exploit_scripts():
-    from project_agents import ContextCoverage, RedAnalysisArtifacts, RedReport
-    from project_workflow import (
+    from modules.services.project_agents import ContextCoverage, RedAnalysisArtifacts, RedReport
+    from modules.workflows.project_workflow import (
         CycleEvidence,
         ExecutionEvidence,
         ProjectCycleReport,
@@ -188,8 +448,8 @@ def test_user_reports_never_contain_exploit_scripts():
 def test_websocket_and_cli_reports_withhold_probe_source():
     import json as _json
 
-    from agents import RedTeamFinding
-    from workflow import ScanResult, redact_fixture_result_for_user
+    from modules.core.agents import RedTeamFinding
+    from modules.workflows.workflow import ScanResult, redact_fixture_result_for_user
 
     fr = ScanResult(
         target="t",
@@ -212,13 +472,13 @@ def test_websocket_and_cli_reports_withhold_probe_source():
 def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
     import pytest as _pytest
 
-    from intel_search import nvd_lookup, nvd_search
+    from modules.intel.intel_search import nvd_lookup, nvd_search
 
     with _pytest.raises(ValueError):
         nvd_search("")
     with _pytest.raises(ValueError):
         nvd_lookup("CVE-bad")
-    from demo_gen import DemoProjectFiles, materialize_demo_project
+    from modules.services.demo_gen import DemoProjectFiles, materialize_demo_project
 
     with _pytest.raises(ValueError):
         materialize_demo_project(
@@ -232,14 +492,14 @@ def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
 
 
 def test_persona_prompts_carry_voice_and_safety_override():
-    from personas import (
+    from modules.core.personas import (
         BLUE_LEADER_PERSONA,
         BLUE_PERSONAS,
         GREEN_PERSONA,
         RED_LEADER_PERSONA,
         RED_PERSONAS,
     )
-    from project_agents import blue_persona_prompt, red_persona_prompt
+    from modules.services.project_agents import blue_persona_prompt, red_persona_prompt
 
     assert len(RED_PERSONAS) == 5 and len(BLUE_PERSONAS) == 5
     assert "Warlord" in RED_LEADER_PERSONA.name and "Warden" in BLUE_LEADER_PERSONA.name
@@ -251,7 +511,7 @@ def test_persona_prompts_carry_voice_and_safety_override():
 
 def test_chatter_never_carries_exploit_material():
 
-    from chatter import chatter
+    from modules.services.chatter import chatter
 
     for kind in (
         "red_start",
@@ -276,7 +536,7 @@ class _PersonaWireClient:
     async def _request(self, model, system, payload, schema, **kwargs):
         self.systems.append(system)
         if schema is not None and getattr(schema, "__name__", "") == "ReviewTeamPlan":
-            from project_agents import ReviewAssignment, ReviewTeamPlan
+            from modules.services.project_agents import ReviewAssignment, ReviewTeamPlan
 
             return ReviewTeamPlan(
                 strategy="s",
@@ -291,8 +551,8 @@ class _PersonaWireClient:
 def test_worker_persona_prompts_reach_model_calls():
     import asyncio
 
-    from config import PurpleBoxConfig
-    from project_agents import (
+    from modules.core.config import PurpleBoxConfig
+    from modules.services.project_agents import (
         ProjectAgentRunner,
         RedReport,
         SourceDocument,
@@ -342,7 +602,7 @@ def test_worker_persona_prompts_reach_model_calls():
 
 
 def test_chatter_adversarial_inputs_stay_safe():
-    from chatter import _CHATTER, chatter
+    from modules.services.chatter import _CHATTER, chatter
 
     evil_path = (
         "/etc/shadow\nimport os; os.system('rm -rf /')\n" + "A" * 500 + "<script>alert(1)</script>"
@@ -375,8 +635,8 @@ def test_chatter_adversarial_inputs_stay_safe():
 def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
     import json
 
-    from project_agents import RedReport
-    from project_workflow import EXPLOIT_REDACTED, redact_report_for_user
+    from modules.services.project_agents import RedReport
+    from modules.workflows.project_workflow import EXPLOIT_REDACTED, redact_report_for_user
 
     RedReport(
         outcome="finding",
@@ -419,21 +679,21 @@ def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
     assert "SECRET" not in blob  # long probe output truncated, short would be redacted
     assert EXPLOIT_REDACTED.split()[0] in blob or "withheld" in blob
     # persona names may appear (safe) but never probe source
-    from chatter import chatter as _c
+    from modules.services.chatter import chatter as _c
 
     line = _c("red_proof", persona="Breakwater", path="src/app.py", code=0, seed=0)
     assert "exit 0" in line or "exit" in line
 
 
 def test_persona_roster_wraps_and_safety_overrides_voice():
-    from personas import (
+    from modules.core.personas import (
         BLUE_LEADER_PERSONA,
         GREEN_PERSONA,
         RED_LEADER_PERSONA,
         blue_persona,
         red_persona,
     )
-    from project_agents import (
+    from modules.services.project_agents import (
         RED_WORKER_SYSTEM_PROMPT,
         blue_persona_prompt,
         red_persona_prompt,
@@ -473,7 +733,7 @@ def test_persona_roster_wraps_and_safety_overrides_voice():
 def test_chatter_fuzz_basename_and_determinism():
     import random
 
-    from chatter import _CHATTER, chatter
+    from modules.services.chatter import _CHATTER, chatter
 
     rng = random.Random(7)
     markers = (
@@ -514,7 +774,7 @@ def test_arena_name_lists_match_backend_wrap_order():
     import json
     from pathlib import Path
 
-    from personas import blue_persona, red_persona
+    from modules.core.personas import blue_persona, red_persona
 
     js = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
     for var in ("RED_NAMES", "BLUE_NAMES"):
@@ -542,10 +802,10 @@ def test_redacted_history_and_chatter_ephemerality():
     import inspect
     import json
 
-    from project_workflow import redact_report_for_user
+    from modules.workflows.project_workflow import redact_report_for_user
 
     # verified_history carries only class names/paths/exit codes, no probe source
-    src = inspect.getsource(__import__("project_workflow"))
+    src = inspect.getsource(__import__("modules.workflows.project_workflow", fromlist=["x"]))
     i = src.index("verified_history.append(")
     block = src[i : i + 700]
     assert "verification_script" not in block
@@ -614,7 +874,7 @@ def test_fixture_chatter_flows_over_log_pipeline():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".jcode" / "tools"))
     from offline_scan import KnownMuse
 
-    from workflow import execute_purple_workflow
+    from modules.workflows.workflow import execute_purple_workflow
 
     events = []
 
@@ -622,7 +882,7 @@ def test_fixture_chatter_flows_over_log_pipeline():
         events.append((team, message))
 
     async def run():
-        from config import PurpleBoxConfig
+        from modules.core.config import PurpleBoxConfig
 
         cfg = PurpleBoxConfig(meta_api_key="offline-check-not-a-key")
 
@@ -668,18 +928,18 @@ def test_cross_platform_compat_guards():
     # container paths stay POSIX by design: backslash rejected, PurePosixPath used
     import pytest as _pt
 
-    from projects import _validate_relative_path
+    from modules.services.projects import _validate_relative_path
 
     with _pt.raises(ValueError):
         _validate_relative_path("src\\app.py")
     assert _validate_relative_path("src/app.py").as_posix() == "src/app.py"
     # chatter basename handles both separators' inputs without leaking dirs
-    from chatter import chatter
+    from modules.services.chatter import chatter
 
     line = chatter("red_start", persona="Breakwater", path="src\\app.py", seed=1)
     assert len(line) <= 220 and "\n" not in line
     # isolation script is documented container-only
-    import checks
+    import modules.core.checks as checks
 
     assert "INSIDE the Linux verifier container only" in checks.ISOLATION_SCRIPT
     # no POSIX-only stdlib imports in host runtime
@@ -693,9 +953,178 @@ def test_cross_platform_compat_guards():
     assert hits == [], hits
 
 
+def test_reachability_score_fuses_fixed_range_with_sink_adjacency():
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-xxxx",
+        "cves": ["CVE-2024-1234"],
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "fixed_versions": ["2.0"],
+    }
+    findings = [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert isinstance(score, int) and 0 <= score <= 100
+    assert score >= 60
+    blob = " ".join(evidence).lower()
+    assert "fixed" in blob and "cwe-502" in blob
+
+
+def test_reachability_score_low_without_fix_or_matching_sink():
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-yyyy",
+        "cves": ["CVE-2024-5678"],
+        "summary": "Some widget flaw",
+        "details": "No weakness identifier recorded.",
+        "fixed_versions": [],
+    }
+    findings = [
+        StaticFinding(
+            rule_id="js-innerhtml",
+            title="Unsanitized DOM sink",
+            severity="medium",
+            path="web.js",
+            line=1,
+            snippet="el.innerHTML = user;",
+            cwe="CWE-79",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert isinstance(score, int) and score <= 20
+    assert isinstance(evidence, list) and evidence
+
+
+def test_reachability_score_absent_signals_never_raise():
+    from modules.workflows.deep_scan import reachability_score
+
+    summary = {
+        "id": "GHSA-zzzz",
+        "cves": [],
+        "summary": "Unreviewed record",
+        "details": "No details available.",
+        "fixed_versions": [],
+    }
+    score, evidence = reachability_score(summary, [])
+    assert score <= 20
+    blob = " ".join(evidence).lower()
+    assert "no fixed version" in blob and "no sink" in blob
+
+
+async def test_cve_scan_attaches_reach_score_to_each_summary(monkeypatch):
+    import modules.workflows.deep_scan as _ds
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    def fake_post(url, payload, timeout=30.0, tries=3, max_bytes=0):
+        assert url == _ds.OSV_QUERY_URL
+        return {"results": [{"vulns": [{"id": "GHSA-xxxx"}]}]}
+
+    def fake_get(url, timeout=30.0, tries=3, max_bytes=0):
+        return {
+            "id": "GHSA-xxxx",
+            "summary": "Unsafe deserialization in widget",
+            "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+            "aliases": ["CVE-2024-1234"],
+            "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+            "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}],
+            "references": [],
+        }
+
+    monkeypatch.setattr(_ds, "paced_post_json", fake_post)
+    monkeypatch.setattr(_ds, "paced_get_json", fake_get)
+
+    async def emit(team, message):
+        return None
+
+    files = {
+        "requirements.txt": "widget==1.0.0\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await execute_cve_scan(files, emit, include_osv=True, include_deep_assessment=False)
+    assert report.success
+    assert len(report.vulnerabilities) == 1
+    summary = report.vulnerabilities[0]
+    assert isinstance(summary["reach_score"], int) and 0 <= summary["reach_score"] <= 100
+    assert summary["reach_score"] >= 60
+    assert isinstance(summary["reach_evidence"], list) and summary["reach_evidence"]
+
+
+def test_reachability_score_kev_epss_tie_break():
+    """O2 red: kev_listed/epss_percentile add +5 tie-break signals each."""
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-xxxx",
+        "cves": ["CVE-2024-1234"],
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "fixed_versions": ["2.0"],
+        "kev_listed": True,
+        "epss_percentile": 0.95,
+    }
+    findings = [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert score == 100  # 10+40+40+5+5 capped at 100
+    blob = " ".join(evidence).lower()
+    assert "kev listed" in blob and "epss percentile" in blob
+    assert isinstance(score, int)
+
+
+def test_reachability_score_likelihood_cap_without_fix_or_sink():
+    """O2 red: no fixed + no matched CWE caps likelihood-boosted score at 30."""
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-yyyy",
+        "cves": ["CVE-2024-5678"],
+        "summary": "Some widget flaw",
+        "details": "No weakness identifier recorded.",
+        "fixed_versions": [],
+        "kev_listed": True,
+        "epss_percentile": "0.99",
+    }
+    findings = [
+        StaticFinding(
+            rule_id="js-innerhtml",
+            title="Unsanitized DOM sink",
+            severity="medium",
+            path="web.js",
+            line=1,
+            snippet="el.innerHTML = user;",
+            cwe="CWE-79",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert score == 20  # 10 + 5 + 5, capped at 30 -> 20
+    assert score <= 30
+    assert isinstance(evidence, list) and evidence
+
+
 def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
     """deep_scan OSV calls use sms_http paced helpers; oversize batch capped."""
-    import deep_scan as _ds
+    import modules.workflows.deep_scan as _ds
 
     calls: list[tuple] = []
 
@@ -720,3 +1149,381 @@ def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
         raise AssertionError("should have rejected non-dict OSV record")
     except ValueError:
         pass
+
+
+def _q1_osv_record():
+    """Q1 fixture: OSV record with one CVE alias, a fix, and a CWE-502 detail."""
+    return {
+        "id": "GHSA-xxxx",
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "aliases": ["CVE-2024-1234"],
+        "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+        "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}],
+        "references": [],
+    }
+
+
+def _q1_findings():
+    from modules.workflows.deep_scan import StaticFinding
+
+    return [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+
+
+def test_q1_enrichment_fires_kev_epss_tie_breaks(monkeypatch):
+    """Q1: real summarize_osv_vuln -> _enrich_reach_signals -> reachability_score gives +5/+5."""
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+    from modules.workflows.deep_scan import reachability_score
+
+    calls = {"kev": [], "epss": []}
+
+    def fake_kev(cve_id):
+        calls["kev"].append(cve_id)
+        return ResearchRecord(
+            source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+        )
+
+    def fake_epss(cve_id):
+        calls["epss"].append(cve_id)
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95"},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    base, _ = reachability_score(dict(summary), _q1_findings())
+    _cw._enrich_reach_signals(summary)
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.95
+    assert summary["cves"] == ["CVE-2024-1234"]
+    assert calls["kev"] == ["CVE-2024-1234"] and calls["epss"] == ["CVE-2024-1234"]
+    boosted, evidence = reachability_score(summary, _q1_findings())
+    assert boosted == base + 10
+    blob = " ".join(evidence).lower()
+    assert "kev listed" in blob and "epss percentile" in blob
+
+
+def test_q1_enrichment_failure_leaves_score_unchanged(monkeypatch):
+    """Q1: lookup failures are fail-closed; the score matches the unenriched baseline."""
+    import modules.workflows.cve_workflow as _cw
+    from modules.workflows.deep_scan import reachability_score
+
+    def _boom(cve_id):
+        raise RuntimeError("intel down")
+
+    monkeypatch.setattr(_cw, "kev_lookup", _boom)
+    monkeypatch.setattr(_cw, "epss_score", _boom)
+
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    base, _ = reachability_score(dict(summary), _q1_findings())
+    _cw._enrich_reach_signals(summary)
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    score, _ = reachability_score(summary, _q1_findings())
+    assert score == base
+
+
+def test_q1_enrichment_uses_first_cve_alias_once(monkeypatch):
+    """Q1: exactly 1 KEV + 1 EPSS lookup against the first CVE alias only."""
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    calls = {"kev": [], "epss": []}
+
+    def fake_kev(cve_id):
+        calls["kev"].append(cve_id)
+        return ResearchRecord(
+            source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+        )
+
+    def fake_epss(cve_id):
+        calls["epss"].append(cve_id)
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.1", "percentile": "0.10"},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    record = _q1_osv_record()
+    record["aliases"] = ["CVE-2024-1111", "CVE-2024-2222"]
+    summary = _cw.summarize_osv_vuln(record)
+    _cw._enrich_reach_signals(summary)
+    assert calls["kev"] == ["CVE-2024-1111"]
+    assert calls["epss"] == ["CVE-2024-1111"]
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.10
+
+    summary = _cw.summarize_osv_vuln({**_q1_osv_record(), "aliases": []})
+    _cw._enrich_reach_signals(summary)
+    assert calls["kev"] == ["CVE-2024-1111"] and calls["epss"] == ["CVE-2024-1111"]
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+
+
+def _w2v2_3_osv_record(vid, cve, fixed=None, cwe_text=""):
+    """14.8.3 fixture: real OSV record shape with controllable fix/CWE/CVE."""
+    affected = (
+        [{"ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}]}]
+        if fixed
+        else []
+    )
+    return {
+        "id": vid,
+        "summary": f"Widget flaw {vid}",
+        "details": cwe_text or "No weakness identifier recorded.",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "aliases": [cve] if cve else [],
+        "severity": [],
+        "affected": affected,
+        "references": [],
+    }
+
+
+async def test_fast_lane_topping_ranks_fixable_first_with_audit_evidence(monkeypatch):
+    """14.8.3: reachable+fixable tops the fast-lane queue; every ranked summary
+    carries KEV/EPSS tie-break evidence. Real summarize_osv_vuln + enrichment."""
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    records = {
+        "GHSA-mid": _w2v2_3_osv_record("GHSA-mid", "CVE-2024-9003"),
+        "GHSA-zzz": _w2v2_3_osv_record(
+            "GHSA-zzz",
+            "CVE-2024-9001",
+            fixed="2.0",
+            cwe_text="Deserialization of untrusted data CWE-502 allows code execution.",
+        ),
+        "GHSA-aaa": _w2v2_3_osv_record(
+            "GHSA-aaa",
+            "CVE-2024-9002",
+            fixed="3.0",
+            cwe_text="Deserialization of untrusted data CWE-502 allows code execution.",
+        ),
+    }
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": vid} for vid in records]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: dict(records[vid]))
+
+    epss_for = {"CVE-2024-9001": "0.99", "CVE-2024-9002": "0.91"}
+
+    def fake_kev(cve_id):
+        if cve_id in epss_for:
+            return ResearchRecord(
+                source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+            )
+        return ResearchRecord(source="kev", cve_id=cve_id, title="t", summary="s", extra={})
+
+    def fake_epss(cve_id):
+        if cve_id in epss_for:
+            return ResearchRecord(
+                source="epss",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"epss": "0.5", "percentile": epss_for[cve_id]},
+            )
+        return None
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    files = {
+        "requirements.txt": "widget==1.0.0\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await execute_cve_scan(files, emit, fast_lane=True)
+    assert report.success
+    # Both GHSA-zzz/aaa saturate reach at 100; higher EPSS tops, bare record last.
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa", "GHSA-mid"]
+    for v in report.vulnerabilities:
+        ev = v.get("queue_evidence", "")
+        assert "kev:" in ev and "epss:" in ev and "reach:" in ev and "fix:" in ev
+    assert "epss:0.99" in report.vulnerabilities[0]["queue_evidence"]
+    assert "kev:listed" in report.vulnerabilities[0]["queue_evidence"]
+    assert "fix:none" in report.vulnerabilities[2]["queue_evidence"]
+
+
+async def test_fast_lane_explicitly_excludes_euvd(monkeypatch):
+    """14.9.1 (Lane 5): fast lane never consults EUVD, asserted not absent.
+
+    Competitor playbooks assume EUVD API coverage, but EUVD is unreachable
+    (site 200, API returns SPA HTML 2026-10-29) with no verified keyless JSON
+    endpoint, so the fast lane excludes it and fails closed instead of
+    hallucinating coverage. Exclusion must never block the scan.
+    """
+    import pytest as _pytest
+
+    import modules.workflows.cve_workflow as _cw
+
+    # Explicit exclusion list names EUVD.
+    assert "euvd" in _cw.FAST_LANE_EXCLUDED_SOURCES
+    # Assertion path fails closed on any EUVD consultation attempt...
+    for bad in ("euvd", "EUVD", " EUVD "):
+        with _pytest.raises(AssertionError, match="EUVD"):
+            _cw.assert_fast_lane_source_allowed(bad)
+    # ...while allowed keyless sources pass (never blocks the scan).
+    for ok in ("osv", "kev", "epss"):
+        _cw.assert_fast_lane_source_allowed(ok)
+
+    # The fast-lane path executes the assertion for every consulted source.
+    consulted: list[str] = []
+    real_assert = _cw.assert_fast_lane_source_allowed
+
+    def _spy(source):
+        consulted.append(str(source))
+        return real_assert(source)
+
+    monkeypatch.setattr(_cw, "assert_fast_lane_source_allowed", _spy)
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": "GHSA-xxxx"}]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: dict(_q1_osv_record()))
+    monkeypatch.setattr(_cw, "kev_lookup", lambda cve_id: None)
+    monkeypatch.setattr(_cw, "epss_score", lambda cve_id: None)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    report = await execute_cve_scan(
+        {
+            "requirements.txt": "widget==1.0.0\n",
+            "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+        },
+        emit,
+        fast_lane=True,
+    )
+    assert report.success
+    assert set(consulted) >= {"osv", "kev", "epss"}
+    assert "euvd" not in consulted
+    import json as _json
+
+    assert "euvd" not in _json.dumps(report.model_dump()).lower()
+    assert all("euvd" not in v for v in report.vulnerabilities)
+
+
+def test_w8v2_1_stale_signals_do_not_boost_rank(monkeypatch):
+    """W8-1 (goat) RED: rank applies _source_fresh so ordering agrees with evidence.
+
+    A stale-dated KEV listing + EPSS 0.99 must not outrank an identical record
+    with no signals: _queue_evidence reads both as absent, so _fast_lane_rank
+    must order them by the id tiebreak only. Real enrich+rank path.
+    """
+
+
+def test_w8v2_5_stale_token_marks_expired_not_absent(monkeypatch):
+    """W8 item 6 RED: stale (>1d) KEV/EPSS via real enrich path renders stale:<date>, not absent."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+
+    def fake_kev(cve_id):
+        if cve_id == "CVE-2024-0001":
+            return ResearchRecord(
+                source="kev",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"kev_listed": True, "kev_date": stale},
+            )
+        return ResearchRecord(source="kev", cve_id=cve_id, title="t", summary="s", extra={})
+
+    def fake_epss(cve_id):
+        if cve_id == "CVE-2024-0001":
+            return ResearchRecord(
+                source="epss",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"epss": "0.9", "percentile": "0.99", "epss_date": stale},
+            )
+        return None
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    boosted = {
+        "id": "GHSA-zzz",
+        "cves": ["CVE-2024-0001"],
+        "fixed_versions": ["2.0"],
+        "reach_score": 50,
+    }
+    plain = {
+        "id": "GHSA-aaa",
+        "cves": ["CVE-2024-0002"],
+        "fixed_versions": ["2.0"],
+        "reach_score": 50,
+    }
+    _cw._enrich_reach_signals(boosted)
+    _cw._enrich_reach_signals(plain)
+    # Raw numeric fields stay (fail-closed lives in the readers, not the store).
+    assert boosted["kev_listed"] is True
+    assert boosted["epss_percentile"] == 0.99
+    # Evidence reads the stale boost as stale:<date> (w8v2-5 token), never as a live signal...
+    assert f"kev:stale:{stale}" in _cw._queue_evidence(boosted)
+    assert f"epss:stale:{stale}" in _cw._queue_evidence(boosted)
+    # ...so rank must agree: stale boost never outranks; id tiebreak decides.
+    ordered = sorted([boosted, plain], key=_cw._fast_lane_rank)
+    assert [s["id"] for s in ordered] == ["GHSA-aaa", "GHSA-zzz"]
+
+
+def test_w8v2_5_absent_stays_for_never_signalled(monkeypatch):
+    """W8 item 6: truly missing KEV/EPSS (no signal) still renders absent, never stale."""
+    import modules.workflows.cve_workflow as _cw
+
+    monkeypatch.setattr(_cw, "kev_lookup", lambda cve_id: None)
+    monkeypatch.setattr(_cw, "epss_score", lambda cve_id: None)
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    ev = _cw._queue_evidence(summary)
+    assert "kev:absent" in ev and "epss:absent" in ev
+    assert "stale" not in ev
