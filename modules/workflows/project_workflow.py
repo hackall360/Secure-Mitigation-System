@@ -144,12 +144,28 @@ class ProjectSandbox(Protocol):
     def close(self) -> None: ...
 
 
+class GuardRationale(BaseModel):
+    """Structured rationale for a rejected sanitization patch (SPEC 14.8 item 2).
+
+    ``guard_id`` names which guard fired, ``trigger`` names the protected
+    path/line/setting that tripped it. Contains no probe bytes (LAW 4):
+    triggers name paths, sink substrings from the guard allowlist, or
+    original-source symbols only — never probe output.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    guard_id: str = Field(min_length=1, max_length=128)
+    reason: str = ""
+    trigger: str = Field(default="", max_length=500)
+
+
 class ReplacementValidation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     accepted: bool
     paths: list[str] = Field(default_factory=list)
     changed_bytes: int = Field(default=0, ge=0)
     reason: str = ""
+    guard_rationale: GuardRationale | None = None
 
 
 class CycleEvidence(BaseModel):
@@ -648,10 +664,25 @@ def validate_replacements(
     protected_paths: Sequence[str] = (),
 ) -> tuple[ReplacementValidation, dict[str, str]]:
     """Fail closed on paths, hashes, duplicates, no-ops, and configured change bounds."""
+
+    def _reject(
+        guard_id: str, reason: str, trigger: str = ""
+    ) -> tuple[ReplacementValidation, dict[str, str]]:
+        return (
+            ReplacementValidation(
+                accepted=False,
+                reason=reason,
+                guard_rationale=GuardRationale(
+                    guard_id=guard_id, reason=reason, trigger=trigger[:500]
+                ),
+            ),
+            {},
+        )
+
     if not proposal.replacements:
-        return ReplacementValidation(accepted=False, reason="Blue proposed no replacements."), {}
+        return _reject("empty_proposal", "Blue proposed no replacements.")
     if len(proposal.replacements) > max_changed_files:
-        return ReplacementValidation(accepted=False, reason="Replacement file limit exceeded."), {}
+        return _reject("file_count_exceeded", "Replacement file limit exceeded.")
 
     changed: dict[str, str] = {}
     changed_bytes = 0
@@ -660,46 +691,62 @@ def validate_replacements(
         try:
             validate_safe_path(replacement.path)
         except ValueError:
-            return ReplacementValidation(accepted=False, reason="Replacement path is unsafe."), {}
+            return _reject(
+                "unsafe_path",
+                "Replacement path is unsafe.",
+                replacement.path,
+            )
         if replacement.path not in current_files:
-            return ReplacementValidation(
-                accepted=False, reason="Replacement path is not in the safe snapshot."
-            ), {}
+            return _reject(
+                "unknown_path",
+                "Replacement path is not in the safe snapshot.",
+                replacement.path,
+            )
         if replacement.path in protected:
-            return ReplacementValidation(
-                accepted=False,
-                reason="Replacement targeted a protected regression-test path.",
-            ), {}
+            return _reject(
+                "protected_path",
+                "Replacement targeted a protected regression-test path.",
+                replacement.path,
+            )
         if replacement.path in changed:
-            return ReplacementValidation(
-                accepted=False, reason="Replacement paths are duplicated."
-            ), {}
+            return _reject(
+                "duplicate_path",
+                "Replacement paths are duplicated.",
+                replacement.path,
+            )
         original = current_files[replacement.path]
         digest = hashlib.sha256(original.encode("utf-8")).hexdigest()
         if digest != replacement.original_sha256:
-            return ReplacementValidation(
-                accepted=False,
-                reason="Replacement source hash does not match the current snapshot.",
-            ), {}
+            return _reject(
+                "hash_mismatch",
+                "Replacement source hash does not match the current snapshot.",
+                replacement.path,
+            )
         if replacement.replacement_content == original:
-            return ReplacementValidation(accepted=False, reason="Replacement is a no-op."), {}
+            return _reject("noop_replacement", "Replacement is a no-op.", replacement.path)
         content = replacement.replacement_content
         if "\x00" in content:
-            return ReplacementValidation(
-                accepted=False, reason="Replacement contains NUL bytes."
-            ), {}
+            return _reject(
+                "nul_bytes",
+                "Replacement contains NUL bytes.",
+                replacement.path,
+            )
         if content.lstrip().startswith("```"):
-            return ReplacementValidation(
-                accepted=False, reason="Replacement starts with markdown fences."
-            ), {}
+            return _reject(
+                "markdown_fences",
+                "Replacement starts with markdown fences.",
+                replacement.path,
+            )
         # License header preservation
         for line in original.splitlines():
             if (
                 "Required Notice:" in line or "polyformproject.org/licenses/" in line
             ) and line not in content:
-                return ReplacementValidation(
-                    accepted=False, reason="Replacement removed a required license notice."
-                ), {}
+                return _reject(
+                    "license_notice_removed",
+                    "Replacement removed a required license notice.",
+                    line.strip(),
+                )
         # Surgical edit ratio guard
         before_lines, after_lines = original.splitlines(), content.splitlines()
         changes = sum(
@@ -711,10 +758,11 @@ def validate_replacements(
         )
         budget = max(60, int(len(before_lines) * 0.35))
         if changes > budget:
-            return ReplacementValidation(
-                accepted=False,
-                reason="Replacement exceeds surgical sanitization line-change budget.",
-            ), {}
+            return _reject(
+                "edit_budget_exceeded",
+                "Replacement exceeds surgical sanitization line-change budget.",
+                f"{changes} changed lines over {budget}-line budget in {replacement.path}",
+            )
         # Python AST signature guard
         if replacement.path.endswith(".py"):
             try:
@@ -724,23 +772,31 @@ def validate_replacements(
             try:
                 new_funcs, new_classes = _extract_signatures(content)
             except ValueError:
-                return ReplacementValidation(
-                    accepted=False, reason="Replacement contains invalid Python syntax."
-                ), {}
+                return _reject(
+                    "invalid_python_syntax",
+                    "Replacement contains invalid Python syntax.",
+                    replacement.path,
+                )
             for name, param_count in orig_funcs.items():
                 if name not in new_funcs:
-                    return ReplacementValidation(
-                        accepted=False, reason=f"Replacement deleted function: {name}"
-                    ), {}
+                    return _reject(
+                        "function_deleted",
+                        f"Replacement deleted function: {name}",
+                        name,
+                    )
                 if new_funcs[name] != param_count:
-                    return ReplacementValidation(
-                        accepted=False, reason=f"Replacement altered parameters of: {name}"
-                    ), {}
+                    return _reject(
+                        "function_signature_changed",
+                        f"Replacement altered parameters of: {name}",
+                        name,
+                    )
             for name in orig_classes:
                 if name not in new_classes:
-                    return ReplacementValidation(
-                        accepted=False, reason=f"Replacement deleted class: {name}"
-                    ), {}
+                    return _reject(
+                        "class_deleted",
+                        f"Replacement deleted class: {name}",
+                        name,
+                    )
         # Dangerous primitive guard
         import pathlib as _pathlib
 
@@ -748,14 +804,18 @@ def validate_replacements(
         sinks = _DANGEROUS_SINKS.get(suffix, [])
         for sink in sinks:
             if sink in content and sink not in original:
-                return ReplacementValidation(
-                    accepted=False, reason=f"Replacement introduces forbidden sink: {sink}"
-                ), {}
+                return _reject(
+                    "forbidden_sink_introduced",
+                    f"Replacement introduces forbidden sink: {sink}",
+                    sink,
+                )
         changed_bytes += len(content.encode("utf-8"))
         if changed_bytes > max_changed_bytes:
-            return ReplacementValidation(
-                accepted=False, reason="Replacement byte limit exceeded."
-            ), {}
+            return _reject(
+                "byte_budget_exceeded",
+                "Replacement byte limit exceeded.",
+                replacement.path,
+            )
         changed[replacement.path] = content
     return (
         ReplacementValidation(
