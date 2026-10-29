@@ -592,6 +592,7 @@ async def ai_demo_runner(
     profile: str | None = None,
     *,
     scan_profile: str = "extra_light",
+    cycles: int | None = None,
     red_agents: int = 5,
     blue_agents: int = 5,
     intel_theme: str = "input validation SQL injection XSS deserialization",
@@ -686,17 +687,24 @@ async def ai_demo_runner(
     except Exception:
         pass
     # Enrich ProjectSpec with requested intensity/team sizes.
+    # Same stamping rule as run_demo_build (M1-M5): named profiles force
+    # cycle counts, custom honors explicit cycles (clamped 1..20).
     from modules.services.projects import ProjectSpec as _Spec
 
-    spec = _Spec.model_validate(
-        {
-            **spec.model_dump(mode="json"),
-            "scan_profile": scan_profile,
-            "red_agents": red_agents,
-            "blue_agents": blue_agents,
-            "allow_remote_inference": allow_remote_inference or settings.inference_mode == "local",
-        }
-    )
+    _dump = dict(spec.model_dump(mode="json"))
+    _stamp_profile = scan_profile if scan_profile in SCAN_PROFILES else "custom"
+    _dump["scan_profile"] = _stamp_profile
+    if _stamp_profile != "custom":
+        _dump["cycles"] = SCAN_PROFILES[_stamp_profile].cycles
+    elif cycles is not None:
+        try:
+            _dump["cycles"] = max(1, min(20, int(cycles)))
+        except (TypeError, ValueError):
+            pass
+    _dump["red_agents"] = red_agents
+    _dump["blue_agents"] = blue_agents
+    _dump["allow_remote_inference"] = allow_remote_inference or settings.inference_mode == "local"
+    spec = _Spec.model_validate(_dump)
     return await cli_runner(
         None,
         output_dir,
@@ -1540,6 +1548,7 @@ def main() -> int:
                     args.output_dir or Path("reports"),
                     args.profile,
                     scan_profile=args.scan_profile,
+                    cycles=args.cycles,
                     red_agents=args.red_agents,
                     blue_agents=args.blue_agents,
                     intel_theme=args.intel_theme,

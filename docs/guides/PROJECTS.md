@@ -2,7 +2,7 @@
 
 Secure Mitigation System can snapshot an arbitrary local source repository without mounting it into
 Docker or modifying its files. The implementation is split between `projects.py`
-and project-specific methods on `DockerSandboxManager` in `docker_manager.py`.
+and project-specific methods on `DockerSandboxManager` in `modules/core/docker_manager.py`.
 
 ## Project specification
 

@@ -113,7 +113,7 @@
           <div class="field compact"><label for="project-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="project-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required></div>
           <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
           <label class="remote-consent wide"><input id="research-toggle" type="checkbox"><span><strong>Ground with threat intel</strong><small>Opt-in keyless lookups (OSV, CIRCL, GHSA, EPSS) plus local scanners. Off by default; Docker evidence still decides every verdict.</small></span></label>
-          <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner and Dependency-Check against a temp copy on this host. Requires threat intel above.</small></span></label>
+          <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner, Dependency-Check and Dependency-Track against a temp copy on this host. Requires threat intel above.</small></span></label>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
