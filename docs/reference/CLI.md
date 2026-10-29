@@ -57,10 +57,10 @@ fields (never synthesized):
 
 | Surface | Location | Rows / behavior |
 |---|---|---|
-| `fact_table` rows | `sms_cli.py:611` via `format_wave2_facts` (`sms_cli.py:290`) | `Receipt`, `Guard rationales`, `Fast-lane top`, `Mutations` (each `Not reported` when the result carries no such evidence). |
-| `--output-dir` extra file | `main.py:854-861` via `_extract_wave2_receipt` | `receipt.json`: top-level `receipt` (VerdictReceipt) or first cycle `receipt` (CycleReceipt); legacy `verdict_receipt` fallback; mode 0600. |
-| Markdown report sections | `main.py:1063-1084` | `## Verdict receipt`, `## Guard rationales`, `## Mutation probes` — emitted only when the fact is reported. |
-| TUI suffix | `tui.py:244` `describe_wave2` | Appends `[receipt ...] [guards ...] [mutations ...]` tokens to the result line, probing the same fields as `format_wave2_facts`. |
+| `fact_table` rows | `sms_cli.py:631` via `format_wave2_facts` (`sms_cli.py:310`) | `Receipt`, `Guard rationales`, `Fast-lane top`, `Mutations` (each `Not reported` when the result carries no such evidence). |
+| `--output-dir` extra file | `main.py:870` via `_extract_wave2_receipt` | `receipt.json`: top-level `receipt` (VerdictReceipt) or first cycle `receipt` (CycleReceipt); legacy `verdict_receipt` fallback; mode 0600. |
+| Markdown report sections | `main.py:1093-1107` | `## Verdict receipt`, `## Guard rationales`, `## Mutation probes` — emitted only when the fact is reported. |
+| TUI suffix | `tui.py:280` `describe_wave2` | Appends `[receipt ...] [guards ...] [mutations ...]` tokens to the result line, probing the same fields as `format_wave2_facts`. |
 
 `format_wave2_facts` read order per item: Receipt = `result.receipt` (or any
 `cycle.receipt`), legacy `verdict_receipt`; Guards = top-level
@@ -79,10 +79,10 @@ Behavior surfaces through existing rows only:
 
 | Behavior | Existing surface | How it shows |
 |---|---|---|
-| Queue freshness (`_source_fresh`, `cve_workflow.py:66`) | `fact_table` fast-lane row / `queue_evidence` string | Stale-dated (>1 day) KEV/EPSS signals read as `kev:absent` / `epss:absent` inside the same `reach:N fix:X kev:Y epss:Z` string; numeric `reach_score`/`epss_percentile` fields untouched. |
+| Queue freshness (`_source_fresh`, `cve_workflow.py:66`) | `fact_table` fast-lane row / `queue_evidence` string | Stale-dated (>1 day) KEV/EPSS signals read as `stale:<date>` inside the same `reach:N fix:X kev:Y epss:Z` string; numeric `reach_score`/`epss_percentile` fields untouched. |
 | EUVD exclusion (`FAST_LANE_EXCLUDED_SOURCES`, `assert_fast_lane_source_allowed`) | None (fail-closed only) | Raises `AssertionError` if a future wiring consults `euvd`; no CLI row, never blocks allowed sources. |
 | Template/solver-shape guard (`is_solver_synthesized_shape`, `patches.py:27`) | `Guard rationales` row (`guard_id="solver_synthesized_shape"`) | Same `guard_rationale` `{guard_id, reason, trigger}` shape; 60-line `EDIT_BUDGET_LINES` unchanged. |
-| Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
+| Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`modules/core/checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
 
 ## CVE scan notes
 

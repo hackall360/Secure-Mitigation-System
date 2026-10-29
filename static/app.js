@@ -957,7 +957,7 @@ function socketQuery() {
   if (el('research-toggle') && el('research-toggle').checked) {
     params.push('research=on');
     if (el('research-scanners-toggle') && el('research-scanners-toggle').checked) {
-      params.push(`research_scanners=${encodeURIComponent('trivy,grype,osv-scanner,dependency-check')}`);
+      params.push(`research_scanners=${encodeURIComponent('trivy,grype,osv-scanner,dependency-check,dependency-track')}`);
     }
   }
   return params.length ? `?${params.join('&')}` : '';

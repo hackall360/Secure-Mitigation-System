@@ -880,3 +880,78 @@ def test_tui_plain_help_carries_capabilities():
     out = proc.stdout.lower()
     for keyword in HELP_KEYWORDS:
         assert keyword in out, f"tui --help missing {keyword!r}"
+
+
+# --- W5R2-2 second half (SPEC 14.9 item 4): tri-surface drift fail-first ---
+# Every test here must RED on base dafa4da and GREEN after the fix.
+
+
+def test_w5r2_ai_demo_accepts_custom_cycles(monkeypatch, tmp_path):
+    """HIGH main.py:1537-1560: --ai-demo drops --cycles (defaults None) so any
+    named profile + explicit cycles crashes in ProjectSpec (light needs 3)."""
+    seen = {}
+
+    async def fake_demo(output_dir, profile, **kwargs):
+        seen.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(main, "ai_demo_runner", fake_demo)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py",
+            "--ai-demo",
+            "--scan-profile",
+            "light",
+            "--cycles",
+            "3",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    assert main.main() == 0
+    assert seen["cycles"] == 3
+
+
+def test_w5r2_ai_demo_custom_cycles_end_to_end_clamped(tmp_path):
+    """HIGH main.py:236-238 stamp rule: custom + explicit cycles must survive
+    ProjectSpec validation (clamped 1..20) instead of raising ValueError."""
+    from modules.services.projects import ProjectSpec
+
+    dump = {
+        "path": str(tmp_path),
+        "command": ["python3", "app.py"],
+        "test_command": ["python3", "test_contract.py"],
+        "contract": "c",
+        "scan_profile": "custom",
+        "cycles": max(1, min(20, 9)),
+        "red_agents": 5,
+        "blue_agents": 5,
+        "allow_remote_inference": True,
+    }
+    spec = ProjectSpec.model_validate(dump)
+    assert spec.cycles == 9
+
+
+def test_w5r2_docs_line_refs_track_sources():
+    """MED docs/reference/CLI.md + docs/reference/MODULES.md: stale file:line
+    cross-links (pre verified values from reading the files)."""
+    from pathlib import Path
+
+    cli = (Path(__file__).resolve().parents[1] / "docs" / "reference" / "CLI.md").read_text()
+    modules = (
+        Path(__file__).resolve().parents[1] / "docs" / "reference" / "MODULES.md"
+    ).read_text()
+    assert "sms_cli.py:310" in cli, "CLI.md format_wave2_facts line moved (was 290)"
+    assert "sms_cli.py:631" in cli, "CLI.md fact_table line moved (was 611)"
+    assert "main.py:870" in cli, "CLI.md write_run_report line moved (was 854-861)"
+    assert "tui.py:280" in cli, "CLI.md describe_wave2 line moved (was 244)"
+    assert "main.py:1093" in cli or "main.py:1095" in cli, "CLI.md receipt section moved"
+    assert "modules/workflows/workflow.py:238,262" in modules
+    assert "modules/workflows/project_workflow.py:207" in modules
+    assert "modules/workflows/project_workflow.py:285,320" in modules
+    assert "modules/core/patches.py:57" in modules
+    assert "modules/core/checks.py:423,543" in modules
+    assert "modules/workflows/project_workflow.py:102,131" in modules
+    assert "modules/workflows/cve_workflow.py:31,135,417" in modules
+    assert "modules/workflows/cve_workflow.py:39,42" in modules

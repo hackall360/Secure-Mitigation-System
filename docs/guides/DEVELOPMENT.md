@@ -34,11 +34,8 @@ If Docker is missing or an image build fails, `docker-status` reports
 fails before touching Muse. Real scans (`main.py --scan`) are a separate,
 keyed step — see "Keys and inference" below.
 
-Note: on this tree `check` currently stops at `ruff format --check` on
-`main.py:842` (the `--tui` help line exceeds the line width; tests and lint
-pass — 309 passed). The documented `check` wording is unchanged; only this
-note records the actual state so the judge is not surprised. Fixing that one
-line is intentionally left out of this hunk.
+`ruff format --check` and `ruff check` pass on this tree (128 files formatted,
+lint clean).
 
 ## Prerequisites and bootstrap
 
@@ -106,7 +103,7 @@ The lock was resolved for Python 3.12 on Linux x86_64. Other platforms must be
 validated independently. It does not lock operating-system packages in images.
 The Dockerfiles currently use `python:3.12-alpine3.22` and Alpine package names,
 so a future uncached rebuild can resolve different image/package versions.
-`ensure_base_images()` in `docker_manager.py` builds only missing tags. After
+`ensure_base_images()` in `modules/core/docker_manager.py` builds only missing tags. After
 editing a Dockerfile or `docker/runner.py`, rebuild explicitly:
 
 ```sh
@@ -200,7 +197,7 @@ with copy buttons, filterable activity timeline, result facts, and a colored
 candidate diff. All model output is inserted with `textContent` only; a test in
 `tests/test_web.py` forbids `innerHTML`.
 
-Trap: pipeline stages are inferred from message strings emitted in `workflow.py`.
+Trap: pipeline stages are inferred from message strings emitted in `modules/workflows/workflow.py`.
 If you reword those `log(...)` messages, update `advanceStage()` too, or the
 pipeline will stop advancing (the scan itself still works).
 
@@ -222,7 +219,7 @@ diff, filters, keyboard selection, and no horizontal overflow on mobile.
 | `python3 .jcode/tools/dev.py offline-scan` | `.jcode/tools/offline_scan.py`: runs the production `execute_purple_workflow` through real Docker for every fixture with only Muse replaced by known outputs. Exit 0 only if all three are `verified` with cleanup. About 110 s. |
 
 Code: `docker_status()`, `build_base_images()`, `remove_stale_resources()` in
-`docker_manager.py`. `/api/health` now returns a `docker` object
+`modules/core/docker_manager.py`. `/api/health` now returns a `docker` object
 (`state`: `ready` / `images_missing` / `unavailable`). The dashboard shows a Docker
 chip and keeps **Run verification** disabled unless both the API key and Docker are ready.
 
