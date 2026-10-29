@@ -107,3 +107,10 @@ Impact on `research.py` / `deep_scan.py`:
 
 Deferred/cut: eBPF (cut), proof-carrying patches beyond evidence bundle,
 snapshot fuzzing, Wasm sandbox, EUVD, EPSS v5 scoring changes.
+
+## Lane B addendum (received item 1)
+
+1. OpenHands -> Agent Canvas (LIVE: github.com/OpenHands/OpenHands):
+   competitor does multi-agent general-coding orchestration; our loop stays
+   security-specific with Docker probe proof as the verdict. Remaining items
+   pending re-send; see file history.
