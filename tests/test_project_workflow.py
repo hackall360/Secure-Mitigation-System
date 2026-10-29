@@ -38,6 +38,8 @@ from project_workflow import (
     DockerProjectSandbox,
     ProjectWorkflowInput,
     ProjectWorkflowLimits,
+    differential_class,
+    differential_passed,
     execute_project_workflow,
     protected_regression_paths,
     validate_replacements,
@@ -128,6 +130,46 @@ async def test_failed_patch_is_rolled_back_and_not_carried_into_next_cycle():
     assert [report.status for report in result.cycle_reports] == ["rolled_back", "retained"]
     assert sandbox.calls[3]["files"] == PROJECT.files
     assert result.cumulative_diff.count("validated input") == 1
+
+
+def test_differential_passed_truth_table_is_fail_closed():
+    assert differential_passed(0, 0) is True
+    assert differential_passed(0, 1) is False
+    assert differential_passed(1, 0) is False
+    assert differential_passed(2, 0) is False
+    assert differential_passed(None, 0) is False
+    assert differential_passed(0, None) is False
+    assert differential_passed(None, None) is False
+
+
+def test_differential_class_labels_regression_outcomes():
+    assert differential_class(0) == "pass"
+    assert differential_class(1) == "fail"
+    assert differential_class(2) == "fail"
+    assert differential_class(None) == "missing"
+
+
+async def test_passing_cycle_records_differential_passed_true():
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox([verification(1), verification(0), verification(1)])
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "retained"
+    assert result.cycle_reports[0].evidence.differential_passed is True
+
+
+async def test_failing_patched_regression_records_differential_false_and_rolls_back():
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            verification(1),
+            verification(0),
+            # patched snapshot: probe blocked but regression failed (exit 3).
+            verification(1, regression=3),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "rolled_back"
+    assert result.cycle_reports[0].evidence.differential_passed is False
 
 
 async def test_multiple_verified_cycles_carry_cumulative_snapshot_only():
