@@ -26,7 +26,10 @@ async def test_fixture_verified_cycle_records_machine_readable_receipt():
     assert receipt.differential_passed is True
     assert receipt.property_exit_code is None
     assert receipt.property_passed is None
-    assert receipt.verified is True
+    # Dead-wire cut (14.9 item 4): receipt carries no verified flag; the
+    # ScanResult.status the caller already set is the verdict.
+    assert "verified" not in receipt.model_fields_set
+    assert "verified" not in json.loads(receipt.model_dump_json())
     expected_sha = hashlib.sha256(result.patch.patched_file_content.encode("utf-8")).hexdigest()
     assert receipt.patch_sha256 == expected_sha
     dumped = json.loads(receipt.model_dump_json())
@@ -69,9 +72,12 @@ async def test_project_retained_cycle_records_machine_readable_receipt():
     assert receipt.pre_probe_exit == 0
     assert receipt.post_probe_exit == 1
     assert receipt.differential_passed is True
-    assert receipt.property_exit is None
     assert receipt.property_passed is None
-    assert receipt.retained is True
+    # Dead-wire cut (14.9 item 4): receipt carries no property_exit/retained
+    # fields; the property verdict lives in the evidence, the retain verdict
+    # in the report status.
+    assert "property_exit" not in receipt.model_fields_set
+    assert "retained" not in receipt.model_fields_set
     assert receipt.patch_sha256 == hashlib.sha256(report.diff.encode("utf-8")).hexdigest()
     dumped = json.loads(receipt.model_dump_json())
     assert dumped["pre_probe_exit"] == 0 and dumped["post_probe_exit"] == 1

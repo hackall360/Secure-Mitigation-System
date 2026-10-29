@@ -356,16 +356,30 @@ def reachability_score(
 
     has_fix = bool(fixed_list)
     has_sink = matched is not None
+    # SPEC 14.9 item 1 (Lane 5): only fresh-dated likelihood signals count.
+    # Stale KEV/EPSS (>1 day) render stale:<date> in queue_evidence and rank
+    # as absent in the fast lane; counting them here too would let one stale
+    # signal lift an otherwise unfixable, sink-free record above the 30 cap
+    # and outrank a clean record in the non-fast-lane path (wrong verdict).
+    # Undated signals stay fresh: enrichment fetches them live inline.
+    from modules.workflows.cve_workflow import _source_fresh as _fresh_signal
+
     if summary.get("kev_listed") is True:
-        score += 5
-        evidence.append("KEV listed: known exploited (+5)")
+        if _fresh_signal(summary.get("kev_date")):
+            score += 5
+            evidence.append("KEV listed: known exploited (+5)")
+        else:
+            evidence.append("KEV listed but stale-dated, not counted (+0)")
     try:
         pct = float(summary.get("epss_percentile", 0))
     except (TypeError, ValueError):
         pct = 0.0
     if pct >= 0.9:
-        score += 5
-        evidence.append("EPSS percentile >=0.9 (+5)")
+        if _fresh_signal(summary.get("epss_date")):
+            score += 5
+            evidence.append("EPSS percentile >=0.9 (+5)")
+        else:
+            evidence.append("EPSS high but stale-dated, not counted (+0)")
     if not has_fix and not has_sink:
         score = min(score, 30)
 
