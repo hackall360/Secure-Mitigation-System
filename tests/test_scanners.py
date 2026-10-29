@@ -602,3 +602,200 @@ def test_r2_intel_osv_lookup_rejects_bad_cve_shape(monkeypatch):
     monkeypatch.setattr(_intel, "paced_get_json", _boom)
     assert _intel.osv_lookup_by_cve("not-a-cve!!!") is None
     assert _intel.osv_lookup_by_cve("") is None
+
+
+def _w5v2_1_osv_record():
+    """W5 item 1 fixture: real OSV shape with one CVE alias, fix, CWE-502."""
+    return {
+        "id": "GHSA-xxxx",
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "aliases": ["CVE-2024-1234"],
+        "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+        "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}],
+        "references": [],
+    }
+
+
+def _w5v2_1_findings():
+    from modules.workflows.deep_scan import StaticFinding
+
+    return [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+
+
+def test_w5v2_1_stale_sources_dropped_from_queue_evidence(monkeypatch):
+    """W5-1 RED: stale (>1d) KEV/EPSS dates drop to absent via real enrich path."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+
+    def fake_kev(cve_id):
+        return ResearchRecord(
+            source="kev",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"kev_listed": True, "kev_date": stale},
+        )
+
+    def fake_epss(cve_id):
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95", "epss_date": stale},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+    summary = _cw.summarize_osv_vuln(_w5v2_1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.95
+    ev = _cw._queue_evidence(summary)
+    assert "kev:absent" in ev
+    assert "epss:absent" in ev
+
+
+def test_w5v2_1_fresh_sources_kept_in_queue_evidence(monkeypatch):
+    """W5-1: fresh (today) KEV/EPSS dates keep listed/percentile in queue."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    fresh = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+
+    def fake_kev(cve_id):
+        return ResearchRecord(
+            source="kev",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"kev_listed": True, "kev_date": fresh},
+        )
+
+    def fake_epss(cve_id):
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95", "epss_date": fresh},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+    summary = _cw.summarize_osv_vuln(_w5v2_1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    ev = _cw._queue_evidence(summary)
+    assert "kev:listed" in ev
+    assert "epss:0.95" in ev
+
+
+def test_w5v2_1_research_stamps_live_epss_date(monkeypatch):
+    """W5-1 RED: epss_score stamps the live EPSS row date fail-closed."""
+    import modules.intel.research as _research
+
+    def fake_get(url, params=None, **kwargs):
+        assert params.get("cve") == "CVE-2024-3094"
+        return {"data": [{"epss": "0.909", "percentile": "0.99805", "date": "2026-10-28"}]}
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    rec = _research.epss_score("CVE-2024-3094")
+    assert rec is not None and rec.source == "epss"
+    assert rec.extra.get("epss_date") == "2026-10-28"
+    assert rec.extra.get("percentile") == "0.99805"
+
+
+def test_w5v2_1_research_stamps_live_kev_date(monkeypatch):
+    """W5-1 RED: kev_lookup stamps the live KEV dateAdded fail-closed."""
+    import modules.intel.research as _research
+
+    _research._kev_cache_clear()
+    catalog = {
+        "vulnerabilities": [
+            {
+                "cveID": "CVE-2024-3094",
+                "vulnerabilityName": "XZ Utils Backdoor",
+                "shortDescription": "XZ backdoor.",
+                "dateAdded": "2024-05-01",
+                "dueDate": "2024-05-22",
+                "knownRansomwareCampaignUse": "Unknown",
+            }
+        ]
+    }
+    monkeypatch.setattr(_research, "_get_json", lambda *a, **k: catalog)
+    try:
+        rec = _research.kev_lookup("CVE-2024-3094")
+        assert rec is not None and rec.source == "kev"
+        assert rec.extra.get("kev_date") == "2024-05-01"
+    finally:
+        _research._kev_cache_clear()
+
+
+async def test_w5v2_1_fast_lane_stale_never_blocks_scan(monkeypatch):
+    """W5-1 RED: stale intel through the real fast-lane path still completes."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+    record = _w5v2_1_osv_record()
+    monkeypatch.setattr(
+        _cw, "query_osv_batch", lambda deps: {"results": [{"vulns": [{"id": "GHSA-xxxx"}]}]}
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: dict(record))
+    monkeypatch.setattr(
+        _cw,
+        "kev_lookup",
+        lambda cve: ResearchRecord(
+            source="kev",
+            cve_id=cve,
+            title="t",
+            summary="s",
+            extra={"kev_listed": True, "kev_date": stale},
+        ),
+    )
+    monkeypatch.setattr(
+        _cw,
+        "epss_score",
+        lambda cve: ResearchRecord(
+            source="epss",
+            cve_id=cve,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95", "epss_date": stale},
+        ),
+    )
+
+    async def emit(team, message):
+        return None
+
+    files = {
+        "requirements.txt": "widget==1.0.0\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await execute_cve_scan(files, emit, fast_lane=True)
+    assert report.success
+    assert len(report.vulnerabilities) == 1
+    ev = report.vulnerabilities[0].get("queue_evidence", "")
+    assert "kev:absent" in ev and "epss:absent" in ev

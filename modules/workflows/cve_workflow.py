@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 from typing import Any
 
@@ -30,12 +31,42 @@ from modules.workflows.deep_scan import (
 FAST_LANE_MAX_INTAKE = 10
 
 
+# Queue freshness (SPEC 14.9 item 1): intel sources stamp their live dates
+# (KEV dateAdded, EPSS score date); any source older than 1 day is dropped
+# from queue_evidence (fail-closed absent, never blocks the scan). EUVD
+# stays out of the fast lane: no keyless JSON endpoint verified 2026-10-29.
+_SOURCE_FRESH_DAYS = 1
+
+
+def _source_fresh(raw: object) -> bool:
+    """True unless a stamped source date proves the signal older than 1 day.
+
+    Accepts an ISO date or datetime prefix (YYYY-MM-DD...). A missing or
+    unparseable date is NOT stale: the signal was fetched live during this
+    scan (enrichment runs inline), so only a proven-old vintage drops it.
+    Fail-closed applies to absent signals, which never reach here. Future
+    dates count as fresh: they are newer than the cutoff, not older.
+    """
+    day = str(raw or "").strip()[:10]
+    if not day:
+        return True
+    try:
+        stamped = datetime.date.fromisoformat(day)
+    except (TypeError, ValueError):
+        return True
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    return (today - stamped).days <= _SOURCE_FRESH_DAYS
+
+
 def _queue_evidence(summary: dict[str, Any]) -> str:
     """One-line auditable tie-break record for a fast-lane ranked summary.
 
     Pure function of the enriched summary: reach score, first fixed version,
     KEV listing, EPSS percentile. Absence is recorded explicitly so the queue
     order is auditable whether signals fired or not. Bounded, deterministic.
+    Stale-dated (>1 day) KEV/EPSS signals read as absent while the
+    enriched numeric fields stay untouched (ordering is fail-closed too).
+    Undated signals stay: enrichment fetches them live inline.
     """
     try:
         reach_s = str(int(summary.get("reach_score") or 0))
@@ -43,10 +74,18 @@ def _queue_evidence(summary: dict[str, Any]) -> str:
         reach_s = "?"
     fixed = summary.get("fixed_versions") or []
     fix_s = str(fixed[0])[:40] if fixed else "none"
-    kev_s = "listed" if summary.get("kev_listed") is True else "absent"
+    kev_s = (
+        "listed"
+        if summary.get("kev_listed") is True and _source_fresh(summary.get("kev_date"))
+        else "absent"
+    )
     try:
         pct = float(summary.get("epss_percentile", ""))
-        epss_s = f"{pct:.2f}" if 0.0 <= pct <= 1.0 else "absent"
+        epss_s = (
+            f"{pct:.2f}"
+            if 0.0 <= pct <= 1.0 and _source_fresh(summary.get("epss_date"))
+            else "absent"
+        )
     except (TypeError, ValueError):
         epss_s = "absent"
     return f"reach:{reach_s} fix:{fix_s} kev:{kev_s} epss:{epss_s}"
@@ -118,6 +157,8 @@ def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
         try:
             if kev.extra.get("kev_listed"):
                 summary["kev_listed"] = True
+                if kev.extra.get("kev_date"):  # W5 item 1: freshness stamp
+                    summary["kev_date"] = str(kev.extra["kev_date"])[:32]
         except Exception:
             pass
     try:
@@ -131,6 +172,8 @@ def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
             pct = -1.0
         if 0.0 <= pct <= 1.0:
             summary["epss_percentile"] = pct
+            if epss.extra.get("epss_date"):  # W5 item 1: freshness stamp
+                summary["epss_date"] = str(epss.extra["epss_date"])[:32]
     return summary
 
 
