@@ -1445,3 +1445,56 @@ async def test_fast_lane_explicitly_excludes_euvd(monkeypatch):
 
     assert "euvd" not in _json.dumps(report.model_dump()).lower()
     assert all("euvd" not in v for v in report.vulnerabilities)
+
+
+def test_w8v2_5_stale_token_marks_expired_not_absent(monkeypatch):
+    """W8-6 RED: stale (>1d) KEV/EPSS via real enrich path renders stale:<date>, not absent."""
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+
+    def fake_kev(cve_id):
+        return ResearchRecord(
+            source="kev",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"kev_listed": True, "kev_date": stale},
+        )
+
+    def fake_epss(cve_id):
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95", "epss_date": stale},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.95
+    ev = _cw._queue_evidence(summary)
+    assert f"kev:stale:{stale}" in ev
+    assert f"epss:stale:{stale}" in ev
+    assert "absent" not in ev
+
+
+def test_w8v2_5_absent_stays_for_never_signalled(monkeypatch):
+    """W8-6 RED: truly missing KEV/EPSS (no signal) still renders absent, never stale."""
+    import modules.workflows.cve_workflow as _cw
+
+    monkeypatch.setattr(_cw, "kev_lookup", lambda cve_id: None)
+    monkeypatch.setattr(_cw, "epss_score", lambda cve_id: None)
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    _cw._enrich_reach_signals(summary)
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    ev = _cw._queue_evidence(summary)
+    assert "kev:absent" in ev and "epss:absent" in ev
+    assert "stale" not in ev
