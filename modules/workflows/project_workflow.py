@@ -602,7 +602,6 @@ class DockerProjectSandbox:
             # (properties stays None) so arbitrary projects are unaffected.
             properties_ev: ExecutionEvidence | None = None
             mutations_ev: ExecutionEvidence | None = None
-            mutations_attempted = False
             try:
                 from modules.core.checks import (
                     mutation_fixture_supported,
