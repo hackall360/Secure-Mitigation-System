@@ -1281,3 +1281,100 @@ def test_q1_enrichment_uses_first_cve_alias_once(monkeypatch):
     _cw._enrich_reach_signals(summary)
     assert calls["kev"] == ["CVE-2024-1111"] and calls["epss"] == ["CVE-2024-1111"]
     assert "kev_listed" not in summary and "epss_percentile" not in summary
+
+
+def _w2v2_3_osv_record(vid, cve, fixed=None, cwe_text=""):
+    """14.8.3 fixture: real OSV record shape with controllable fix/CWE/CVE."""
+    affected = (
+        [{"ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}]}]
+        if fixed
+        else []
+    )
+    return {
+        "id": vid,
+        "summary": f"Widget flaw {vid}",
+        "details": cwe_text or "No weakness identifier recorded.",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "aliases": [cve] if cve else [],
+        "severity": [],
+        "affected": affected,
+        "references": [],
+    }
+
+
+async def test_fast_lane_topping_ranks_fixable_first_with_audit_evidence(monkeypatch):
+    """14.8.3: reachable+fixable tops the fast-lane queue; every ranked summary
+    carries KEV/EPSS tie-break evidence. Real summarize_osv_vuln + enrichment."""
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    records = {
+        "GHSA-mid": _w2v2_3_osv_record("GHSA-mid", "CVE-2024-9003"),
+        "GHSA-zzz": _w2v2_3_osv_record(
+            "GHSA-zzz",
+            "CVE-2024-9001",
+            fixed="2.0",
+            cwe_text="Deserialization of untrusted data CWE-502 allows code execution.",
+        ),
+        "GHSA-aaa": _w2v2_3_osv_record(
+            "GHSA-aaa",
+            "CVE-2024-9002",
+            fixed="3.0",
+            cwe_text="Deserialization of untrusted data CWE-502 allows code execution.",
+        ),
+    }
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": vid} for vid in records]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: dict(records[vid]))
+
+    epss_for = {"CVE-2024-9001": "0.99", "CVE-2024-9002": "0.91"}
+
+    def fake_kev(cve_id):
+        if cve_id in epss_for:
+            return ResearchRecord(
+                source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+            )
+        return ResearchRecord(source="kev", cve_id=cve_id, title="t", summary="s", extra={})
+
+    def fake_epss(cve_id):
+        if cve_id in epss_for:
+            return ResearchRecord(
+                source="epss",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"epss": "0.5", "percentile": epss_for[cve_id]},
+            )
+        return None
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on the fast lane")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from modules.workflows.cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    files = {
+        "requirements.txt": "widget==1.0.0\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await execute_cve_scan(files, emit, fast_lane=True)
+    assert report.success
+    # Both GHSA-zzz/aaa saturate reach at 100; higher EPSS tops, bare record last.
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa", "GHSA-mid"]
+    for v in report.vulnerabilities:
+        ev = v.get("queue_evidence", "")
+        assert "kev:" in ev and "epss:" in ev and "reach:" in ev and "fix:" in ev
+    assert "epss:0.99" in report.vulnerabilities[0]["queue_evidence"]
+    assert "kev:listed" in report.vulnerabilities[0]["queue_evidence"]
+    assert "fix:none" in report.vulnerabilities[2]["queue_evidence"]
