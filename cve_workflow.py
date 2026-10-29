@@ -20,6 +20,7 @@ from deep_scan import (
     summarize_osv_vuln,
 )
 from projects import ProjectSnapshot, ProjectSpec, snapshot_project
+from research import epss_score, kev_lookup
 from sms_async import Emit, blocking, make_log
 
 
@@ -48,6 +49,43 @@ def files_from_snapshot(snapshot: ProjectSnapshot) -> dict[str, str]:
         except UnicodeDecodeError:
             continue
     return out
+
+
+def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
+    """Attach KEV/EPSS likelihood signals to one OSV summary, fail-closed.
+
+    Uses the summary's first CVE alias only: at most 1 KEV + 1 EPSS lookup
+    per summary. Both lookups are keyless and never-raise, and each call is
+    additionally wrapped in try/except so any failure leaves the summary
+    fields unset (fail-closed: no KEV flag, no EPSS percentile). Mutates
+    and returns `summary` for call-site convenience.
+    """
+    cves = summary.get("cves") or []
+    first = next((c for c in cves if isinstance(c, str) and c), "")
+    if not first:
+        return summary
+    try:
+        kev = kev_lookup(first)
+    except Exception:
+        kev = None
+    if kev is not None:
+        try:
+            if kev.extra.get("kev_listed"):
+                summary["kev_listed"] = True
+        except Exception:
+            pass
+    try:
+        epss = epss_score(first)
+    except Exception:
+        epss = None
+    if epss is not None:
+        try:
+            pct = float(epss.extra.get("percentile", ""))
+        except (TypeError, ValueError):
+            pct = -1.0
+        if 0.0 <= pct <= 1.0:
+            summary["epss_percentile"] = pct
+    return summary
 
 
 async def execute_cve_scan(
@@ -222,6 +260,7 @@ async def execute_cve_scan(
             errors.append(f"NVD enrichment failed: {type(exc).__name__}")
     for summary in summaries:
         try:
+            _enrich_reach_signals(summary)
             from deep_scan import reachability_score as _reachability_score
 
             score, reach_evidence = _reachability_score(summary, static_findings)

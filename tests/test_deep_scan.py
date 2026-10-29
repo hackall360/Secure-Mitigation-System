@@ -1149,3 +1149,135 @@ def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
         raise AssertionError("should have rejected non-dict OSV record")
     except ValueError:
         pass
+
+
+def _q1_osv_record():
+    """Q1 fixture: OSV record with one CVE alias, a fix, and a CWE-502 detail."""
+    return {
+        "id": "GHSA-xxxx",
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "aliases": ["CVE-2024-1234"],
+        "severity": [{"type": "CVSS_V3", "score": "9.8"}],
+        "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}],
+        "references": [],
+    }
+
+
+def _q1_findings():
+    from deep_scan import StaticFinding
+
+    return [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+
+
+def test_q1_enrichment_fires_kev_epss_tie_breaks(monkeypatch):
+    """Q1: real summarize_osv_vuln -> _enrich_reach_signals -> reachability_score gives +5/+5."""
+    import cve_workflow as _cw
+    from deep_scan import reachability_score
+    from research import ResearchRecord
+
+    calls = {"kev": [], "epss": []}
+
+    def fake_kev(cve_id):
+        calls["kev"].append(cve_id)
+        return ResearchRecord(
+            source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+        )
+
+    def fake_epss(cve_id):
+        calls["epss"].append(cve_id)
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.9", "percentile": "0.95"},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    base, _ = reachability_score(dict(summary), _q1_findings())
+    _cw._enrich_reach_signals(summary)
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.95
+    assert summary["cves"] == ["CVE-2024-1234"]
+    assert calls["kev"] == ["CVE-2024-1234"] and calls["epss"] == ["CVE-2024-1234"]
+    boosted, evidence = reachability_score(summary, _q1_findings())
+    assert boosted == base + 10
+    blob = " ".join(evidence).lower()
+    assert "kev listed" in blob and "epss percentile" in blob
+
+
+def test_q1_enrichment_failure_leaves_score_unchanged(monkeypatch):
+    """Q1: lookup failures are fail-closed; the score matches the unenriched baseline."""
+    import cve_workflow as _cw
+    from deep_scan import reachability_score
+
+    def _boom(cve_id):
+        raise RuntimeError("intel down")
+
+    monkeypatch.setattr(_cw, "kev_lookup", _boom)
+    monkeypatch.setattr(_cw, "epss_score", _boom)
+
+    summary = _cw.summarize_osv_vuln(_q1_osv_record())
+    base, _ = reachability_score(dict(summary), _q1_findings())
+    _cw._enrich_reach_signals(summary)
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
+    score, _ = reachability_score(summary, _q1_findings())
+    assert score == base
+
+
+def test_q1_enrichment_uses_first_cve_alias_once(monkeypatch):
+    """Q1: exactly 1 KEV + 1 EPSS lookup against the first CVE alias only."""
+    import cve_workflow as _cw
+    from research import ResearchRecord
+
+    calls = {"kev": [], "epss": []}
+
+    def fake_kev(cve_id):
+        calls["kev"].append(cve_id)
+        return ResearchRecord(
+            source="kev", cve_id=cve_id, title="t", summary="s", extra={"kev_listed": True}
+        )
+
+    def fake_epss(cve_id):
+        calls["epss"].append(cve_id)
+        return ResearchRecord(
+            source="epss",
+            cve_id=cve_id,
+            title="t",
+            summary="s",
+            extra={"epss": "0.1", "percentile": "0.10"},
+        )
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    record = _q1_osv_record()
+    record["aliases"] = ["CVE-2024-1111", "CVE-2024-2222"]
+    summary = _cw.summarize_osv_vuln(record)
+    _cw._enrich_reach_signals(summary)
+    assert calls["kev"] == ["CVE-2024-1111"]
+    assert calls["epss"] == ["CVE-2024-1111"]
+    assert summary["kev_listed"] is True
+    assert summary["epss_percentile"] == 0.10
+
+    summary = _cw.summarize_osv_vuln({**_q1_osv_record(), "aliases": []})
+    _cw._enrich_reach_signals(summary)
+    assert calls["kev"] == ["CVE-2024-1111"] and calls["epss"] == ["CVE-2024-1111"]
+    assert "kev_listed" not in summary and "epss_percentile" not in summary
