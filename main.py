@@ -746,6 +746,18 @@ async def cli_runner(
         for vuln in cve_result.vulnerabilities[:20]:
             cves = ",".join(vuln.get("cves") or [vuln.get("id", "")])
             _out(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}")
+            # Wave 2 item 3: topping evidence on the live terminal path.
+            try:
+                score = vuln.get("reach_score")
+                if score is not None:
+                    kev = " KEV" if vuln.get("kev_listed") else ""
+                    epss = vuln.get("epss_percentile")
+                    epss_s = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                    fixed = vuln.get("fixed_versions") or []
+                    fix_s = f" fix {fixed[0]}" if fixed else ""
+                    _out(f"[TOP    ] {cves}: reach {score}{kev}{epss_s}{fix_s}")
+            except Exception:
+                pass
         if output_dir is not None:
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
             summary = _build_cve_summary_markdown(project, settings, cve_result)
@@ -802,6 +814,36 @@ async def cli_runner(
     return 0 if result.success else 1
 
 
+def _extract_wave2_receipt(report: dict) -> dict | None:
+    """Item 1 (+ project cycles) receipt payload for receipt.json.
+
+    REAL fields first: top-level ``receipt`` (VerdictReceipt dump), then
+    every ``cycle_reports``/``cycles`` entry ``receipt`` (CycleReceipt dump).
+    Legacy ``verdict_receipt`` fallback last. Defensive: dict-or-None only.
+    """
+    if not isinstance(report, dict):
+        return None
+    try:
+        candidates: list = [report.get("receipt"), report.get("verdict_receipt")]
+        for key in ("cycle_reports", "cycles"):
+            items = report.get(key)
+            if isinstance(items, (list, tuple)):
+                for item in items:
+                    if isinstance(item, dict):
+                        candidates.append(item.get("receipt"))
+        for candidate in candidates:
+            if hasattr(candidate, "model_dump"):
+                try:
+                    candidate = candidate.model_dump()
+                except Exception:
+                    continue
+            if isinstance(candidate, dict) and candidate:
+                return {str(k)[:64]: v for k, v in list(candidate.items())[:32]}
+    except Exception:
+        pass
+    return None
+
+
 def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "") -> Path:
     """Persist one scan run: fresh 0700 run dir, 0600 report.json/SUMMARY.md (+candidate.patch)."""
     # A fresh per-run directory prevents accidental overwriting of previous results.
@@ -809,6 +851,14 @@ def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "
     run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
     (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     (run_dir / "report.json").chmod(0o600)
+    # Wave 2 item 1: export the machine-readable verdict receipt alongside the
+    # candidate patch so same-day reviewers can audit it (never a verdict input).
+    receipt = _extract_wave2_receipt(report) if isinstance(report, dict) else None
+    if receipt:
+        (run_dir / "receipt.json").write_text(
+            json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+        )
+        (run_dir / "receipt.json").chmod(0o600)
     if diff:
         (run_dir / "candidate.patch").write_text(diff, encoding="utf-8")
         (run_dir / "candidate.patch").chmod(0o600)
@@ -854,14 +904,41 @@ def _build_cve_summary_markdown(project, settings, result) -> str:
             lines.append(f"  Severity: {sev}")
         if fixed:
             lines.append(f"  Fixed in: {fixed}")
-    if result.deep_assessment:
+    # Wave 2 item 3: auditable fast-lane queue order (reach/KEV/EPSS topping).
+    try:
+        ranked = list(result.vulnerabilities or [])[:10]
+        topping = [v for v in ranked if isinstance(v, dict) and v.get("reach_score") is not None]
+        if topping:
+            lines.append("")
+            lines.append("## Fast-lane topping (reach + fixability order)")
+            for vuln in topping:
+                cves = ", ".join(vuln.get("cves") or [vuln.get("id", "")])
+                score = vuln.get("reach_score")
+                fixed = ", ".join(vuln.get("fixed_versions") or [])
+                kev = " KEV-listed" if vuln.get("kev_listed") else ""
+                epss = vuln.get("epss_percentile")
+                epss_str = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                lines.append(f"- {cves} — reach {score}{kev}{epss_str}")
+                if fixed:
+                    lines.append(f"  Fixed in: {fixed}")
+                for ev in (vuln.get("reach_evidence") or [])[:4]:
+                    lines.append(f"  evidence: {str(ev)[:160]}")
+    except Exception:
+        pass
+    deep_assessment = getattr(result, "deep_assessment", None)
+    if deep_assessment:
         lines.append("")
         lines.append("## Muse deep assessment (advisory)")
-        lines.append(str(result.deep_assessment.get("assessment", ""))[:8000])
-    if result.errors:
+        try:
+            assessment = deep_assessment.get("assessment", "")
+        except AttributeError:
+            assessment = str(deep_assessment)
+        lines.append(str(assessment)[:8000])
+    errors = getattr(result, "errors", None) or []
+    if errors:
         lines.append("")
         lines.append("## Lookup warnings")
-        for err in result.errors[:20]:
+        for err in errors[:20]:
             lines.append(f"- {err}")
     lines.append("")
     lines.append(NOTICE)
@@ -983,6 +1060,28 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
         lines.append("```")
     else:
         lines.append("- No candidate diff retained.")
+    # Wave 2 items 1/2/4: receipt + guard rationales + mutation probes.
+    try:
+        from sms_cli import format_wave2_facts as _w2v2_facts
+
+        wave2 = _w2v2_facts(result)
+    except Exception:
+        wave2 = {}
+    if wave2.get("receipt") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Verdict receipt")
+        lines.append("")
+        lines.append(f"- {wave2['receipt']}")
+    if wave2.get("guard_rationales") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Guard rationales")
+        lines.append("")
+        lines.append(f"- {wave2['guard_rationales']}")
+    if wave2.get("mutations") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Mutation probes")
+        lines.append("")
+        lines.append(f"- {wave2['mutations']}")
     lines.append("")
     lines.append(NOTICE)
     lines.append(LICENSE_URL)

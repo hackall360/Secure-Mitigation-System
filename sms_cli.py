@@ -287,6 +287,300 @@ def _probe_label(exit_code: object) -> str:
     return f"Exit {exit_code}"
 
 
+def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
+    """Wave 2 items 1-4 fact rows (SPEC 14.8). Read-only defensive probes.
+
+    REAL fields first (merged reality e76b019), guessed names fallback only:
+    1. ``result.receipt``: VerdictReceipt (fixture/pre_exit_code/
+       post_exit_code/regression_passed/differential_passed/patch_sha256),
+       or ``cycle.receipt``: CycleReceipt (fixture/pre_probe_exit/
+       post_probe_exit/baseline_regression_exit/patched_regression_exit/
+       patch_sha256) on any entry of ``cycle_reports``/``cycles``.
+       Legacy fallback: ``verdict_receipt`` dict.
+    2. ``evidence.replacement_validation.guard_rationale``: GuardRationale
+       (guard_id/reason/trigger) on any cycle evidence; also a top-level
+       ``guard_rationale``. Legacy fallback: ``guard_rationales`` list.
+    3. ``vulnerabilities[].queue_evidence`` auditable string
+       (``reach:N fix:X kev:listed/absent epss:N.NN``); else first
+       vulnerabilities entry reach/KEV/EPSS components. Legacy: fast_lane_top.
+    4. ``patched_verification.mutations``/``pre_verification.mutations``:
+       ExecutionEvidence (exit_code/output) on any cycle evidence; also
+       top-level ``mutations`` ExecutionEvidence. Display parses ``N/M`` or
+       exit verdict via mutation_gate_passed semantics (exit 0 held).
+       Legacy fallback: ``mutation_evidence`` dict.
+    Absent/odd-shaped values degrade to "Not reported"; never raises; no
+    probe scripts or payloads surface.
+    """
+    _ = use_color  # rows are plain facts; color applied by fact_table caller
+    facts = {
+        "receipt": "Not reported",
+        "guard_rationales": "Not reported",
+        "fast_lane_top": "Not reported",
+        "mutations": "Not reported",
+    }
+    get = lambda name, default=None: getattr(result, name, default)  # noqa: E731
+    model_dump = getattr(result, "model_dump", None)
+    dumped: dict = {}
+    try:
+        if callable(model_dump):
+            maybe = model_dump()
+            if isinstance(maybe, dict):
+                dumped = maybe
+    except Exception:
+        dumped = {}
+
+    def _field(name: str):
+        value = get(name, None)
+        if value is None and isinstance(dumped, dict):
+            value = dumped.get(name)
+        return value
+
+    def _as_dict(value: object) -> dict:
+        if isinstance(value, dict):
+            return value
+        to_dict = getattr(value, "model_dump", None)
+        if callable(to_dict):
+            try:
+                maybe = to_dict()
+                if isinstance(maybe, dict):
+                    return maybe
+            except Exception:
+                pass
+        try:
+            namespace = vars(value)
+            if isinstance(namespace, dict):
+                return dict(namespace)
+        except TypeError:
+            pass
+        return {}
+
+    def _cycles() -> list:
+        for name in ("cycle_reports", "cycles"):
+            try:
+                items = _field(name)
+            except Exception:
+                continue
+            if isinstance(items, (list, tuple)) and items:
+                return list(items)
+        return []
+
+    # Item 1: execution-oracle verdict receipt — REAL fields first.
+    try:
+        receipt = _as_dict(_field("receipt"))
+        if not receipt:
+            for cycle in _cycles():
+                receipt = _as_dict(getattr(cycle, "receipt", None))
+                if not receipt and isinstance(cycle, dict):
+                    receipt = _as_dict(cycle.get("receipt"))
+                if receipt:
+                    break
+        if not receipt:
+            receipt = _as_dict(_field("verdict_receipt"))  # legacy fallback
+        if receipt:
+            parts = []
+            fixture = receipt.get("fixture") or receipt.get("target")
+            if fixture:
+                parts.append(str(fixture)[:64])
+            pre = receipt.get("pre_exit_code", receipt.get("pre_probe_exit"))
+            post = receipt.get("post_exit_code", receipt.get("post_probe_exit"))
+            if pre is not None or post is not None:
+                parts.append(f"probe {pre}/{post}")
+            reg = receipt.get("regression_passed")
+            if reg is None:
+                base = receipt.get("baseline_regression_exit")
+                patched = receipt.get("patched_regression_exit")
+                if base is not None or patched is not None:
+                    parts.append(f"regression {base}/{patched}")
+            elif reg:
+                parts.append("regression passed")
+            diff = receipt.get("differential_passed")
+            if diff is True:
+                parts.append("differential passed")
+            prop = receipt.get("property_passed")
+            if prop is True:
+                parts.append("properties passed")
+            elif receipt.get("property_exit_code") is not None:
+                parts.append(f"properties exit {receipt.get('property_exit_code')}")
+            patch_hash = (
+                receipt.get("patch_sha256") or receipt.get("patch_hash") or receipt.get("patch_sha")
+            )
+            if patch_hash:
+                parts.append(f"sha {str(patch_hash)[:16]}")
+            for key in ("regression", "differential", "properties"):
+                val = receipt.get(key)
+                if val and f"{key} " not in " ".join(parts):
+                    parts.append(f"{key} {val}")
+            if parts:
+                facts["receipt"] = " · ".join(parts)[:200]
+    except Exception:
+        pass
+
+    # Item 2: sanitization-guard rationale export — REAL GuardRationale first.
+    try:
+        shown: list[str] = []
+
+        def _guard_text(item: object) -> str | None:
+            if isinstance(item, str):
+                return item[:80] if item.strip() else None
+            row = _as_dict(item)
+            if not row:
+                return None
+            guard = row.get("guard_id") or row.get("guard") or row.get("rule") or row.get("check")
+            line = row.get("trigger") or row.get("protected_line") or row.get("line") or ""
+            reason = row.get("reason") or ""
+            if not guard and not reason:
+                return None
+            head = f"{guard}: {line}"[:80] if line else str(guard or reason)[:80]
+            if reason and guard and str(reason)[:40] not in head:
+                head = f"{head} ({str(reason)[:40]})"[:80]
+            return head
+
+        top_guard = _field("guard_rationale")
+        if top_guard is not None:
+            text = _guard_text(top_guard)
+            if text:
+                shown.append(text)
+        for cycle in _cycles():
+            try:
+                ev = getattr(cycle, "evidence", None)
+                if ev is None and isinstance(cycle, dict):
+                    ev = cycle.get("evidence")
+                evd = _as_dict(ev)
+                rv = _as_dict(evd.get("replacement_validation"))
+                cand = rv.get("guard_rationale")
+                if cand is None:
+                    cand = evd.get("guard_rationale")
+                text = _guard_text(cand) if cand is not None else None
+                if text and text not in shown:
+                    shown.append(text)
+            except Exception:
+                continue
+            if len(shown) >= 3:
+                break
+        if not shown:
+            rationales = _field("guard_rationales")
+            if rationales is None:
+                rationales = _field("guard_evidence")
+            items = list(rationales) if isinstance(rationales, (list, tuple)) else []
+            for item in items[:3]:
+                text = _guard_text(item)
+                if text:
+                    shown.append(text)
+            if len(items) > 3 and shown:
+                shown[-1] = (shown[-1] + f" +{len(items) - 3} more")[:80]
+        if shown:
+            facts["guard_rationales"] = "; ".join(shown)[:200]
+    except Exception:
+        pass
+
+    # Item 3: reachable+fixable fast-lane topping — REAL queue_evidence first.
+    try:
+        top = _field("fast_lane_top")
+        if isinstance(top, str) and top.strip():
+            facts["fast_lane_top"] = top.strip()[:200]
+        else:
+            vulns = _field("vulnerabilities")
+            first = None
+            if isinstance(vulns, (list, tuple)) and vulns:
+                first = _as_dict(vulns[0]) if not isinstance(vulns[0], str) else {}
+            if first:
+                label = (
+                    first.get("id") or (first.get("cves") or [None])[0]
+                    if isinstance(first.get("cves"), list)
+                    else first.get("id")
+                )
+                label = label or first.get("id") or "top vuln"
+                queue_ev = first.get("queue_evidence")
+                if isinstance(queue_ev, str) and queue_ev.strip():
+                    facts["fast_lane_top"] = f"{label} {queue_ev.strip()}"[:200]
+                else:
+                    score = first.get("reach_score")
+                    fixed = first.get("fixed_versions")
+                    fixed_str = ""
+                    if isinstance(fixed, (list, tuple)) and fixed:
+                        fixed_str = f" fix {str(fixed[0])[:32]}"
+                    kev = " KEV" if first.get("kev_listed") else ""
+                    epss = first.get("epss_percentile")
+                    epss_s = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                    facts["fast_lane_top"] = f"{label} reach {score}{fixed_str}{kev}{epss_s}"[:200]
+    except Exception:
+        pass
+
+    # Item 4: bounded mutation-count probes — REAL ExecutionEvidence first.
+    try:
+        mutation_text: str | None = None
+
+        def _ev_text(ev: object) -> str | None:
+            row = _as_dict(ev)
+            if not row:
+                return None
+            exit_code = row.get("exit_code")
+            output = str(row.get("output") or "")
+            import re as _re
+
+            match = _re.search(r"(\d+)\s*/\s*(\d+)", output)
+            if match:
+                verb = "held" if exit_code == 0 else "failed"
+                return f"{match.group(0)} mutations {verb} (exit {exit_code})"[:200]
+            if exit_code is not None:
+                verb = "held" if exit_code == 0 else "failed"
+                return f"mutations {verb} (exit {exit_code})"[:200]
+            return None
+
+        for cycle in _cycles():
+            try:
+                ev = getattr(cycle, "evidence", None)
+                if ev is None and isinstance(cycle, dict):
+                    ev = cycle.get("evidence")
+                evd = _as_dict(ev)
+                for section in ("patched_verification", "pre_verification"):
+                    text = _ev_text(
+                        evd.get(section, {}).get("mutations")
+                        if isinstance(evd.get(section), dict)
+                        else _as_dict(evd.get(section)).get("mutations")
+                    )
+                    if text:
+                        mutation_text = text
+                        break
+                if mutation_text:
+                    break
+                direct = evd.get("mutations")
+                if direct is not None:
+                    text = _ev_text(direct)
+                    if text:
+                        mutation_text = text
+                        break
+            except Exception:
+                continue
+        if mutation_text is None:
+            top_mut = _field("mutations")
+            if top_mut is not None and not isinstance(top_mut, dict):
+                mutation_text = _ev_text(top_mut)
+            else:
+                mutation = _as_dict(top_mut) if top_mut is not None else {}
+                if not mutation:
+                    mutation = _as_dict(_field("mutation_evidence"))  # legacy
+                if mutation and "exit_code" in mutation:
+                    mutation_text = _ev_text(mutation)
+                elif mutation:
+                    total = (
+                        mutation.get("mutations") or mutation.get("count") or mutation.get("total")
+                    )
+                    failures = mutation.get("failures") or mutation.get("failed") or 0
+                    verdict = mutation.get("verdict") or mutation.get("status") or ""
+                    try:
+                        mutation_text = f"{int(failures)}/{int(total)} failed"
+                    except (TypeError, ValueError):
+                        mutation_text = str(verdict)[:80] or "reported"
+                    if verdict:
+                        mutation_text = f"{mutation_text} ({verdict})"[:200]
+        if mutation_text:
+            facts["mutations"] = mutation_text[:200]
+    except Exception:
+        pass
+    return facts
+
+
 def format_facts(result: object, use_color: bool | None = None) -> dict:
     """Fact rows for a fixture or project result (already-redacted inputs only)."""
     get = lambda name, default=None: getattr(result, name, default)  # noqa: E731
@@ -317,6 +611,10 @@ def format_facts(result: object, use_color: bool | None = None) -> dict:
 def fact_table(result: object, use_color: bool | None = None) -> str:
     """Aligned two-column fact table for terminal output."""
     facts = format_facts(result, use_color=use_color)
+    try:
+        wave2 = format_wave2_facts(result, use_color=use_color)
+    except Exception:
+        wave2 = {}
     rows = [
         ("Target", facts["target"]),
         ("Status", status_color(facts["status"], use_color)),
@@ -325,6 +623,10 @@ def fact_table(result: object, use_color: bool | None = None) -> str:
         ("Pre-probe", facts["pre_probe"]),
         ("Post-probe", facts["post_probe"]),
         ("Regression", facts["regression"]),
+        ("Receipt", wave2.get("receipt", "Not reported")),
+        ("Guard rationales", wave2.get("guard_rationales", "Not reported")),
+        ("Fast-lane top", wave2.get("fast_lane_top", "Not reported")),
+        ("Mutations", wave2.get("mutations", "Not reported")),
         ("Cycles", facts["cycles"]),
         ("Research records", facts["research_records"]),
         ("Cleanup", facts["cleanup"]),

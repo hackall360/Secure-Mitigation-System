@@ -241,13 +241,48 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
     return lines[:height]
 
 
+def describe_wave2(result: object) -> str:
+    """Wave 2 items 1-4 one-line tokens (SPEC 14.8). Never raises, never leaks.
+
+    Probes the same optional fields as sms_cli.format_wave2_facts
+    (verdict_receipt, guard_rationales, mutation_evidence, vulnerabilities
+    topping) and returns a short ``[receipt ...] [mutations ...]`` suffix, or
+    "" when nothing is present or anything is odd-shaped.
+    """
+    try:
+        from sms_cli import format_wave2_facts  # lazy: keeps module import light
+
+        facts = format_wave2_facts(result)
+    except Exception:
+        return ""
+    try:
+        tokens = []
+        receipt = str(facts.get("receipt") or "")
+        if receipt and receipt != "Not reported":
+            tokens.append(f"[receipt {receipt[:80]}]")
+        guards = str(facts.get("guard_rationales") or "")
+        if guards and guards != "Not reported":
+            tokens.append(f"[guards {guards[:60]}]")
+        top = str(facts.get("fast_lane_top") or "")
+        if top and top != "Not reported":
+            tokens.append(f"[top {top[:60]}]")
+        mutations = str(facts.get("mutations") or "")
+        if mutations and mutations != "Not reported":
+            tokens.append(f"[mutations {mutations[:40]}]")
+        return (" " + " ".join(tokens)) if tokens else ""
+    except Exception:
+        return ""
+
+
 def describe_result(result: object) -> str:
     """LAW-4-safe one-line summary of a ScanResult (no traces/scripts)."""
 
     def _get(name: str, default: str = "") -> str:
         return str(getattr(result, name, default))
 
-    return f"{_get('target', '?')} -> {_get('status', '?')}: {_get('message', '')}"[:160]
+    return f"{_get('target', '?')} -> {_get('status', '?')}: {_get('message', '')}{describe_wave2(result)}"[
+        :200
+    ]
 
 
 def start_scan_thread(
