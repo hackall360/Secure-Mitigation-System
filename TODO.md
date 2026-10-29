@@ -207,3 +207,11 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [.] N1. Five read-only lanes -> RESEARCH_V2.md: (a) re-verify Wave 1 recall-grounded claims (Semgrep autofix safety, Snyk rescan+unit-test verification, Endor/Snyk reachability) against live sources where reachable; (b) extended horizon: agentic remediation since Wave 1 (new entrants, benchmarks); (c) same-day patching economics/SLA data (KEV timelines, EPSS v5 follow-through); (d) sandbox/proof systems (eBPF, snapshot fuzzing, proof-carrying patches); (e) keyless intel evolution (OSV/GHSA/CIRCL changes).
       Files: `RESEARCH_V2.md` only (research writes no code). Proof: file committed with A/B/C novelty statements + explicit verified-vs-recall labels; gate green (docs-only).
 - [ ] N2. SPEC delta for Wave 5 gated on RESEARCH_V2 (no implementation before it, strict sequencing).
+
+## O. Zero-day Wave 5 implementation (blocked on RESEARCH_V2 + SPEC SS14.5, done)
+
+- [.] O1. GHSA `?cve_id=` lookup fix + epss/cvss_v4/first_patched_version consumption. Files: `research.py`, `tests/test_scanners.py`. Fail-first canned GHSA test.
+- [ ] O2. KEV 5th `cve_records` signal + reach_score likelihood tie-break (never lowers fail-closed floor). Files: `research.py`, `deep_scan.py`, `tests/test_scanners.py`, `tests/test_deep_scan.py`.
+- [ ] O3. Differential normal-contract gate (original vs patched equal class). Files: `workflow.py`/`project_workflow.py` narrow, tests.
+- [ ] O4. Fast-lane SSVC tiering of output order. Files: `cve_workflow.py`, `tests/test_deep_scan.py`.
+- [ ] O5. Wave 6 expansion docs after O1-O4 gate green.

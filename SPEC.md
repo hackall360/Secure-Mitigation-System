@@ -955,3 +955,12 @@ The fixture workflow already re-runs trusted normal-input checks after the post-
 ### 14.4 Greenhouse generative hardening
 
 `demo_gen` gains hardening controls (tri-surface: dashboard intensity/team/budget/consent widgets already exist since 0.2.0; CLI `--ai-demo` plus `--build-brief`/`--vulns`). Generated targets are secret-scanned and syntax-checked before container use (already shipped); hardening adds per-run variability and consent-gated generation.
+
+### 14.5 Wave 5 delta (from RESEARCH_V2)
+
+1. **GHSA CVE lookup fix + field consumption.** `research.cve_records` currently passes a CVE id to `ghsa_search`, which sends `?package=CVE-...`; GitHub's advisory API expects `?cve_id=` for that query. Add a dedicated CVE-id lookup path (keep `ghsa_search` for package queries), and consume the `epss{percentage,percentile}`, `cvss_severities` (prefer v4) and `first_patched_version` fields the API now embeds. Fail-first canned test; never-raises preserved.
+2. **KEV exploited-now signal.** Add CISA KEV keyless JSON as a fifth never-raises `cve_records` source (exploited flag + due date), and let `reachability_score` consume KEV/EPSS-percentile likelihood as tie-breaking evidence that never lowers the deterministic sink/fixed-version core below its fail-closed floor.
+3. **Differential normal-contract gate.** After patch + probe-block, re-run trusted normal-input checks against both the original and patched targets where the harness supports it and require equal pass/fail class; mismatch = not verified. Narrow scope: existing Docker check paths only, no new privileges.
+4. **Fast-lane tiering.** `execute_cve_scan(fast_lane=True)` output ordering tiers by SSVC-style variables available keyless (KEV flag, EPSS percentile, fixed-version availability) instead of id-sort alone.
+
+Each build: fail-first test, tri-surface where a user-visible surface exists, gate green before merge. Deferred per RESEARCH_V2: eBPF, Wasm sandbox, snapshot fuzzing, proof-carrying code beyond the evidence bundle, EUVD.
