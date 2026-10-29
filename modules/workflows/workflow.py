@@ -232,7 +232,10 @@ class VerdictReceipt(BaseModel):
     property_exit_code: int | None = None
     property_passed: bool | None = None
     patch_sha256: str
-    verified: bool = True
+    # Dead-wire cut (SPEC 14.9 item 4, V3-Lane-A): the old ``verified`` flag
+    # duplicated the ScanResult.status the caller already sets; no gate or
+    # display read it. A receipt exists only on verified cycles. Do not
+    # re-add without a reader.
 
 
 def build_verdict_receipt(
@@ -255,7 +258,6 @@ def build_verdict_receipt(
         property_exit_code=None,
         property_passed=None,
         patch_sha256=hashlib.sha256(patch_content.encode("utf-8")).hexdigest(),
-        verified=True,
     )
 
 

@@ -276,10 +276,12 @@ class CycleReceipt(BaseModel):
     baseline_regression_exit: int
     patched_regression_exit: int
     differential_passed: bool
-    property_exit: int | None = None
+    # Dead-wire cut (SPEC 14.9 item 4, V3-Lane-A): the old property_exit /
+    # retained fields named evidence no gate or display consumed — the
+    # property verdict lives in the evidence + property_passed, the retain
+    # verdict in the report status. Do not re-add without a reader.
     property_passed: bool | None = None
     patch_sha256: str = ""
-    retained: bool = True
 
 
 def build_cycle_receipt(
@@ -295,11 +297,8 @@ def build_cycle_receipt(
 ) -> CycleReceipt:
     """Record a receipt for a retained cycle only; never upgrades a verdict."""
     properties = patched.properties
-    if properties is None:
-        property_exit: int | None = None
-        property_passed: bool | None = None
-    else:
-        property_exit = properties.exit_code
+    property_passed: bool | None = None
+    if properties is not None:
         property_passed = properties.exit_code == 0
     return CycleReceipt(
         fixture=fixture,
@@ -310,10 +309,8 @@ def build_cycle_receipt(
         baseline_regression_exit=baseline_regression_exit,
         patched_regression_exit=patched.regression.exit_code,
         differential_passed=differential_passed,
-        property_exit=property_exit,
         property_passed=property_passed,
         patch_sha256=hashlib.sha256(candidate_diff.encode("utf-8")).hexdigest(),
-        retained=True,
     )
 
 
