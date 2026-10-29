@@ -135,8 +135,8 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       substantive named types/descriptive text get `web_notes`; both land in
       records + digests. Files: `workflow.py`, `tests/test_workflow.py`.
       Proof: `test_research_gather_adds_cve_and_web_records`.
-- [ ] I7. Small features that fall out: keep each cheap, tested, shippable
-      (record here as they land).
+- [/] I7. Small features that fall out: keep each cheap, tested, shippable
+      (record here as they land). Standing bucket, closes per-item: landed so far per I/L/O/Q/R sections; nothing open at 2026-10-29 finish-up.
 
 ## J. LAW 7 single-server + key check (brief 2026-10-28-startup-law, rerun 2026-10-28-compliance-rerun)
 
@@ -181,15 +181,15 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] L4. CVE disclosure fast lane: `execute_cve_scan(..., fast_lane=True)` skips scanner-binary stage entirely (static + OSV only), deterministic ordering, never-raises preserved.
       Files: `cve_workflow.py`, `tests/test_deep_scan.py`. CLI/WS wiring only if an existing CVE surface exists; otherwise core + test is the unit (record surface gap in report).
       Novelty: KEV gives a 2-week catalog baseline, but we start from keyless OSV/CIRCL/GHSA/EPSS at scan time in minutes.
-- [/] L5. Merge writer branches (spawner owns merge, semantic resolution), full `dev.py check` green, LAW 12 version decision recorded, live proof where surfaces changed (offline_scan / ui_scan as applicable).
+- [x] L5. Merge writer branches (spawner owns merge, semantic resolution), full `dev.py check` green, LAW 12 version decision recorded, live proof where surfaces changed (offline_scan / ui_scan as applicable).
       Files: merge of L1-L4 branches. Proof: gate output + live run artifact names.
       Proof so far: merges a4ccc42/4f0be8e/e10a589/ad434e4 + semantic conflict fix in
       tests/test_cli_parity.py; gate 351 passed (329 baseline + 22 new); offline_scan
       3/3 verified; ui_scan firefox+chrome 'Boundary check passed'; browser-operated
       demo-size/flaw-count/seed controls on :18099 (own server, killed after).
-      Remains: LAW 12 bump 0.2.0 -> 0.3.0 (major: new capabilities) applied at ship
-      (LAW 1 flow not yet invoked by user), worktree removal, WS/TUI CVE fast-lane
-      surface gap + TUI demo-mode gap recorded for Wave 3 docs.
+      Closed 2026-10-29: all wt-w2-* worktrees removed (none remain); WS/TUI CVE fast-lane
+      surface gap + TUI demo-mode gap recorded in docs/architecture/WAVE2.md (Wave 3 docs M2).
+      LAW 12 bump 0.2.0 -> 0.3.0 stays deferred to ship; tracked only by M3.
 
 ## M. Zero-day Wave 3 docs (blocked on L5 gate: 351 passed + live proof, done)
 
@@ -204,9 +204,9 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 ## N. Zero-day Wave 4 extended research (brief 2026-10-28-zero-day-9wave item 4)
 
-- [.] N1. Five read-only lanes -> RESEARCH_V2.md: (a) re-verify Wave 1 recall-grounded claims (Semgrep autofix safety, Snyk rescan+unit-test verification, Endor/Snyk reachability) against live sources where reachable; (b) extended horizon: agentic remediation since Wave 1 (new entrants, benchmarks); (c) same-day patching economics/SLA data (KEV timelines, EPSS v5 follow-through); (d) sandbox/proof systems (eBPF, snapshot fuzzing, proof-carrying patches); (e) keyless intel evolution (OSV/GHSA/CIRCL changes).
-      Files: `RESEARCH_V2.md` only (research writes no code). Proof: file committed with A/B/C novelty statements + explicit verified-vs-recall labels; gate green (docs-only).
-- [ ] N2. SPEC delta for Wave 5 gated on RESEARCH_V2 (no implementation before it, strict sequencing).
+- [x] N1. Five read-only lanes -> RESEARCH_V2.md: (a) re-verify Wave 1 recall-grounded claims (Semgrep autofix safety, Snyk rescan+unit-test verification, Endor/Snyk reachability) against live sources where reachable; (b) extended horizon: agentic remediation since Wave 1 (new entrants, benchmarks); (c) same-day patching economics/SLA data (KEV timelines, EPSS v5 follow-through); (d) sandbox/proof systems (eBPF, snapshot fuzzing, proof-carrying patches); (e) keyless intel evolution (OSV/GHSA/CIRCL changes).
+      Files: `RESEARCH_V2.md` only (research writes no code). Proof: RESEARCH_V2.md 12ec542 + addendum f5e92cc; gate green (docs-only).
+- [x] N2. SPEC delta for Wave 5 gated on RESEARCH_V2 (no implementation before it, strict sequencing). Proof: SPEC SS14.5 committed 3d37cfa before O1-O4 writers.
 
 ## O. Zero-day Wave 5 implementation (blocked on RESEARCH_V2 + SPEC SS14.5, done)
 
@@ -218,23 +218,23 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 ## P. Zero-day Waves 7-9 (blocked on RESEARCH_V3, pending)
 
-- [ ] P1. Wave 7: RESEARCH_V3.md (freshness/compat defects + post-Wave-5 frontier), live-verified or labelled recall.
-- [ ] P2. Wave 7 or 8 implementation gated on SPEC delta for V3 (strict sequencing, fail-first).
-- [ ] P3. Wave 8 hardening: adversarial review of O1-O4 merges, edge tests.
-- [ ] P4. Wave 9 adventure: child features spun from proven Wave 5 mechanics only.
+- [x] P1. Wave 7: RESEARCH_V3.md (freshness/compat defects + post-Wave-5 frontier), live-verified or labelled recall. Proof: RESEARCH_V3.md committed dd04172 with SPEC SS14.6.
+- [x] P2. Wave 7 or 8 implementation gated on SPEC delta for V3 (strict sequencing, fail-first). Proof: sections Q/R landed under SPEC SS14.6/SS14.7.
+- [x] P3. Wave 8 hardening: adversarial review of O1-O4 merges, edge tests. Proof: RESEARCH_V3 Lane A audit found dead KEV/EPSS tie-break; fixed Q1/Q2; LOW bundle R2; T1/T2 live-proof regression found+fixed.
+- [x] P4. Wave 9 adventure: child features spun from proven Wave 5 mechanics only. Proof: property/metamorphic contract checks (R1, child of O3 differential gate) + shape split (T2); VEX/SARIF/mutation counts cut as parity/non-proof per RESEARCH_V3 Lane C.
 
 ## Q. Zero-day Wave 7 implementation (blocked on RESEARCH_V3 + SPEC SS14.6, done)
 
 - [x] Q1. Wire `kev_listed`/`epss_percentile` through `cve_workflow` enrichment into `reachability_score`; fail-first through real producer path; evidence strings live. Files: `cve_workflow.py`, `tests/test_deep_scan.py`.
 - [x] Q2. KEV per-process catalog cache in `research.kev_lookup`; fail-first cache test. Files: `research.py`, `tests/test_scanners.py`.
-- [ ] Q3. Wave 8: property/metamorphic checks + LOW bundle (after Q1/Q2 gate green).
-- [ ] Q4. Wave 9: docs + adventure only if Q1-Q3 clean.
+- [x] Q3. Wave 8: property/metamorphic checks + LOW bundle (after Q1/Q2 gate green). Proof: section R (R1/R2 merged, gate 392, live project_scan 2/2).
+- [x] Q4. Wave 9: docs + adventure only if Q1-Q3 clean. Proof: R3 docs merged; adventure scoped to property-shape split (T2).
 
 ## R. Zero-day Wave 8 (blocked on RESEARCH_V3 Lane C + SPEC SS14.7, done)
 
 - [x] R1. Property/metamorphic normal-contract checks wired into verification, recorded as evidence, fail-closed. Files: `checks.py` (`project_property_script`), `project_workflow.py` (`properties` + `property_gate_passed` in retain), `tests/test_property_checks.py` (13 tests). Proof: fail-first red (ImportError, gate-disabled rollback FAILED), standalone suite 385 passed. Opt-in: spec contract first line must name the fixture id (producer wiring done in `project_scan.py`).
 - [x] R2. LOW bundle: research fetch caps, epss sanitizer reuse, intel_search CVE shape. Files: `research.py`, `intel_search.py`, `cve_workflow.py`, `tests/test_scanners.py`. Fail-first each (red 3 failed, green post-fix).
-- [ ] R3. Wave 9 docs after R1/R2 gate green.
+- [x] R3. Wave 9 docs after R1/R2 gate green. Proof: merges feature/w9-readme 1c8e414 + feature/w9-arch 6f69d59 (WAVE8.md + trap section); gate 392 passed. Adventure item cut per zero-day mandate: property-shape split was the shipped child feature of R1; nothing else cleared same-day-remediation bar.
 
 ## S. Root de-bloat 3-wave refactor (carried from brief 2026-10-28-root-debloat-3wave-refactor; branch feature/root-debloat-wave1-audit)
 
@@ -246,3 +246,4 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 - [x] T1. Wave 8 live-proof failure diagnosed: opt-in property script aliased project plain-text services to the fixture JSON-envelope script; properties exit 2 (JSONDecodeError) vetoed retain fail-closed. Evidence: reports/project-acceptance/project-acceptance.json cycle 1 properties exit_code 2, status rolled_back; standalone R1/R2 branch commits passed because neither had the merge-commit contract wiring.
 - [x] T2. Fix fail-first: split property scripts by real response shape (node_query_sink JSON envelope; new project_lookup_text plain text; phantom node_eval_service removed; project_scan contract retargeted). Files: `checks.py`, `tests/test_property_checks.py`, `.jcode/tools/project_scan.py`. Proof: writer RED (exit 2 unknown fixture) then 50 passed; merged gate 392 passed; live `project_scan.py` PASS 2/2 cycles retained, properties exit 0 both cycles.
+- [x] T3. Wave 9 docs merged (`1c8e414` README subsection, `6f69d59` WAVE8.md incl. property response-shape trap); TODO Q3/Q4/P1-P4/N1/N2/L5 closed with proof; gate 392 passed. I7 stays [/] standing bucket; M3 ship + S1-S3 de-bloat remain open by user gate, not omission.
