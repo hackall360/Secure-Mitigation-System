@@ -934,3 +934,24 @@ When an AI coding agent reads this `SPEC.md` and is tasked with finishing the re
    * `targets/php_command_sink/index.php`: A lightweight PHP script accepting a `?host=` query string that needs strict hostname/IP allowlist validation.
    * `targets/mysql_insecure_conf/my.cnf`: A MySQL configuration file containing `bind-address = 0.0.0.0`, `local-infile = 1`, and `secure-file-priv = ""` that the Blue Team agent must harden to `127.0.0.1` and `local-infile = 0`.
 3. **Add Automated Self-Test Suite (`test_harness.py`):** Create a test script that verifies Docker daemon connectivity, checks that `internal=True` blocks external internet access inside both containers, and validates JSON schema parsing from the Meta Muse endpoints.
+---
+
+## 14. Wave 2 Zero-Day Delta (Oct 29, 2026)
+
+Source: `RESEARCH_V1.md`. These features satisfy the zero-day mandate (accelerate same-day patching) and are additive to the existing scan surfaces. See `README.md#configuration`.
+
+### 14.1 Sink-adjacency reachability fusion
+
+New `reach_score` / `reach_evidence` fields on CVE summaries (CVE workflow output). Fuses OSV fixed-version ranges with static sink signals (`deep_scan.run_static_scan`) and Docker probe evidence (`docker_manager`) into a deterministic adjacency score. Fail-closed: absent signals lower the score, never raise it. Competitor Snyk/Endor does call-graph reachability, but we are doing version-range + sink-adjacency + probe proof for keyless teams.
+
+### 14.2 CVE disclosure fast lane
+
+New opt-in CVE fast lane: precomputed disclosure trigger + autonomous oracle + fail-closed snapshot autop. NVD-free intel pre-positioning (keyless OSV/CIRCL/GHSA/EPSS) with Docker proof cache. Satisfies the 3 same-day hard requirements from Wave 1: (a) precomputed trigger, (b) NVD-free intel pre-positioning, (c) deterministic fail-closed snapshot autop + tro path + dream.
+
+### 14.3 Demand-driven ghost-probe liveness
+
+New ghost-probe liveness check in `checks.py` + `workflow.py`: the patched target must still answer trusted normal input before a candidate earns `verified`. A killed target earns no credit (fail-closed).
+
+### 14.4 Greenhouse generative hardening
+
+`demo_gen` gains hardening controls (tri-surface: dashboard intensity/team/budget/consent widgets already exist since 0.2.0; CLI `--ai-demo` plus `--build-brief`/`--vulns`). Generated targets are secret-scanned and syntax-checked before container use (already shipped); hardening adds per-run variability and consent-gated generation.
