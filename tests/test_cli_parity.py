@@ -329,3 +329,59 @@ def test_tui_command_reaches_tui_main(monkeypatch, capsys):
     monkeypatch.setattr("tui.main", lambda argv=None: seen.setdefault("argv", argv) or 0)
     assert _main.main() == 0
     assert seen["argv"] == []
+
+
+def test_ai_demo_accepts_hardening_flags(monkeypatch, tmp_path):
+    """L3: --demo-size/--flaw-count/--demo-seed reach ai_demo_runner (flaw clamped)."""
+    seen = {}
+
+    async def fake_demo(output_dir, profile, **kwargs):
+        seen.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(main, "ai_demo_runner", fake_demo)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py",
+            "--ai-demo",
+            "--demo-size",
+            "small",
+            "--flaw-count",
+            "99",
+            "--demo-seed",
+            "7",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    assert main.main() == 0
+    assert seen["demo_size"] == "small"
+    assert seen["flaw_count"] == 8
+    assert seen["demo_seed"] == 7
+
+
+def test_ai_demo_hardening_flags_require_ai_demo(monkeypatch):
+    """L3: new flags gate on --ai-demo like --build-brief/--vulns do."""
+    for argv in (
+        ["main.py", "--scan", "node_query_sink", "--demo-size", "small"],
+        ["main.py", "--scan", "node_query_sink", "--flaw-count", "2"],
+        ["main.py", "--scan", "node_query_sink", "--demo-seed", "3"],
+    ):
+        monkeypatch.setattr("sys.argv", argv)
+        with pytest.raises(SystemExit) as error:
+            main.main()
+        assert error.value.code == 2
+
+
+def test_config_file_accepts_hardening_keys(tmp_path):
+    """L3: sms.toml [sms] accepts demo_size/flaw_count/demo_seed via CONFIG_KEYS."""
+    from sms_cli import load_config_file
+
+    toml_path = tmp_path / "sms.toml"
+    toml_path.write_text("[sms]\ndemo_size = 'small'\nflaw_count = 3\ndemo_seed = 7\n")
+    assert load_config_file(toml_path) == {
+        "demo_size": "small",
+        "flaw_count": 3,
+        "demo_seed": 7,
+    }

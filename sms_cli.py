@@ -35,6 +35,9 @@ CONFIG_KEYS = (
     "intel_offline",
     "build_brief",
     "vulns",
+    "demo_size",
+    "flaw_count",
+    "demo_seed",
     "research",
     "research_scanners",
     "allow_remote_inference",
@@ -78,6 +81,14 @@ def _coerce_value(key: str, value: object) -> object:
     if key in ("cycles", "red_agents", "blue_agents", "context_budget", "port"):
         if isinstance(value, bool) or not isinstance(value, int):
             raise LoadError(f"Config key {key!r} must be an integer.")
+        return value
+    if key in ("flaw_count", "demo_seed"):
+        # None (absent) or plain ints only; never raise on garbage from the
+        # file — fall back to None and let the CLI/WS clamps bound the rest.
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
         return value
     if not isinstance(value, str):
         raise LoadError(f"Config key {key!r} must be a string.")

@@ -44,7 +44,7 @@ Rules:
 - test_contract.py must assert normal behavior (valid inputs succeed) so blue patches can be regression-checked.
 - Keep total source under 12KB. No secrets, no network egress, no subprocess/shell, no eval/exec of untrusted input in the GENERATOR output itself beyond the intentionally flawed demo sinks (which are the exercise target and run only in Docker).
 - Never output exploit scripts, payloads, or step-by-step attack instructions. The demo app contains flaws; exploitation happens only inside the isolated sandbox by the red team.
-"""
+Respect demo_size (small means fewer routes, standard means the full set) and seed (use it as a variation nonce so the same brief can grow different demos)."""
 
 
 # Shared item constraints: strip padding, then reject blank/oversize entries
@@ -257,6 +257,9 @@ async def generate_demo_project(
     build_brief: str = "",
     vulns: Sequence[str] | None = None,
     max_payload_bytes: int = 256_000,
+    size: str = "standard",
+    flaw_count: int | None = None,
+    seed: int | None = None,
 ) -> DemoProjectFiles:
     """Ask Muse to design a novel demo project grounded in threat intel.
 
@@ -264,13 +267,32 @@ async def generate_demo_project(
     implement. Both reach the generator so Greenhouse builds what was asked.
     Empty intent falls back to DEFAULT_DEMO_BRIEF/VULNS so the out-of-box
     run is a realistic named-flaw showcase, not an empty brief.
+
+    size is 'small' (fewer routes) or 'standard' (full set); anything else
+    falls back to 'standard'. flaw_count bounds the requested flaws to
+    1..8 (None means keep them all). seed is a plain variation nonce for
+    reproducibility. All three ride the payload as demo_size/flaw_count/
+    seed. Invalid values never raise: they clamp or fall back.
     """
     wanted = [str(v)[:120] for v in (vulns or [])][:8] or list(DEFAULT_DEMO_VULNS)
+    try:
+        count = len(wanted) if flaw_count is None else max(1, min(8, int(flaw_count)))
+    except (TypeError, ValueError):
+        count = len(wanted)
+    wanted = wanted[:count]
+    demo_size = size if size in ("small", "standard") else "standard"
+    try:
+        nonce: int | None = None if seed is None else int(seed)
+    except (TypeError, ValueError):
+        nonce = None
     brief = str(build_brief or "")[:500] or DEFAULT_DEMO_BRIEF
     payload = {
         "theme": theme[:256],
         "build_brief": brief,
         "requested_vulns": wanted,
+        "demo_size": demo_size,
+        "flaw_count": count,
+        "seed": nonce,
         "intel_context": [dict(c) for c in intel_context[:20]],
         "response_schema": DemoProjectFiles.model_json_schema(),
     }
