@@ -284,6 +284,77 @@ def summarize_osv_vuln(record: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+_CWE_RE = re.compile(r"CWE-\d+", re.IGNORECASE)
+
+
+def reachability_score(
+    summary: Mapping[str, Any], static_findings: Sequence[StaticFinding]
+) -> tuple[int, list[str]]:
+    """Fuse OSV fixed-version ranges with static sink adjacency into a 0-100 score.
+
+    Deterministic pure function (no network, no inference): base 10 when the
+    summary identifies a record (`cves` non-empty or `id` present), +40 when
+    `fixed_versions` is non-empty (a patched range exists to reach), +40 when
+    any static finding's CWE matches a CWE implied by the summary. Implied
+    CWEs come from `summary.get("cwe")` (str or list of str) plus `CWE-\\d+`
+    strings found in the `summary`/`details` text. Capped at 100. Evidence
+    strings name each contributing signal, presence and absence alike, so a
+    low score always explains which signals were missing. Each evidence entry
+    is bounded to 160 chars.
+    """
+    evidence: list[str] = []
+    score = 0
+
+    cves = summary.get("cves") or []
+    record_id = summary.get("id")
+    if (isinstance(cves, list) and any(isinstance(c, str) and c for c in cves)) or (
+        isinstance(record_id, str) and record_id
+    ):
+        score += 10
+        label = cves[0] if isinstance(cves, list) and cves else record_id
+        evidence.append(f"record identified: {str(label)[:80]} (+10)")
+    else:
+        evidence.append("no record identity: no CVEs and no id (+0)")
+
+    fixed = summary.get("fixed_versions") or []
+    fixed_list = [str(v) for v in fixed] if isinstance(fixed, list) else []
+    fixed_list = [v for v in fixed_list if v]
+    if fixed_list:
+        score += 40
+        evidence.append(f"fixed version available: {fixed_list[0][:80]} (+40)")
+    else:
+        evidence.append("no fixed version recorded (+0)")
+
+    implied: set[str] = set()
+    cwe_field = summary.get("cwe")
+    if isinstance(cwe_field, str):
+        implied.update(m.group(0).upper() for m in _CWE_RE.finditer(cwe_field))
+    elif isinstance(cwe_field, list):
+        for item in cwe_field:
+            if isinstance(item, str):
+                implied.update(m.group(0).upper() for m in _CWE_RE.finditer(item))
+    for key in ("summary", "details"):
+        text = summary.get(key)
+        if isinstance(text, str):
+            implied.update(m.group(0).upper() for m in _CWE_RE.finditer(text))
+
+    matched: str | None = None
+    for finding in static_findings:
+        cwe = getattr(finding, "cwe", "")
+        if isinstance(cwe, str) and cwe and cwe.upper() in implied:
+            matched = cwe.upper()
+            break
+    if matched is not None:
+        score += 40
+        evidence.append(f"sink adjacency: static finding shares {matched} (+40)")
+    elif not list(static_findings):
+        evidence.append("no sink adjacency: no static findings to compare (+0)")
+    else:
+        evidence.append("no sink adjacency: no static finding shares a summary CWE (+0)")
+
+    return min(score, 100), [str(e)[:160] for e in evidence]
+
+
 class DeepVulnReport(BaseModel):
     """Muse deep assessment of static signals + CVE context (advisory, not proof)."""
 

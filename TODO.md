@@ -168,9 +168,10 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
 
 Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@214ed32` before edits.
 
-- [.] L1. Sink-adjacency reachability fusion: deterministic `reach_score` (0-100 int) + `reach_evidence` (list[str]) on CVE summaries.
+- [x] L1. Sink-adjacency reachability fusion: deterministic `reach_score` (0-100 int) + `reach_evidence` (list[str]) on CVE summaries.
       Files: `deep_scan.py` (new pure `reachability_score(summary, static_findings)`), `cve_workflow.py` (attach per summary in `execute_cve_scan`), `tests/test_deep_scan.py`.
       Fail-closed: no fixed version, no sink signal, no CVE match -> low score; absent signals never raise it. Novelty: Snyk/Endor does call-graph reachability, but we fuse OSV fixed-ranges + static sink adjacency keyless with no SaaS index.
+      Proof: 4 new tests red (ImportError/KeyError) then green; `tests/test_deep_scan.py` 20 passed + 5 pre-existing docker-import fails (unchanged from baseline 16+5); ruff check/format clean; subset suite 177 passed, 12 failed all pre-existing on clean tree.
 - [ ] L2. Ghost-probe liveness, exit-2 gap: project workflow runs post-probe liveness whenever probe exit != 0 (today only exit==1), and names it in evidence.
       Files: `project_workflow.py` (`verify_project_snapshot`), `tests/test_project_workflow.py`, `tests/helpers.py` only if seam requires.
       Fixture workflow already has post-probe liveness (`workflow.py` final_health); do not duplicate it. Novelty: CodeMender PoC verify is flag-bypassable, but our ternary oracle stays fail-closed: inconclusive + dead target earns no credit.

@@ -209,6 +209,16 @@ async def execute_cve_scan(
             await log("system", "Deep scan: NVD enrichment complete.")
         except Exception as exc:
             errors.append(f"NVD enrichment failed: {type(exc).__name__}")
+    for summary in summaries:
+        try:
+            from deep_scan import reachability_score as _reachability_score
+
+            score, reach_evidence = _reachability_score(summary, static_findings)
+            summary["reach_score"] = score
+            summary["reach_evidence"] = reach_evidence
+        except Exception:
+            summary["reach_score"] = 0
+            summary["reach_evidence"] = ["scoring unavailable"]
     cve_count = len(summaries)
     message = (
         f"Deep scan completed: {len(static_findings)} static signals, "
