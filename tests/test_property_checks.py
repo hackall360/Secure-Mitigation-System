@@ -1,0 +1,539 @@
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+"""Wave 8 R1 tests: seeded property normal-contract checks.
+
+Per-fixture property scripts pass on a stubbed healthy service, fail on a
+stubbed broken one, exit 2 for unknown fixtures; a fail-closed retain gate
+vetoes retains when recorded properties are non-zero.
+"""
+
+import json
+
+import pytest
+
+from modules.core.checks import project_property_script
+from modules.core.docker_manager import ProjectCheckResult
+from modules.services.projects import ProjectSpec, snapshot_project
+from modules.workflows.project_workflow import (
+    DockerProjectSandbox,
+    ExecutionEvidence,
+    SnapshotVerification,
+    property_gate_passed,
+)
+
+
+def _run_script(script: str, handler) -> int:
+    """Execute a generated property script with a stubbed HTTP layer (no network)."""
+    import types
+
+    calls: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, status: int, body: bytes):
+            self.status = status
+            self._body = body
+
+        def read(self, limit: int = -1) -> bytes:
+            return self._body[:limit] if limit >= 0 else self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(url, timeout=3):
+        calls.append(url)
+        status, body = handler(url)
+        if status != 200:
+            raise urllib.error.HTTPError(url, status, "stubbed", {}, None)
+        return FakeResponse(status, body)
+
+    module = types.ModuleType("property_probe")
+    module.__dict__["urllib"] = __import__("urllib.request"), __import__("urllib.error")
+    import urllib.request
+
+    module.__dict__["urllib_request"] = urllib.request
+    module.__dict__["urllib_error"] = urllib.error
+    namespace = {
+        "urllib": types.SimpleNamespace(request=types.SimpleNamespace(urlopen=fake_urlopen)),
+        "__name__": "property_probe",
+    }
+    # The script imports urllib.request/urllib.error itself; patch urlopen underneath.
+    import urllib.request as request_module
+
+    original = request_module.urlopen
+    request_module.urlopen = fake_urlopen
+    try:
+        try:
+            exec(compile(script, "property_check.py", "exec"), namespace)
+        except SystemExit as exit:
+            return int(exit.code)
+    finally:
+        request_module.urlopen = original
+    raise AssertionError("property script must call sys.exit")
+
+
+def _node_ok(url: str):
+    if url.endswith("/lookup?id=101"):
+        return 200, json.dumps(
+            {"status": "ok", "count": 1, "results": [{"id": 101, "username": "alice"}]}
+        ).encode()
+    if url.endswith("/lookup?id=102"):
+        return 200, json.dumps(
+            {"status": "ok", "count": 1, "results": [{"id": 102, "username": "bob"}]}
+        ).encode()
+    if "/lookup?id=" in url:
+        # Seeded random ids: unknown accounts return an empty result set
+        # (vulnerable fixtures return 500/200-with-rows; both fail the property).
+        return 200, json.dumps({"status": "ok", "count": 0, "results": []}).encode()
+    return 404, b"{}"
+
+
+def _php_ok(url: str):
+    assert "/?host=" in url
+    host = url.rsplit("=", 1)[-1]
+    assert host in ("localhost", "127.0.0.1")
+    return 200, json.dumps({"status": "ok", "host": host, "diagnostic": host}).encode()
+
+
+def _mysql_ok(url: str):
+    assert url.endswith("/my.cnf")
+    return 200, b"[mysqld]\nport = 3306\nmax_connections = 100\n"
+
+
+def test_node_properties_pass_on_healthy_service():
+    script = project_property_script("node_query_sink")
+    assert _run_script(script, _node_ok) == 0
+
+
+def test_node_properties_fail_on_broken_service():
+    script = project_property_script("node_query_sink")
+
+    def broken(url: str):
+        if "/lookup?id=" in url and not url.endswith(("101", "102")):
+            return 200, json.dumps({"status": "ok", "count": 5, "results": [{"id": 1}]}).encode()
+        return _node_ok(url)
+
+    assert _run_script(script, broken) == 1
+
+
+def _text_ok(url: str):
+    # Project-workflow plain-text shape (project_scan.py APP + both patches):
+    # exact names for known ids, empty body for any other decimal id.
+    if url.endswith("/lookup?id=101"):
+        return 200, b"Alice"
+    if url.endswith("/lookup?id=102"):
+        return 200, b"Bob"
+    if "/lookup?id=" in url:
+        # Seeded random ids: unknown accounts return an empty plain body.
+        return 200, b""
+    return 404, b"not found"
+
+
+def test_project_lookup_text_passes_on_plaintext_service():
+    script = project_property_script("project_lookup_text")
+    assert _run_script(script, _text_ok) == 0
+
+
+def test_project_lookup_text_fails_on_leaking_service():
+    script = project_property_script("project_lookup_text")
+
+    def broken(url: str):
+        if "/lookup?id=" in url and not url.endswith(("101", "102")):
+            return 200, b"Alice,Bob"
+        return _text_ok(url)
+
+    assert _run_script(script, broken) == 1
+
+
+def test_php_properties_pass_and_repeat_stably():
+    script = project_property_script("php_command_sink")
+    assert _run_script(script, _php_ok) == 0
+
+
+def test_php_properties_fail_on_injected_host():
+    script = project_property_script("php_command_sink")
+
+    def broken(url: str):
+        status, body = _php_ok(url)
+        payload = json.loads(body)
+        payload["diagnostic"] = "tampered"
+        return status, json.dumps(payload).encode()
+
+    assert _run_script(script, broken) == 1
+
+
+def test_mysql_properties_pass_on_reread():
+    script = project_property_script("mysql_config_audit")
+    assert _run_script(script, _mysql_ok) == 0
+
+
+def test_mysql_properties_fail_on_missing_key():
+    script = project_property_script("mysql_config_audit")
+
+    def broken(url: str):
+        return 200, b"[mysqld]\nport = 3306\n"
+
+    assert _run_script(script, broken) == 1
+
+
+def test_unknown_fixture_script_is_inconclusive():
+    script = project_property_script("no_such_fixture")
+    assert _run_script(script, lambda url: (200, b"{}")) == 2
+
+
+def _verification(properties_exit: int | None) -> SnapshotVerification:
+    return SnapshotVerification(
+        probe=ExecutionEvidence(exit_code=1, output="blocked"),
+        regression=ExecutionEvidence(exit_code=0, output="regression ok"),
+        properties=None
+        if properties_exit is None
+        else ExecutionEvidence(exit_code=properties_exit, output="properties"),
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "node_query_sink",
+        "project_lookup_text",
+        "php_command_sink",
+        "mysql_config_audit",
+        "mysql_insecure_conf",
+    ],
+)
+def test_property_scripts_are_bounded_and_explicit_exit(fixture):
+    script = project_property_script(fixture)
+    assert len(script) < 16_384
+    assert "sys.exit(0" in script and "sys.exit(1" in script and "sys.exit(2" in script
+
+
+def test_property_gate_truth_table_is_fail_closed():
+    assert property_gate_passed(_verification(0)) is True
+    assert property_gate_passed(_verification(1)) is False
+    assert property_gate_passed(_verification(2)) is False
+    assert property_gate_passed(_verification(None)) is True
+
+
+async def test_property_failure_rolls_back_verified_patch():
+    """Fail-first: blocked probe + green regression still rolls back on properties 1."""
+    from helpers import (
+        FakeProjectMuse as FakeMuse,
+    )
+    from helpers import (
+        FakeProjectSandbox as FakeSandbox,
+    )
+    from helpers import (
+        run_project_workflow as run_workflow,
+    )
+
+    def verification_with_properties(probe: int, regression: int, properties: int | None):
+        from modules.workflows.project_workflow import ExecutionEvidence, SnapshotVerification
+
+        return SnapshotVerification(
+            probe=ExecutionEvidence(exit_code=probe, output="evidence"),
+            regression=ExecutionEvidence(exit_code=regression, output="regression"),
+            fresh_target=True,
+            properties=None
+            if properties is None
+            else ExecutionEvidence(exit_code=properties, output="properties"),
+        )
+
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            verification_with_properties(1, 0, 0),
+            verification_with_properties(0, 0, 0),
+            # patched snapshot: probe blocked + regression green, properties failed.
+            verification_with_properties(1, 0, 1),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "rolled_back"
+    assert result.cycle_reports[0].evidence.patched_verification.properties.exit_code == 1
+
+
+async def test_docker_sandbox_attaches_property_evidence(tmp_path):
+    """DockerProjectSandbox runs the property script after regression green."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="node_query_sink\nGET /lookup fixture.",
+    )
+    snapshot = snapshot_project(spec)
+    scripts: list[str] = []
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            if script is not None:
+                scripts.append(script)
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(1)",
+        ["python", "-m", "pytest"],
+        label="properties-plumbing",
+    )
+    assert result.properties is not None
+    assert result.properties.exit_code == 0
+    assert len(scripts) == 2
+    assert "Property checks passed" in scripts[1]
+
+
+@pytest.mark.parametrize("probe_exit", [1, 2])
+def test_exec_unavailable_post_probe_is_inconclusive(tmp_path, probe_exit):
+    """Wave 8 item 3 (wolf) RED: exec-unavailable liveness must be exit 2, never a silent pass."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="arbitrary project without fixture checks.",
+    )
+    snapshot = snapshot_project(spec)
+    calls: list[str] = []
+
+    class _NoExecTarget:
+        """Target without exec_run: exec-based liveness is unavailable."""
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return _NoExecTarget(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            calls.append("script" if script is not None else "command")
+            if script is not None:
+                return ProjectCheckResult(exit_code=probe_exit, stdout="probe", stderr="")
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(%d)" % probe_exit,
+        ["python", "-m", "pytest"],
+        label="exec-unavailable-liveness",
+    )
+    assert result.regression.exit_code == 2
+    assert "inconclusive" in result.regression.output.lower()
+    # The fresh-container check still runs as a crash-confirmer, but its
+    # pass cannot confirm liveness, so the verdict degrades to exit 2.
+    assert calls == ["command", "script", "command"]
+
+
+# Wave 8 items 7+8 (horse + llama): repeat-stability net + digest pin (RED first).
+
+
+def _verification_with_repeat(
+    probe_exit: int, regression_exit: int, repeat_exit: int | None
+) -> SnapshotVerification:
+    """Blocked-probe project verification with an optional second regression run."""
+    return SnapshotVerification(
+        probe=ExecutionEvidence(exit_code=probe_exit, output="blocked"),
+        regression=ExecutionEvidence(exit_code=regression_exit, output="regression"),
+        fresh_target=True,
+        properties=None,
+        mutations=None,
+        repeat_regression=None
+        if repeat_exit is None
+        else ExecutionEvidence(exit_code=repeat_exit, output="repeat"),
+    )
+
+
+def test_repeat_stability_gate_truth_table_is_fail_closed():
+    """Horse: identical exits pass, any mismatch vetoes, an unrun net skips."""
+    from modules.workflows.project_workflow import repeat_stability_passed
+
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, 0)) is True
+    assert repeat_stability_passed(_verification_with_repeat(1, 1, 1)) is True
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, 1)) is False
+    assert repeat_stability_passed(_verification_with_repeat(1, 1, 0)) is False
+    assert repeat_stability_passed(_verification_with_repeat(1, 0, None)) is True
+
+
+async def test_repeat_mismatch_rolls_back_verified_patch():
+    """Horse fail-first: blocked probe + green regression still rolls back on repeat exit 1."""
+    from helpers import FakeProjectMuse as FakeMuse
+    from helpers import FakeProjectSandbox as FakeSandbox
+    from helpers import run_project_workflow as run_workflow
+
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            _verification_with_repeat(1, 0, 0),
+            _verification_with_repeat(0, 0, 0),
+            # patched snapshot: probe blocked + regression green, repeat mismatched.
+            _verification_with_repeat(1, 0, 1),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "rolled_back"
+    assert result.cycle_reports[0].evidence.patched_verification.repeat_regression.exit_code == 1
+
+
+async def test_repeat_match_retains_when_properties_and_mutations_absent():
+    """Horse guard: a matching repeat run must not veto an otherwise verified retain."""
+    from helpers import FakeProjectMuse as FakeMuse
+    from helpers import FakeProjectSandbox as FakeSandbox
+    from helpers import run_project_workflow as run_workflow
+
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            _verification_with_repeat(1, 0, 0),
+            _verification_with_repeat(0, 0, 0),
+            _verification_with_repeat(1, 0, 0),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "retained"
+
+
+async def test_docker_sandbox_runs_regression_twice_for_arbitrary_project(tmp_path):
+    """Horse: unknown contract (properties+mutations None) runs regression twice in-sandbox."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="Arbitrary project with no fixture contract.",
+    )
+    snapshot = snapshot_project(spec)
+    command_runs: list[list[str] | None] = []
+    script_runs: list[str] = []
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            if script is not None:
+                script_runs.append(script)
+                return ProjectCheckResult(exit_code=0, stdout="blocked", stderr="")
+            command_runs.append(command)
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(0)",
+        ["python", "-m", "pytest"],
+        label="repeat-stability",
+    )
+    assert result.properties is None
+    assert result.mutations is None
+    assert result.repeat_regression is not None
+    assert result.repeat_regression.exit_code == 0
+    assert len(command_runs) == 2
+    assert result.regression.exit_code == 0
+
+
+async def test_docker_sandbox_repeat_mismatch_poisons_regression(tmp_path):
+    """Horse fail-closed: a mismatched repeat run turns regression inconclusive (exit 2)."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="Arbitrary project with no fixture contract.",
+    )
+    snapshot = snapshot_project(spec)
+    command_exits = iter([0, 1])
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            if script is not None:
+                return ProjectCheckResult(exit_code=0, stdout="blocked", stderr="")
+            return ProjectCheckResult(exit_code=next(command_exits), stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(0)",
+        ["python", "-m", "pytest"],
+        label="repeat-mismatch",
+    )
+    assert result.repeat_regression is not None
+    assert result.repeat_regression.exit_code == 1
+    assert result.regression.exit_code == 2
+
+
+def test_base_image_digest_and_apk_versions_are_pinned():
+    """Llama: Dockerfiles pin the digest-verified base and lock apk versions; manager agrees."""
+    from modules.core import docker_manager as manager_module
+    from modules.core.registry import BASE_DIR
+
+    pinned = manager_module.PINNED_PYTHON_BASE
+    assert "@sha256:" in pinned
+    for name in ("docker/Dockerfile.target", "docker/Dockerfile.verifier"):
+        content = (BASE_DIR / name).read_text(encoding="utf-8")
+        assert pinned in content, name
+    target = (BASE_DIR / "docker/Dockerfile.target").read_text(encoding="utf-8")
+    assert "nodejs=22.23.4-r0" in target
+    assert "php84=8.4.27-r0" in target

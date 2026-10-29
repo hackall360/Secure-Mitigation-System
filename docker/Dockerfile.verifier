@@ -1,6 +1,9 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-FROM python:3.12-alpine3.22
+FROM python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322
+# Wave 8 item 8 (llama): base digest verified offline via
+# `docker inspect python:3.12-alpine3.22` (RepoDigests) on 2026-10-29.
+# No apk packages on this image, so nothing further to lock.
 RUN addgroup -g 10001 purplebox \
     && adduser -D -u 10001 -G purplebox purplebox \
     && mkdir -p /verifier /workspace \

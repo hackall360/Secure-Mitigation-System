@@ -21,8 +21,8 @@ from fastapi.responses import JSONResponse
 from project_scan import ORIGINAL, create_project, fake_transport
 
 import main
-from config import PurpleBoxConfig
-from project_workflow import execute_project_workflow
+from modules.core.config import PurpleBoxConfig
+from modules.workflows.project_workflow import execute_project_workflow
 
 
 def serve(port: int, output: Path):

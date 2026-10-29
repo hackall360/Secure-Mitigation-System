@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 import main
-from config import PurpleBoxConfig
-from pricing import ScanUsage
+from modules.core.config import PurpleBoxConfig
+from modules.core.pricing import ScanUsage
 
 
 def project_payload(tmp_path):

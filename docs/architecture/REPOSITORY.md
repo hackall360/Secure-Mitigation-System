@@ -11,7 +11,7 @@
   at the repository root. All 34 non-ignore files were verified byte-identical
   to the archive after import. The existing `.gitignore` was preserved and the
   scaffold's rules appended. The source archive was not modified or committed.
-- `VALIDATION.md` contains the scaffold author's original validation report,
+- [`archive/VALIDATION.md`](../archive/VALIDATION.md) contains the scaffold author's original validation report,
   not a record of checks performed in this repository.
 
 ## Local validation of the import
@@ -46,22 +46,22 @@ live checks unless requested. Unit tests are not proof of live integration.
 ## Entry points and local state
 
 - `main.py`: CLI, FastAPI application, static asset and WebSocket endpoints.
-- `config.py`: environment-driven Muse endpoint, model, and timeout configuration.
-- `agents.py`: `MetaMuseClient` and model response schemas.
-- `workflow.py`: scan orchestration.
-- `projects.py`: strict project execution settings and immutable bounded source intake.
-- `project_agents.py`: stateless red/blue stage schemas and source batching.
-- `project_workflow.py`: repeated project review, proof, sanitization, rollback, and reporting.
-- `docker_manager.py`: `DockerSandboxManager` and sandbox lifecycle.
-- `registry.py` and `targets/`: bundled target definitions and source fixtures.
+- `modules/core/config.py`: environment-driven Muse endpoint, model, and timeout configuration.
+- `modules/core/agents.py`: `MetaMuseClient` and model response schemas.
+- `modules/workflows/workflow.py`: fixture scan orchestration.
+- `modules/services/projects.py`: strict project execution settings and immutable bounded source intake.
+- `modules/services/project_agents.py`: stateless red/blue stage schemas and source batching.
+- `modules/workflows/project_workflow.py`: repeated project review, proof, sanitization, rollback, and reporting.
+- `modules/core/docker_manager.py`: `DockerSandboxManager` and sandbox lifecycle.
+- `modules/core/registry.py` and `targets/`: bundled target definitions and source fixtures.
 - `tests/`: isolated unit tests, configured by `pyproject.toml`.
 - `test_harness.py`: local checks and explicit `--docker` / `--api` live checks.
 - `example.env`: configuration template only. Python does not automatically
   load `.env`, so export the configured values before starting the application.
 - `.venv/`, `.env`, caches, and `reports/` are ignored local state.
 
-See `README.md` for running the application, `SPEC.md` for design requirements,
-and `AGENT.md` for maintenance constraints.
+See `README.md` for running the application, [`SPEC.md`](../SPEC.md) for design requirements,
+and [`archive/AGENT.md`](../archive/AGENT.md) for maintenance constraints.
 
 ## Current development setup
 

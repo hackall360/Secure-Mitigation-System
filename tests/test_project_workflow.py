@@ -24,9 +24,9 @@ from helpers import (
     silent_emit,
 )
 
-from agents import AgentError
-from config import PurpleBoxConfig
-from project_agents import (
+from modules.core.agents import AgentError
+from modules.core.config import PurpleBoxConfig
+from modules.services.project_agents import (
     BlueProposal,
     FileReplacement,
     ProjectAgentRunner,
@@ -34,14 +34,17 @@ from project_agents import (
     SourceDocument,
     build_source_batches,
 )
-from project_workflow import (
+from modules.services.projects import ProjectSpec
+from modules.workflows.project_workflow import (
+    DockerProjectSandbox,
     ProjectWorkflowInput,
     ProjectWorkflowLimits,
+    differential_class,
+    differential_passed,
     execute_project_workflow,
     protected_regression_paths,
     validate_replacements,
 )
-from projects import ProjectSpec
 
 PROJECT = ProjectWorkflowInput(
     name="demo",
@@ -127,6 +130,46 @@ async def test_failed_patch_is_rolled_back_and_not_carried_into_next_cycle():
     assert [report.status for report in result.cycle_reports] == ["rolled_back", "retained"]
     assert sandbox.calls[3]["files"] == PROJECT.files
     assert result.cumulative_diff.count("validated input") == 1
+
+
+def test_differential_passed_truth_table_is_fail_closed():
+    assert differential_passed(0, 0) is True
+    assert differential_passed(0, 1) is False
+    assert differential_passed(1, 0) is False
+    assert differential_passed(2, 0) is False
+    assert differential_passed(None, 0) is False
+    assert differential_passed(0, None) is False
+    assert differential_passed(None, None) is False
+
+
+def test_differential_class_labels_regression_outcomes():
+    assert differential_class(0) == "pass"
+    assert differential_class(1) == "fail"
+    assert differential_class(2) == "fail"
+    assert differential_class(None) == "missing"
+
+
+async def test_passing_cycle_records_differential_passed_true():
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox([verification(1), verification(0), verification(1)])
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "retained"
+    assert result.cycle_reports[0].evidence.differential_passed is True
+
+
+async def test_failing_patched_regression_records_differential_false_and_rolls_back():
+    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeSandbox(
+        [
+            verification(1),
+            verification(0),
+            # patched snapshot: probe blocked but regression failed (exit 3).
+            verification(1, regression=3),
+        ]
+    )
+    result = await run_workflow(muse=muse, sandbox=sandbox)
+    assert result.cycle_reports[0].status == "rolled_back"
+    assert result.cycle_reports[0].evidence.differential_passed is False
 
 
 async def test_multiple_verified_cycles_carry_cumulative_snapshot_only():
@@ -424,7 +467,7 @@ async def test_original_baseline_is_exported_as_observed_evidence():
 
 async def test_project_research_on_runs_grounding_and_stores_records(monkeypatch):
     """H5: opt-in project intel grounds the red contract and lands on the report."""
-    import workflow as _workflow
+    import modules.workflows.workflow as _workflow
 
     async def fake_gather(muse, settings, filename, contract, log):
         await log("research", "fake intel pass")
@@ -471,3 +514,158 @@ async def test_project_research_off_by_default_stores_nothing():
     sandbox = FakeSandbox([verification(1)])
     result = await run_workflow(muse=muse, sandbox=sandbox)
     assert result.research_records == []
+
+
+def _l2_docker_sandbox(
+    tmp_path,
+    probe_code,
+    *,
+    baseline_code=0,
+    post_probe_code=None,
+    use_exec_run=True,
+    post_check_code=None,
+):
+    """Build a DockerProjectSandbox whose manager fakes start/run/stop channels.
+
+    - ``probe_code``: exit returned by the probe run (run_project_check script=...).
+    - ``baseline_code``: exit of the pre-probe regression run.
+    - ``post_probe_code``: exit surfaced via target.exec_run (None = no exec_run attr).
+    - ``post_check_code``: exit surfaced via run_project_check command=... fallback.
+    """
+    from modules.core.docker_manager import ProjectCheckResult
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="L2 ghost-probe liveness oracle.",
+    )
+    from modules.services.projects import snapshot_project
+
+    snapshot = snapshot_project(spec)
+
+    def check_result(code):
+        return ProjectCheckResult(exit_code=code, stdout="out", stderr="err")
+
+    calls = {"run_project_check": [], "stopped": []}
+
+    class _Target:
+        def exec_run(self, argv):
+            # Readiness poll (python3 -c READY_SCRIPT) answers ready; only the
+            # regression argv counts as a post-probe liveness attempt.
+            if list(argv)[:1] == ["python3"]:
+
+                class _Ready:
+                    exit_code = 0
+                    output = b"ready"
+
+                return _Ready()
+            assert isinstance(argv, list) and argv == ["python", "-m", "pytest"]
+            calls["exec_run"] = calls.get("exec_run", 0) + 1
+
+            class _R:
+                exit_code = post_probe_code
+                output = b"post-probe output"
+
+            return _R()
+
+    target = _Target() if use_exec_run else object()
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            calls["started"] = True
+            return target, "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            calls["run_project_check"].append({"command": command, "script": script})
+            if script is not None:
+                return check_result(probe_code)
+            if post_check_code is None:
+                return check_result(baseline_code)
+            # First command call is the pre-probe baseline; later ones are fallback.
+            command_calls = [c for c in calls["run_project_check"] if c["command"] is not None]
+            if len(command_calls) == 1:
+                return check_result(baseline_code)
+            return check_result(post_check_code)
+
+        def stop_project(self, _target):
+            calls["stopped"].append(True)
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    return sandbox, calls
+
+
+async def test_l2_inconclusive_probe_dead_target_overrides_regression(tmp_path):
+    """L2a (red): probe exit 2 + dead post-probe target must fail regression."""
+    sandbox, calls = _l2_docker_sandbox(tmp_path, probe_code=2, post_probe_code=1)
+    result = sandbox.verify_project_snapshot(
+        PROJECT,
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(2)",
+        ["python", "-m", "pytest"],
+        label="l2-a",
+    )
+    assert result.probe.exit_code == 2
+    assert result.regression.exit_code != 0
+    assert "Post-probe regression failed" in result.regression.output
+    assert calls.get("exec_run", 0) == 1
+
+
+async def test_l2_inconclusive_probe_live_target_keeps_clean_regression(tmp_path):
+    """L2b: probe exit 2 + live post-probe target keeps regression 0, probe 2."""
+    sandbox, calls = _l2_docker_sandbox(tmp_path, probe_code=2, post_probe_code=0)
+    result = sandbox.verify_project_snapshot(
+        PROJECT,
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(2)",
+        ["python", "-m", "pytest"],
+        label="l2-b",
+    )
+    assert result.probe.exit_code == 2
+    assert result.regression.exit_code == 0
+    assert "Post-probe regression failed" not in result.regression.output
+    assert calls.get("exec_run", 0) == 1
+
+
+async def test_l2_reachable_probe_runs_no_post_probe_override(tmp_path):
+    """L2c: probe exit 0 (reachable) must NOT run post-probe liveness override."""
+    sandbox, calls = _l2_docker_sandbox(tmp_path, probe_code=0, post_probe_code=1)
+    result = sandbox.verify_project_snapshot(
+        PROJECT,
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(0)",
+        ["python", "-m", "pytest"],
+        label="l2-c",
+    )
+    assert result.probe.exit_code == 0
+    assert result.regression.exit_code == 0
+    assert "Post-probe regression failed" not in result.regression.output
+    assert calls.get("exec_run", 0) == 0
+
+
+async def test_l2_inconclusive_probe_uses_fallback_check_without_exec(tmp_path):
+    """L2d: probe exit 2 without target.exec_run falls back to run_project_check."""
+    sandbox, calls = _l2_docker_sandbox(
+        tmp_path,
+        probe_code=2,
+        use_exec_run=False,
+        post_check_code=3,
+    )
+    result = sandbox.verify_project_snapshot(
+        PROJECT,
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(2)",
+        ["python", "-m", "pytest"],
+        label="l2-d",
+    )
+    assert result.probe.exit_code == 2
+    assert result.regression.exit_code == 3
+    assert "Post-probe regression failed" in result.regression.output
+    command_calls = [c for c in calls["run_project_check"] if c["command"] is not None]
+    assert len(command_calls) == 2

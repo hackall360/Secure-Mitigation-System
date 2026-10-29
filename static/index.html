@@ -6,7 +6,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07070c">
+  <meta name="theme-color" content="#101b29">
   <title>Secure Mitigation System · Boundary verification</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
@@ -17,9 +17,19 @@
 <body>
   <div class="backdrop" aria-hidden="true"><div class="grid-glow"></div><div class="orb orb-red"></div><div class="orb orb-blue"></div></div><div class="scanline" aria-hidden="true"></div>
   <a class="skip" href="#main">Skip to dashboard</a>
+  <aside class="workspace-rail" aria-label="Workspace navigation">
+    <a class="rail-brand" href="#main" aria-label="Secure Mitigation System dashboard"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27 7v8c0 6-5 11-11 14C10 26 5 21 5 15V7Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m11 16 3 3 7-8" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>SMS</span></a>
+    <nav aria-label="Dashboard sections">
+      <a href="#configure"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>Configure</span></a>
+      <a href="#pipeline-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Pipeline</span></a>
+      <a href="#agent-traces"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16"/></svg><span>Agents</span></a>
+      <a href="#telemetry-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><span>Activity</span></a>
+    </nav>
+    <span class="rail-foot">LOCAL<br>WORKSPACE</span>
+  </aside>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.1</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.4.0</span></a>
       <div class="top-status">
         <span class="chip" id="chip-key" data-state="pending" title="Muse API key in server environment"><i></i>API key</span>
         <span class="chip" id="chip-docker" data-state="pending" title="Docker daemon and base images"><i></i>Docker</span>
@@ -31,10 +41,11 @@
     <main id="main">
       <section class="hero">
         <div>
-          <p class="eyebrow">Live AI security demo · Sealed sandbox</p>
-          <h1>Watch attackers try.<br><span class="gradient">Watch defenders fix it.</span></h1>
-          <p class="value-prop">First time here? Press Run below — a red-team bot tries to break in, a blue-team bot patches the hole, every step replays live.</p>
-          <p class="lede">Everything runs in disposable sandboxes that vanish when the scan ends. Normal app behavior is re-checked, so clean features keep working — the proof is on screen.</p><div class="hype-ticker" aria-hidden="true"><span class="hype-chip">Live in your browser</span><span class="hype-chip">Red attacks</span><span class="hype-chip">Blue patches</span><span class="hype-chip">Proof on screen</span></div>
+          <p class="eyebrow"><span class="eyebrow-line"></span>Boundary verification workspace</p>
+          <h1>Challenge the boundary.<br><span class="gradient">Verify the defense.</span></h1>
+          <p class="value-prop">One isolated environment. Two opposing teams. Evidence at every step.</p>
+          <p class="lede">Choose a target, run a probe, and follow the patch through regression checks. Your original fixture stays untouched.</p>
+          <div class="hype-ticker" aria-label="Verification workflow"><span class="hype-chip">Red probes</span><span class="hype-chip">Blue patches</span><span class="hype-chip">Checks decide</span></div>
         </div>
         <dl class="stats" aria-label="Session summary">
           <div><dt>Status</dt><dd id="status" class="status" role="status" data-state="idle">Checking setup</dd></div>
@@ -43,15 +54,15 @@
         </dl>
       </section>
 
-      <section class="card picker" aria-labelledby="picker-title">
+      <section id="configure" class="card picker" aria-labelledby="picker-title">
         <header class="card-head">
-          <div><p class="eyebrow">Step 1</p><h2 id="picker-title">Choose what to verify</h2></div>
+          <div><p class="eyebrow">01 / Configure</p><h2 id="picker-title">Choose what to verify</h2></div>
           <p class="hint"><kbd>Enter</kbd> one-click demo · <kbd>Esc</kbd> stop</p>
         </header>
         <div class="mode-switch" role="radiogroup" aria-label="Verification source">
           <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
-          <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
-          <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
+          <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
+          <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -63,6 +74,24 @@
           <div class="field wide"><label for="demo-build-brief">What do you want to build?</label><input id="demo-build-brief" name="build_brief" maxlength="500" autocomplete="off" placeholder="a tiny note-taking web app with login"><small>Plain words. Greenhouse designs a small self-contained demo around it; red and blue then run it in Docker.</small></div>
           <div class="field wide"><label for="demo-vulns">Vulnerabilities to implement</label><input id="demo-vulns" name="vulns" maxlength="500" autocomplete="off" placeholder="CVE-2024-3094, SQL injection, header reflection"><small>CVEs, named types, or free text — comma separated. Green + research look each one up (CVE records, threat intel, web) and build the requested flaws.</small></div>
           <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Optional extra keywords. Combined with the brief and vulnerabilities above.</small></div>
+          <div class="field"><label for="demo-scan-profile">Scan intensity</label><select id="demo-scan-profile" name="scan_profile" data-feature="demo.scan_profile">
+            <option value="extra_light" selected>Extra light</option>
+            <option value="light">Light</option>
+            <option value="medium">Medium</option>
+            <option value="heavy">Heavy</option>
+            <option value="super_heavy">Super heavy</option>
+            <option value="ultra_heavy">Ultra heavy</option>
+            <option value="custom">Custom</option>
+          </select><small id="demo-scan-description">1 cycle · one cycle runs Red, Blue, Red, Blue.</small></div>
+          <div class="field compact"><label for="demo-cycles">Cycles</label><input id="demo-cycles" name="cycles" type="number" min="1" max="20" value="1" readonly required data-feature="demo.cycles"><small>Derived from intensity unless Custom is selected.</small></div>
+          <div class="field compact"><label for="demo-red-agents">Red agents <span>Ultra heavy only</span></label><input id="demo-red-agents" name="red_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.red_agents"></div>
+          <div class="field compact"><label for="demo-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="demo-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.blue_agents"></div>
+          <div class="field compact"><label for="demo-budget">Context budget</label><input id="demo-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required data-feature="demo.context_budget"></div>
+          <div class="field compact"><label for="demo-size">Demo size</label><select id="demo-size" name="demo_size" data-feature="demo.demo_size"><option value="standard" selected>Standard</option><option value="small">Small</option></select><small>Fewer routes when small.</small></div>
+          <div class="field compact"><label for="demo-flaw-count">Flaw count</label><input id="demo-flaw-count" name="flaw_count" type="number" min="1" max="8" placeholder="all" data-feature="demo.flaw_count"><small>1-8; empty keeps all.</small></div>
+          <div class="field compact"><label for="demo-seed">Demo seed</label><input id="demo-seed" name="seed" type="number" step="1" placeholder="random" data-feature="demo.seed"><small>Variation nonce.</small></div>
+          <label class="remote-consent wide"><input id="demo-offline" type="checkbox" data-feature="demo.intel_offline"><span><strong>Build offline</strong><small>Skip live threat-intel lookups; Greenhouse builds from static flaw patterns.</small></span></label>
+          <label class="remote-consent wide"><input id="demo-allow-remote" type="checkbox" data-feature="demo.allow_remote"><span><strong>Allow generated source to leave this host</strong><small>Visible in Green-build mode; mirrors the project consent above. Without it the demo builds offline.</small></span></label>
         </div>
         <form id="project-form" class="project-form" hidden novalidate>
           <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>
@@ -84,7 +113,7 @@
           <div class="field compact"><label for="project-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="project-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required></div>
           <div class="field compact"><label for="project-budget">Context budget</label><input id="project-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
           <label class="remote-consent wide"><input id="research-toggle" type="checkbox"><span><strong>Ground with threat intel</strong><small>Opt-in keyless lookups (OSV, CIRCL, GHSA, EPSS) plus local scanners. Off by default; Docker evidence still decides every verdict.</small></span></label>
-          <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner and Dependency-Check against a temp copy on this host. Requires threat intel above.</small></span></label>
+          <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner, Dependency-Check and Dependency-Track against a temp copy on this host. Requires threat intel above.</small></span></label>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
@@ -104,7 +133,7 @@
 
       <section class="card pipeline-card" aria-labelledby="pipeline-title">
         <header class="card-head">
-          <div><p class="eyebrow">Step 2</p><h2 id="pipeline-title">Verification pipeline</h2></div>
+          <div><p class="eyebrow">02 / Execute</p><h2 id="pipeline-title">Verification pipeline</h2></div>
           <div class="progress-wrap" aria-hidden="true"><div id="progress" class="progress"><span></span></div></div>
         </header>
         <ol id="pipeline" class="pipeline">
@@ -120,27 +149,27 @@
 
       <section class="card timeline-card" aria-labelledby="timeline-title">
         <header class="card-head">
-          <div><p class="eyebrow">Step 2.5</p><h2 id="timeline-title">Scan timeline</h2></div>
+          <div><p class="eyebrow">Event stream</p><h2 id="timeline-title">Scan timeline</h2></div>
           <p class="hint">One marker per event · newest at the right</p>
         </header>
-        <div id="scan-timeline" class="timeline" role="log" aria-live="polite" aria-label="Scan timeline" tabindex="0"><p class="empty">Nothing here yet — press Run and watch sandbox, probe, patch and re-verify land as markers.</p></div>
+        <div id="scan-timeline" class="timeline" role="log" aria-live="polite" aria-label="Scan timeline" tabindex="0"><p class="empty">Your scan, event by event. Run a verification to populate this timeline.</p></div>
         <div class="timeline-legend" aria-hidden="true"><span><i class="sq red"></i>Red</span><span><i class="sq blue"></i>Blue</span><span><i class="sq green"></i>Green</span><span><i class="sq purple"></i>System</span></div>
       </section>
 
-      <section class="team-grid" aria-label="Agent traces">
+      <section id="agent-traces" class="team-grid" aria-label="Agent traces">
         <article class="card panel red" data-team="red">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">R</span><div><h2>Boundary auditor</h2><span id="red-model" class="model">Muse</span></div></div>
             <div class="panel-tools"><span class="team-label">Red team</span><button class="icon-btn" data-copy="red" title="Copy red team trace" aria-label="Copy red team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="red-log" class="log" role="log" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>No break-in attempts yet.<br><span>Press Run — watch red prove the input flaw in Docker, right here.</span></p></div>
+          <div id="red-log" class="log" role="log" tabindex="0" aria-label="Boundary auditor output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>Ready to challenge the boundary.<br><span>Probe analysis and evidence will appear here when a scan starts.</span></p></div>
         </article>
         <article class="card panel blue" data-team="blue">
           <header class="panel-head">
             <div class="who"><span class="avatar" aria-hidden="true">B</span><div><h2>Input sanitizer</h2><span id="blue-model" class="model">Muse</span></div></div>
             <div class="panel-tools"><span class="team-label">Blue team</span><button class="icon-btn" data-copy="blue" title="Copy blue team trace" aria-label="Copy blue team trace"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
           </header>
-          <div id="blue-log" class="log" role="log" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>No fix yet.<br><span>Once red proves the break-in, the blue-team sanitization and re-verification land here.</span></p></div>
+          <div id="blue-log" class="log" role="log" tabindex="0" aria-label="Input sanitizer output"><p class="empty"><span class="empty-icon" aria-hidden="true"><svg class="icon-xl" viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Ready to verify the defense.<br><span>Candidate patches and regression evidence will appear here.</span></p></div>
         </article>
       </section>
 
@@ -163,22 +192,29 @@
             <div id="green-roster" class="roster"></div>
           </div>
         </div>
-        <div id="comms-log" class="log comms-log" role="log" aria-label="Team communications"><p class="empty">Both teams are quiet. Press Run to hear the attacker and defender talk through probe, patch and re-verify.</p></div>
+        <div id="comms-log" class="log comms-log" role="log" tabindex="0" aria-label="Team communications"><p class="empty">Team communications will appear here as agents analyze, probe, and patch.</p></div>
       </section>
 
       <section id="result-panel" class="card result" data-status="idle" hidden aria-live="polite">
         <div class="result-main">
           <span class="result-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 12l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <div><p class="eyebrow">Scan result</p><h2 id="result-title"></h2><p id="result-message"></p></div>
-          <div class="result-actions"><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="download-btn" class="btn ghost">Download JSON report <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+          <div class="result-actions"><button id="download-receipt-btn" class="btn ghost" hidden>Download verdict receipt <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="download-patch-btn" class="btn ghost" hidden>Download candidate.patch <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="download-btn" class="btn ghost">Download JSON report <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
         </div>
         <dl class="facts">
           <div><dt>Baseline</dt><dd id="fact-baseline">—</dd></div>
           <div><dt>Pre-patch probe</dt><dd id="fact-pre">—</dd></div>
           <div><dt>Regression</dt><dd id="fact-regression">—</dd></div>
           <div><dt>Post-patch probe</dt><dd id="fact-post">—</dd></div>
+          <div><dt>Verdict receipt</dt><dd id="fact-receipt">—</dd></div>
+          <div><dt>Guard rationales</dt><dd id="fact-guards">—</dd></div>
+          <div><dt>Fast-lane top</dt><dd id="fact-topping">—</dd></div>
+          <div><dt>Mutations</dt><dd id="fact-mutations">—</dd></div>
           <div><dt>Cleanup</dt><dd id="fact-cleanup">—</dd></div>
         </dl>
+        <div id="guard-rationales" class="cycle-reports" hidden><h3>Guard rationales</h3><ul id="guard-list"></ul></div>
+        <div id="fast-lane-topping" class="cycle-reports" hidden><h3>Fast-lane topping</h3><ol id="topping-list"></ol></div>
+        <div id="mutation-evidence" class="cycle-reports" hidden><h3>Mutation probes</h3><p id="mutation-text"></p></div>
         <div id="usage" class="usage" hidden>
           <div class="usage-total"><span>Estimated cost</span><strong id="usage-cost">—</strong><small id="usage-tokens"></small></div>
           <ul id="usage-calls" class="usage-calls" aria-label="Model calls"></ul>
@@ -205,7 +241,7 @@
             <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           </div>
         </header>
-        <div id="sys-log" class="log system-log" role="log" aria-label="Sandbox activity"><p class="empty">Ready when you are. Press Run — sandbox setup, probe evidence and re-verification land here, with a marker on the timeline above.</p></div>
+        <div id="sys-log" class="log system-log" role="log" tabindex="0" aria-label="Sandbox activity"><p class="empty">Ready when you are. Press Run — sandbox setup, probe evidence and re-verification land here, with a marker on the timeline above.</p></div>
       </section>
     </main>
 

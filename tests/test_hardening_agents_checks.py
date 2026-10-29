@@ -4,8 +4,8 @@
 
 import pytest
 
-from agents import _extract_json_object
-from checks import validate_verifier_script
+from modules.core.agents import _extract_json_object
+from modules.core.checks import validate_verifier_script
 
 
 def test_extract_json_strips_fences_and_preserves_braces_in_strings():
@@ -37,8 +37,8 @@ def test_verifier_script_rejects_missing_exit_and_forbidden_imports():
 async def test_fenced_json_parses_and_transient_429_retries_with_usage():
     import httpx
 
-    from agents import MetaMuseClient, RedTeamFinding
-    from config import PurpleBoxConfig
+    from modules.core.agents import MetaMuseClient, RedTeamFinding
+    from modules.core.config import PurpleBoxConfig
 
     finding = {
         "vulnerability_class": "input validation",
@@ -87,8 +87,8 @@ async def test_schema_failure_records_usage_before_error():
 
     import httpx
 
-    from agents import AgentError, MetaMuseClient
-    from config import PurpleBoxConfig
+    from modules.core.agents import AgentError, MetaMuseClient
+    from modules.core.config import PurpleBoxConfig
 
     def handle(request):
         return httpx.Response(
@@ -127,8 +127,8 @@ def test_runner_forces_exit_two_without_explicit_exit(monkeypatch):
 def test_docker_caches_snapshots_and_untracks_staging():
     from unittest.mock import MagicMock
 
-    from config import PurpleBoxConfig
-    from docker_manager import DockerSandboxManager
+    from modules.core.config import PurpleBoxConfig
+    from modules.core.docker_manager import DockerSandboxManager
 
     client = MagicMock()
     stage = MagicMock()
@@ -148,8 +148,8 @@ def test_docker_caches_snapshots_and_untracks_staging():
 def test_docker_options_contain_ulimits_and_ipc():
     from unittest.mock import MagicMock
 
-    from config import PurpleBoxConfig
-    from docker_manager import DockerSandboxManager
+    from modules.core.config import PurpleBoxConfig
+    from modules.core.docker_manager import DockerSandboxManager
 
     manager = DockerSandboxManager(PurpleBoxConfig(), client=MagicMock())
     opts = manager._options("verifier")
@@ -161,8 +161,8 @@ def test_docker_options_contain_ulimits_and_ipc():
 def test_replace_target_untracks_previous_container():
     from unittest.mock import MagicMock
 
-    from config import PurpleBoxConfig
-    from docker_manager import DockerSandboxManager
+    from modules.core.config import PurpleBoxConfig
+    from modules.core.docker_manager import DockerSandboxManager
 
     client = MagicMock()
     manager = DockerSandboxManager(PurpleBoxConfig(), client=client)
@@ -183,8 +183,8 @@ def test_replace_target_untracks_previous_container():
 def test_validate_replacements_rejects_deep_guards():
     import hashlib
 
-    from project_agents import BlueProposal, FileReplacement
-    from project_workflow import validate_replacements
+    from modules.services.project_agents import BlueProposal, FileReplacement
+    from modules.workflows.project_workflow import validate_replacements
 
     def proposal(path, original, new, kind="input_validation"):
         return BlueProposal(
@@ -239,7 +239,7 @@ def test_validate_replacements_rejects_deep_guards():
 
 
 def test_secret_content_scanner_and_skipped(tmp_path):
-    from projects import ProjectSpec, _contains_secret_material, snapshot_project
+    from modules.services.projects import ProjectSpec, _contains_secret_material, snapshot_project
 
     assert _contains_secret_material(b"-----BEGIN PRIVATE KEY-----\nabc")
     assert _contains_secret_material(b"key AKIAIOSFODNN7EXAMPLE here")
@@ -265,8 +265,8 @@ def test_secret_content_scanner_and_skipped(tmp_path):
 
 
 def test_snapshot_context_prioritizes_source_over_docs(tmp_path):
-    from project_workflow import ProjectWorkflowLimits, _snapshot_context
-    from projects import ProjectSpec, snapshot_project
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import ProjectWorkflowLimits, _snapshot_context
 
     for i in range(4):
         (tmp_path / f"doc{i}.md").write_text("x\n")

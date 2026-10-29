@@ -17,19 +17,20 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from config import ConfigurationError, PurpleBoxConfig, load_config
-from cve_workflow import execute_cve_scan
-from docker_manager import (
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config
+from modules.core.docker_manager import (
     DockerSandboxManager,
     build_base_images,
     docker_status,
     remove_stale_resources,
 )
-from profiles import ProfileError, apply_profile, available_profiles, default_profile
-from project_workflow import execute_project_workflow, redact_report_for_user
-from projects import ProjectSpec
-from registry import BASE_DIR, TARGETS_REGISTRY
-from scan_profiles import SCAN_PROFILES
+from modules.core.profiles import ProfileError, apply_profile, available_profiles, default_profile
+from modules.core.registry import BASE_DIR, TARGETS_REGISTRY
+from modules.core.scan_profiles import SCAN_PROFILES
+from modules.services.projects import ProjectSpec
+from modules.workflows.cve_workflow import execute_cve_scan
+from modules.workflows.project_workflow import execute_project_workflow, redact_report_for_user
+from modules.workflows.workflow import execute_purple_workflow, redact_fixture_result_for_user
 from sms_cli import (
     LoadError,
     Spinner,
@@ -40,10 +41,46 @@ from sms_cli import (
     status_color,
     usage_table,
 )
-from workflow import execute_purple_workflow, redact_fixture_result_for_user
 
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
+
+# Single source of truth for the release version (LAW 12: 0.major.minor).
+# Every surface renders this: FastAPI metadata, /api/health, --version,
+# dashboard footer. Bump per LAW 12 on every shipped change set.
+APP_VERSION = "0.4.0"
+
+# Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
+# value in plain English. Rendered as the --help epilog; sms_cli and tui
+# mirror the same lines so all three surfaces agree. No new flags here,
+# so LAW 8 (no dead flags) holds by construction.
+CAPABILITIES_EPILOG = """Same-day value (Wave 2/5/8, all in the default scan, no extra flags):
+  receipts: receipt.json proves what the sandbox actually ran (probe exits + patch hash).
+  rationale: guard rationales show why each patch guard fired, in plain words.
+  topping: fast-lane topping lists the most reachable + fixable CVE first (--fast-lane).
+  mutations: mutation probes confirm the fix still holds under small input changes.
+  freshness: freshness stamps show the intel was fetched live today, not cached.
+  templates: template-shaped patches stay inside the small-edit guard budget.
+  stale token: KEV/EPSS signals older than 1 day render as stale:<date> so old intel never outranks fresh.
+  repeat-stability: repeat-stability re-runs the check so a flaky pass cannot verify."""
+
+
+def _demo_build_failure(exc: BaseException) -> dict:
+    """User-safe error report for a failed demo build (UI result-card shape)."""
+    return {
+        "status": "error",
+        "message": f"Demo generation failed ({type(exc).__name__}): {exc}",
+        "project": "ai-demo",
+        "cycles": [],
+        "cycle_reports": [],
+        "cumulative_diff": "",
+        "diff": "",
+        "research_records": [],
+        "usage": {"calls": []},
+        "total_tokens": 0,
+        "cost_usd": None,
+        "cleanup_ok": True,
+    }
 
 
 async def run_demo_build(
@@ -54,6 +91,16 @@ async def run_demo_build(
     build_brief: str = "",
     vulns: str = "",
     intel_offline: bool = False,
+    scan_profile: str = "extra_light",
+    cycles: int | None = None,
+    red_agents: int = 5,
+    blue_agents: int = 5,
+    context_budget: int = 32768,
+    research: bool = False,
+    research_scanners: tuple = (),
+    demo_size: str = "standard",
+    flaw_count: int | None = None,
+    seed: int | None = None,
 ):
     """Green builder for the dashboard: generate a demo project, then red/blue it.
 
@@ -61,11 +108,18 @@ async def run_demo_build(
     workflow for evidence-gated cycles. Returned dict is already user-redacted.
     `build_brief` is what the user wants built; `vulns` lists CVEs, named
     types, or free text to implement. Both flow into intent parsing + research.
+    Scan intensity/team/budget mirror the CLI --ai-demo flags and the project
+    form widgets (M1-M5): named profiles force cycle counts, custom allows
+    explicit cycles, agent counts active on ultra_heavy only.
     """
-    from agents import MetaMuseClient
-    from demo_gen import generate_demo_project, materialize_demo_project, parse_build_intent
-    from intel_search import intel_for_demo
-    from project_workflow import redact_report_for_user
+    from modules.core.agents import AgentError, MetaMuseClient
+    from modules.intel.intel_search import intel_for_demo
+    from modules.services.demo_gen import (
+        generate_demo_project,
+        materialize_demo_project,
+        parse_build_intent,
+    )
+    from modules.workflows.project_workflow import redact_report_for_user
 
     intent = parse_build_intent(build_brief=build_brief, vulns=vulns, theme=theme)
     themes = [w for w in (theme or "input validation SQL injection XSS").split() if w][:6]
@@ -82,8 +136,8 @@ async def run_demo_build(
         # CVE endpoint series: exact records + EPSS per requested id.
         if intent.cve_ids:
             try:
-                from research import cve_records as _cve_records
-                from workflow import blocking as _blocking
+                from modules.intel.research import cve_records as _cve_records
+                from modules.workflows.workflow import blocking as _blocking
 
                 cve_hits = await _blocking(_cve_records, intent.cve_ids)
                 intel = list(cve_hits) + list(intel)
@@ -101,8 +155,8 @@ async def run_demo_build(
         web_queries = list(intent.named_types) + list(intent.free_text)
         if web_queries:
             try:
-                from research import web_notes as _web_notes
-                from workflow import blocking as _blocking2
+                from modules.intel.research import web_notes as _web_notes
+                from modules.workflows.workflow import blocking as _blocking2
 
                 notes = await _blocking2(_web_notes, web_queries)
                 intel = list(intel) + list(notes)
@@ -123,31 +177,79 @@ async def run_demo_build(
             f"Greenhouse brief: {intent.build_brief[:160] or 'showcase demo'}; "
             f"requested flaws: {', '.join(intent.vulns[:6]) or 'novel mix'}.",
         )
-    muse = MetaMuseClient(settings)
+    muse = None
     try:
-        files = await generate_demo_project(
-            muse,
-            intel_context=intel,
-            theme=" ".join(themes),
-            build_brief=intent.build_brief,
-            vulns=intent.vulns,
-        )
+        try:
+            muse = MetaMuseClient(settings)
+            files = await generate_demo_project(
+                muse,
+                intel_context=intel,
+                theme=" ".join(themes),
+                build_brief=intent.build_brief,
+                vulns=intent.vulns,
+                size=demo_size,
+                flaw_count=flaw_count,
+                seed=seed,
+            )
+        except (AgentError, ValueError, TypeError, OSError) as exc:
+            # Invalid generation output (bad syntax, unsafe content, budget
+            # overflow) or a Muse transport/schema failure is a reportable
+            # scan outcome, not a dead socket.
+            await emit(
+                "green",
+                f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build.",
+            )
+            return _demo_build_failure(exc)
     finally:
         try:
-            await muse.aclose()
+            if muse is not None:
+                await muse.aclose()
         except Exception:
             pass
     try:
-        from chatter import chatter as _chatter
+        from modules.services.chatter import chatter as _chatter
 
         await emit("green", _chatter("green", n=len(files.flaw_notes), path="app.py"))
     except Exception:
         await emit("green", "Greenhouse planted a fresh demo with wobbly joints.")
-    spec = materialize_demo_project(files)
+    try:
+        spec = materialize_demo_project(files)
+    except (ValueError, TypeError, OSError) as exc:
+        # A bad generation (invalid syntax, unsafe content) must surface as a
+        # reportable scan outcome, never a dead socket with no result card.
+        await emit(
+            "green", f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build."
+        )
+        return _demo_build_failure(exc)
     await emit(
         "green",
         f"Greenhouse grew {spec.path.name}: {', '.join(files.cve_inspiration) or 'novel flaw mix'}. Red and blue, it is yours.",
     )
+    # Intensity/team/budget (M1-M5): same stamping rule as the CLI ai_demo_runner —
+    # named profiles force cycle counts, custom honors explicit cycles.
+    from modules.services.projects import ProjectSpec as _Spec
+
+    dump = spec.model_dump(mode="json")
+    if scan_profile in SCAN_PROFILES:
+        dump["scan_profile"] = scan_profile
+        dump["cycles"] = SCAN_PROFILES[scan_profile].cycles
+    if scan_profile == "custom" and cycles is not None:
+        try:
+            dump["cycles"] = max(1, min(20, int(cycles)))
+        except (TypeError, ValueError):
+            pass
+    if scan_profile == "ultra_heavy":
+        try:
+            dump["red_agents"] = max(1, min(12, int(red_agents)))
+            dump["blue_agents"] = max(1, min(12, int(blue_agents)))
+        except (TypeError, ValueError):
+            pass
+    try:
+        dump["context_budget"] = max(1024, min(131072, int(context_budget)))
+    except (TypeError, ValueError):
+        pass
+    dump["allow_remote_inference"] = not intel_offline or settings.inference_mode == "local"
+    spec = _Spec.model_validate(dump)
     result = await execute_project_workflow(spec, emit, config=settings)
     return redact_report_for_user(result)
 
@@ -176,7 +278,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
     application = FastAPI(
         title="Secure Mitigation System",
-        version="0.1.0",
+        version=APP_VERSION,
         docs_url=None,
         redoc_url=None,
         lifespan=readiness_lifespan,
@@ -221,6 +323,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             settings.validate()
             return {
                 "status": "ok",
+                "version": APP_VERSION,
                 "api_key_configured": bool(settings.meta_api_key),
                 "inference_mode": settings.inference_mode,
                 "inference_ready": settings.inference_mode == "local"
@@ -301,7 +404,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             await socket.close(code=1013)
             return
 
-        from chatter import socket_emit as _socket_emit
+        from modules.services.chatter import socket_emit as _socket_emit
 
         emit = _socket_emit(socket)
 
@@ -343,6 +446,37 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     build_brief = str(request.get("build_brief", "") or "")[:500]
                     vulns = str(request.get("vulns", "") or "")[:500]
                     intel_offline = bool(request.get("intel_offline", False))
+                    demo_scan_profile = str(request.get("scan_profile", "") or "")
+                    if demo_scan_profile not in SCAN_PROFILES:
+                        demo_scan_profile = "extra_light"
+                    try:
+                        demo_cycles = request.get("cycles", None)
+                        demo_cycles = (
+                            None if demo_cycles is None else max(1, min(20, int(demo_cycles)))
+                        )
+                    except (TypeError, ValueError):
+                        demo_cycles = None
+                    try:
+                        demo_red = max(1, min(12, int(request.get("red_agents", 5))))
+                        demo_blue = max(1, min(12, int(request.get("blue_agents", 5))))
+                        demo_budget = max(
+                            1024, min(131072, int(request.get("context_budget", 32768)))
+                        )
+                    except (TypeError, ValueError):
+                        demo_red, demo_blue, demo_budget = 5, 5, 32768
+                    demo_size = str(request.get("demo_size", "") or "")
+                    if demo_size not in ("small", "standard"):
+                        demo_size = "standard"
+                    try:
+                        _flaw = request.get("flaw_count", None)
+                        demo_flaw_count = None if _flaw is None else max(1, min(8, int(_flaw)))
+                    except (TypeError, ValueError):
+                        demo_flaw_count = None
+                    try:
+                        _seed = request.get("seed", None)
+                        demo_seed = None if _seed is None else int(_seed)
+                    except (TypeError, ValueError):
+                        demo_seed = None
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
                         {
@@ -360,6 +494,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     build_brief=build_brief,
                     vulns=vulns,
                     intel_offline=intel_offline,
+                    scan_profile=demo_scan_profile,
+                    cycles=demo_cycles,
+                    red_agents=demo_red,
+                    blue_agents=demo_blue,
+                    context_budget=demo_budget,
+                    demo_size=demo_size,
+                    flaw_count=demo_flaw_count,
+                    seed=demo_seed,
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
@@ -393,15 +535,26 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         return
                     safe = result.model_dump()
                     try:
-                        from project_workflow import redact_report_for_user as _redact_proj
-                        from workflow import redact_fixture_result_for_user as _redact_fixt
+                        from modules.workflows.project_workflow import (
+                            redact_report_for_user as _redact_proj,
+                        )
+                        from modules.workflows.workflow import (
+                            redact_fixture_result_for_user as _redact_fixt,
+                        )
 
                         if target_key is None:
                             safe = _redact_proj(result)
                         else:
                             safe = _redact_fixt(result)
                     except Exception:
-                        pass
+                        # LAW 4 fail-closed: a redaction failure must never
+                        # fall back to the unredacted dump (probe scripts and
+                        # payloads stay in Docker). Report the error instead.
+                        safe = {
+                            "status": "error",
+                            "message": "Report redaction failed; unredacted details withheld.",
+                            "cleanup_ok": bool(getattr(result, "cleanup_ok", True)),
+                        }
                     await socket.send_json({"type": "result", **safe})
             except (WebSocketDisconnect, RuntimeError):
                 pass
@@ -439,6 +592,7 @@ async def ai_demo_runner(
     profile: str | None = None,
     *,
     scan_profile: str = "extra_light",
+    cycles: int | None = None,
     red_agents: int = 5,
     blue_agents: int = 5,
     intel_theme: str = "input validation SQL injection XSS deserialization",
@@ -448,15 +602,18 @@ async def ai_demo_runner(
     research: bool = False,
     research_scanners: str = "",
     allow_remote_inference: bool = False,
+    demo_size: str = "standard",
+    flaw_count: int | None = None,
+    demo_seed: int | None = None,
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
     """AI-built demo mode: intel-grounded generation, then evidence-gated red/blue in Docker."""
-    from agents import MetaMuseClient
-    from config import load_config as _load
-    from demo_gen import generate_demo_project, materialize_demo_project
-    from intel_search import intel_for_demo
-    from profiles import apply_profile as _apply
+    from modules.core.agents import MetaMuseClient
+    from modules.core.config import load_config as _load
+    from modules.core.profiles import apply_profile as _apply
+    from modules.intel.intel_search import intel_for_demo
+    from modules.services.demo_gen import generate_demo_project, materialize_demo_project
 
     settings = _apply(_load(), profile)
     if research:
@@ -498,7 +655,7 @@ async def ai_demo_runner(
             )
             intel = []
     print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
-    from demo_gen import parse_build_intent as _parse
+    from modules.services.demo_gen import parse_build_intent as _parse
 
     _intent = _parse(build_brief=build_brief, vulns=vulns, theme=intel_theme)
     muse = MetaMuseClient(settings)
@@ -509,6 +666,9 @@ async def ai_demo_runner(
             theme=" ".join(themes),
             build_brief=_intent.build_brief,
             vulns=_intent.vulns,
+            size=demo_size,
+            flaw_count=flaw_count,
+            seed=demo_seed,
         )
     finally:
         try:
@@ -521,23 +681,30 @@ async def ai_demo_runner(
     )
     spec = materialize_demo_project(files)
     try:
-        from chatter import chatter as _chatter
+        from modules.services.chatter import chatter as _chatter
 
         print(f"[GREEN] {_chatter('green', n=len(files.flaw_notes), path='app.py')}", flush=True)
     except Exception:
         pass
     # Enrich ProjectSpec with requested intensity/team sizes.
-    from projects import ProjectSpec as _Spec
+    # Same stamping rule as run_demo_build (M1-M5): named profiles force
+    # cycle counts, custom honors explicit cycles (clamped 1..20).
+    from modules.services.projects import ProjectSpec as _Spec
 
-    spec = _Spec.model_validate(
-        {
-            **spec.model_dump(mode="json"),
-            "scan_profile": scan_profile,
-            "red_agents": red_agents,
-            "blue_agents": blue_agents,
-            "allow_remote_inference": allow_remote_inference or settings.inference_mode == "local",
-        }
-    )
+    _dump = dict(spec.model_dump(mode="json"))
+    _stamp_profile = scan_profile if scan_profile in SCAN_PROFILES else "custom"
+    _dump["scan_profile"] = _stamp_profile
+    if _stamp_profile != "custom":
+        _dump["cycles"] = SCAN_PROFILES[_stamp_profile].cycles
+    elif cycles is not None:
+        try:
+            _dump["cycles"] = max(1, min(20, int(cycles)))
+        except (TypeError, ValueError):
+            pass
+    _dump["red_agents"] = red_agents
+    _dump["blue_agents"] = blue_agents
+    _dump["allow_remote_inference"] = allow_remote_inference or settings.inference_mode == "local"
+    spec = _Spec.model_validate(_dump)
     return await cli_runner(
         None,
         output_dir,
@@ -561,6 +728,7 @@ async def cli_runner(
     cve_scan: bool = False,
     deep_assessment: bool = False,
     offline_cve: bool = False,
+    fast_lane: bool = False,
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
@@ -594,11 +762,24 @@ async def cli_runner(
             include_osv=not offline_cve,
             include_deep_assessment=deep_assessment,
             include_nvd=True,
+            fast_lane=fast_lane,
         )
         _out(f"[SYSTEM] {cve_result.message}")
         for vuln in cve_result.vulnerabilities[:20]:
             cves = ",".join(vuln.get("cves") or [vuln.get("id", "")])
             _out(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}")
+            # Wave 2 item 3: topping evidence on the live terminal path.
+            try:
+                score = vuln.get("reach_score")
+                if score is not None:
+                    kev = " KEV" if vuln.get("kev_listed") else ""
+                    epss = vuln.get("epss_percentile")
+                    epss_s = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                    fixed = vuln.get("fixed_versions") or []
+                    fix_s = f" fix {fixed[0]}" if fixed else ""
+                    _out(f"[TOP    ] {cves}: reach {score}{kev}{epss_s}{fix_s}")
+            except Exception:
+                pass
         if output_dir is not None:
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
             summary = _build_cve_summary_markdown(project, settings, cve_result)
@@ -655,6 +836,45 @@ async def cli_runner(
     return 0 if result.success else 1
 
 
+def _extract_wave2_receipt(report: dict) -> dict | None:
+    """Item 1 (+ project cycles) receipt payload for receipt.json.
+
+    REAL fields first: top-level ``receipt`` (VerdictReceipt dump), then
+    every ``cycle_reports``/``cycles`` entry ``receipt`` (CycleReceipt dump).
+    Legacy ``verdict_receipt`` fallback last. Defensive: dict-or-None only.
+    First-cycle behavior unchanged (receipt.json holds the first receipt);
+    use extract_cycle_receipts for the full per-cycle export.
+    """
+    receipts = extract_cycle_receipts(report)
+    return receipts[0] if receipts else None
+
+
+def extract_cycle_receipts(report: dict) -> list[dict]:
+    """Export ALL cycle receipts (Wave 8 item 4); first-cycle order preserved."""
+    if not isinstance(report, dict):
+        return []
+    try:
+        candidates: list = [report.get("receipt"), report.get("verdict_receipt")]
+        for key in ("cycle_reports", "cycles"):
+            items = report.get(key)
+            if isinstance(items, (list, tuple)):
+                for item in items:
+                    if isinstance(item, dict):
+                        candidates.append(item.get("receipt"))
+        receipts: list[dict] = []
+        for candidate in candidates:
+            if hasattr(candidate, "model_dump"):
+                try:
+                    candidate = candidate.model_dump()
+                except Exception:
+                    continue
+            if isinstance(candidate, dict) and candidate:
+                receipts.append({str(k)[:64]: v for k, v in list(candidate.items())[:32]})
+        return receipts
+    except Exception:
+        return []
+
+
 def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "") -> Path:
     """Persist one scan run: fresh 0700 run dir, 0600 report.json/SUMMARY.md (+candidate.patch)."""
     # A fresh per-run directory prevents accidental overwriting of previous results.
@@ -662,6 +882,14 @@ def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "
     run_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
     (run_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     (run_dir / "report.json").chmod(0o600)
+    # Wave 2 item 1: export the machine-readable verdict receipt alongside the
+    # candidate patch so same-day reviewers can audit it (never a verdict input).
+    receipt = _extract_wave2_receipt(report) if isinstance(report, dict) else None
+    if receipt:
+        (run_dir / "receipt.json").write_text(
+            json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+        )
+        (run_dir / "receipt.json").chmod(0o600)
     if diff:
         (run_dir / "candidate.patch").write_text(diff, encoding="utf-8")
         (run_dir / "candidate.patch").chmod(0o600)
@@ -707,14 +935,41 @@ def _build_cve_summary_markdown(project, settings, result) -> str:
             lines.append(f"  Severity: {sev}")
         if fixed:
             lines.append(f"  Fixed in: {fixed}")
-    if result.deep_assessment:
+    # Wave 2 item 3: auditable fast-lane queue order (reach/KEV/EPSS topping).
+    try:
+        ranked = list(result.vulnerabilities or [])[:10]
+        topping = [v for v in ranked if isinstance(v, dict) and v.get("reach_score") is not None]
+        if topping:
+            lines.append("")
+            lines.append("## Fast-lane topping (reach + fixability order)")
+            for vuln in topping:
+                cves = ", ".join(vuln.get("cves") or [vuln.get("id", "")])
+                score = vuln.get("reach_score")
+                fixed = ", ".join(vuln.get("fixed_versions") or [])
+                kev = " KEV-listed" if vuln.get("kev_listed") else ""
+                epss = vuln.get("epss_percentile")
+                epss_str = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                lines.append(f"- {cves} — reach {score}{kev}{epss_str}")
+                if fixed:
+                    lines.append(f"  Fixed in: {fixed}")
+                for ev in (vuln.get("reach_evidence") or [])[:4]:
+                    lines.append(f"  evidence: {str(ev)[:160]}")
+    except Exception:
+        pass
+    deep_assessment = getattr(result, "deep_assessment", None)
+    if deep_assessment:
         lines.append("")
         lines.append("## Muse deep assessment (advisory)")
-        lines.append(str(result.deep_assessment.get("assessment", ""))[:8000])
-    if result.errors:
+        try:
+            assessment = deep_assessment.get("assessment", "")
+        except AttributeError:
+            assessment = str(deep_assessment)
+        lines.append(str(assessment)[:8000])
+    errors = getattr(result, "errors", None) or []
+    if errors:
         lines.append("")
         lines.append("## Lookup warnings")
-        for err in result.errors[:20]:
+        for err in errors[:20]:
             lines.append(f"- {err}")
     lines.append("")
     lines.append(NOTICE)
@@ -836,6 +1091,28 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
         lines.append("```")
     else:
         lines.append("- No candidate diff retained.")
+    # Wave 2 items 1/2/4: receipt + guard rationales + mutation probes.
+    try:
+        from sms_cli import format_wave2_facts as _w2v2_facts
+
+        wave2 = _w2v2_facts(result)
+    except Exception:
+        wave2 = {}
+    if wave2.get("receipt") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Verdict receipt")
+        lines.append("")
+        lines.append(f"- {wave2['receipt']}")
+    if wave2.get("guard_rationales") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Guard rationales")
+        lines.append("")
+        lines.append(f"- {wave2['guard_rationales']}")
+    if wave2.get("mutations") not in (None, "Not reported", ""):
+        lines.append("")
+        lines.append("## Mutation probes")
+        lines.append("")
+        lines.append(f"- {wave2['mutations']}")
     lines.append("")
     lines.append(NOTICE)
     lines.append(LICENSE_URL)
@@ -879,6 +1156,7 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
         docker_report = {"state": "unavailable", "missing_images": [], "leftover_containers": 0}
     return {
         "status": "ok",
+        "version": APP_VERSION,
         "api_key_configured": bool(settings.meta_api_key),
         "inference_mode": settings.inference_mode,
         "inference_ready": settings.inference_mode == "local" or bool(settings.meta_api_key),
@@ -894,8 +1172,11 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Secure Mitigation System — local Muse boundary verification scaffold"
+        description="Secure Mitigation System — local Muse boundary verification scaffold",
+        epilog=CAPABILITIES_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     commands = parser.add_mutually_exclusive_group(required=True)
     commands.add_argument(
         "--init-images", action="store_true", help="Build the two base images (requires Docker)"
@@ -915,11 +1196,17 @@ def main() -> int:
     commands.add_argument(
         "--tui",
         action="store_true",
-        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)",
+        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY); h shows Wave 2/5/8 same-day value, receipt/guard/mutation tokens inline",
     )
-    commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(
-        "--project", type=Path, help="Scan a local source directory without modifying it"
+        "--scan",
+        choices=list(TARGETS_REGISTRY),
+        help="Scan one bundled fixture; result card shows receipt, guard rationales, mutation probes",
+    )
+    commands.add_argument(
+        "--project",
+        type=Path,
+        help="Scan a local source directory without modifying it; patches stay template-shaped inside the small-edit guard",
     )
     commands.add_argument(
         "--list-targets", action="store_true", help="List bundled fixtures without Docker or a key"
@@ -979,7 +1266,7 @@ def main() -> int:
     parser.add_argument(
         "--cve-scan",
         action="store_true",
-        help="Run deep static+CVE scan (OSV lookup) instead of probe/patch verification",
+        help="Run deep static+CVE scan (OSV lookup) instead of probe/patch verification; KEV/EPSS carry freshness stamps",
     )
     parser.add_argument(
         "--deep-assessment",
@@ -990,6 +1277,11 @@ def main() -> int:
         "--offline-cve",
         action="store_true",
         help="Skip OSV network lookup; static signals only",
+    )
+    parser.add_argument(
+        "--fast-lane",
+        action="store_true",
+        help="CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD; topping lists most reachable+fixable first, signals older than 1 day show as stale",
     )
     parser.add_argument(
         "--build-brief",
@@ -1012,6 +1304,24 @@ def main() -> int:
         help="Generate AI demo without live NVD lookup (uses static flaw patterns)",
     )
     parser.add_argument(
+        "--demo-size",
+        choices=["small", "standard"],
+        default="standard",
+        help="Greenhouse demo size: small (fewer routes) or standard (full set)",
+    )
+    parser.add_argument(
+        "--flaw-count",
+        type=int,
+        default=None,
+        help="Bound the requested demo flaws to 1..8 (default: keep them all; clamps)",
+    )
+    parser.add_argument(
+        "--demo-seed",
+        type=int,
+        default=None,
+        help="Variation nonce for AI demo generation (reproducibility hint)",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -1022,7 +1332,7 @@ def main() -> int:
         "--format",
         choices=["table", "json"],
         default="table",
-        help="Non-interactive output shape: human-readable tables (default) or redacted JSON",
+        help="Non-interactive output shape: human-readable tables (default) or redacted JSON; tables show guard rationales and mutation probes",
     )
     parser.add_argument(
         "--show-usage",
@@ -1030,7 +1340,9 @@ def main() -> int:
         help="Always print the token/cost table even when no model calls were made",
     )
     parser.add_argument(
-        "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
+        "--output-dir",
+        type=Path,
+        help="Save scan JSON and candidate diff to a new run directory (includes receipt.json sandbox proof)",
     )
     parser.add_argument(
         "--research",
@@ -1065,11 +1377,15 @@ def main() -> int:
         "intel_offline": False,
         "build_brief": "",
         "vulns": "",
+        "demo_size": "standard",
+        "flaw_count": None,
+        "demo_seed": None,
         "research": False,
         "research_scanners": "",
         "allow_remote_inference": False,
         "offline_cve": False,
         "deep_assessment": False,
+        "fast_lane": False,
         "output_dir": None,
         "port": 8000,
         "format": "table",
@@ -1109,6 +1425,12 @@ def main() -> int:
         parser.error("--intel-theme requires --ai-demo")
     if args.intel_offline and not args.ai_demo:
         parser.error("--intel-offline requires --ai-demo")
+    if args.demo_size != defaults["demo_size"] and not args.ai_demo:
+        parser.error("--demo-size requires --ai-demo")
+    if args.flaw_count is not None and not args.ai_demo:
+        parser.error("--flaw-count requires --ai-demo")
+    if args.demo_seed is not None and not args.ai_demo:
+        parser.error("--demo-seed requires --ai-demo")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")
@@ -1147,6 +1469,7 @@ def main() -> int:
             or args.cve_scan
             or args.deep_assessment
             or args.offline_cve
+            or args.fast_lane
         )
     ):
         parser.error("Project options require --project (ai-demo carries its own intensity flags)")
@@ -1162,6 +1485,7 @@ def main() -> int:
                 # LAW 4: readiness booleans only; keys and model internals never print.
                 safe = {
                     "status": report["status"],
+                    "version": report.get("version", APP_VERSION),
                     "inference_mode": report["inference_mode"],
                     "inference_ready": report["inference_ready"],
                     "api_key_configured": report["api_key_configured"],
@@ -1224,6 +1548,7 @@ def main() -> int:
                     args.output_dir or Path("reports"),
                     args.profile,
                     scan_profile=args.scan_profile,
+                    cycles=args.cycles,
                     red_agents=args.red_agents,
                     blue_agents=args.blue_agents,
                     intel_theme=args.intel_theme,
@@ -1233,6 +1558,11 @@ def main() -> int:
                     research=args.research,
                     research_scanners=args.research_scanners,
                     allow_remote_inference=args.allow_remote_inference,
+                    demo_size=args.demo_size,
+                    flaw_count=(
+                        None if args.flaw_count is None else max(1, min(8, args.flaw_count))
+                    ),
+                    demo_seed=args.demo_seed,
                     out_format=out_format,
                     show_usage=args.show_usage,
                 )
@@ -1266,7 +1596,7 @@ def main() -> int:
             # Spec validation runs first so argparse errors (exit 2) precede
             # the runtime consent failure (exit 1).
             if settings.inference_mode != "local" and not args.allow_remote_inference:
-                from project_workflow import ProjectWorkflowError as _ConsentError
+                from modules.workflows.project_workflow import ProjectWorkflowError as _ConsentError
 
                 raise _ConsentError(
                     "Remote inference consent is required before project source "
@@ -1283,6 +1613,7 @@ def main() -> int:
                     cve_scan=args.cve_scan,
                     deep_assessment=args.deep_assessment,
                     offline_cve=args.offline_cve,
+                    fast_lane=args.fast_lane,
                     out_format=out_format,
                     show_usage=args.show_usage,
                 )

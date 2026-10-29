@@ -37,10 +37,57 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
+| `--fast-lane` | off | CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD (requires `--project` with `--cve-scan`) |
 | `--build-brief TEXT` | "" | What the AI demo should build (bounded to 500 chars) |
 | `--vulns TEXT` | "" | Requested demo flaws: CVE IDs, named types, or free text |
 | `--intel-theme TEXT` | input validation SQL injection XSS deserialization | Threat-intel themes for AI demo generation |
 | `--intel-offline` | off | Generate AI demo without live NVD lookup |
+| `--demo-size {small,standard}` | standard | Greenhouse demo size: small (fewer routes) or standard (full set) |
+| `--flaw-count N` | — | Bound the requested demo flaws to 1..8 (default: keep them all; clamps; ai-demo only) |
+| `--demo-seed N` | — | Variation nonce for AI demo generation (ai-demo only) |
 | `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
+
+CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability (KEV-listed +5, EPSS percentile >=0.9 +5 tie-breaks).
+
+## Wave 2 (SPEC 14.8) output — no new flags
+
+Verified via `.venv/bin/python main.py --help` 2026-10-29: Wave 2 adds no
+CLI flags. It adds output rows/sections/files, all sourced from live result
+fields (never synthesized):
+
+| Surface | Location | Rows / behavior |
+|---|---|---|
+| `fact_table` rows | `sms_cli.py:631` via `format_wave2_facts` (`sms_cli.py:310`) | `Receipt`, `Guard rationales`, `Fast-lane top`, `Mutations` (each `Not reported` when the result carries no such evidence). |
+| `--output-dir` extra file | `main.py:870` via `_extract_wave2_receipt` | `receipt.json`: top-level `receipt` (VerdictReceipt) or first cycle `receipt` (CycleReceipt); legacy `verdict_receipt` fallback; mode 0600. |
+| Markdown report sections | `main.py:1093-1107` | `## Verdict receipt`, `## Guard rationales`, `## Mutation probes` — emitted only when the fact is reported. |
+| TUI suffix | `tui.py:280` `describe_wave2` | Appends `[receipt ...] [guards ...] [mutations ...]` tokens to the result line, probing the same fields as `format_wave2_facts`. |
+
+`format_wave2_facts` read order per item: Receipt = `result.receipt` (or any
+`cycle.receipt`), legacy `verdict_receipt`; Guards = top-level
+`guard_rationale` then each cycle `evidence.replacement_validation.guard_rationale`,
+legacy `guard_rationales`; Fast-lane top = `fast_lane_top` string else first
+`vulnerabilities[]` entry `queue_evidence` (else `reach_score`/`fixed_versions`/KEV/EPSS
+composite); Mutations = cycle `evidence.{patched,pre}_verification.mutations`
+`ExecutionEvidence` (`N/M held|failed (exit N)`), legacy `mutation_evidence`.
+
+## Wave 5 (SPEC 14.9) output — no new flags
+
+Verified via `.venv/bin/python main.py --help` 2026-10-29: SPEC 14.9 adds no
+CLI flags (`--fast-lane`, `--context-budget` text unchanged; `--context-budget`
+is the per-call source context budget, unrelated to the 60-line edit budget).
+Behavior surfaces through existing rows only:
+
+| Behavior | Existing surface | How it shows |
+|---|---|---|
+| Queue freshness (`_source_fresh`, `cve_workflow.py:66`) | `fact_table` fast-lane row / `queue_evidence` string | Stale-dated (>1 day) KEV/EPSS signals read as `stale:<date>` inside the same `reach:N fix:X kev:Y epss:Z` string; numeric `reach_score`/`epss_percentile` fields untouched. |
+| EUVD exclusion (`FAST_LANE_EXCLUDED_SOURCES`, `assert_fast_lane_source_allowed`) | None (fail-closed only) | Raises `AssertionError` if a future wiring consults `euvd`; no CLI row, never blocks allowed sources. |
+| Template/solver-shape guard (`is_solver_synthesized_shape`, `patches.py:27`) | `Guard rationales` row (`guard_id="solver_synthesized_shape"`) | Same `guard_rationale` `{guard_id, reason, trigger}` shape; 60-line `EDIT_BUDGET_LINES` unchanged. |
+| Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`modules/core/checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
+
+## CVE scan notes
+
+- `--fast-lane` orders findings by reach tier: `reach_score` desc, patched (`fixed_versions`) first, then id.
+- KEV (CISA catalog) is a 5th keyless `cve_records` signal: exploited flag + due date, never raises.
+- GHSA CVE lookup by exact CVE id is fixed (returns matching records only).
 
 Related: [MODULES.md](MODULES.md) (`sms_cli.py` presenter), [guides/PROJECTS.md](../guides/PROJECTS.md) (project intake).

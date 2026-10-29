@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from config import PurpleBoxConfig
 from main import create_app
+from modules.core.config import PurpleBoxConfig
 
 
 def test_disconnect_cancels_workflow_and_another_scan_is_rejected(monkeypatch):
@@ -81,6 +81,53 @@ def test_socket_reports_missing_key_without_docker():
                     break
 
 
+def test_socket_redaction_failure_fails_closed(monkeypatch):
+    """aa09566 hunk 2: a redaction raise must never leak the unredacted dump.
+
+    Pre-fix the `except Exception: pass` left `safe` as the raw
+    `model_dump()` — probe scripts and payloads rode the socket to the
+    browser (fail-open LAW 4 violation). Post-fix the client receives
+    status=error with zero exploit bytes.
+    """
+    from modules.core.agents import RedTeamFinding
+    from modules.workflows.workflow import ScanResult
+
+    async def evil_workflow(target, emit, **kwargs):
+        result = ScanResult(
+            target=target,
+            status="verified",
+            message="ok",
+            finding=RedTeamFinding(
+                vulnerability_class="vc",
+                sink_location="s",
+                analysis_summary="a",
+                verification_script_python="EVIL-SOCKET()",
+            ),
+        )
+        result.traces = {"before": "PAYLOAD-SOCKET" * 10}
+        return result
+
+    def boom_redact(result):
+        raise RuntimeError("redactor down")
+
+    monkeypatch.setattr("main.execute_purple_workflow", evil_workflow)
+    monkeypatch.setattr("modules.workflows.workflow.redact_fixture_result_for_user", boom_redact)
+    with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
+        with client.websocket_connect(
+            "ws://localhost/ws/combat/node_query_sink", headers={"origin": "http://localhost"}
+        ) as socket:
+            while True:
+                import json as _json
+
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    assert event["status"] == "error"
+                    assert "redaction failed" in event["message"].lower()
+                    assert "EVIL-SOCKET()" not in _json.dumps(event)
+                    assert "PAYLOAD-SOCKET" not in _json.dumps(event)
+                    break
+
+
 def test_dashboard_exposes_interactive_dark_theme_controls():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         page = client.get("/").text
@@ -102,8 +149,8 @@ def test_dashboard_exposes_interactive_dark_theme_controls():
 def test_demo_route_registered_and_rejects_origin_mismatch():
     from fastapi.testclient import TestClient
 
-    from config import PurpleBoxConfig
     from main import create_app
+    from modules.core.config import PurpleBoxConfig
 
     app = create_app(PurpleBoxConfig(meta_api_key="unit-test-key"))
     routes = [getattr(r, "path", "") for r in app.routes]
@@ -128,7 +175,7 @@ def test_ws_research_query_enables_sidecar_config(monkeypatch):
             kwargs.get("config").__dict__ if hasattr(kwargs.get("config"), "__dict__") else {}
         )
         await emit("system", "done")
-        from workflow import ScanResult
+        from modules.workflows.workflow import ScanResult
 
         return ScanResult(target="t", status="error", message="probe")
 
@@ -159,7 +206,7 @@ def test_ws_research_absent_stays_off(monkeypatch):
         seen["enabled"] = config.research_enabled
         seen["scanners"] = config.research_scanners
         await emit("system", "done")
-        from workflow import ScanResult
+        from modules.workflows.workflow import ScanResult
 
         return ScanResult(target="t", status="error", message="probe")
 
@@ -201,6 +248,11 @@ def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
                         "theme": "xss",
                         "build_brief": "a tiny notes app",
                         "vulns": "CVE-2024-3094, sqli",
+                        "scan_profile": "light",
+                        "cycles": 3,
+                        "red_agents": 5,
+                        "blue_agents": 5,
+                        "context_budget": 32768,
                     }
                 )
             )
@@ -211,3 +263,47 @@ def test_demo_request_accepts_brief_and_vulns_fields(monkeypatch):
     assert seen.get("theme") == "xss"
     assert seen.get("build_brief") == "a tiny notes app"
     assert seen.get("vulns") == "CVE-2024-3094, sqli"
+    assert seen.get("scan_profile") == "light"
+    assert seen.get("cycles") == 3
+    assert seen.get("red_agents") == 5
+    assert seen.get("blue_agents") == 5
+    assert seen.get("context_budget") == 32768
+
+
+def test_demo_request_accepts_hardening_fields_with_clamps(monkeypatch):
+    """L3: the demo socket parses demo_size/flaw_count/seed with server clamps."""
+    import json as _json
+
+    import main as _main
+
+    seen = {}
+
+    async def fake_build(emit, config, **kwargs):
+        seen.update(kwargs)
+        await emit("green", "done")
+        return {"status": "no_findings", "message": "probe", "project": "ai-demo"}
+
+    monkeypatch.setattr(_main, "run_demo_build", fake_build)
+    app = _main.create_app(PurpleBoxConfig(meta_api_key="k"))
+    from fastapi.testclient import TestClient as _TC
+
+    with _TC(app, base_url="http://localhost") as client:
+        headers = {"origin": "http://localhost"}
+        with client.websocket_connect("ws://localhost/ws/demo", headers=headers) as socket:
+            socket.send_text(
+                _json.dumps(
+                    {
+                        "theme": "xss",
+                        "demo_size": "bogus",
+                        "flaw_count": 99,
+                        "seed": 7,
+                    }
+                )
+            )
+            while True:
+                event = socket.receive_json()
+                if event["type"] == "result":
+                    break
+    assert seen.get("demo_size") == "standard"
+    assert seen.get("flaw_count") == 8
+    assert seen.get("seed") == 7

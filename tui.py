@@ -34,7 +34,27 @@ FIXTURE_ORDER = ("node_query_sink", "php_command_sink", "mysql_insecure_conf")
 FIXTURE_SHORT = ("Node query", "PHP command", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3 fixture  Enter/s start  x/Esc stop  f filter  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3 fixture  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+
+# Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
+# same plain-English value lines). Toggled with h; must stay terminal-safe.
+CAPABILITIES_LINES = (
+    "Same-day value (Wave 2/5/8):",
+    "receipts prove the sandbox run (probe exits + patch hash)",
+    "rationale shows why each patch guard fired",
+    "topping lists the most reachable + fixable CVE first",
+    "mutations confirm the fix holds under small input changes",
+    "freshness shows the intel was fetched live today",
+    "templates keep patches inside the small-edit guard",
+    "stale:<date> means KEV/EPSS older than 1 day, never outranks fresh",
+    "repeat-stability re-runs the check so flaky passes fail closed",
+)
+
+
+def capabilities_lines() -> tuple[str, ...]:
+    """TUI help-overlay lines for Wave 2/5/8 same-day value."""
+    return CAPABILITIES_LINES
+
 
 _SENSITIVE_RE = re.compile(
     r"(api[_-]?key|secret|token|bearer|password|private[_-]?key|BEGIN [A-Z ]*PRIVATE)",
@@ -79,6 +99,7 @@ class TuiState:
     running: bool = False
     stop_requested: bool = False
     filter_kind: str | None = None
+    help_open: bool = False
     scroll: dict[str, int] = field(default_factory=lambda: {p: 0 for p in PANES})
     events: list[tuple[str, str]] = field(default_factory=list)
     result_summary: str = "idle: pick a fixture, press Enter."
@@ -172,6 +193,8 @@ def parse_key(key: object) -> str:
         return "stop"
     if lowered == "f":
         return "filter"
+    if lowered == "h":
+        return "help"
     if lowered == "q":
         return "quit"
     return "unknown"
@@ -186,6 +209,8 @@ def apply_action(state: TuiState, action: str) -> str:
     elif action == "filter":
         order: list[str | None] = [None, "red", "blue", "system"]
         state.filter_kind = order[(order.index(state.filter_kind) + 1) % len(order)]
+    elif action == "help":
+        state.help_open = not state.help_open
     elif action.startswith("scroll:"):
         direction = action.split(":")[1]
         panes = list(PANES)
@@ -222,14 +247,25 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
     lines.append(("|" + "|".join(titles) + "|")[:width].ljust(width))
 
     body_rows = height - 6  # header, chips, titles, result, 2x footer
-    cols: list[list[str]] = []
-    for pane in PANES:
-        items = state.visible_events(pane)
-        offset = state.scroll.get(pane, 0)
-        cols.append([line[:pane_width].ljust(pane_width) for line in items[offset:]] or [""])
-    for row in range(max(1, body_rows)):
-        cells = [(cols[c][row] if row < len(cols[c]) else "".ljust(pane_width)) for c in range(3)]
-        lines.append(("|" + "|".join(cells) + "|")[:width].ljust(width))
+    if state.help_open:
+        for row in range(max(1, body_rows)):
+            if row < len(CAPABILITIES_LINES):
+                lines.append(("| HELP: " + CAPABILITIES_LINES[row])[:width].ljust(width))
+            elif row == len(CAPABILITIES_LINES):
+                lines.append(("| h closes this help")[:width].ljust(width))
+            else:
+                lines.append(("|")[:width].ljust(width))
+    else:
+        cols: list[list[str]] = []
+        for pane in PANES:
+            items = state.visible_events(pane)
+            offset = state.scroll.get(pane, 0)
+            cols.append([line[:pane_width].ljust(pane_width) for line in items[offset:]] or [""])
+        for row in range(max(1, body_rows)):
+            cells = [
+                (cols[c][row] if row < len(cols[c]) else "".ljust(pane_width)) for c in range(3)
+            ]
+            lines.append(("|" + "|".join(cells) + "|")[:width].ljust(width))
 
     result = f" Result [{state.fixture_key}]: {state.result_summary}"
     lines.append(result[:width].ljust(width))
@@ -241,13 +277,48 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
     return lines[:height]
 
 
+def describe_wave2(result: object) -> str:
+    """Wave 2 items 1-4 one-line tokens (SPEC 14.8). Never raises, never leaks.
+
+    Probes the same optional fields as sms_cli.format_wave2_facts
+    (verdict_receipt, guard_rationales, mutation_evidence, vulnerabilities
+    topping) and returns a short ``[receipt ...] [mutations ...]`` suffix, or
+    "" when nothing is present or anything is odd-shaped.
+    """
+    try:
+        from sms_cli import format_wave2_facts  # lazy: keeps module import light
+
+        facts = format_wave2_facts(result)
+    except Exception:
+        return ""
+    try:
+        tokens = []
+        receipt = str(facts.get("receipt") or "")
+        if receipt and receipt != "Not reported":
+            tokens.append(f"[receipt {receipt[:80]}]")
+        guards = str(facts.get("guard_rationales") or "")
+        if guards and guards != "Not reported":
+            tokens.append(f"[guards {guards[:60]}]")
+        top = str(facts.get("fast_lane_top") or "")
+        if top and top != "Not reported":
+            tokens.append(f"[top {top[:60]}]")
+        mutations = str(facts.get("mutations") or "")
+        if mutations and mutations != "Not reported":
+            tokens.append(f"[mutations {mutations[:40]}]")
+        return (" " + " ".join(tokens)) if tokens else ""
+    except Exception:
+        return ""
+
+
 def describe_result(result: object) -> str:
     """LAW-4-safe one-line summary of a ScanResult (no traces/scripts)."""
 
     def _get(name: str, default: str = "") -> str:
         return str(getattr(result, name, default))
 
-    return f"{_get('target', '?')} -> {_get('status', '?')}: {_get('message', '')}"[:160]
+    return f"{_get('target', '?')} -> {_get('status', '?')}: {_get('message', '')}{describe_wave2(result)}"[
+        :200
+    ]
 
 
 def start_scan_thread(
@@ -258,7 +329,9 @@ def start_scan_thread(
     daemon: bool = True,
 ) -> threading.Thread:
     """Run execute_purple_workflow in-process on a worker thread via asyncio.run."""
-    from workflow import execute_purple_workflow  # lazy: keeps module import stdlib-only
+    from modules.workflows.workflow import (
+        execute_purple_workflow,  # lazy: keeps module import stdlib-only
+    )
 
     fixture_key = state.fixture_key
     state.running = True
@@ -287,10 +360,18 @@ def start_scan_thread(
 
 def run_plain(argv: list[str] | None = None) -> int:
     """Non-TTY / no-curses degrade: pick fixture, run scan, print redacted lines."""
-    parser = argparse.ArgumentParser(description="Secure Mitigation System TUI (plain mode)")
+    from sms_cli import CAPABILITIES_TEXT
+
+    parser = argparse.ArgumentParser(
+        description="Secure Mitigation System TUI (plain mode)",
+        epilog=CAPABILITIES_TEXT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
     args = parser.parse_args(argv)
-    from workflow import execute_purple_workflow  # lazy import for stdlib-only module top
+    from modules.workflows.workflow import (
+        execute_purple_workflow,  # lazy import for stdlib-only module top
+    )
 
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
     print(f"Secure Mitigation System [plain mode] fixture={args.fixture}")
@@ -357,6 +438,9 @@ def _curses_main(stdscr, state: TuiState) -> None:
         if action == "filter":
             apply_action(state, action)
             continue
+        if action == "help":
+            apply_action(state, action)
+            continue
         if action.startswith("scroll:") or action == "resize":
             apply_action(state, action)
             continue
@@ -372,7 +456,10 @@ def main(argv: list[str] | None = None) -> int:
     """Entry: curses when a TTY + curses exist, else plain-text degrade."""
     if curses is None or not sys.stdin.isatty() or not sys.stdout.isatty():
         return run_plain(argv)
-    parser = argparse.ArgumentParser(description="Secure Mitigation System TUI")
+    parser = argparse.ArgumentParser(
+        description="Secure Mitigation System TUI",
+        epilog="h help overlay: receipts, rationale, topping, mutations, freshness, templates, stale token, repeat-stability (same-day value).",
+    )
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
     args = parser.parse_args(argv)
     state = TuiState(fixture_index=list(FIXTURE_ORDER).index(args.fixture))
