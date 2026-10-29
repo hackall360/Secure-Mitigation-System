@@ -162,6 +162,40 @@
   window.Panels = window.Panels || {};
   window.Panels.renderTimeline = renderTimeline;
 
+  // Scroll spy: mark the rail link for the section in view (aria-current + .current).
+  function initScrollSpy() {
+    try {
+      if (typeof IntersectionObserver !== 'function') return;
+      const links = Array.from(document.querySelectorAll('.workspace-rail nav a[href^="#"]'));
+      const targets = links
+        .map((link) => [link, document.getElementById(link.getAttribute('href').slice(1))])
+        .filter(([, node]) => node)
+        .map(([link, node]) => [link, node.closest('section') || node]);
+      if (!targets.length) return;
+      const visible = new Map();
+      const mark = () => {
+        let best = null;
+        targets.forEach(([link, section]) => {
+          const ratio = visible.get(section) || 0;
+          if (ratio > 0 && (!best || ratio > best[1])) best = [link, ratio];
+        });
+        links.forEach((link) => {
+          const on = Boolean(best) && link === best[0];
+          link.classList.toggle('current', on);
+          if (on) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      };
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => visible.set(entry.target, entry.intersectionRatio));
+        mark();
+      }, { threshold: [0, 0.15, 0.35, 0.6, 0.9] });
+      targets.forEach(([, section]) => observer.observe(section));
+    } catch { /* navigation highlight is decorative */ }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initScrollSpy);
+  else initScrollSpy();
+
   window.addEventListener('unhandledrejection', (event) => {
     event.preventDefault();
   });
