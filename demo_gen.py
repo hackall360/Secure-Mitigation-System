@@ -44,7 +44,8 @@ Rules:
 - test_contract.py must assert normal behavior (valid inputs succeed) so blue patches can be regression-checked.
 - Keep total source under 12KB. No secrets, no network egress, no subprocess/shell, no eval/exec of untrusted input in the GENERATOR output itself beyond the intentionally flawed demo sinks (which are the exercise target and run only in Docker).
 - Never output exploit scripts, payloads, or step-by-step attack instructions. The demo app contains flaws; exploitation happens only inside the isolated sandbox by the red team.
-Respect demo_size (small means fewer routes, standard means the full set) and seed (use it as a variation nonce so the same brief can grow different demos)."""
+- Respect demo_size (small means fewer routes, standard means the full set) and seed (use it as a variation nonce so the same brief can grow different demos).
+"""
 
 
 # Shared item constraints: strip padding, then reject blank/oversize entries
