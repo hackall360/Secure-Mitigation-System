@@ -37,10 +37,16 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
+| `--fast-lane` | off | CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD (requires `--project` with `--cve-scan`) |
 | `--build-brief TEXT` | "" | What the AI demo should build (bounded to 500 chars) |
 | `--vulns TEXT` | "" | Requested demo flaws: CVE IDs, named types, or free text |
 | `--intel-theme TEXT` | input validation SQL injection XSS deserialization | Threat-intel themes for AI demo generation |
 | `--intel-offline` | off | Generate AI demo without live NVD lookup |
+| `--demo-size {small,standard}` | standard | Greenhouse demo size: small (fewer routes) or standard (full set) |
+| `--flaw-count N` | — | Bound the requested demo flaws to 1..8 (default: keep them all; clamps; ai-demo only) |
+| `--demo-seed N` | — | Variation nonce for AI demo generation (ai-demo only) |
 | `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
+
+CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability.
 
 Related: [MODULES.md](MODULES.md) (`sms_cli.py` presenter), [guides/PROJECTS.md](../guides/PROJECTS.md) (project intake).
