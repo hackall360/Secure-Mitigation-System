@@ -33,6 +33,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 - **Tunable AI demos.** Greenhouse takes `--demo-size small|standard`, `--flaw-count 1..8`, and `--demo-seed`; the dashboard exposes the same as Demo size / Flaw count / Demo seed controls.
 - **Ghost-probe liveness for inconclusive probes.** The post-probe liveness check against the still-running target now covers inconclusive (`exit 2`) probes as well as blocked (`exit 1`) ones, so a crashed service cannot earn success.
 
+### Wave 5: trust signals (shipped)
+
+- **GHSA CVE-id lookup fix.** `ghsa_lookup_by_cve` queries `?cve_id=` (the old path sent CVE ids as `?package=`, silently degrading results); records now consume embedded `epss`, `cvss_severities` (v4 preferred), and `first_patched_version`. Never-raises preserved.
+- **KEV as fifth signal.** CISA KEV keyless JSON joins `cve_records` (exploited flag + due date); KEV/EPSS-percentile likelihood is tie-breaking evidence in `reachability_score` and never lowers the fail-closed sink/fixed-version floor.
+- **Differential normal-contract gate.** After patch + probe-block, trusted normal-input checks re-run against original and patched targets; equal pass/fail class required, recorded as explicit `CycleEvidence.differential_passed`, mismatch = not verified.
+- **Fast-lane tiering.** Output orders by actionability `(-reach_score, fix availability, id)` instead of id-sort alone. Gate: `dev.py check` 367 passed.
+
 ## Architecture / How It Works
 
 ```mermaid
