@@ -1445,3 +1445,67 @@ async def test_fast_lane_explicitly_excludes_euvd(monkeypatch):
 
     assert "euvd" not in _json.dumps(report.model_dump()).lower()
     assert all("euvd" not in v for v in report.vulnerabilities)
+
+
+def test_w8v2_1_stale_signals_do_not_boost_rank(monkeypatch):
+    """W8-1 (goat) RED: rank applies _source_fresh so ordering agrees with evidence.
+
+    A stale-dated KEV listing + EPSS 0.99 must not outrank an identical record
+    with no signals: _queue_evidence reads both as absent, so _fast_lane_rank
+    must order them by the id tiebreak only. Real enrich+rank path.
+    """
+    import datetime as _dt
+
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+
+    stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=2)).date().isoformat()
+
+    def fake_kev(cve_id):
+        if cve_id == "CVE-2024-0001":
+            return ResearchRecord(
+                source="kev",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"kev_listed": True, "kev_date": stale},
+            )
+        return ResearchRecord(source="kev", cve_id=cve_id, title="t", summary="s", extra={})
+
+    def fake_epss(cve_id):
+        if cve_id == "CVE-2024-0001":
+            return ResearchRecord(
+                source="epss",
+                cve_id=cve_id,
+                title="t",
+                summary="s",
+                extra={"epss": "0.9", "percentile": "0.99", "epss_date": stale},
+            )
+        return None
+
+    monkeypatch.setattr(_cw, "kev_lookup", fake_kev)
+    monkeypatch.setattr(_cw, "epss_score", fake_epss)
+
+    boosted = {
+        "id": "GHSA-zzz",
+        "cves": ["CVE-2024-0001"],
+        "fixed_versions": ["2.0"],
+        "reach_score": 50,
+    }
+    plain = {
+        "id": "GHSA-aaa",
+        "cves": ["CVE-2024-0002"],
+        "fixed_versions": ["2.0"],
+        "reach_score": 50,
+    }
+    _cw._enrich_reach_signals(boosted)
+    _cw._enrich_reach_signals(plain)
+    # Raw numeric fields stay (fail-closed lives in the readers, not the store).
+    assert boosted["kev_listed"] is True
+    assert boosted["epss_percentile"] == 0.99
+    # Evidence reads the stale boost as absent on both records...
+    assert "kev:absent" in _cw._queue_evidence(boosted)
+    assert "epss:absent" in _cw._queue_evidence(boosted)
+    # ...so rank must agree: stale boost never outranks; id tiebreak decides.
+    ordered = sorted([boosted, plain], key=_cw._fast_lane_rank)
+    assert [s["id"] for s in ordered] == ["GHSA-aaa", "GHSA-zzz"]
