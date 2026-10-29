@@ -9,6 +9,7 @@ explicitly welcome automation — no scraping, no bot wars, no credentials:
 - CIRCL cve-search (cve.circl.lu/api): CVE records, vendor/product browse, no key.
 - GitHub Advisory DB (api.github.com/advisories): curated severity/CWE, no key.
 - FIRST EPSS (api.first.org): exploit-probability scores, no key.
+- CISA KEV (cisa.gov catalog JSON): known-exploited flag + due date, no key.
 - NVD API (services.nvd.nist.gov): last resort; strict without NVD_API_KEY.
 
 Anti-anti-bot posture (the measures that matter against these APIs):
@@ -250,13 +251,58 @@ def epss_score(cve_id: str) -> ResearchRecord | None:
     )
 
 
+KEV_CATALOG_URL = (
+    "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+)
+# KEV catalog exceeds the default 1 MiB cap (1.8 MiB live, Nov 2026), so fetch
+# with the max allowed cap; a further-grown catalog degrades to None via
+# RuntimeError, never raised.
+
+
+def kev_lookup(cve_id: str) -> ResearchRecord | None:
+    """CISA KEV known-exploited flag for one CVE. No key, never raises."""
+    safe = sanitize_cve_id(cve_id)
+    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
+        return None
+    try:
+        from sms_http import MAX_MAX_BYTES
+
+        payload = _get_json(KEV_CATALOG_URL, max_bytes=MAX_MAX_BYTES)
+    except RuntimeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    vulns = payload.get("vulnerabilities")
+    if not isinstance(vulns, list):
+        return None
+    for item in vulns:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("cveID", "")).strip().upper() != safe:
+            continue
+        return ResearchRecord(
+            source="kev",
+            cve_id=safe,
+            title=str(item.get("vulnerabilityName") or safe)[:256],
+            summary=str(item.get("shortDescription") or "")[:1500],
+            references=tuple([str(item.get("notes") or "")[:256]] if item.get("notes") else ()),
+            extra={
+                "kev_listed": True,
+                "due_date": str(item.get("dueDate") or "")[:32],
+                "ransomware": str(item.get("knownRansomwareCampaignUse") or "")[:32],
+            },
+        )
+    return None
+
+
 def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
-    """CVE endpoint series for one or more CVE ids: CIRCL + OSV + EPSS + GHSA.
+    """CVE endpoint series for one or more CVE ids: CIRCL + OSV + EPSS + KEV + GHSA.
 
     Keyless and never-raises: each id fans out to the bot-tolerant CVE
-    endpoints (CIRCL record, OSV aliases, EPSS score), plus a GHSA lookup by
-    the id. Failures degrade to fewer records. This is the series the green
-    builder and research sidecars call with parsed user intent.
+    endpoints (CIRCL record, OSV aliases, EPSS score, KEV listing), plus a
+    GHSA lookup by the id. Failures degrade to fewer records. This is the
+    series the green builder and research sidecars call with parsed user
+    intent.
     """
     found: list[ResearchRecord] = []
     seen: set[str] = set()
@@ -282,6 +328,10 @@ def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
                 continue
         try:
             add([epss_score(cve)])
+        except Exception:
+            pass
+        try:
+            add([kev_lookup(cve)])
         except Exception:
             pass
         try:

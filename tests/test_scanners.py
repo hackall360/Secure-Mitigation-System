@@ -326,6 +326,63 @@ def test_agents_schema_cache_and_single_pass_extractor():
     assert _extract_json_object("no braces here") == "no braces here"
 
 
+def test_kev_lookup_canned_match_and_miss(monkeypatch):
+    """O2 red: kev_lookup finds cveID in the CISA KEV catalog, else None."""
+    import research as _research
+
+    catalog = {
+        "count": 1,
+        "vulnerabilities": [
+            {
+                "cveID": "CVE-2024-3094",
+                "vulnerabilityName": "XZ Utils Backdoor",
+                "shortDescription": "XZ backdoor.",
+                "dueDate": "2024-05-02",
+                "knownRansomwareCampaignUse": "Unknown",
+            }
+        ],
+    }
+    monkeypatch.setattr(_research, "_get_json", lambda *a, **k: catalog)
+    rec = _research.kev_lookup("CVE-2024-3094")
+    assert rec is not None and rec.source == "kev"
+    assert rec.cve_id == "CVE-2024-3094"
+    assert rec.extra["kev_listed"] is True
+    assert rec.extra["due_date"] == "2024-05-02"
+    assert rec.extra["ransomware"] == "Unknown"
+    assert _research.kev_lookup("CVE-2024-9999") is None
+    assert _research.kev_lookup("bogus!!") is None
+
+
+def test_kev_lookup_transport_failure_degrades_to_none(monkeypatch):
+    """O2 red: KEV oversize-cap/transport failure degrades to None, never raises."""
+    import research as _research
+
+    monkeypatch.setattr(
+        _research, "_get_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
+    )
+    assert _research.kev_lookup("CVE-2024-3094") is None
+
+
+def test_cve_records_includes_kev_record(monkeypatch):
+    """O2 red: cve_records fans out to kev_lookup as a 5th source per CVE."""
+    import research as _research
+
+    monkeypatch.setattr(_research, "circl_lookup", lambda cve: None)
+    monkeypatch.setattr(_research, "osv_lookup", lambda cve: None)
+    monkeypatch.setattr(_research, "epss_score", lambda cve: None)
+    monkeypatch.setattr(_research, "ghsa_search", lambda package: [])
+    monkeypatch.setattr(
+        _research,
+        "kev_lookup",
+        lambda cve: _research.ResearchRecord(
+            source="kev", cve_id=cve, title="t", summary="s", extra={"kev_listed": True}
+        ),
+    )
+    recs = _research.cve_records(["CVE-2024-3094"])
+    assert [r.source for r in recs] == ["kev"]
+    assert all(r.cve_id == "CVE-2024-3094" for r in recs)
+
+
 def test_dtrack_poll_backs_off_and_exits_early(monkeypatch):
     """Poll uses exponential backoff; instant-done exits without sleeping."""
     import scanner_dtrack as _dt
