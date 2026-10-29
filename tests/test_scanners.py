@@ -164,7 +164,7 @@ def test_cve_records_series_never_raises_and_dedupes(monkeypatch):
     monkeypatch.setattr(_research, "circl_lookup", fake_circl)
     monkeypatch.setattr(_research, "osv_lookup", fake_osv)
     monkeypatch.setattr(_research, "epss_score", fake_epss)
-    monkeypatch.setattr(_research, "ghsa_search", lambda package: [])
+    monkeypatch.setattr(_research, "ghsa_lookup_by_cve", lambda cve: [])
     recs = _research.cve_records(["CVE-2024-3094", "bogus!!", "CVE-2024-3094"])
     assert [r.source for r in recs] == ["circl", "epss"]
     assert all(r.cve_id == "CVE-2024-3094" for r in recs)
@@ -212,6 +212,81 @@ def test_web_notes_transport_failure_degrades_to_empty(monkeypatch):
     )
     assert _research.web_notes(["sql injection"]) == []
     assert _research.web_notes([]) == []
+
+
+def _canned_ghsa_advisories():
+    return [
+        {
+            "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+            "cve_id": "CVE-2024-3094",
+            "summary": "xz backdoor",
+            "description": "Malicious code in xz.",
+            "severity": "critical",
+            "cwes": [{"cwe_id": "CWE-506"}],
+            "references": ["https://example.invalid/ghsa"],
+            "epss": {"percentage": 0.12, "percentile": 0.34},
+            "cvss_severities": {
+                "cvss_v4": {"score": 9.1, "vector_string": "CVSS:4.0/AV:N/AC:L"},
+                "cvss_v3": {"score": 8.0, "vector_string": "CVSS:3.1/AV:N/AC:L"},
+            },
+            "vulnerabilities": [{"package": {"name": "xz"}, "first_patched_version": "5.6.2"}],
+        }
+    ]
+
+
+def test_ghsa_lookup_by_cve_uses_cve_id_param(monkeypatch):
+    """O1: CVE-id lookup queries ?cve_id=, carries EPSS + CVSSv4 fields."""
+    import research as _research
+
+    calls = {}
+
+    def fake_get(url, *, params=None, headers=None):
+        calls["url"] = url
+        calls["params"] = dict(params or {})
+        calls["headers"] = dict(headers or {})
+        return _canned_ghsa_advisories()
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    recs = _research.ghsa_lookup_by_cve("CVE-2024-3094")
+    assert len(recs) == 1
+    assert calls["params"].get("cve_id") == "CVE-2024-3094"
+    assert "package" not in calls["params"]
+    assert calls["url"] == "https://api.github.com/advisories"
+    r = recs[0]
+    assert (r.source, r.cve_id) == ("ghsa", "CVE-2024-3094")
+    assert r.cvss == "9.1"  # cvss v4 preferred over v3
+    assert r.extra["epss_percentile"] == "0.34"
+    assert r.extra["first_patched_version"] == "5.6.2"
+
+
+def test_cve_records_uses_ghsa_cve_lookup(monkeypatch):
+    """O1: cve_records surfaces the GHSA record for the CVE."""
+    import research as _research
+
+    monkeypatch.setattr(_research, "circl_lookup", lambda cve: None)
+    monkeypatch.setattr(_research, "osv_lookup", lambda cve: None)
+    monkeypatch.setattr(_research, "epss_score", lambda cve: None)
+    monkeypatch.setattr(
+        _research,
+        "ghsa_lookup_by_cve",
+        lambda cve, **kw: [
+            _research.ResearchRecord(source="ghsa", cve_id=cve, title="t", summary="s")
+        ],
+    )
+    recs = _research.cve_records(["CVE-2024-3094"])
+    assert [(r.source, r.cve_id) for r in recs] == [("ghsa", "CVE-2024-3094")]
+
+
+def test_ghsa_lookup_by_cve_never_raises(monkeypatch):
+    """O1: invalid CVE id -> []; transport failure -> []."""
+    import research as _research
+
+    assert _research.ghsa_lookup_by_cve("bogus!!") == []
+    assert _research.ghsa_lookup_by_cve("") == []
+    monkeypatch.setattr(
+        _research, "_get_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
+    )
+    assert _research.ghsa_lookup_by_cve("CVE-2024-3094") == []
 
 
 def test_http_leaf_back_compat_aliases_match_sms_http():
