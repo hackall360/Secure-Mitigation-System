@@ -387,7 +387,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'demo-build', 'project'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project', 'mcp'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -398,12 +398,15 @@ function setSourceMode(mode) {
   el('demo-config').hidden = mode !== 'demo';
   el('demo-build-config').hidden = mode !== 'demo-build';
   el('project-form').hidden = mode !== 'project';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : 'Run demo verification';
+  el('mcp-form').hidden = mode !== 'mcp';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
       ? 'Greenhouse grows a fresh demo from your build brief and vulnerabilities below, then red and blue exercise it in Docker.'
-      : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+      : mode === 'mcp'
+        ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
+        : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
   // Build-brief affordance: landing on Green build puts the cursor in the
   // brief field so the Wonder-built flow starts with one keystroke.
@@ -1011,6 +1014,7 @@ function startScan() {
   const key = el('target-select').value;
   if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
+  if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) {
     status('Fix the highlighted project fields below, then run again', 'warn');
@@ -1119,6 +1123,66 @@ function stopScan() {
   el('stop-btn').disabled = true;
   status('Stopping scan — finishing cleanup', 'running');
   try { socket.close(1000, 'User cancelled'); } catch { /* socket already gone */ }
+}
+
+async function submitMcpSnippet() {
+  // MCP snippet path: POST JSON-RPC tools/call to /mcp, same red/blue
+  // Docker loop as every other surface. No WebSocket involved.
+  const errors = el('mcp-errors');
+  const out = el('mcp-result');
+  errors.hidden = true;
+  out.hidden = true;
+  const filename = el('mcp-filename').value.trim() || 'app.js';
+  const source = el('mcp-source').value;
+  const contractText = el('mcp-contract').value.trim();
+  const problems = [];
+  if (!source) problems.push('Paste the snippet source first.');
+  if (source && new Blob([source]).size > 65536) problems.push('Snippet exceeds 64 KiB.');
+  if (!contractText) problems.push('Describe the behavior contract first.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Snippet verification running', 'running');
+  setStage('sandbox');
+  writeLine('system', `MCP submit_code_snippet → ${filename} (${el('mcp-language').value})`);
+  el('run-btn').disabled = true;
+  el('stop-btn').hidden = true;
+  try {
+    const resp = await fetch('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'submit_code_snippet',
+          arguments: {
+            filename,
+            language: el('mcp-language').value,
+            source,
+            contract: contractText,
+          },
+        },
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message || 'MCP call failed.');
+    const structured = data.result.structuredContent;
+    out.textContent = `status=${structured.status} pre_probe_exit=${structured.pre_probe_exit} post_probe_exit=${structured.post_probe_exit} receipt=${structured.receipt ? structured.receipt.patch_sha256.slice(0, 12) : 'none'}`;
+    out.hidden = false;
+    setStage('cleanup');
+    status(`Snippet ${structured.status}`, structured.status === 'verified' ? 'ready' : 'warn');
+    writeLine('system', `MCP result: status=${structured.status} pre=${structured.pre_probe_exit} post=${structured.post_probe_exit}`);
+  } catch (err) {
+    errors.textContent = `Snippet verification failed: ${err.message}`;
+    errors.hidden = false;
+    status('Snippet verification failed', 'error');
+  } finally {
+    el('run-btn').disabled = false;
+  }
 }
 
 function startDemoBuild() {

@@ -48,6 +48,7 @@ CAPABILITIES_LINES = (
     "templates keep patches inside the small-edit guard",
     "stale:<date> means KEV/EPSS older than 1 day, never outranks fresh",
     "repeat-stability re-runs the check so flaky passes fail closed",
+    "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
 )
 
 

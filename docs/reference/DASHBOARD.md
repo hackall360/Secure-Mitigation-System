@@ -26,6 +26,16 @@ are side-effect-scoped layers. CSP-safe throughout: `textContent` and
 | WebSocket `onmessage` | Routes `payload.team`/`payload.msg` to `writeLine`; unreadable events get a system line |
 | `socket.onerror` / close | System lines; server finishes cleanup before next scan |
 
+## MCP snippet panel (Milestone 2)
+
+`POST /mcp` (Streamable HTTP JSON-RPC) exposes `submit_code_snippet`;
+the dashboard `MCP snippet` mode posts the same call and renders the
+structured result inline. No WebSocket involved.
+
+| Fact / panel | DOM ids | Render fn | Source fields |
+|---|---|---|---|
+| MCP snippet form | `mcp-form`, `mcp-language`, `mcp-filename`, `mcp-source`, `mcp-contract`, `mcp-errors`, `mcp-result` | `submitMcpSnippet` (`app.js`) | `fetch('/mcp')` JSON-RPC `tools/call submit_code_snippet`; result text `status/pre_probe_exit/post_probe_exit/receipt sha12`. |
+
 ## Wave 2 (SPEC 14.8) panels (`renderW2v2`, `static/app.js:807`)
 
 All collectors are defensive (optional fields, odd shapes degrade to null,

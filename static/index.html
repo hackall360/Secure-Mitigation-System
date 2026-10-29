@@ -63,6 +63,7 @@
           <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
           <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
+          <button id="mode-mcp" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="mcp"><strong>MCP snippet</strong><small>External AI client submits code</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -116,6 +117,14 @@
           <label class="remote-consent wide"><input id="research-scanners-toggle" type="checkbox"><span><strong>Run local scanners</strong><small>Trivy, Grype, OSV-Scanner, Dependency-Check and Dependency-Track against a temp copy on this host. Requires threat intel above.</small></span></label>
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
+        </form>
+        <form id="mcp-form" class="project-form" hidden novalidate>
+          <div class="field"><label for="mcp-language">Language</label><select id="mcp-language" name="language" required><option value="javascript" selected>JavaScript</option><option value="python">Python</option><option value="php">PHP</option></select><small>Runs in the matching sandbox image.</small></div>
+          <div class="field wide"><label for="mcp-filename">Filename</label><input id="mcp-filename" name="filename" required maxlength="128" placeholder="app.js" autocomplete="off"><small>Bare filename, no paths.</small></div>
+          <div class="field wide"><label for="mcp-source">Source snippet</label><textarea id="mcp-source" name="source" required rows="8" spellcheck="false" placeholder="Paste the code to verify (max 64 KiB)."></textarea></div>
+          <div class="field wide"><label for="mcp-contract">Behavior contract</label><textarea id="mcp-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
+          <div id="mcp-errors" class="form-errors wide" role="alert" hidden></div>
+          <div id="mcp-result" class="form-errors wide" role="status" hidden></div>
         </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>
