@@ -445,7 +445,7 @@ def test_cve_records_includes_kev_record(monkeypatch):
     monkeypatch.setattr(_research, "circl_lookup", lambda cve: None)
     monkeypatch.setattr(_research, "osv_lookup", lambda cve: None)
     monkeypatch.setattr(_research, "epss_score", lambda cve: None)
-    monkeypatch.setattr(_research, "ghsa_search", lambda package: [])
+    monkeypatch.setattr(_research, "ghsa_lookup_by_cve", lambda cve: [])
     monkeypatch.setattr(
         _research,
         "kev_lookup",
