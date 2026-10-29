@@ -183,6 +183,93 @@ def circl_browse_product(vendor: str, product: str, *, limit: int = 5) -> list[R
     return out
 
 
+def _ghsa_first_patched_version(adv: dict) -> str:
+    """First patched version: top-level or nested under vulnerabilities[]."""
+    top = adv.get("first_patched_version")
+    if isinstance(top, str) and top.strip():
+        return top.strip()[:32]
+    if isinstance(top, dict) and top.get("identifier"):
+        return str(top.get("identifier"))[:32]
+    vulns = adv.get("vulnerabilities")
+    if isinstance(vulns, list):
+        for vuln in vulns:
+            if not isinstance(vuln, dict):
+                continue
+            fpv = vuln.get("first_patched_version")
+            if isinstance(fpv, str) and fpv.strip():
+                return fpv.strip()[:32]
+            if isinstance(fpv, dict) and fpv.get("identifier"):
+                return str(fpv.get("identifier"))[:32]
+    return ""
+
+
+def ghsa_lookup_by_cve(cve_id: str, *, limit: int = 5) -> list[ResearchRecord]:
+    """GitHub Advisory DB lookup by CVE id (?cve_id=). No key, never raises.
+
+    Mirrors ghsa_search style (bounded strings, same headers, small
+    per_page). Carries the advisory's EPSS dict and CVSS severities
+    (v4 preferred over v3) into the record; first_patched_version may
+    live top-level or nested under vulnerabilities[]. All parsing is
+    defensive dict.get chains — malformed payloads degrade to [].
+    """
+    safe = sanitize_cve_id(cve_id)
+    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
+        return []
+    params: dict = {"cve_id": safe, "per_page": str(max(1, min(limit, 20)))}
+    try:
+        payload = _get_json(
+            "https://api.github.com/advisories",
+            params=params,
+            headers={"Accept": "application/vnd.github+json"},
+        )
+    except RuntimeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    out: list[ResearchRecord] = []
+    for adv in payload[:limit]:
+        if not isinstance(adv, dict):
+            continue
+        epss = adv.get("epss") if isinstance(adv.get("epss"), dict) else {}
+        sevs = adv.get("cvss_severities") if isinstance(adv.get("cvss_severities"), dict) else {}
+        v4 = sevs.get("cvss_v4") if isinstance(sevs.get("cvss_v4"), dict) else {}
+        v3 = sevs.get("cvss_v3") if isinstance(sevs.get("cvss_v3"), dict) else {}
+        chosen, version = (v4, "v4") if v4.get("score") is not None else (v3, "v3")
+        score = chosen.get("score")
+        vector = chosen.get("vector_string") or chosen.get("vectorString") or ""
+        cwes = tuple(
+            str(n.get("cwe_id", ""))[:16]
+            for n in (adv.get("cwes") or [])[:4]
+            if isinstance(n, dict) and n.get("cwe_id")
+        )
+        description = str(adv.get("description") or "")
+        summary = description
+        if isinstance(vector, str) and vector.strip():
+            summary = f"{description} [CVSS {str(vector).strip()[:128]}]"
+        out.append(
+            ResearchRecord(
+                source="ghsa",
+                cve_id=str(adv.get("cve_id") or safe)[:32],
+                title=str(adv.get("summary") or adv.get("ghsa_id") or "")[:256],
+                summary=summary[:1500],
+                severity=str(adv.get("severity") or "")[:16],
+                cvss=str(score)[:32] if score is not None else "",
+                cwe=cwes,
+                references=tuple(
+                    str(r)[:256] for r in (adv.get("references") or [])[:5] if isinstance(r, str)
+                ),
+                extra={
+                    "epss_percentage": str(epss.get("percentage", ""))[:32],
+                    "epss_percentile": str(epss.get("percentile", ""))[:32],
+                    "cvss_version": version,
+                    "cvss_vector": str(vector)[:128] if isinstance(vector, str) else "",
+                    "first_patched_version": _ghsa_first_patched_version(adv),
+                },
+            )
+        )
+    return out
+
+
 def ghsa_search(package: str, ecosystem: str = "", *, limit: int = 5) -> list[ResearchRecord]:
     """GitHub Advisory DB search: curated severity/CWE, unauthenticated. No key."""
     package = package.strip()[:128]
@@ -285,7 +372,7 @@ def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
         except Exception:
             pass
         try:
-            add([r for r in ghsa_search(cve) if r.cve_id.upper() == cve][:2])
+            add([r for r in ghsa_lookup_by_cve(cve) if r.cve_id.upper() == cve][:2])
         except Exception:
             pass
     return found[:24]
