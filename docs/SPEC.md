@@ -996,3 +996,38 @@ Each build: fail-first test, tri-surface where a user-visible surface exists, ga
 - R2 LOW bundle: `research` direct CVE fetches use the same raised byte cap
   as KEV; `epss_score` reuses `sanitize_cve_id`; `intel_search
   .osv_lookup_by_cve` validates CVE shape before fetching.
+
+## 14.8 Wave 2 delta (gated on RESEARCH_V4, 9-wave swarm, 2026-10-29)
+
+Novelty bar: each item states "Competitor X does [A], but we are doing [B],
+which advances the field by [C]" and must accelerate same-day patching or be
+cut. Scope is Lanes 1/2/4 only; Lanes 3/5 are not citable until full
+statements land (RESEARCH_V4 records positions only).
+
+1. **Execution-oracle verdict receipts (Lane 1).** Dependabot/Snyk emit
+version-bump PRs with notes; our loop already proves exit 0 → exit 1. New:
+each verified cycle records a machine-readable receipt (fixture, pre/post exit
+codes, regression + differential + property outcomes, patch hash) exportable
+alongside the candidate patch. Fail-first test through the real workflow
+evidence path; never upgrades a verdict, only records it.
+2. **Sanitization-guard rationale export (Lane 2).** Semgrep/Snyk Code emit
+AI draft fixes validated by humans or rescan; our guards already ban
+behavior-changing edits. New: rejected-patch rationales (which guard fired,
+which protected line) are recorded as structured evidence on the cycle, so a
+same-day reviewer sees why the safe patch is the shape it is. Fail-first;
+redaction rules unchanged (LAW 4).
+3. **Reachable+fixable fast-lane topping (Lane 4).** NVD/OSV/EUVD rank by CVSS;
+our fast lane already sorts by `-reach_score` then fix availability. New: cap
+fast-lane OSV intake deterministically and surface the KEV/EPSS tie-break
+evidence strings on each ranked summary so the day-zero queue order is
+auditable. Fail-first through the real producer+enrichment path (cf. V3 Lane A
+lesson: no stubbed summary dicts).
+4. **Bounded mutation-count probes (Lane 5 survivor only).** N small
+deterministic input mutations per fixture contract, run in the same capped
+container as regression, recorded as evidence; any mutation failure fails the
+cycle closed. Explicitly NOT: eBPF, Wasm, PCC, VEX/SARIF (cut/deferred per V4).
+Fail-first red (unknown fixture exit 2), wire into both retain decisions.
+
+Each build: fail-first test, tri-surface where a user-visible surface exists
+(LAW 8), gate green before merge. Deferred per V4: everything Lane 3/5 would
+add beyond item 4 until their full statements land.
