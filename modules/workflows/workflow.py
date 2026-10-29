@@ -267,6 +267,11 @@ def export_receipt_json(receipt: VerdictReceipt) -> str:
 
 
 class ScanResult(BaseModel):
+    # Strict (SPEC 14.9 item 4, V3-Lane-A): unknown fields raise instead of
+    # silently dropping — a miswired guard_rationale/receipt writer must trip
+    # loudly, never vanish (HIGH: silent dead wire). Matches every other
+    # workflow model in this file.
+    model_config = ConfigDict(extra="forbid", strict=True)
     target: str
     status: Literal["verified", "not_confirmed", "rejected", "failed", "error"] = "error"
     message: str = "Scan did not complete."

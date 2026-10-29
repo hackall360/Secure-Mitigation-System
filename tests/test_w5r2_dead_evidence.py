@@ -88,5 +88,11 @@ def test_receipt_dead_fields_removed():
     assert "differential_passed" in src_pw  # gate still consumes the gate output
     assert "property_exit: int | None" not in src_pw
     assert "retained: bool" not in src_pw
-    assert _fw.ScanResult.model_config == {}
+    assert _fw.ScanResult.model_config.get("extra") == "forbid"
+    try:
+        _fw.ScanResult(target="t", bogus_lane_a_field=1)
+    except Exception:
+        pass
+    else:
+        raise AssertionError("ScanResult silently ignores unknown fields")
     assert "verified: bool" not in Path(_fw.__file__).read_text(encoding="utf-8")
