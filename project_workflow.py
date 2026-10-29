@@ -457,8 +457,9 @@ class DockerProjectSandbox:
             )
             probe_ev = _check_evidence(probe_check, 131_072)
             # Critical addition: post-probe liveness against same still-running target.
-            # A probe returning blocked (1) must not earn success if it crashed the service.
-            if probe_ev.exit_code == 1:
+            # A blocked (1) or inconclusive (2) probe must not earn success if it
+            # crashed the service; exit 0 (reachable) needs no liveness override.
+            if probe_ev.exit_code in (1, 2):
                 post_probe_ev = None
                 try:
                     # Prefer exec inside the same still-running target when available.
