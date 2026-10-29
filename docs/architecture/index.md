@@ -7,5 +7,6 @@ System design: repo map, project workflow, scan profiles, discovery teams.
 - [SCAN_PROFILES.md](SCAN_PROFILES.md) — scan intensity catalog
 - [DISCOVERY_TEAMS.md](DISCOVERY_TEAMS.md) — red/blue team sizes
 - [WAVE2.md](WAVE2.md) — reachability scoring, fast lane, liveness, demo flow, gaps
+- [WAVE5.md](WAVE5.md) — GHSA cve_id fix, KEV signal, tie-break band, differential gate, tiering
 
 Up: [docs/index.md](../index.md)
