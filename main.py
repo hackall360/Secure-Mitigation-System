@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -27,9 +27,18 @@ from modules.core.docker_manager import (
 from modules.core.profiles import ProfileError, apply_profile, available_profiles, default_profile
 from modules.core.registry import BASE_DIR, TARGETS_REGISTRY
 from modules.core.scan_profiles import SCAN_PROFILES
+from modules.services.mcp_bridge import (
+    SNIPPET_TOOL_NAME,
+    handle_mcp_request,
+    jsonrpc_error,
+    jsonrpc_result,
+    structured_result,
+    validate_snippet_arguments,
+)
 from modules.services.projects import ProjectSpec
 from modules.workflows.cve_workflow import execute_cve_scan
 from modules.workflows.project_workflow import execute_project_workflow, redact_report_for_user
+from modules.workflows.sweep import execute_sweep_scan, redact_sweep_result_for_user
 from modules.workflows.workflow import execute_purple_workflow, redact_fixture_result_for_user
 from sms_cli import (
     LoadError,
@@ -48,7 +57,7 @@ LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 # Single source of truth for the release version (LAW 12: 0.major.minor).
 # Every surface renders this: FastAPI metadata, /api/health, --version,
 # dashboard footer. Bump per LAW 12 on every shipped change set.
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 # Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
 # value in plain English. Rendered as the --help epilog; sms_cli and tui
@@ -81,6 +90,60 @@ def _demo_build_failure(exc: BaseException) -> dict:
         "cost_usd": None,
         "cleanup_ok": True,
     }
+
+
+async def execute_mcp_snippet_scan(arguments, emit, *, config=None):
+    """Run an MCP snippet through the evidence-gated red/blue Docker loop.
+
+    Registers the snippet as an ephemeral fixture target and delegates to
+    execute_purple_workflow with the registry extended. Snippet source is
+    injected via the same tar-into-stopped-container path as fixtures —
+    never executed on the host. Docker evidence alone decides the verdict.
+    """
+    import modules.core.registry as _registry
+    from modules.core import checks as _checks
+    from modules.services.mcp_bridge import (
+        mcp_registry_with_snippet,
+        snippet_baseline_key,
+        snippet_target_source,
+    )
+    from modules.workflows import workflow as _workflow_mod
+    from modules.workflows.workflow import execute_purple_workflow as _run
+
+    source = snippet_target_source(arguments)
+    baseline_key = snippet_baseline_key(arguments)
+    registry = mcp_registry_with_snippet(arguments)
+    original = dict(_registry.TARGETS_REGISTRY)
+    try:
+        _registry.TARGETS_REGISTRY.clear()
+        _registry.TARGETS_REGISTRY.update(registry)
+        # Patch Target.read_source for the ephemeral key only: the snippet
+        # has no file under targets/, so serve the submitted bytes. Patch
+        # normal_behavior_script likewise: the snippet reuses its language
+        # fixture's trusted baseline, so regression checks real behavior.
+        real_read_source = _registry.Target.read_source
+        real_baseline_script = _checks.normal_behavior_script
+
+        def _patched(self):
+            if self.key == "mcp_snippet":
+                return source
+            return real_read_source(self)
+
+        def _patched_baseline(target_key: str) -> str:
+            if target_key == "mcp_snippet":
+                return real_baseline_script(baseline_key)
+            return real_baseline_script(target_key)
+
+        _registry.Target.read_source = _patched  # type: ignore[method-assign]
+        _workflow_mod.normal_behavior_script = _patched_baseline  # type: ignore[method-assign]
+        try:
+            return await _run("mcp_snippet", emit, config=config)
+        finally:
+            _registry.Target.read_source = real_read_source  # type: ignore[method-assign]
+            _workflow_mod.normal_behavior_script = real_baseline_script  # type: ignore[method-assign]
+    finally:
+        _registry.TARGETS_REGISTRY.clear()
+        _registry.TARGETS_REGISTRY.update(original)
 
 
 async def run_demo_build(
@@ -366,7 +429,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         if socket.headers.get("origin") != expected_origin or (
             target_key is not None
             and target_key not in TARGETS_REGISTRY
-            and target_key != "__demo__"
+            and target_key not in ("__demo__", "__binary__")
         ):
             await socket.close(code=1008)
             return
@@ -392,6 +455,16 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 scan_config = dataclasses.replace(
                     scan_config, research_enabled=True, research_scanners=wanted
                 )
+            # Dashboard opt-in mirrors --sweep-passes: absent/single = legacy
+            # single loop, 2/3 = multi-pass sweep. Anything else refuses.
+            sweep_raw = socket.query_params.get("sweep_passes")
+            if sweep_raw in (None, "", "1"):
+                sweep_depth: int | None = None
+            elif sweep_raw in ("2", "3"):
+                sweep_depth = int(sweep_raw)
+            else:
+                await socket.close(code=1008)
+                return
         except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
@@ -418,7 +491,45 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 return
 
         async with lock:
-            if target_key is None:
+            if target_key == "__binary__":
+                try:
+                    # Binary bytes travel in the first WS frame (base64), never
+                    # in URLs, history, or access logs. 8 MiB intake cap + 33%
+                    # base64 overhead bound the frame.
+                    import base64
+
+                    from modules.services.binary_intake import (
+                        BinaryRejected as _BinaryRejected,
+                    )
+                    from modules.services.binary_intake import (
+                        validate_binary_blob as _validate_blob,
+                    )
+
+                    raw = await asyncio.wait_for(socket.receive_text(), timeout=60)
+                    if len(raw.encode("utf-8")) > 12_000_000:
+                        raise ValueError("Binary request is too large.")
+                    request = json.loads(raw)
+                    blob = base64.b64decode(request.get("blob_b64", ""), validate=True)
+                    filename = str(request.get("filename", "") or "")
+                    contract = str(request.get("contract", "") or "")
+                    binary_spec = _validate_blob(blob, filename=filename, contract=contract)
+                except (ValueError, TimeoutError, WebSocketDisconnect, _BinaryRejected) as exc:
+                    reason = (
+                        str(exc)
+                        if isinstance(exc, _BinaryRejected)
+                        else (
+                            "Invalid binary request. Send JSON with blob_b64, filename, and contract."
+                        )
+                    )
+                    await socket.send_json({"type": "invalid", "team": "system", "msg": reason})
+                    await socket.close(code=1008)
+                    return
+                from modules.workflows.binary_sweep import (
+                    execute_binary_sweep as _execute_binary,
+                )
+
+                coroutine = _execute_binary(binary_spec, emit, config=scan_config)
+            elif target_key is None:
                 try:
                     # No paths or source are placed in URLs, browser history, or access logs.
                     raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
@@ -504,7 +615,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     seed=demo_seed,
                 )
             else:
-                coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
+                if sweep_depth is not None:
+                    coroutine = execute_sweep_scan(
+                        target_key, emit, config=scan_config, max_passes=sweep_depth
+                    )
+                else:
+                    coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
             # Connect preamble: the UI renders plain log frames immediately,
             # so this hello + profile snapshot means it never sits blank
             # while Docker/Muse warm up. Profiles are fixed keys, never model
@@ -535,8 +651,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         return
                     safe = result.model_dump()
                     try:
+                        from modules.workflows.binary_sweep import (
+                            redact_binary_sweep_result_for_user as _redact_binary,
+                        )
                         from modules.workflows.project_workflow import (
                             redact_report_for_user as _redact_proj,
+                        )
+                        from modules.workflows.sweep import (
+                            SweepScanResult as _SweepResult,
                         )
                         from modules.workflows.workflow import (
                             redact_fixture_result_for_user as _redact_fixt,
@@ -544,6 +666,10 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
                         if target_key is None:
                             safe = _redact_proj(result)
+                        elif target_key == "__binary__":
+                            safe = _redact_binary(result)
+                        elif isinstance(result, _SweepResult):
+                            safe = redact_sweep_result_for_user(result)
                         else:
                             safe = _redact_fixt(result)
                     except Exception:
@@ -581,10 +707,243 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         """Green builder: Muse designs a novel demo project, then red/blue exercise it."""
         await run_socket(socket, target_key="__demo__")
 
+    @application.websocket("/ws/binary")
+    async def binary_combat(socket: WebSocket):
+        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 3-pass loop."""
+        await run_socket(socket, target_key="__binary__")
+
+    @application.post("/mcp")
+    async def mcp_endpoint(request: Request):
+        """Model Context Protocol endpoint (Streamable HTTP, JSON-RPC).
+
+        Exposes the submit_code_snippet tool: an external AI client sends a
+        bounded source snippet, the existing red/blue Docker loop verifies
+        it, and the VerdictReceipt + Docker exit codes come back as the
+        structured result. Docker evidence alone decides every verdict.
+        """
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": "Parse error."},
+                },
+                status_code=200,
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "Invalid Request."},
+                },
+                status_code=200,
+            )
+        method = body.get("method")
+        rpc_id = body.get("id")
+        if method == "tools/call":
+            params = body.get("params") or {}
+            if params.get("name") != SNIPPET_TOOL_NAME:
+                return JSONResponse(
+                    jsonrpc_error(rpc_id, -32602, f"Unknown tool: {params.get('name')}."),
+                    status_code=200,
+                )
+            try:
+                arguments = validate_snippet_arguments(params.get("arguments") or {})
+            except ValueError as exc:
+                return JSONResponse(
+                    jsonrpc_error(rpc_id, -32602, str(exc)),
+                    status_code=200,
+                )
+            try:
+                settings = config or load_config()
+                settings.validate()
+            except ConfigurationError as exc:
+                return JSONResponse(
+                    jsonrpc_error(rpc_id, -32000, f"Server not ready: {exc}."),
+                    status_code=200,
+                )
+            lock = application.state.scan_lock
+            if lock.locked():
+                return JSONResponse(
+                    jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
+                    status_code=200,
+                )
+            messages: list[str] = []
+
+            async def _emit(team: str, message: str) -> None:
+                messages.append(f"[{team}] {message}")
+
+            async with lock:
+                try:
+                    result = await execute_mcp_snippet_scan(arguments, _emit, config=settings)
+                except Exception as exc:
+                    return JSONResponse(
+                        jsonrpc_error(
+                            rpc_id, -32603, f"Snippet scan failed ({type(exc).__name__})."
+                        ),
+                        status_code=200,
+                    )
+            structured = structured_result(result)
+            return JSONResponse(
+                jsonrpc_result(
+                    rpc_id,
+                    {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"status={structured['status']} "
+                                    f"pre_probe_exit={structured['pre_probe_exit']} "
+                                    f"post_probe_exit={structured['post_probe_exit']}"
+                                ),
+                            }
+                        ],
+                        "structuredContent": structured,
+                    },
+                ),
+                status_code=200,
+            )
+        return JSONResponse(handle_mcp_request(body), status_code=200)
+
     return application
 
 
 app = create_app()
+
+
+_SNIPPET_LANGUAGE_BY_SUFFIX = {
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".py": "python",
+    ".php": "php",
+}
+
+
+async def mcp_snippet_runner(
+    snippet_path: Path,
+    *,
+    language: str | None = None,
+    contract: str = "",
+    output_dir: Path | None = None,
+    out_format: str = "table",
+    show_usage: bool = False,
+) -> int:
+    """CLI form of submit_code_snippet: verify one file, print receipt JSON."""
+    from modules.core.config import load_config as _load
+    from modules.services.mcp_bridge import validate_snippet_arguments
+
+    try:
+        source = snippet_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Cannot read snippet file: {exc}.", file=sys.stderr)
+        return 1
+    resolved = language or _SNIPPET_LANGUAGE_BY_SUFFIX.get(snippet_path.suffix.lower(), "")
+    if not resolved:
+        print(
+            "Cannot infer snippet language; pass --snippet-language javascript|python|php.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        arguments = validate_snippet_arguments(
+            {
+                "filename": snippet_path.name,
+                "language": resolved,
+                "source": source,
+                "contract": contract or "Preserve normal behavior. Only harden untrusted inputs.",
+            }
+        )
+    except ValueError as exc:
+        print(f"Invalid snippet: {exc}", file=sys.stderr)
+        return 1
+    settings = _load()
+    lines: list[str] = []
+
+    async def _emit(team: str, message: str) -> None:
+        lines.append(f"[{team}] {message}")
+
+    result = await execute_mcp_snippet_scan(arguments, _emit, config=settings)
+    for line in lines:
+        print(line)
+    if out_format == "json":
+        print(json.dumps(structured_result(result), indent=2))
+    else:
+        print(fact_table(result))
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir = output_dir / f"mcp-snippet-{stamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "report.json").write_text(
+            json.dumps(structured_result(result), indent=2), encoding="utf-8"
+        )
+        print(f"Saved MCP snippet report to {run_dir}/report.json")
+    if show_usage:
+        print(usage_table(result.usage))
+    return 0 if getattr(result, "success", False) else 1
+
+
+async def binary_sweep_runner(
+    binary_path: Path,
+    *,
+    contract: str = "",
+    max_passes: int = 3,
+    output_dir: Path | None = None,
+    out_format: str = "table",
+    show_usage: bool = False,
+) -> int:
+    """CLI form of the binary 3-pass sweep: validate, sweep, print report JSON."""
+    from modules.core.config import load_config as _load
+    from modules.services.binary_intake import BinaryRejected, validate_binary_file
+    from modules.workflows.binary_sweep import (
+        execute_binary_sweep,
+        redact_binary_sweep_result_for_user,
+    )
+
+    try:
+        spec = validate_binary_file(
+            str(binary_path),
+            contract=contract or "Preserve normal behavior. Only harden untrusted inputs.",
+        )
+    except BinaryRejected as exc:
+        print(f"Invalid binary target: {exc}", file=sys.stderr)
+        return 1
+    settings = _load()
+    lines: list[str] = []
+
+    async def _emit(team: str, message: str) -> None:
+        lines.append(f"[{team}] {message}")
+
+    result = await execute_binary_sweep(
+        spec, _emit, config=settings, max_passes=max(1, min(3, max_passes))
+    )
+    for line in lines:
+        print(line)
+    report = redact_binary_sweep_result_for_user(result)
+    if out_format == "json":
+        print(json.dumps(report, indent=2))
+    else:
+        print(fact_table(result))
+        for passed in result.pass_results:
+            sha = passed.receipt.patch_sha256[:12] if passed.receipt else "none"
+            print(
+                f"[PASS ] {passed.pass_id}: pre={passed.pre_exit_code} "
+                f"post={passed.post_exit_code} cleared={passed.cleared} receipt={sha}"
+            )
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir = output_dir / f"binary-sweep-{stamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Saved binary sweep report to {run_dir}/report.json")
+    if show_usage:
+        print(usage_table(result.usage))
+    return 0 if getattr(result, "success", False) else 1
 
 
 async def ai_demo_runner(
@@ -731,6 +1090,7 @@ async def cli_runner(
     fast_lane: bool = False,
     out_format: str = "table",
     show_usage: bool = False,
+    sweep_passes: int | None = None,
 ) -> int:
     use_color: bool | None = None
     json_mode = out_format == "json"
@@ -788,8 +1148,17 @@ async def cli_runner(
         return 0 if cve_result.success else 1
     if project is None:
         with Spinner("Verifying fixture boundary"):
-            result = await execute_purple_workflow(target_key, emit, config=settings)
-        user_report = redact_fixture_result_for_user(result)
+            if sweep_passes is not None:
+                result = await execute_sweep_scan(
+                    target_key,
+                    emit,
+                    config=settings,
+                    max_passes=max(1, min(3, sweep_passes)),
+                )
+                user_report = redact_sweep_result_for_user(result)
+            else:
+                result = await execute_purple_workflow(target_key, emit, config=settings)
+                user_report = redact_fixture_result_for_user(result)
     else:
         with Spinner("Verifying project boundary"):
             result = await execute_project_workflow(project, emit, config=settings)
@@ -1221,6 +1590,28 @@ def main() -> int:
         action="store_true",
         help="AI-built demo mode: Muse designs a novel vulnerable demo project from threat intel, then red/blue teams exercise it in Docker",
     )
+    commands.add_argument(
+        "--mcp-snippet",
+        type=Path,
+        help="Verify one source snippet file through the red/blue Docker loop and print the VerdictReceipt JSON (MCP submit_code_snippet over CLI)",
+    )
+    commands.add_argument(
+        "--binary-target",
+        type=Path,
+        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
+    )
+    parser.add_argument(
+        "--snippet-language",
+        choices=["javascript", "python", "php"],
+        default=None,
+        help="Snippet language for --mcp-snippet (default: inferred from file extension)",
+    )
+    parser.add_argument(
+        "--sweep-passes",
+        type=int,
+        default=None,
+        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor; default 1, single finding loop)",
+    )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--image", help="Already-loaded runtime image containing offline dependencies"
@@ -1406,8 +1797,10 @@ def main() -> int:
         parser.error("--port must be between 1 and 65535")
     if args.profile is not None and not (args.scan or args.project or args.ai_demo):
         parser.error("--profile requires --scan, --project, or --ai-demo")
-    if args.output_dir is not None and not (args.scan or args.project or args.ai_demo):
-        parser.error("--output-dir requires --scan, --project, or --ai-demo")
+    if args.output_dir is not None and not (
+        args.scan or args.project or args.ai_demo or args.binary_target
+    ):
+        parser.error("--output-dir requires --scan, --project, --ai-demo, or --binary-target")
     # --research/--research-scanners run on every scan surface: fixture, project, ai-demo.
     if args.research and not (args.scan or args.project or args.ai_demo):
         parser.error("--research requires --scan, --project, or --ai-demo")
@@ -1431,6 +1824,10 @@ def main() -> int:
         parser.error("--flaw-count requires --ai-demo")
     if args.demo_seed is not None and not args.ai_demo:
         parser.error("--demo-seed requires --ai-demo")
+    if args.sweep_passes is not None and not args.scan:
+        parser.error("--sweep-passes requires --scan")
+    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 3:
+        parser.error("--sweep-passes must be between 1 and 3")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")
@@ -1458,6 +1855,8 @@ def main() -> int:
     if (
         not args.project
         and not args.ai_demo
+        and not args.mcp_snippet
+        and not args.binary_target
         and (
             args.image
             or args.command
@@ -1530,6 +1929,28 @@ def main() -> int:
             from tui import main as _tui_main
 
             return _tui_main([])
+        if args.mcp_snippet:
+            return asyncio.run(
+                mcp_snippet_runner(
+                    args.mcp_snippet,
+                    language=args.snippet_language,
+                    contract=args.contract,
+                    output_dir=args.output_dir,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                )
+            )
+        if args.binary_target:
+            return asyncio.run(
+                binary_sweep_runner(
+                    args.binary_target,
+                    contract=args.contract,
+                    max_passes=3,
+                    output_dir=args.output_dir,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                )
+            )
         if args.scan:
             return asyncio.run(
                 cli_runner(
@@ -1540,6 +1961,7 @@ def main() -> int:
                     args.research_scanners,
                     out_format=out_format,
                     show_usage=args.show_usage,
+                    sweep_passes=args.sweep_passes,
                 )
             )
         if args.ai_demo:

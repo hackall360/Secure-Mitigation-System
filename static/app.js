@@ -387,7 +387,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'demo-build', 'project'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -398,12 +398,18 @@ function setSourceMode(mode) {
   el('demo-config').hidden = mode !== 'demo';
   el('demo-build-config').hidden = mode !== 'demo-build';
   el('project-form').hidden = mode !== 'project';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : 'Run demo verification';
+  el('mcp-form').hidden = mode !== 'mcp';
+  el('binary-form').hidden = mode !== 'binary';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
       ? 'Greenhouse grows a fresh demo from your build brief and vulnerabilities below, then red and blue exercise it in Docker.'
-      : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+      : mode === 'mcp'
+        ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
+        : mode === 'binary'
+          ? 'Upload a compiled binary — static reversing profiles it, then the same 3-pass loop probes it through the trusted harness (also at /ws/binary).'
+          : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
   // Build-brief affordance: landing on Green build puts the cursor in the
   // brief field so the Wonder-built flow starts with one keystroke.
@@ -875,6 +881,25 @@ function renderW2v2(payload) {
 }
 
 function summaryEvidence(payload) {
+  if (Array.isArray(payload.pass_results) && payload.pass_results.length) {
+    // Sweep payload: roll per-pass Docker exits into the shared summary shape.
+    const passes = payload.pass_results;
+    const held = passes.filter((p) => p.cleared || (p.receipt && p.post_exit_code === 1 && p.regression_passed)).length;
+    const pres = passes.map((p) => p.pre_exit_code).filter((c) => c !== null && c !== undefined);
+    const posts = passes.map((p) => p.post_exit_code).filter((c) => c !== null && c !== undefined);
+    return {
+      ...payload,
+      baseline_passed: payload.baseline_passed,
+      pre_exit_code: pres.length === 1 ? pres[0] : undefined,
+      post_exit_code: posts.length === 1 ? posts[posts.length - 1] : undefined,
+      regression_passed: passes.every((p) => p.cleared || p.regression_passed),
+      pre_summary: pres.length > 1 ? `${pres.filter((c) => c === 0).length}/${pres.length} reachable` : undefined,
+      post_summary: posts.length > 1 ? `${posts.filter((c) => c === 1).length}/${posts.length} blocked` : undefined,
+      pre_good: pres.every((c) => c === 0),
+      post_good: posts.every((c) => c === 1),
+      sweep_summary: `${held}/${passes.length} passes hold`,
+    };
+  }
   if (!Array.isArray(payload.cycle_reports)) return payload;
   const cycles = payload.cycle_reports;
   const before = cycles.map((cycle) => cycle.evidence && cycle.evidence.pre_verification).filter(Boolean);
@@ -907,6 +932,8 @@ function renderResultMeta(payload, evidence, cycles) {
   if (Array.isArray(cycles) && cycles.length) {
     const kept = cycles.filter((cycle) => cycle && cycle.status === 'retained').length;
     parts.push(`${kept}/${cycles.length} cycles verified`);
+  } else if (evidence.sweep_summary) {
+    parts.push(evidence.sweep_summary);
   } else if (payload.status) {
     parts.push(payload.status === 'verified' ? '1/1 verified' : '0/1 verified');
   }
@@ -954,6 +981,8 @@ function showResult(payload) {
 function socketQuery() {
   const params = [];
   if (profiles.length) params.push(`profile=${encodeURIComponent(selectedProfile)}`);
+  const sweep = el('sweep-passes');
+  if (sweep && sweep.value !== '1') params.push(`sweep_passes=${encodeURIComponent(sweep.value)}`);
   if (el('research-toggle') && el('research-toggle').checked) {
     params.push('research=on');
     if (el('research-scanners-toggle') && el('research-scanners-toggle').checked) {
@@ -1011,6 +1040,8 @@ function startScan() {
   const key = el('target-select').value;
   if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
+  if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
+  if (sourceMode === 'binary') { submitBinary(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) {
     status('Fix the highlighted project fields below, then run again', 'warn');
@@ -1119,6 +1150,135 @@ function stopScan() {
   el('stop-btn').disabled = true;
   status('Stopping scan — finishing cleanup', 'running');
   try { socket.close(1000, 'User cancelled'); } catch { /* socket already gone */ }
+}
+
+async function submitMcpSnippet() {
+  // MCP snippet path: POST JSON-RPC tools/call to /mcp, same red/blue
+  // Docker loop as every other surface. No WebSocket involved.
+  const errors = el('mcp-errors');
+  const out = el('mcp-result');
+  errors.hidden = true;
+  out.hidden = true;
+  const filename = el('mcp-filename').value.trim() || 'app.js';
+  const source = el('mcp-source').value;
+  const contractText = el('mcp-contract').value.trim();
+  const problems = [];
+  if (!source) problems.push('Paste the snippet source first.');
+  if (source && new Blob([source]).size > 65536) problems.push('Snippet exceeds 64 KiB.');
+  if (!contractText) problems.push('Describe the behavior contract first.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Snippet verification running', 'running');
+  setStage('sandbox');
+  writeLine('system', `MCP submit_code_snippet → ${filename} (${el('mcp-language').value})`);
+  el('run-btn').disabled = true;
+  el('stop-btn').hidden = true;
+  try {
+    const resp = await fetch('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'submit_code_snippet',
+          arguments: {
+            filename,
+            language: el('mcp-language').value,
+            source,
+            contract: contractText,
+          },
+        },
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message || 'MCP call failed.');
+    const structured = data.result.structuredContent;
+    out.textContent = `status=${structured.status} pre_probe_exit=${structured.pre_probe_exit} post_probe_exit=${structured.post_probe_exit} receipt=${structured.receipt ? structured.receipt.patch_sha256.slice(0, 12) : 'none'}`;
+    out.hidden = false;
+    setStage('cleanup');
+    status(`Snippet ${structured.status}`, structured.status === 'verified' ? 'ready' : 'warn');
+    writeLine('system', `MCP result: status=${structured.status} pre=${structured.pre_probe_exit} post=${structured.post_probe_exit}`);
+  } catch (err) {
+    errors.textContent = `Snippet verification failed: ${err.message}`;
+    errors.hidden = false;
+    status('Snippet verification failed', 'error');
+  } finally {
+    el('run-btn').disabled = false;
+  }
+}
+
+function submitBinary() {
+  // Binary sweep path: file bytes -> base64 first WS frame on /ws/binary,
+  // same 3-pass Docker loop as every other surface over the shared socket flow.
+  const errors = el('binary-errors');
+  errors.hidden = true;
+  const files = el('binary-file').files;
+  const filename = (el('binary-filename').value.trim() || (files.length && files[0].name)) || '';
+  const contractText = el('binary-contract').value.trim();
+  const problems = [];
+  if (!files.length) problems.push('Choose a compiled binary file first.');
+  else if (files[0].size > 8 * 1024 * 1024) problems.push('Binary exceeds 8 MiB.');
+  if (!filename) problems.push('Enter the bare filename (no paths).');
+  if (!contractText) problems.push('Describe the behavior contract first.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Binary sweep running', 'running');
+  setStage('sandbox');
+  writeLine('system', `Binary sweep → ${filename} (${files[0].size} bytes)`);
+  const reader = new FileReader();
+  reader.onerror = () => {
+    errors.textContent = 'Could not read the binary file.';
+    errors.hidden = false;
+    status('Binary sweep failed', 'error');
+  };
+  reader.onload = () => {
+    const bytes = new Uint8Array(reader.result);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    const payload = JSON.stringify({
+      blob_b64: btoa(binary),
+      filename,
+      contract: contractText,
+    });
+    latestResult = null;
+    eventCount = 0;
+    el('event-count').textContent = '0';
+    el('result-panel').hidden = true;
+    delete el('progress').dataset.state;
+    Object.values(logs).forEach((area) => area.replaceChildren());
+    resetPipeline();
+    document.body.classList.add('scanning');
+    el('run-btn').disabled = true;
+    lockTargets(true);
+    lockProfiles(true);
+    lockProjectForm(true);
+    el('stop-btn').hidden = false;
+    el('stop-btn').disabled = false;
+    startedAt = Date.now();
+    const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+    socket = new WebSocket(`${base}/ws/binary${socketQuery()}`);
+    socket.onmessage = handleSocketMessage;
+    socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
+    socket.onclose = handleScanClose;
+    socket.onopen = () => {
+      try {
+        if (socket && socket.readyState === WebSocket.OPEN) socket.send(payload);
+      } catch { /* socket already gone */ }
+      writeLine('system', `Binary specification accepted · harness stages ${filename}.`);
+    };
+  };
+  reader.readAsArrayBuffer(files[0]);
 }
 
 function startDemoBuild() {

@@ -48,6 +48,8 @@ CAPABILITIES_LINES = (
     "templates keep patches inside the small-edit guard",
     "stale:<date> means KEV/EPSS older than 1 day, never outranks fresh",
     "repeat-stability re-runs the check so flaky passes fail closed",
+    "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
+    "binary: /ws/binary sweep or CLI --binary-target FILE (ELF/Mach-O/PE)",
 )
 
 
@@ -368,15 +370,63 @@ def run_plain(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
+    parser.add_argument(
+        "--sweep-passes",
+        type=int,
+        default=None,
+        help="Multi-pass sweep depth 1-3 (default: single finding loop)",
+    )
+    parser.add_argument(
+        "--binary-target",
+        default=None,
+        help="Sweep one compiled binary file through the trusted harness 3-pass loop",
+    )
     args = parser.parse_args(argv)
+    from modules.workflows.binary_sweep import execute_binary_sweep
+    from modules.workflows.sweep import execute_sweep_scan
     from modules.workflows.workflow import (
         execute_purple_workflow,  # lazy import for stdlib-only module top
     )
 
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
-    print(f"Secure Mitigation System [plain mode] fixture={args.fixture}")
+    depth = "sweep" if args.sweep_passes else "single"
+    if args.binary_target:
+        from modules.services.binary_intake import (
+            BinaryRejected,
+            validate_binary_file,
+        )
+
+        print(f"Secure Mitigation System [plain mode] binary={args.binary_target}")
+        try:
+            spec = validate_binary_file(args.binary_target, contract="TUI binary sweep.")
+        except BinaryRejected as exc:
+            print(f"invalid binary target: {exc}")
+            return 1
+        try:
+            result = asyncio.run(execute_binary_sweep(spec, queue_emit(event_queue)))
+        except Exception as exc:
+            print(f"scan failed ({type(exc).__name__})")
+            return 1
+        while True:
+            try:
+                kind, text = event_queue.get_nowait()
+            except queue.Empty:
+                break
+            print(f"[{kind}] {text}")
+        print(describe_result(result))
+        return 0 if getattr(result, "success", False) else 1
+    print(f"Secure Mitigation System [plain mode] fixture={args.fixture} {depth}")
     try:
-        result = asyncio.run(execute_purple_workflow(args.fixture, queue_emit(event_queue)))
+        if args.sweep_passes:
+            result = asyncio.run(
+                execute_sweep_scan(
+                    args.fixture,
+                    queue_emit(event_queue),
+                    max_passes=max(1, min(3, args.sweep_passes)),
+                )
+            )
+        else:
+            result = asyncio.run(execute_purple_workflow(args.fixture, queue_emit(event_queue)))
     except Exception as exc:
         print(f"scan failed ({type(exc).__name__})")
         return 1

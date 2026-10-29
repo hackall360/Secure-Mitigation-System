@@ -17,6 +17,10 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--list-targets` | List bundled fixtures without Docker or a key |
 | `--health` | Report readiness (models, profiles, Docker) without Docker or a key |
 | `--ai-demo` | AI-built demo mode: Muse designs a novel vulnerable demo, then red/blue exercise it in Docker |
+| `--mcp-snippet PATH` | Verify one source snippet file through the red/blue Docker loop; prints the VerdictReceipt JSON (MCP submit_code_snippet over CLI) |
+| `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
+| `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
+| `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules |
 
 ## Modifiers
 

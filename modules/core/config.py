@@ -43,6 +43,7 @@ class PurpleBoxConfig:
     blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
     verifier_base_image: str = "purplebox-verifier-base:latest"
+    binary_base_image: str = "purplebox-binary-base:latest"
     clone_repo_prefix: str = "purplebox-clone-cache"
     container_mem_limit: str = "256m"
     container_cpu_nano: int = 500_000_000
@@ -128,6 +129,7 @@ class PurpleBoxConfig:
         for label, image in (
             ("target base image", self.target_base_image),
             ("verifier base image", self.verifier_base_image),
+            ("binary base image", self.binary_base_image),
         ):
             if not image or not _IMAGE_RE.fullmatch(image):
                 raise ConfigurationError(f"Docker {label} tag is invalid: {image!r}.")
