@@ -193,8 +193,11 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 ## M. Zero-day Wave 3 docs (blocked on L5 gate: 351 passed + live proof, done)
 
-- [.] M1. README + CLI reference for Wave 2: reach_score/reach_evidence, --fast-lane, --demo-size/--flaw-count/--demo-seed, ghost-probe exit-2 liveness note.
+- [x] M1. README + CLI reference for Wave 2: reach_score/reach_evidence, --fast-lane, --demo-size/--flaw-count/--demo-seed, ghost-probe exit-2 liveness note.
       Files: `README.md`, `docs/reference/CLI.md`. Proof: links/flags verified against `main.py --help` output; gate green.
-- [ ] M2. Architecture docs: reachability fusion + fast lane + liveness in `docs/architecture/` (extend PROJECT_WORKFLOW.md or new WAVE2 doc linked from docs index), surface gaps recorded (dashboard socketQuery omits dependency-track vs server 5-set; no WS/TUI CVE fast-lane surface; TUI has no demo mode).
+- [x] M2. Architecture docs: reachability fusion + fast lane + liveness in `docs/architecture/` (extend PROJECT_WORKFLOW.md or new WAVE2 doc linked from docs index), surface gaps recorded (dashboard socketQuery omits dependency-track vs server 5-set; no WS/TUI CVE fast-lane surface; TUI has no demo mode).
       Files: `docs/architecture/*`, `docs/INDEX.md` if present else record absence. Proof: grep for gap notes; gate green.
-- [ ] M3. Ship decision point: LAW 12 bump 0.2.0 -> 0.3.0 + LAW 1 flow ONLY on user "ship it".
+- [/] M3. Ship decision point: LAW 12 bump 0.2.0 -> 0.3.0 + LAW 1 flow ONLY on user "ship it".
+      Proof so far: README 1178cda, CLI dc7a4b6, arch d193d84 merged; gate 351 passed after docs merge.
+      Remains: user invokes ship; then bump APP_VERSION + surfaces, feature -> develop -> main, both pushes, end on develop.
+      Next unblocked work without ship: Wave 4 extended research (RESEARCH_V2) can start on this branch.
