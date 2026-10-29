@@ -387,7 +387,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'demo-build', 'project', 'mcp'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -399,14 +399,17 @@ function setSourceMode(mode) {
   el('demo-build-config').hidden = mode !== 'demo-build';
   el('project-form').hidden = mode !== 'project';
   el('mcp-form').hidden = mode !== 'mcp';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : 'Run demo verification';
+  el('binary-form').hidden = mode !== 'binary';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
       ? 'Greenhouse grows a fresh demo from your build brief and vulnerabilities below, then red and blue exercise it in Docker.'
       : mode === 'mcp'
         ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
-        : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+        : mode === 'binary'
+          ? 'Upload a compiled binary — static reversing profiles it, then the same 3-pass loop probes it through the trusted harness (also at /ws/binary).'
+          : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
   // Build-brief affordance: landing on Green build puts the cursor in the
   // brief field so the Wonder-built flow starts with one keystroke.
@@ -1038,6 +1041,7 @@ function startScan() {
   if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
+  if (sourceMode === 'binary') { submitBinary(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) {
     status('Fix the highlighted project fields below, then run again', 'warn');
@@ -1206,6 +1210,75 @@ async function submitMcpSnippet() {
   } finally {
     el('run-btn').disabled = false;
   }
+}
+
+function submitBinary() {
+  // Binary sweep path: file bytes -> base64 first WS frame on /ws/binary,
+  // same 3-pass Docker loop as every other surface over the shared socket flow.
+  const errors = el('binary-errors');
+  errors.hidden = true;
+  const files = el('binary-file').files;
+  const filename = (el('binary-filename').value.trim() || (files.length && files[0].name)) || '';
+  const contractText = el('binary-contract').value.trim();
+  const problems = [];
+  if (!files.length) problems.push('Choose a compiled binary file first.');
+  else if (files[0].size > 8 * 1024 * 1024) problems.push('Binary exceeds 8 MiB.');
+  if (!filename) problems.push('Enter the bare filename (no paths).');
+  if (!contractText) problems.push('Describe the behavior contract first.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Binary sweep running', 'running');
+  setStage('sandbox');
+  writeLine('system', `Binary sweep → ${filename} (${files[0].size} bytes)`);
+  const reader = new FileReader();
+  reader.onerror = () => {
+    errors.textContent = 'Could not read the binary file.';
+    errors.hidden = false;
+    status('Binary sweep failed', 'error');
+  };
+  reader.onload = () => {
+    const bytes = new Uint8Array(reader.result);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    const payload = JSON.stringify({
+      blob_b64: btoa(binary),
+      filename,
+      contract: contractText,
+    });
+    latestResult = null;
+    eventCount = 0;
+    el('event-count').textContent = '0';
+    el('result-panel').hidden = true;
+    delete el('progress').dataset.state;
+    Object.values(logs).forEach((area) => area.replaceChildren());
+    resetPipeline();
+    document.body.classList.add('scanning');
+    el('run-btn').disabled = true;
+    lockTargets(true);
+    lockProfiles(true);
+    lockProjectForm(true);
+    el('stop-btn').hidden = false;
+    el('stop-btn').disabled = false;
+    startedAt = Date.now();
+    const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+    socket = new WebSocket(`${base}/ws/binary${socketQuery()}`);
+    socket.onmessage = handleSocketMessage;
+    socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
+    socket.onclose = handleScanClose;
+    socket.onopen = () => {
+      try {
+        if (socket && socket.readyState === WebSocket.OPEN) socket.send(payload);
+      } catch { /* socket already gone */ }
+      writeLine('system', `Binary specification accepted · harness stages ${filename}.`);
+    };
+  };
+  reader.readAsArrayBuffer(files[0]);
 }
 
 function startDemoBuild() {

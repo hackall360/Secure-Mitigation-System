@@ -64,6 +64,7 @@
           <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
           <button id="mode-mcp" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="mcp"><strong>MCP snippet</strong><small>External AI client submits code</small></button>
+          <button id="mode-binary" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="binary"><strong>Binary sweep</strong><small>Reversing + 3-pass harness run</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -125,6 +126,12 @@
           <div class="field wide"><label for="mcp-contract">Behavior contract</label><textarea id="mcp-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
           <div id="mcp-errors" class="form-errors wide" role="alert" hidden></div>
           <div id="mcp-result" class="form-errors wide" role="status" hidden></div>
+        </form>
+        <form id="binary-form" class="project-form" hidden novalidate>
+          <div class="field"><label for="binary-file">Compiled binary</label><input id="binary-file" name="binary" type="file" required><small>ELF, Mach-O, or PE. Max 8 MiB. Bytes stay local; only Docker evidence decides.</small></div>
+          <div class="field wide"><label for="binary-filename">Filename</label><input id="binary-filename" name="filename" required maxlength="128" placeholder="target.elf" autocomplete="off"><small>Bare filename, no paths.</small></div>
+          <div class="field wide"><label for="binary-contract">Behavior contract</label><textarea id="binary-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
+          <div id="binary-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>

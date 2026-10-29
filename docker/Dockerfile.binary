@@ -1,0 +1,20 @@
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+FROM python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322
+# Binary-analysis base: pinned digest (same verification as target/verifier,
+# `docker inspect python:3.12-alpine3.22` RepoDigests 2026-10-29). Adds
+# static reversing utilities ONLY — file/strings/binutils(readelf,objdump)/xxd. No network
+# tools, no compilers, no package manager use at runtime. Isolation
+# invariants hold: internal=True networks, non-root user, read-only roots.
+# apk versions locked to the offline-installed set of the current
+# purplebox-binary-base image (`apk info -v`: file-5.46-r2, binutils-2.44-r3,
+# xxd-9.1.1566-r0).
+RUN apk add --no-cache file=5.46-r2 binutils=2.44-r3 xxd=9.1.1566-r0 \
+    && addgroup -g 10001 purplebox \
+    && adduser -D -u 10001 -G purplebox purplebox \
+    && mkdir -p /workspace /verifier \
+    && chown -R 10001:10001 /workspace /verifier
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /workspace
+USER 10001:10001
+CMD ["python3", "-c", "print('Binary-analysis base: static reversing utilities only.')"]

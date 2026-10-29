@@ -429,7 +429,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         if socket.headers.get("origin") != expected_origin or (
             target_key is not None
             and target_key not in TARGETS_REGISTRY
-            and target_key != "__demo__"
+            and target_key not in ("__demo__", "__binary__")
         ):
             await socket.close(code=1008)
             return
@@ -491,7 +491,45 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 return
 
         async with lock:
-            if target_key is None:
+            if target_key == "__binary__":
+                try:
+                    # Binary bytes travel in the first WS frame (base64), never
+                    # in URLs, history, or access logs. 8 MiB intake cap + 33%
+                    # base64 overhead bound the frame.
+                    import base64
+
+                    from modules.services.binary_intake import (
+                        BinaryRejected as _BinaryRejected,
+                    )
+                    from modules.services.binary_intake import (
+                        validate_binary_blob as _validate_blob,
+                    )
+
+                    raw = await asyncio.wait_for(socket.receive_text(), timeout=60)
+                    if len(raw.encode("utf-8")) > 12_000_000:
+                        raise ValueError("Binary request is too large.")
+                    request = json.loads(raw)
+                    blob = base64.b64decode(request.get("blob_b64", ""), validate=True)
+                    filename = str(request.get("filename", "") or "")
+                    contract = str(request.get("contract", "") or "")
+                    binary_spec = _validate_blob(blob, filename=filename, contract=contract)
+                except (ValueError, TimeoutError, WebSocketDisconnect, _BinaryRejected) as exc:
+                    reason = (
+                        str(exc)
+                        if isinstance(exc, _BinaryRejected)
+                        else (
+                            "Invalid binary request. Send JSON with blob_b64, filename, and contract."
+                        )
+                    )
+                    await socket.send_json({"type": "invalid", "team": "system", "msg": reason})
+                    await socket.close(code=1008)
+                    return
+                from modules.workflows.binary_sweep import (
+                    execute_binary_sweep as _execute_binary,
+                )
+
+                coroutine = _execute_binary(binary_spec, emit, config=scan_config)
+            elif target_key is None:
                 try:
                     # No paths or source are placed in URLs, browser history, or access logs.
                     raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
@@ -613,6 +651,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         return
                     safe = result.model_dump()
                     try:
+                        from modules.workflows.binary_sweep import (
+                            redact_binary_sweep_result_for_user as _redact_binary,
+                        )
                         from modules.workflows.project_workflow import (
                             redact_report_for_user as _redact_proj,
                         )
@@ -625,6 +666,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
                         if target_key is None:
                             safe = _redact_proj(result)
+                        elif target_key == "__binary__":
+                            safe = _redact_binary(result)
                         elif isinstance(result, _SweepResult):
                             safe = redact_sweep_result_for_user(result)
                         else:
@@ -663,6 +706,11 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     async def demo_build(socket: WebSocket):
         """Green builder: Muse designs a novel demo project, then red/blue exercise it."""
         await run_socket(socket, target_key="__demo__")
+
+    @application.websocket("/ws/binary")
+    async def binary_combat(socket: WebSocket):
+        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 3-pass loop."""
+        await run_socket(socket, target_key="__binary__")
 
     @application.post("/mcp")
     async def mcp_endpoint(request: Request):
@@ -834,6 +882,65 @@ async def mcp_snippet_runner(
             json.dumps(structured_result(result), indent=2), encoding="utf-8"
         )
         print(f"Saved MCP snippet report to {run_dir}/report.json")
+    if show_usage:
+        print(usage_table(result.usage))
+    return 0 if getattr(result, "success", False) else 1
+
+
+async def binary_sweep_runner(
+    binary_path: Path,
+    *,
+    contract: str = "",
+    max_passes: int = 3,
+    output_dir: Path | None = None,
+    out_format: str = "table",
+    show_usage: bool = False,
+) -> int:
+    """CLI form of the binary 3-pass sweep: validate, sweep, print report JSON."""
+    from modules.core.config import load_config as _load
+    from modules.services.binary_intake import BinaryRejected, validate_binary_file
+    from modules.workflows.binary_sweep import (
+        execute_binary_sweep,
+        redact_binary_sweep_result_for_user,
+    )
+
+    try:
+        spec = validate_binary_file(
+            str(binary_path),
+            contract=contract or "Preserve normal behavior. Only harden untrusted inputs.",
+        )
+    except BinaryRejected as exc:
+        print(f"Invalid binary target: {exc}", file=sys.stderr)
+        return 1
+    settings = _load()
+    lines: list[str] = []
+
+    async def _emit(team: str, message: str) -> None:
+        lines.append(f"[{team}] {message}")
+
+    result = await execute_binary_sweep(
+        spec, _emit, config=settings, max_passes=max(1, min(3, max_passes))
+    )
+    for line in lines:
+        print(line)
+    report = redact_binary_sweep_result_for_user(result)
+    if out_format == "json":
+        print(json.dumps(report, indent=2))
+    else:
+        print(fact_table(result))
+        for passed in result.pass_results:
+            sha = passed.receipt.patch_sha256[:12] if passed.receipt else "none"
+            print(
+                f"[PASS ] {passed.pass_id}: pre={passed.pre_exit_code} "
+                f"post={passed.post_exit_code} cleared={passed.cleared} receipt={sha}"
+            )
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir = output_dir / f"binary-sweep-{stamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Saved binary sweep report to {run_dir}/report.json")
     if show_usage:
         print(usage_table(result.usage))
     return 0 if getattr(result, "success", False) else 1
@@ -1488,6 +1595,11 @@ def main() -> int:
         type=Path,
         help="Verify one source snippet file through the red/blue Docker loop and print the VerdictReceipt JSON (MCP submit_code_snippet over CLI)",
     )
+    commands.add_argument(
+        "--binary-target",
+        type=Path,
+        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
+    )
     parser.add_argument(
         "--snippet-language",
         choices=["javascript", "python", "php"],
@@ -1685,8 +1797,10 @@ def main() -> int:
         parser.error("--port must be between 1 and 65535")
     if args.profile is not None and not (args.scan or args.project or args.ai_demo):
         parser.error("--profile requires --scan, --project, or --ai-demo")
-    if args.output_dir is not None and not (args.scan or args.project or args.ai_demo):
-        parser.error("--output-dir requires --scan, --project, or --ai-demo")
+    if args.output_dir is not None and not (
+        args.scan or args.project or args.ai_demo or args.binary_target
+    ):
+        parser.error("--output-dir requires --scan, --project, --ai-demo, or --binary-target")
     # --research/--research-scanners run on every scan surface: fixture, project, ai-demo.
     if args.research and not (args.scan or args.project or args.ai_demo):
         parser.error("--research requires --scan, --project, or --ai-demo")
@@ -1742,6 +1856,7 @@ def main() -> int:
         not args.project
         and not args.ai_demo
         and not args.mcp_snippet
+        and not args.binary_target
         and (
             args.image
             or args.command
@@ -1820,6 +1935,17 @@ def main() -> int:
                     args.mcp_snippet,
                     language=args.snippet_language,
                     contract=args.contract,
+                    output_dir=args.output_dir,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                )
+            )
+        if args.binary_target:
+            return asyncio.run(
+                binary_sweep_runner(
+                    args.binary_target,
+                    contract=args.contract,
+                    max_passes=3,
                     output_dir=args.output_dir,
                     out_format=out_format,
                     show_usage=args.show_usage,
