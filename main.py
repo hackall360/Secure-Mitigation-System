@@ -820,9 +820,17 @@ def _extract_wave2_receipt(report: dict) -> dict | None:
     REAL fields first: top-level ``receipt`` (VerdictReceipt dump), then
     every ``cycle_reports``/``cycles`` entry ``receipt`` (CycleReceipt dump).
     Legacy ``verdict_receipt`` fallback last. Defensive: dict-or-None only.
+    First-cycle behavior unchanged (receipt.json holds the first receipt);
+    use extract_cycle_receipts for the full per-cycle export.
     """
+    receipts = extract_cycle_receipts(report)
+    return receipts[0] if receipts else None
+
+
+def extract_cycle_receipts(report: dict) -> list[dict]:
+    """Export ALL cycle receipts (Wave 8 item 4); first-cycle order preserved."""
     if not isinstance(report, dict):
-        return None
+        return []
     try:
         candidates: list = [report.get("receipt"), report.get("verdict_receipt")]
         for key in ("cycle_reports", "cycles"):
@@ -831,6 +839,7 @@ def _extract_wave2_receipt(report: dict) -> dict | None:
                 for item in items:
                     if isinstance(item, dict):
                         candidates.append(item.get("receipt"))
+        receipts: list[dict] = []
         for candidate in candidates:
             if hasattr(candidate, "model_dump"):
                 try:
@@ -838,10 +847,10 @@ def _extract_wave2_receipt(report: dict) -> dict | None:
                 except Exception:
                     continue
             if isinstance(candidate, dict) and candidate:
-                return {str(k)[:64]: v for k, v in list(candidate.items())[:32]}
+                receipts.append({str(k)[:64]: v for k, v in list(candidate.items())[:32]})
+        return receipts
     except Exception:
-        pass
-    return None
+        return []
 
 
 def write_run_report(output_dir: Path, report: dict, summary: str, diff: str = "") -> Path:

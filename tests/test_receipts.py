@@ -90,3 +90,47 @@ async def test_project_rolled_back_cycle_records_no_receipt():
     report = result.cycle_reports[0]
     assert report.status == "rolled_back"
     assert report.receipt is None
+
+
+async def test_project_receipt_carries_cycle_and_pass_ids():
+    """Item 4 RED: CycleReceipt must carry cycle/pass ids of its report."""
+    muse = FakeProjectMuse(red_outcomes=["finding", "no_finding"])
+    sandbox = FakeProjectSandbox(
+        [project_verification(1), project_verification(0), project_verification(1)]
+    )
+    result = await run_project_workflow(muse=muse, sandbox=sandbox)
+    report = result.cycle_reports[0]
+    receipt = report.receipt
+    assert receipt is not None
+    assert receipt.cycle == report.cycle == 1
+    assert receipt.pass_number == report.pass_number == 1
+
+
+async def test_project_all_cycles_exported_not_first_only():
+    """Item 4 RED: exporter must export ALL cycle receipts, not first only."""
+    import main as sms_main
+
+    muse = FakeProjectMuse(red_outcomes=["finding", "finding", "finding"])
+    sandbox = FakeProjectSandbox(
+        [
+            # baseline + cycle 1: pre vuln, patched blocked, independent re-finds same
+            project_verification(1),
+            project_verification(0),
+            project_verification(1),
+            project_verification(1),
+            # cycle 2: pre vuln, patched blocked, independent re-finds same
+            project_verification(0),
+            project_verification(1),
+            project_verification(1),
+        ]
+    )
+    result = await run_project_workflow(muse=muse, sandbox=sandbox, cycles=2)
+    assert len(result.cycle_reports) == 2
+    assert [r.status for r in result.cycle_reports] == ["retained", "retained"]
+    report = result.model_dump()
+    receipts = sms_main.extract_cycle_receipts(report)
+    # report carries both cycle_reports and cycles alias; dedupe identical dicts.
+    unique = {tuple(sorted(r.items())) for r in receipts}
+    receipts = [dict(u) for u in unique]
+    assert len(receipts) == 2
+    assert {r["cycle"] for r in receipts} == {1, 2}
