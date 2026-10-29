@@ -214,4 +214,11 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] O2. KEV 5th `cve_records` signal + reach_score likelihood tie-break (never lowers fail-closed floor). Files: `research.py`, `deep_scan.py`, `tests/test_scanners.py`, `tests/test_deep_scan.py`. Proof: `feature/w5-kev 7a5fdc8`; gate 367; live log4shell KEV title+due+ransomware.
 - [x] O3. Differential normal-contract gate (original vs patched equal class). Files: `workflow.py`/`project_workflow.py` narrow, tests. Proof: `feature/w5-differential e2768e6` explicit `CycleEvidence.differential_passed` both fates; gate 367.
 - [x] O4. Fast-lane SSVC tiering of output order. Files: `cve_workflow.py`, `tests/test_deep_scan.py`. Proof: `feature/w5-tier 2ba4100` sort key `(-reach_score, not has_fixed, id)`; gate 367.
-- [ ] O5. Wave 6 expansion docs after O1-O4 gate green.
+- [x] O5. Wave 6 expansion docs after O1-O4 gate green. Proof: merges `feature/w6-readme 8f297c6`, `w6-cli dd9545e`, `w6-arch a5caeff` (WAVE5.md); gate 367 passed.
+
+## P. Zero-day Waves 7-9 (blocked on RESEARCH_V3, pending)
+
+- [ ] P1. Wave 7: RESEARCH_V3.md (freshness/compat defects + post-Wave-5 frontier), live-verified or labelled recall.
+- [ ] P2. Wave 7 or 8 implementation gated on SPEC delta for V3 (strict sequencing, fail-first).
+- [ ] P3. Wave 8 hardening: adversarial review of O1-O4 merges, edge tests.
+- [ ] P4. Wave 9 adventure: child features spun from proven Wave 5 mechanics only.
