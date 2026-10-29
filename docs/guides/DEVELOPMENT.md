@@ -460,3 +460,33 @@ Traps discovered during this change:
   synchronous hash assertion passed Chrome and falsely failed Firefox.
 - WebDriver HTTP errors now expose the returned error message instead of hiding
   JavaScript assertion failures behind a generic HTTP 500.
+
+#### Measured outcome, not just screenshot inspection
+
+`.venv/bin/python .jcode/tools/ui_design_metrics.py --baseline d7763fa` loads
+both revisions' actual HTML/CSS in headless Chrome at 1440px and 390px. It isolates
+presentation by removing scripts from temporary copies, so it cannot start scans
+or make API calls. It measures computed colors, element geometry, actual focus
+acceptance, and rendered decorative animations, then asserts improvements.
+Original source files are never overwritten. Browser, server and snapshots are
+owned by the command and cleaned up on exit.
+
+Observed 2026-10-29 (`reports/ui-design-metrics.json`):
+
+| Criterion | Before | After | Outcome |
+| --- | --- | --- | --- |
+| Project-path placeholder contrast | 3.07:1 | 6.90:1 | Now exceeds 4.5:1 normal-text contrast threshold |
+| Mode selector rows, desktop | 2 | 1 | Three equal choices share one row |
+| Mode selector rows, 390px | 3 | 1 | All modes remain available without three stacked rows |
+| Trace areas accepting keyboard focus | 0 of 4 | 4 of 4 | Every log can be reached and scrolled with a keyboard |
+| Rendered ambient/decorative CSS animations | 11 | 0 | Removes continual visual distraction outside scan state |
+| Direct section-navigation links | 0 | 4 | Setup, pipeline, agents and activity directly reachable |
+
+These are concrete readability and interaction improvements, not a claim that
+user aesthetic preference or task-completion time was measured. Contrast here is
+for the opaque project-path input and its placeholder, not a full WCAG audit.
+Animation counts are not a CPU benchmark. The isolated presentation measurement
+complements, rather than replaces, the real Chrome/Firefox `ui_scan.py` runs:
+those operated the controls and completed Docker scans, with unchanged verdict,
+seven completed stages, probe exits 0 then 1, baseline/regression passes, patch
+stats `+6 -1`, and confirmed resource cleanup in both before/after runs.
