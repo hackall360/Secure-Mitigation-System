@@ -230,7 +230,7 @@ async def run(output, *, live=False, cycles=2, source_import=False, scan_profile
             path=project,
             command=["python3", "app.py"],
             test_command=["python3", "test_contract.py"],
-            contract="HTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
+            contract="node_query_sink\nHTTP service at target-service:8080. Preserve lookup 101=Alice, 102=Bob, 999 empty and echo decimal input. Only sanitize input.",
             **({"cycles": cycles} if scan_profile == "custom" else {"scan_profile": scan_profile}),
             allow_remote_inference=live and config.inference_mode != "local",
         )

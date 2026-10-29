@@ -231,7 +231,7 @@ async def execute_cve_scan(
                 for cve_id in (summary.get("cves") or [])[:2]:
                     try:
                         record = await blocking(osv_lookup_by_cve, cve_id)
-                        affected = record.get("affected") or []
+                        affected = (record or {}).get("affected") or []
                         ranges = [
                             r.get("type")
                             for a in affected

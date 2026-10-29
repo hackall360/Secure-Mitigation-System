@@ -127,13 +127,16 @@ def summarize_nvd_search(payload: Mapping[str, Any], *, limit: int = 10) -> list
     return out
 
 
-def osv_lookup_by_cve(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
+def osv_lookup_by_cve(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any] | None:
     """Fetch an OSV record by CVE alias (OSV indexes CVE IDs directly).
 
     Used by the CVE workflow as a keyless second opinion alongside NVD:
     OSV often carries the fix commit / fixed-version range NVD omits.
+    Malformed CVE ids return None without touching the network.
     """
     safe = sanitize_cve_id(cve_id)
+    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
+        return None
     return paced_get_json(
         f"{OSV_VULN_URL}/{safe}",
         timeout=timeout,

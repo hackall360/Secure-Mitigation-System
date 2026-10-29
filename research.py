@@ -115,7 +115,9 @@ def osv_lookup(cve_id: str) -> ResearchRecord | None:
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
-        payload = _get_json(f"https://api.osv.dev/v1/vulns/{safe}")
+        from sms_http import MAX_MAX_BYTES
+
+        payload = _get_json(f"https://api.osv.dev/v1/vulns/{safe}", max_bytes=MAX_MAX_BYTES)
     except RuntimeError:
         return None
     if not isinstance(payload, dict):
@@ -139,7 +141,9 @@ def circl_lookup(cve_id: str) -> ResearchRecord | None:
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
-        payload = _get_json(f"https://cve.circl.lu/api/cve/{safe}")
+        from sms_http import MAX_MAX_BYTES
+
+        payload = _get_json(f"https://cve.circl.lu/api/cve/{safe}", max_bytes=MAX_MAX_BYTES)
     except RuntimeError:
         return None
     if not isinstance(payload, dict):
@@ -316,7 +320,7 @@ def ghsa_search(package: str, ecosystem: str = "", *, limit: int = 5) -> list[Re
 
 def epss_score(cve_id: str) -> ResearchRecord | None:
     """FIRST EPSS exploit-probability score for one CVE. No key."""
-    safe = cve_id.strip().upper()[:32]
+    safe = sanitize_cve_id(cve_id)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:

@@ -555,3 +555,50 @@ def test_dtrack_poll_backs_off_and_exits_early(monkeypatch):
     monkeypatch.setattr(_dt, "_request", fake_request)
     out = _dt.scan_packages("p", [("a", "1")])
     assert calls["n"] == 3 and sleeps == [] and out == []
+
+
+def test_r2_osv_and_circl_lookups_use_raised_cap(monkeypatch):
+    """R2: OSV/CIRCL direct CVE fetches use MAX_MAX_BYTES like the KEV path."""
+    import research as _research
+    from sms_http import MAX_MAX_BYTES
+
+    caps: dict[str, int] = {}
+
+    def fake_get(url, **kwargs):
+        caps[url] = kwargs.get("max_bytes", -1)
+        return {"id": "CVE-2024-3094", "summary": "s"}
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    assert _research.osv_lookup("CVE-2024-3094") is not None
+    assert _research.circl_lookup("CVE-2024-3094") is not None
+    assert caps["https://api.osv.dev/v1/vulns/CVE-2024-3094"] == MAX_MAX_BYTES
+    assert caps["https://cve.circl.lu/api/cve/CVE-2024-3094"] == MAX_MAX_BYTES
+
+
+def test_r2_epss_score_sanitizes_cve_id(monkeypatch):
+    """R2: epss_score normalizes through sanitize_cve_id (not ad-hoc casing)."""
+    import research as _research
+
+    seen: dict[str, str] = {}
+
+    def fake_get(url, params=None, **kwargs):
+        seen["cve"] = (params or {}).get("cve", "")
+        return {"data": [{"epss": "0.5", "percentile": "0.9", "date": "2024-01-01"}]}
+
+    monkeypatch.setattr(_research, "_get_json", fake_get)
+    rec = _research.epss_score("  cve-2024-3094/ ")
+    assert rec is not None and rec.source == "epss"
+    assert rec.cve_id == "CVE-2024-3094"
+    assert seen["cve"] == "CVE-2024-3094"
+
+
+def test_r2_intel_osv_lookup_rejects_bad_cve_shape(monkeypatch):
+    """R2: osv_lookup_by_cve validates CVE shape pre-fetch; invalid => None."""
+    import intel_search as _intel
+
+    def _boom(*a, **k):
+        raise AssertionError("transport must not run for a malformed CVE id")
+
+    monkeypatch.setattr(_intel, "paced_get_json", _boom)
+    assert _intel.osv_lookup_by_cve("not-a-cve!!!") is None
+    assert _intel.osv_lookup_by_cve("") is None
