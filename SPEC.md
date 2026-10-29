@@ -979,3 +979,20 @@ Each build: fail-first test, tri-surface where a user-visible surface exists, ga
   set per fixture contract, recorded as evidence; failure fails the cycle
   closed. LOW bundle: cap consistency in `research` fetches, `epss_score`
   sanitizer reuse, `intel_search.osv_lookup_by_cve` CVE shape check.
+
+## 14.7 Wave 8 delta (gated on RESEARCH_V3 Lane C, 2026-10-29)
+
+- R1 Property/metamorphic normal contracts: `checks.project_property_check`
+  generates a small deterministic property script per fixture contract
+  (seeded, bounded): node properties assert 200 on two known-good ids and
+  404 on two random ids; php properties assert localhost/127.0.0.1 handling
+  stays successful under argument repetition; mysql properties assert the
+  audited config keys survive idempotent re-read. The property evidence is
+  recorded on `SnapshotVerification` as `properties` (ExecutionEvidence or
+  None) and a green property run is required wherever regression is green:
+  property failure fails the cycle closed (never upgrades a verdict).
+  Honest scope: this runs the same in-container check mechanism; it widens
+  the normal-behavior net beyond fixed equality asserts.
+- R2 LOW bundle: `research` direct CVE fetches use the same raised byte cap
+  as KEV; `epss_score` reuses `sanitize_cve_id`; `intel_search
+  .osv_lookup_by_cve` validates CVE shape before fetching.
