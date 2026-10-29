@@ -165,6 +165,62 @@ class CycleEvidence(BaseModel):
     final_blue_report: FinalBlueReport | None = None
 
 
+class CycleReceipt(BaseModel):
+    """Machine-readable execution-oracle receipt for one retained project cycle.
+
+    Records only: records never upgrade a verdict, only the Docker evidence does.
+    Exported alongside the candidate diff via the cycle report model dump.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    fixture: str
+    pre_probe_exit: int
+    post_probe_exit: int
+    baseline_regression_exit: int
+    patched_regression_exit: int
+    differential_passed: bool
+    property_exit: int | None = None
+    property_passed: bool | None = None
+    patch_sha256: str = ""
+    retained: bool = True
+
+
+def build_cycle_receipt(
+    *,
+    fixture: str,
+    pre: SnapshotVerification,
+    patched: SnapshotVerification,
+    baseline_regression_exit: int,
+    differential_passed: bool,
+    candidate_diff: str,
+) -> CycleReceipt:
+    """Record a receipt for a retained cycle only; never upgrades a verdict."""
+    properties = patched.properties
+    if properties is None:
+        property_exit: int | None = None
+        property_passed: bool | None = None
+    else:
+        property_exit = properties.exit_code
+        property_passed = properties.exit_code == 0
+    return CycleReceipt(
+        fixture=fixture,
+        pre_probe_exit=pre.probe.exit_code,
+        post_probe_exit=patched.probe.exit_code,
+        baseline_regression_exit=baseline_regression_exit,
+        patched_regression_exit=patched.regression.exit_code,
+        differential_passed=differential_passed,
+        property_exit=property_exit,
+        property_passed=property_passed,
+        patch_sha256=hashlib.sha256(candidate_diff.encode("utf-8")).hexdigest(),
+        retained=True,
+    )
+
+
+def export_cycle_receipt_json(receipt: CycleReceipt) -> str:
+    """Serialize a cycle receipt alongside the candidate diff for review."""
+    return receipt.model_dump_json()
+
+
 class ProjectCycleReport(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     cycle: int = Field(ge=1, le=20)
@@ -175,6 +231,7 @@ class ProjectCycleReport(BaseModel):
     message: str
     changed_paths: list[str] = Field(default_factory=list)
     diff: str = ""
+    receipt: CycleReceipt | None = None
     evidence: CycleEvidence
 
 
@@ -1376,6 +1433,20 @@ async def execute_project_workflow(
                     "Candidate replacements were rolled back because the same probe was not blocked or "
                     "the original regression command did not pass."
                 )
+            receipt = None
+            if retained:
+                receipt = build_cycle_receipt(
+                    fixture=safe_project.name,
+                    pre=pre,
+                    patched=patched,
+                    baseline_regression_exit=(
+                        result.baseline_verification.regression.exit_code
+                        if result.baseline_verification is not None
+                        else 2
+                    ),
+                    differential_passed=evidence.differential_passed,
+                    candidate_diff=candidate_diff,
+                )
             result.cycle_reports.append(
                 ProjectCycleReport(
                     cycle=cycle,
@@ -1384,6 +1455,7 @@ async def execute_project_workflow(
                     message=message,
                     changed_paths=sorted(replacements) if retained else [],
                     diff=candidate_diff,
+                    receipt=receipt,
                     evidence=evidence,
                 )
             )

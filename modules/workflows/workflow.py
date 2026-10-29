@@ -5,7 +5,7 @@
 from typing import Literal
 
 from docker.errors import DockerException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from modules.core.agents import (
     AgentError,
@@ -215,6 +215,55 @@ async def _gather_research(
     return digest, record_dicts
 
 
+class VerdictReceipt(BaseModel):
+    """Machine-readable execution-oracle receipt for one verified fixture cycle.
+
+    Records only: records never upgrade a verdict, only the Docker evidence does.
+    Fixture loop has a single regression gate, so regression + differential share
+    one outcome; properties do not run in the fixture loop (None).
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    fixture: str
+    pre_exit_code: int
+    post_exit_code: int
+    regression_passed: bool
+    differential_passed: bool
+    property_exit_code: int | None = None
+    property_passed: bool | None = None
+    patch_sha256: str
+    verified: bool = True
+
+
+def build_verdict_receipt(
+    *,
+    fixture: str,
+    pre_exit_code: int,
+    post_exit_code: int,
+    regression_passed: bool,
+    patch_content: str,
+) -> VerdictReceipt:
+    """Record a receipt for a verified cycle only; never upgrades a verdict."""
+    import hashlib
+
+    return VerdictReceipt(
+        fixture=fixture,
+        pre_exit_code=pre_exit_code,
+        post_exit_code=post_exit_code,
+        regression_passed=regression_passed,
+        differential_passed=regression_passed,
+        property_exit_code=None,
+        property_passed=None,
+        patch_sha256=hashlib.sha256(patch_content.encode("utf-8")).hexdigest(),
+        verified=True,
+    )
+
+
+def export_receipt_json(receipt: VerdictReceipt) -> str:
+    """Serialize a receipt alongside the candidate patch for review."""
+    return receipt.model_dump_json()
+
+
 class ScanResult(BaseModel):
     target: str
     status: Literal["verified", "not_confirmed", "rejected", "failed", "error"] = "error"
@@ -226,6 +275,7 @@ class ScanResult(BaseModel):
     post_exit_code: int | None = None
     baseline_passed: bool = False
     regression_passed: bool = False
+    receipt: VerdictReceipt | None = None
     cleanup_ok: bool = True
     traces: dict[str, str] = Field(default_factory=dict)
     usage: ScanUsage = Field(default_factory=ScanUsage)
@@ -404,6 +454,14 @@ async def execute_purple_workflow(
                 result.regression_passed = False
                 raise PatchRejected("Target failed normal-input checks after the boundary probe.")
             result.status = "verified" if post.exit_code == 1 else "failed"
+            if result.status == "verified" and result.patch is not None:
+                result.receipt = build_verdict_receipt(
+                    fixture=target_key,
+                    pre_exit_code=pre.exit_code,
+                    post_exit_code=post.exit_code,
+                    regression_passed=result.regression_passed,
+                    patch_content=result.patch.patched_file_content,
+                )
             result.message = (
                 "Boundary probe blocked and trusted normal-input checks passed. Review the candidate diff."
                 if result.status == "verified"
