@@ -675,6 +675,7 @@ class DockerProjectSandbox:
             # crashed the service; exit 0 (reachable) needs no liveness override.
             if probe_ev.exit_code in (1, 2):
                 post_probe_ev = None
+                exec_observed = False
                 try:
                     # Prefer exec inside the same still-running target when available.
                     exec_run = getattr(target, "exec_run", None)
@@ -694,6 +695,7 @@ class DockerProjectSandbox:
                             except Exception:
                                 out = ""
                             if isinstance(code, int):
+                                exec_observed = True
                                 post_probe_ev = ExecutionEvidence(
                                     exit_code=code, output=_bounded(out[-16384:], 131072)
                                 )
@@ -701,7 +703,13 @@ class DockerProjectSandbox:
                             post_probe_ev = None
                 except Exception:
                     post_probe_ev = None
-                if post_probe_ev is None:
+                if post_probe_ev is None and not exec_observed:
+                    # Wave 8 item 3 (wolf) exec-required liveness: without exec
+                    # against the same still-running target, a fresh-container
+                    # check cannot confirm liveness — its pass would mask a
+                    # crashed target. Run it only to confirm a crash
+                    # (fail-closed); a pass, or a check error, degrades to
+                    # inconclusive exit 2, never a silent pass.
                     try:
                         post_check = self.manager.run_project_check(
                             self.network, self.spec, snapshot, command=list(self.spec.test_command)
@@ -709,6 +717,16 @@ class DockerProjectSandbox:
                         post_probe_ev = _check_evidence(post_check, 131_072)
                     except Exception:
                         post_probe_ev = None
+                    if post_probe_ev is None or post_probe_ev.exit_code == 0:
+                        post_probe_ev = ExecutionEvidence(
+                            exit_code=2,
+                            output=_bounded(
+                                "Post-probe liveness inconclusive: exec unavailable "
+                                "against the probed target, so a fresh-container "
+                                "check cannot confirm the service survived the probe.",
+                                131072,
+                            ),
+                        )
                 if post_probe_ev is not None and post_probe_ev.exit_code != 0:
                     # Override regression so a crashed/deadlocked service triggers rollback.
                     regression_ev = ExecutionEvidence(
