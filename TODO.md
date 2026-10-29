@@ -137,3 +137,29 @@ Dependency-Track needs a live server: `PURPLEBOX_DTRACK_URL` +
       Proof: `test_research_gather_adds_cve_and_web_records`.
 - [ ] I7. Small features that fall out: keep each cheap, tested, shippable
       (record here as they land).
+
+## J. LAW 7 single-server + key check (brief 2026-10-28-startup-law, rerun 2026-10-28-compliance-rerun)
+
+- [x] J1. LAW 7 in `LAWS.md`: probe `/api/health` before starting a server;
+      a live server owns the port — kill ONLY own spawned PIDs/handles (never
+      broad pkill, Firefox-rule precedent), restart with `.env` sourced,
+      verify `api_key_configured` + `inference_ready` before declaring up.
+      Files: `LAWS.md`. Proof: gate green + live drill below.
+- [x] J2. `serve_up` in `.jcode/tools/dev.py` (`serve-up [--port] [--no-restart]`):
+      probe → terminate own tracked handle → start with key from owner-only
+      `.env` → verify keyed health. Helpers: `read_env_key`, `keyed_env`,
+      `probe_health`, `stop_handle`, `wait_for_keyed_health`.
+      Files: `.jcode/tools/dev.py`, `.jcode/tools/serve_up_drill.py`,
+      `tests/test_dev_tool.py`. Proof: 8 passed in `test_dev_tool.py` +
+      live drill `DRILL PASS: stale keyless -> own-handle restart -> keyed
+      ready` (port 18011: before `api_key_configured=False`, after `True`).
+
+## K. Compliance rerun 2026-10-28 (brief 2026-10-28-compliance-rerun)
+
+- [x] K1. Rerun items: LAW 0 read (AGENTS.md + LAWS.md) stated; LAW 7 drill
+      re-run live on port 18011 (own-handle kill only, keyed verify);
+      LAW 9 red evidence confirmed (naive status==ok declares a keyless
+      server UP); rebased onto feature/ui-gaps-green-crash (LAWs 0,11,12).
+      Files: `LAWS.md`, `TODO.md`, `.jcode/briefs/2026-10-28-compliance-rerun.md`.
+      Proof: `serve_up_drill.py --port 18011` DRILL PASS + post-rebase gate
+      321 passed + `test_dev_tool.py` 8 passed. Committed on branch, no merge.

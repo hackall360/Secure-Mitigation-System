@@ -226,6 +226,14 @@ def test_health_table_and_json(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
     assert payload.get("api_key_configured") in (True, False)
+    assert payload.get("version") == main.APP_VERSION
+
+    monkeypatch.setattr("sys.argv", ["main.py", "--version"])
+    with pytest.raises(SystemExit) as exited:
+        main.main()
+    assert exited.value.code == 0
+    out = capsys.readouterr().out
+    assert main.APP_VERSION in out
 
 
 def test_format_json_redacted_and_no_secrets(monkeypatch, capsys):

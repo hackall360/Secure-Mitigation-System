@@ -19,7 +19,7 @@
   <a class="skip" href="#main">Skip to dashboard</a>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.1</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.2</span></a>
       <div class="top-status">
         <span class="chip" id="chip-key" data-state="pending" title="Muse API key in server environment"><i></i>API key</span>
         <span class="chip" id="chip-docker" data-state="pending" title="Docker daemon and base images"><i></i>Docker</span>
@@ -63,6 +63,21 @@
           <div class="field wide"><label for="demo-build-brief">What do you want to build?</label><input id="demo-build-brief" name="build_brief" maxlength="500" autocomplete="off" placeholder="a tiny note-taking web app with login"><small>Plain words. Greenhouse designs a small self-contained demo around it; red and blue then run it in Docker.</small></div>
           <div class="field wide"><label for="demo-vulns">Vulnerabilities to implement</label><input id="demo-vulns" name="vulns" maxlength="500" autocomplete="off" placeholder="CVE-2024-3094, SQL injection, header reflection"><small>CVEs, named types, or free text — comma separated. Green + research look each one up (CVE records, threat intel, web) and build the requested flaws.</small></div>
           <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Optional extra keywords. Combined with the brief and vulnerabilities above.</small></div>
+          <div class="field"><label for="demo-scan-profile">Scan intensity</label><select id="demo-scan-profile" name="scan_profile" data-feature="demo.scan_profile">
+            <option value="extra_light" selected>Extra light</option>
+            <option value="light">Light</option>
+            <option value="medium">Medium</option>
+            <option value="heavy">Heavy</option>
+            <option value="super_heavy">Super heavy</option>
+            <option value="ultra_heavy">Ultra heavy</option>
+            <option value="custom">Custom</option>
+          </select><small id="demo-scan-description">1 cycle · one cycle runs Red, Blue, Red, Blue.</small></div>
+          <div class="field compact"><label for="demo-cycles">Cycles</label><input id="demo-cycles" name="cycles" type="number" min="1" max="20" value="1" readonly required data-feature="demo.cycles"><small>Derived from intensity unless Custom is selected.</small></div>
+          <div class="field compact"><label for="demo-red-agents">Red agents <span>Ultra heavy only</span></label><input id="demo-red-agents" name="red_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.red_agents"></div>
+          <div class="field compact"><label for="demo-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="demo-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.blue_agents"></div>
+          <div class="field compact"><label for="demo-budget">Context budget</label><input id="demo-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required data-feature="demo.context_budget"></div>
+          <label class="remote-consent wide"><input id="demo-offline" type="checkbox" data-feature="demo.intel_offline"><span><strong>Build offline</strong><small>Skip live threat-intel lookups; Greenhouse builds from static flaw patterns.</small></span></label>
+          <label class="remote-consent wide"><input id="demo-allow-remote" type="checkbox" data-feature="demo.allow_remote"><span><strong>Allow generated source to leave this host</strong><small>Visible in Green-build mode; mirrors the project consent above. Without it the demo builds offline.</small></span></label>
         </div>
         <form id="project-form" class="project-form" hidden novalidate>
           <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>

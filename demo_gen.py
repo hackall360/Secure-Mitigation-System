@@ -210,8 +210,13 @@ def parse_build_intent(
                 alias_norm = " ".join(re.sub(r"[^a-z0-9 ]", " ", alias.lower()).split())
                 if not alias_norm:
                     continue
+                # Whole-word alias match only: the alias must appear as a
+                # complete token run inside the chunk. No substring fallback:
+                # fragments from separator splits ("path"/"traversal") and
+                # hypernyms ("injection", "header") must stay free text,
+                # never phantom named sinks the user did not request.
                 whole = re.search(r"(?<![a-z0-9])" + re.escape(alias_norm) + r"(?![a-z0-9])", norm)
-                if whole is not None or (len(norm) >= 3 and norm in alias_norm):
+                if whole is not None:
                     matched.append(canon)
             if matched:
                 for canon in matched:
@@ -270,7 +275,7 @@ async def generate_demo_project(
         "response_schema": DemoProjectFiles.model_json_schema(),
     }
     check_payload_budget(payload, max_payload_bytes, "Demo generation")
-    return await client._request(
+    files = await client._request(
         client.config.red_team_model,
         DEMO_GEN_SYSTEM_PROMPT,
         payload,
@@ -278,6 +283,16 @@ async def generate_demo_project(
         role="demo_project_generation",
         max_payload_bytes=max_payload_bytes,
     )
+    # Fail fast at the generation boundary: a syntactically invalid file
+    # would otherwise crash the caller (or the CLI ai-demo path) with a bare
+    # SyntaxError far from its cause. Name the file so the green builder can
+    # report and recover.
+    for label, source in (("app.py", files.app_py), ("test_contract.py", files.test_contract_py)):
+        try:
+            compile(source, label, "exec")
+        except (SyntaxError, ValueError) as exc:
+            raise ValueError(f"Demo generation produced invalid {label}: {exc}") from exc
+    return files
 
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,64}$")
@@ -300,9 +315,12 @@ def materialize_demo_project(
         for marker in ("-----begin private key-----", "sk_live_", "sk-ant-", "aws_access_key"):
             if marker in lowered:
                 raise ValueError("Generated content contains secret-like material.")
-    # Basic syntax check.
-    compile(files.app_py, "app.py", "exec")
-    compile(files.test_contract_py, "test_contract.py", "exec")
+    # Basic syntax check: name the file so the green builder can report it.
+    for label, source in (("app.py", files.app_py), ("test_contract.py", files.test_contract_py)):
+        try:
+            compile(source, label, "exec")
+        except (SyntaxError, ValueError) as exc:
+            raise ValueError(f"Demo materialization rejected invalid {label}: {exc}") from exc
     base = Path(dest_dir) if dest_dir else Path(tempfile.mkdtemp(prefix="sms-ai-demo-"))
     base.mkdir(parents=True, exist_ok=True)
     (base / "app.py").write_text(files.app_py, encoding="utf-8")

@@ -45,6 +45,29 @@ from workflow import execute_purple_workflow, redact_fixture_result_for_user
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
+# Single source of truth for the release version (LAW 12: 0.major.minor).
+# Every surface renders this: FastAPI metadata, /api/health, --version,
+# dashboard footer. Bump per LAW 12 on every shipped change set.
+APP_VERSION = "0.2.0"
+
+
+def _demo_build_failure(exc: BaseException) -> dict:
+    """User-safe error report for a failed demo build (UI result-card shape)."""
+    return {
+        "status": "error",
+        "message": f"Demo generation failed ({type(exc).__name__}): {exc}",
+        "project": "ai-demo",
+        "cycles": [],
+        "cycle_reports": [],
+        "cumulative_diff": "",
+        "diff": "",
+        "research_records": [],
+        "usage": {"calls": []},
+        "total_tokens": 0,
+        "cost_usd": None,
+        "cleanup_ok": True,
+    }
+
 
 async def run_demo_build(
     emit,
@@ -54,6 +77,13 @@ async def run_demo_build(
     build_brief: str = "",
     vulns: str = "",
     intel_offline: bool = False,
+    scan_profile: str = "extra_light",
+    cycles: int | None = None,
+    red_agents: int = 5,
+    blue_agents: int = 5,
+    context_budget: int = 32768,
+    research: bool = False,
+    research_scanners: tuple = (),
 ):
     """Green builder for the dashboard: generate a demo project, then red/blue it.
 
@@ -61,8 +91,11 @@ async def run_demo_build(
     workflow for evidence-gated cycles. Returned dict is already user-redacted.
     `build_brief` is what the user wants built; `vulns` lists CVEs, named
     types, or free text to implement. Both flow into intent parsing + research.
+    Scan intensity/team/budget mirror the CLI --ai-demo flags and the project
+    form widgets (M1-M5): named profiles force cycle counts, custom allows
+    explicit cycles, agent counts active on ultra_heavy only.
     """
-    from agents import MetaMuseClient
+    from agents import AgentError, MetaMuseClient
     from demo_gen import generate_demo_project, materialize_demo_project, parse_build_intent
     from intel_search import intel_for_demo
     from project_workflow import redact_report_for_user
@@ -123,18 +156,30 @@ async def run_demo_build(
             f"Greenhouse brief: {intent.build_brief[:160] or 'showcase demo'}; "
             f"requested flaws: {', '.join(intent.vulns[:6]) or 'novel mix'}.",
         )
-    muse = MetaMuseClient(settings)
+    muse = None
     try:
-        files = await generate_demo_project(
-            muse,
-            intel_context=intel,
-            theme=" ".join(themes),
-            build_brief=intent.build_brief,
-            vulns=intent.vulns,
-        )
+        try:
+            muse = MetaMuseClient(settings)
+            files = await generate_demo_project(
+                muse,
+                intel_context=intel,
+                theme=" ".join(themes),
+                build_brief=intent.build_brief,
+                vulns=intent.vulns,
+            )
+        except (AgentError, ValueError, TypeError, OSError) as exc:
+            # Invalid generation output (bad syntax, unsafe content, budget
+            # overflow) or a Muse transport/schema failure is a reportable
+            # scan outcome, not a dead socket.
+            await emit(
+                "green",
+                f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build.",
+            )
+            return _demo_build_failure(exc)
     finally:
         try:
-            await muse.aclose()
+            if muse is not None:
+                await muse.aclose()
         except Exception:
             pass
     try:
@@ -143,11 +188,44 @@ async def run_demo_build(
         await emit("green", _chatter("green", n=len(files.flaw_notes), path="app.py"))
     except Exception:
         await emit("green", "Greenhouse planted a fresh demo with wobbly joints.")
-    spec = materialize_demo_project(files)
+    try:
+        spec = materialize_demo_project(files)
+    except (ValueError, TypeError, OSError) as exc:
+        # A bad generation (invalid syntax, unsafe content) must surface as a
+        # reportable scan outcome, never a dead socket with no result card.
+        await emit(
+            "green", f"Greenhouse grew a wobbly demo ({type(exc).__name__}); retry the build."
+        )
+        return _demo_build_failure(exc)
     await emit(
         "green",
         f"Greenhouse grew {spec.path.name}: {', '.join(files.cve_inspiration) or 'novel flaw mix'}. Red and blue, it is yours.",
     )
+    # Intensity/team/budget (M1-M5): same stamping rule as the CLI ai_demo_runner —
+    # named profiles force cycle counts, custom honors explicit cycles.
+    from projects import ProjectSpec as _Spec
+
+    dump = spec.model_dump(mode="json")
+    if scan_profile in SCAN_PROFILES:
+        dump["scan_profile"] = scan_profile
+        dump["cycles"] = SCAN_PROFILES[scan_profile].cycles
+    if scan_profile == "custom" and cycles is not None:
+        try:
+            dump["cycles"] = max(1, min(20, int(cycles)))
+        except (TypeError, ValueError):
+            pass
+    if scan_profile == "ultra_heavy":
+        try:
+            dump["red_agents"] = max(1, min(12, int(red_agents)))
+            dump["blue_agents"] = max(1, min(12, int(blue_agents)))
+        except (TypeError, ValueError):
+            pass
+    try:
+        dump["context_budget"] = max(1024, min(131072, int(context_budget)))
+    except (TypeError, ValueError):
+        pass
+    dump["allow_remote_inference"] = not intel_offline or settings.inference_mode == "local"
+    spec = _Spec.model_validate(dump)
     result = await execute_project_workflow(spec, emit, config=settings)
     return redact_report_for_user(result)
 
@@ -176,7 +254,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
     application = FastAPI(
         title="Secure Mitigation System",
-        version="0.1.0",
+        version=APP_VERSION,
         docs_url=None,
         redoc_url=None,
         lifespan=readiness_lifespan,
@@ -221,6 +299,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             settings.validate()
             return {
                 "status": "ok",
+                "version": APP_VERSION,
                 "api_key_configured": bool(settings.meta_api_key),
                 "inference_mode": settings.inference_mode,
                 "inference_ready": settings.inference_mode == "local"
@@ -343,6 +422,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     build_brief = str(request.get("build_brief", "") or "")[:500]
                     vulns = str(request.get("vulns", "") or "")[:500]
                     intel_offline = bool(request.get("intel_offline", False))
+                    demo_scan_profile = str(request.get("scan_profile", "") or "")
+                    if demo_scan_profile not in SCAN_PROFILES:
+                        demo_scan_profile = "extra_light"
+                    try:
+                        demo_cycles = request.get("cycles", None)
+                        demo_cycles = (
+                            None if demo_cycles is None else max(1, min(20, int(demo_cycles)))
+                        )
+                    except (TypeError, ValueError):
+                        demo_cycles = None
+                    try:
+                        demo_red = max(1, min(12, int(request.get("red_agents", 5))))
+                        demo_blue = max(1, min(12, int(request.get("blue_agents", 5))))
+                        demo_budget = max(
+                            1024, min(131072, int(request.get("context_budget", 32768)))
+                        )
+                    except (TypeError, ValueError):
+                        demo_red, demo_blue, demo_budget = 5, 5, 32768
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
                         {
@@ -360,6 +457,11 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     build_brief=build_brief,
                     vulns=vulns,
                     intel_offline=intel_offline,
+                    scan_profile=demo_scan_profile,
+                    cycles=demo_cycles,
+                    red_agents=demo_red,
+                    blue_agents=demo_blue,
+                    context_budget=demo_budget,
                 )
             else:
                 coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
@@ -401,7 +503,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         else:
                             safe = _redact_fixt(result)
                     except Exception:
-                        pass
+                        # LAW 4 fail-closed: a redaction failure must never
+                        # fall back to the unredacted dump (probe scripts and
+                        # payloads stay in Docker). Report the error instead.
+                        safe = {
+                            "status": "error",
+                            "message": "Report redaction failed; unredacted details withheld.",
+                            "cleanup_ok": bool(getattr(result, "cleanup_ok", True)),
+                        }
                     await socket.send_json({"type": "result", **safe})
             except (WebSocketDisconnect, RuntimeError):
                 pass
@@ -879,6 +988,7 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
         docker_report = {"state": "unavailable", "missing_images": [], "leftover_containers": 0}
     return {
         "status": "ok",
+        "version": APP_VERSION,
         "api_key_configured": bool(settings.meta_api_key),
         "inference_mode": settings.inference_mode,
         "inference_ready": settings.inference_mode == "local" or bool(settings.meta_api_key),
@@ -896,6 +1006,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Secure Mitigation System — local Muse boundary verification scaffold"
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     commands = parser.add_mutually_exclusive_group(required=True)
     commands.add_argument(
         "--init-images", action="store_true", help="Build the two base images (requires Docker)"
@@ -1162,6 +1273,7 @@ def main() -> int:
                 # LAW 4: readiness booleans only; keys and model internals never print.
                 safe = {
                     "status": report["status"],
+                    "version": report.get("version", APP_VERSION),
                     "inference_mode": report["inference_mode"],
                     "inference_ready": report["inference_ready"],
                     "api_key_configured": report["api_key_configured"],
