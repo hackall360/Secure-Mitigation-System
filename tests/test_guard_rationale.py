@@ -12,7 +12,13 @@ import hashlib
 
 import pytest
 
-from modules.core.patches import PatchRejected, guard_rationale, validate_patch
+from modules.core.patches import (
+    EDIT_BUDGET_LINES,
+    PatchRejected,
+    guard_rationale,
+    is_solver_synthesized_shape,
+    validate_patch,
+)
 from modules.core.registry import TARGETS_REGISTRY
 from modules.services.project_agents import BlueProposal, FileReplacement
 from modules.shared.sms_redact import EXPLOIT_REDACTED, redact_cycle_evidence
@@ -179,3 +185,82 @@ def test_rationale_survives_evidence_dump_and_redaction():
     assert redacted["replacement_validation"]["guard_rationale"]["guard_id"] == "protected_path"
     # LAW 4 unchanged: probe bytes never leak into user-facing evidence.
     assert redacted["red"]["report"]["verification_script_python"] == EXPLOIT_REDACTED
+
+
+# ---- SPEC 14.9 item 3 (Lane 4): Guard-discipline template inputs ----
+# Competitor SemFix/DirectFix does [constraint-solved synthesis], but we are
+# doing [template-shaped inputs accepted only inside the existing 60-line
+# sanitization guards with GuardRationale export], which advances the field by
+# [widening safe-patch shapes without widening the trust boundary].
+
+
+_TEMPLATE_GUARD = (
+    "        if (!/^[0-9]+$/.test(rawUserId)) {\n"
+    "            res.writeHead(400, { 'Content-Type': 'application/json' });\n"
+    "            res.end(JSON.stringify({ status: 'error', detail: 'Invalid ID' }));\n"
+    "            return;\n"
+    "        }\n"
+)
+
+
+def _node_template_patch(source: str) -> str:
+    return source.replace(
+        "        const queryExpression =",
+        _TEMPLATE_GUARD + "        const queryExpression =",
+    )
+
+
+def test_template_shaped_allowlist_accepted_inside_budget():
+    target = TARGETS_REGISTRY["node_query_sink"]
+    source = target.read_source()
+    patched = _node_template_patch(source)
+    assert not is_solver_synthesized_shape(patched)
+    diff = validate_patch(target, source, patched)
+    assert diff.startswith("--- a/node_query_sink/app.js")
+    assert EDIT_BUDGET_LINES == 60
+
+
+def test_template_shaped_over_budget_rejected_budget_never_widened():
+    target = TARGETS_REGISTRY["node_query_sink"]
+    source = target.read_source()
+    anchor = "        const queryExpression ="
+    blocks = "".join(f"        // template allowlist {i}\n{_TEMPLATE_GUARD}" for i in range(15))
+    patched = source.replace(anchor, blocks + anchor)
+    assert not is_solver_synthesized_shape(patched)
+    with pytest.raises(PatchRejected) as excinfo:
+        validate_patch(target, source, patched)
+    assert excinfo.value.guard_id == "edit_budget_exceeded"
+    assert EDIT_BUDGET_LINES == 60
+    rationale = guard_rationale(excinfo.value)
+    assert rationale["guard_id"] == "edit_budget_exceeded"
+    assert "verification_script_python" not in rationale
+
+
+def test_solver_synthesized_shape_rejected_with_guard_rationale():
+    target = TARGETS_REGISTRY["node_query_sink"]
+    source = target.read_source()
+    probe_sentinel = "PROBE-BYTES-SENTINEL-9f3c"
+    patched = source.replace(
+        "        const queryExpression =",
+        "        // solver model: (check-sat) (declare-const x Int)\n"
+        "        const queryExpression =",
+    )
+    assert is_solver_synthesized_shape(patched)
+    assert probe_sentinel not in patched
+    with pytest.raises(PatchRejected) as excinfo:
+        validate_patch(target, source, patched)
+    assert excinfo.value.guard_id == "solver_synthesized_shape"
+    rationale = guard_rationale(excinfo.value)
+    assert rationale["guard_id"] == "solver_synthesized_shape"
+    assert rationale["trigger"] != ""
+    assert probe_sentinel not in rationale["trigger"]
+    assert "verification_script_python" not in rationale
+
+
+def test_solver_markers_never_accepted_even_when_small():
+    assert is_solver_synthesized_shape("(check-sat)\n")
+    assert is_solver_synthesized_shape("from z3 import Solver\n")
+    target = TARGETS_REGISTRY["node_query_sink"]
+    source = target.read_source()
+    assert not is_solver_synthesized_shape(source)
+    assert not is_solver_synthesized_shape(_node_template_patch(source))
