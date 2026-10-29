@@ -245,6 +245,168 @@ sys.exit(0)
 """.replace("RANDOM_IDS_VALUE", repr(node_ids)).replace("TARGET_VALUE", json.dumps(target))
 
 
+# SPEC 14.8 item 4 (Wave 2.2-5, PHP + MySQL portion): bounded mutation-count
+# probes. Competitor snapshot fuzzers do open-ended mutation storms outside the
+# verify loop; we run N deterministic seeded mutations per fixture contract in
+# the same capped container as regression, recorded as evidence — proving
+# config/arg robustness as part of the retain verdict. Unknown fixture id
+# MUST exit 2. Shapes match each target's REAL response: php returns
+# status/host/diagnostic text for a host arg (not the node JSON envelope);
+# mysql serves /my.cnf for config re-read (no JSON envelope at all).
+MUTATION_SEED = 20261029
+MUTATION_COUNT = 4
+
+_MUTATION_FIXTURES = frozenset(
+    {
+        "php_command_sink",
+        "mysql_insecure_conf",
+    }
+)
+
+
+def mutation_fixture_supported(fixture_id: str) -> bool:
+    """True when a deterministic mutation script exists for this fixture id."""
+    return fixture_id in _MUTATION_FIXTURES
+
+
+def _mutation_php_hosts() -> list[str]:
+    import random
+
+    rng = random.Random(MUTATION_SEED)
+    pool = [";id", "$(id)", "`id`", "|id", "&&id", "$HOME", "${HOME}", "a b"]
+    return sorted(rng.sample(pool, MUTATION_COUNT))
+
+
+def _mutation_mysql_paths() -> list[str]:
+    import random
+
+    rng = random.Random(MUTATION_SEED)
+    tokens = rng.sample(range(1000, 9999), MUTATION_COUNT - 1)
+    return ["/my.cnf"] + [f"/my.cnf?mutation={token}" for token in tokens]
+
+
+_PHP_MUTATION_TEMPLATE = r"""
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+MUTATIONS = MUTATIONS_VALUE
+WANT_COUNT = MUTATION_COUNT_VALUE
+
+
+def get_raw(path):
+    with urllib.request.urlopen('http://target-service:8080' + path, timeout=3) as response:
+        assert response.status == 200
+        return response.read(65537).decode('utf-8')
+
+
+def fail(message):
+    print('Mutation check failed: ' + message[:500])
+    sys.exit(1)
+
+
+try:
+    if len(MUTATIONS) != WANT_COUNT:
+        fail('mutation contract drift: want exactly WANT_COUNT seeded mutations')
+    for host in MUTATIONS:
+        path = '/?host=' + urllib.parse.quote(host, safe='')
+        try:
+            body = get_raw(path)
+        except urllib.error.HTTPError as error:
+            if 400 <= error.code < 500:
+                continue
+            fail('mutation host was mishandled with HTTP %d, want exact echo or clean 4xx reject' % error.code)
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            fail('mutation host returned non-JSON output, want status/host/diagnostic text')
+        if payload.get('status') != 'ok' or payload.get('diagnostic') != host:
+            fail('mutation host was not echoed exactly nor cleanly rejected')
+except AssertionError as error:
+    fail('helper contract broke: %s' % str(error)[:200])
+except Exception as error:
+    print('Mutation check inconclusive: %s: %s' % (type(error).__name__, str(error)[:200]))
+    sys.exit(2)
+print('Mutation checks passed (PASS: every seeded host-arg mutation echoed exactly or rejected cleanly)')
+sys.exit(0)
+"""
+
+_MYSQL_MUTATION_TEMPLATE = r"""
+import configparser
+import sys
+import urllib.request
+
+PATHS = PATHS_VALUE
+WANT_COUNT = MUTATION_COUNT_VALUE
+
+
+def get(path):
+    with urllib.request.urlopen('http://target-service:8080' + path, timeout=3) as response:
+        assert response.status == 200
+        return response.read(65537).decode('utf-8')
+
+
+def fail(message):
+    print('Mutation check failed: ' + message[:500])
+    sys.exit(1)
+
+
+try:
+    if len(PATHS) != WANT_COUNT:
+        fail('mutation contract drift: want exactly WANT_COUNT seeded re-reads')
+    bodies = [get(path) for path in PATHS]
+    first = bodies[0]
+    for path, body in zip(PATHS[1:], bodies[1:]):
+        if body != first:
+            fail('config changed across mutation re-reads, want byte-identical content')
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(first)
+    except configparser.Error as error:
+        fail('config failed to parse: %s' % str(error)[:200])
+    for section, key in (('mysqld', 'port'), ('mysqld', 'max_connections')):
+        try:
+            value = parser.get(section, key)
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            fail('config key [%s] %s missing on mutation re-read' % (section, key))
+        if not value.strip():
+            fail('config key [%s] %s is empty on mutation re-read' % (section, key))
+except AssertionError as error:
+    fail('helper contract broke: %s' % str(error)[:200])
+except Exception as error:
+    print('Mutation check inconclusive: %s: %s' % (type(error).__name__, str(error)[:200]))
+    sys.exit(2)
+print('Mutation checks passed (PASS: every seeded config re-read byte-identical with audited keys present)')
+sys.exit(0)
+"""
+
+
+def project_mutation_script(fixture_id: str) -> str:
+    """Build a bounded deterministic mutation script for one fixture id.
+
+    Exit contract: 0 = every seeded mutation held, 1 = a mutation mishandled
+    the input (evidence in the message), 2 = inconclusive or unknown fixture.
+    Output is bounded: only compact summaries, never response bodies.
+    """
+    if fixture_id not in _MUTATION_FIXTURES:
+        return (
+            "import sys\n"
+            f"print('Unknown mutation fixture: {fixture_id} (INCONCLUSIVE: no "
+            "mutation contract defined; evidence: fixture id matched "
+            "neither php_command_sink nor mysql_insecure_conf)')\n"
+            "sys.exit(2)\n"
+        )
+    if fixture_id == "php_command_sink":
+        return _PHP_MUTATION_TEMPLATE.replace(
+            "MUTATIONS_VALUE", json.dumps(_mutation_php_hosts())
+        ).replace("MUTATION_COUNT_VALUE", str(MUTATION_COUNT))
+    return _MYSQL_MUTATION_TEMPLATE.replace(
+        "PATHS_VALUE", json.dumps(_mutation_mysql_paths())
+    ).replace("MUTATION_COUNT_VALUE", str(MUTATION_COUNT))
+
+
 _FORBIDDEN_MODULES = frozenset(
     {"subprocess", "pty", "ctypes", "multiprocessing", "shutil", "resource", "signal"}
 )
