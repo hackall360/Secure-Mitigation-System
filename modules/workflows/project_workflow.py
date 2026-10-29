@@ -96,6 +96,33 @@ class SnapshotVerification(BaseModel):
     fresh_target: bool = True
     properties: ExecutionEvidence | None = None
     mutations: ExecutionEvidence | None = None
+def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
+    """Fail-closed mutation-count gate: True unless mutations ran and failed.
+
+    ``None`` mutations means the fixture has no mutation contract (arbitrary
+    projects) or the check did not run, so the gate passes and the existing
+    regression requirement decides. Any recorded mutations exit other than 0
+    fails the gate; missing/inconclusive evidence never upgrades a verdict.
+    """
+    if isinstance(verification, SnapshotVerification):
+        mutations = verification.mutations
+    elif isinstance(verification, Mapping):
+        mutations = verification.get("mutations")
+    else:
+        mutations = getattr(verification, "mutations", None)
+    if mutations is None:
+        return True
+    if isinstance(mutations, ExecutionEvidence):
+        return mutations.exit_code == 0
+    if isinstance(mutations, Mapping):
+        try:
+            return int(mutations.get("exit_code")) == 0
+        except (TypeError, ValueError):
+            return False
+    try:
+        return int(mutations.exit_code) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
@@ -123,36 +150,6 @@ def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] 
             return False
     try:
         return int(properties.exit_code) == 0
-    except (TypeError, ValueError):
-        return False
-
-
-def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
-    """Fail-closed bounded-mutation gate: True unless mutations ran and failed.
-
-    ``None`` mutations means the fixture has no mutation contract (arbitrary
-    projects, node fixtures in another agent's lane) or the check did not run,
-    so the gate passes and the existing regression requirement decides. Any
-    recorded mutations exit other than 0 fails the gate; missing/inconclusive
-    evidence never upgrades a verdict.
-    """
-    if isinstance(verification, SnapshotVerification):
-        mutations = verification.mutations
-    elif isinstance(verification, Mapping):
-        mutations = verification.get("mutations")
-    else:
-        mutations = getattr(verification, "mutations", None)
-    if mutations is None:
-        return True
-    if isinstance(mutations, ExecutionEvidence):
-        return mutations.exit_code == 0
-    if isinstance(mutations, Mapping):
-        try:
-            return int(mutations.get("exit_code")) == 0
-        except (TypeError, ValueError):
-            return False
-    try:
-        return int(mutations.exit_code) == 0
     except (TypeError, ValueError):
         return False
 
@@ -602,11 +599,32 @@ class DockerProjectSandbox:
             # line only when it names a known fixture; anything else skips
             # (properties stays None) so arbitrary projects are unaffected.
             properties_ev: ExecutionEvidence | None = None
+            mutations_ev: ExecutionEvidence | None = None
+            mutations_attempted = False
             try:
-                from modules.core.checks import project_property_script, property_fixture_supported
+                from modules.core.checks import (
+                    mutation_fixture_supported,
+                    project_property_mutation_script,
+                    project_property_script,
+                    property_fixture_supported,
+                )
 
                 fixture_id = (self.spec.contract or "").splitlines()[0].strip()
-                if property_fixture_supported(fixture_id):
+                if mutation_fixture_supported(fixture_id):
+                    # Wave 2 item 4: one combined property+mutation run in the
+                    # same capped container as regression — no extra container
+                    # runs; both evidences share the combined fail-closed exit.
+                    mutations_attempted = True
+                    combined_check = self.manager.run_project_check(
+                        self.network,
+                        self.spec,
+                        snapshot,
+                        script=project_property_mutation_script(fixture_id),
+                    )
+                    combined_ev = _check_evidence(combined_check, 131_072)
+                    properties_ev = combined_ev
+                    mutations_ev = combined_ev
+                elif property_fixture_supported(fixture_id):
                     property_check = self.manager.run_project_check(
                         self.network,
                         self.spec,
@@ -620,26 +638,29 @@ class DockerProjectSandbox:
                 )
             # SPEC 14.8 item 4: bounded mutation-count probes run in the same
             # capped container mechanism after regression green, mirroring the
-            # probe call shape. PHP + MySQL only (this agent's lane); anything
-            # else skips (mutations stays None) so other lanes are unaffected.
-            mutations_ev: ExecutionEvidence | None = None
-            try:
-                from modules.core.checks import (
-                    mutation_fixture_supported,
-                    project_mutation_script,
-                )
-
-                mutation_id = (self.spec.contract or "").splitlines()[0].strip()
-                if mutation_fixture_supported(mutation_id):
-                    mutation_check = self.manager.run_project_check(
-                        self.network,
-                        self.spec,
-                        snapshot,
-                        script=project_mutation_script(mutation_id),
+            # probe call shape. Node uses the combined property+mutation run
+            # above (mutations_ev already set); php/mysql run their standalone
+            # mutation script here; anything else skips (mutations stays None).
+            if mutations_ev is None:
+                try:
+                    from modules.core.checks import (
+                        mutation_fixture_supported as _mutation_supported,
+                        project_mutation_script,
                     )
-                    mutations_ev = _check_evidence(mutation_check, 131_072)
-            except Exception:
-                mutations_ev = ExecutionEvidence(exit_code=2, output="Mutations check did not run.")
+
+                    mutation_id = (self.spec.contract or "").splitlines()[0].strip()
+                    if _mutation_supported(mutation_id) and mutation_id != "node_query_sink":
+                        mutation_check = self.manager.run_project_check(
+                            self.network,
+                            self.spec,
+                            snapshot,
+                            script=project_mutation_script(mutation_id),
+                        )
+                        mutations_ev = _check_evidence(mutation_check, 131_072)
+                except Exception:
+                    mutations_ev = ExecutionEvidence(
+                        exit_code=2, output="Mutations check did not run."
+                    )
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.
@@ -1467,13 +1488,11 @@ async def execute_project_workflow(
                 # changes no retain/rollback verdict — it only records the check.
                 and evidence.differential_passed
                 # Wave 8 R1 fail-closed property gate: a recorded properties
-                # exit other than 0 vetoes the retain even when the probe is
-                # blocked and regression is green (properties None skips).
+                # exit other than 0 vetoes the retain (properties None skips).
                 and property_gate_passed(patched)
                 # SPEC 14.8 item 4 fail-closed mutation gate: a recorded
-                # mutations exit other than 0 vetoes the retain even when the
-                # probe is blocked and regression is green (mutations None
-                # skips, e.g. arbitrary projects and other lanes' fixtures).
+                # mutations exit other than 0 vetoes the retain (mutations
+                # None skips, e.g. arbitrary projects).
                 and mutation_gate_passed(patched)
             )
             if independent_same_finding:
