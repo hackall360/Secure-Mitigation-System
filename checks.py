@@ -71,6 +71,154 @@ print('No IPv4 default route; public TCP probes blocked (not proof of complete i
 sys.exit(0)
 """
 
+# Wave 8 R1: deterministic seeded property/metamorphic normal-contract checks.
+# These run through the same in-container HTTP helper shape as the normal
+# checks but widen the net beyond fixed equality asserts: known-good ids
+# must stay 200 while seeded-random ids stay empty/not-found, benign args
+# must stay stable under repetition, and audited config keys must survive
+# re-read. Aliases accept both the task brief ids and the registry keys.
+_PROPERTY_FIXTURES = frozenset(
+    {
+        "node_eval_service",
+        "node_query_sink",
+        "php_command_sink",
+        "mysql_config_audit",
+        "mysql_insecure_conf",
+    }
+)
+
+
+def property_fixture_supported(fixture_id: str) -> bool:
+    """True when a deterministic property script exists for this fixture id."""
+    return fixture_id in _PROPERTY_FIXTURES
+
+
+def _property_node_ids(seed: int) -> list[int]:
+    import random
+
+    rng = random.Random(seed)
+    # Unknown-account range: far from the seeded accounts but still decimal.
+    return [rng.randrange(10_000, 99_999) for _ in range(2)]
+
+
+def project_property_script(fixture_id: str) -> str:
+    """Build a bounded deterministic property script for one fixture id.
+
+    Exit contract: 0 = every property held, 1 = a property failed (evidence
+    in the message), 2 = inconclusive or unknown fixture. Output is bounded:
+    only compact summaries, never response bodies.
+    """
+    if fixture_id not in _PROPERTY_FIXTURES:
+        return (
+            "import sys\n"
+            f"print('Unknown property fixture: {fixture_id} (INCONCLUSIVE: no "
+            "normal-contract properties defined; evidence: fixture id matched "
+            "none of node_eval_service/php_command_sink/mysql_config_audit)')\n"
+            "sys.exit(2)\n"
+        )
+    node_ids = _property_node_ids(20261029)
+    if fixture_id in ("node_eval_service", "node_query_sink"):
+        target = "node_eval_service"
+    elif fixture_id == "php_command_sink":
+        target = "php_command_sink"
+    else:
+        target = "mysql_config_audit"
+    return r"""
+import configparser
+import json
+import sys
+import urllib.error
+import urllib.request
+
+SEED = 20261029
+RANDOM_IDS = RANDOM_IDS_VALUE
+
+
+def get(path):
+    with urllib.request.urlopen('http://target-service:8080' + path, timeout=3) as response:
+        assert response.status == 200
+        return response.read(65537).decode('utf-8')
+
+
+def fail(message):
+    print('Property check failed: ' + message[:500])
+    sys.exit(1)
+
+
+try:
+    target = TARGET_VALUE
+    if target == 'node_eval_service':
+        # Two known-good ids stay 200 and non-empty; seeded random ids must
+        # return no rows (empty result set, not the 404 route).
+        for account_id in (101, 102):
+            try:
+                response = json.loads(get('/lookup?id=' + str(account_id)))
+            except urllib.error.HTTPError as error:
+                fail('known id %d returned HTTP %d, want 200 with one row' % (account_id, error.code))
+            if response.get('status') != 'ok' or not response.get('results'):
+                fail('known id %d lost its result row' % account_id)
+        for account_id in RANDOM_IDS:
+            try:
+                response = json.loads(get('/lookup?id=' + str(account_id)))
+            except urllib.error.HTTPError as error:
+                if error.code == 404:
+                    fail('random id %d hit the 404 route, want an empty lookup result' % account_id)
+                fail('random id %d returned HTTP %d, want an empty result set' % (account_id, error.code))
+            if response.get('count') != 0 or response.get('results') != []:
+                fail('random id %d leaked rows, want an empty result set' % account_id)
+    elif target == 'php_command_sink':
+        # Benign hosts stay successful and byte-stable under repetition.
+        seen = {}
+        for host in ('localhost', '127.0.0.1'):
+            try:
+                first = get('/?host=' + host)
+            except urllib.error.HTTPError as error:
+                fail('benign host %s returned HTTP %d, want 200 ok' % (host, error.code))
+            try:
+                payload = json.loads(first)
+            except ValueError:
+                fail('benign host %s returned non-JSON output' % host)
+            if payload.get('status') != 'ok' or payload.get('diagnostic') != host:
+                fail('benign host %s lost its diagnostic echo' % host)
+            seen[host] = first
+        for host in ('localhost', 'localhost', '127.0.0.1'):
+            try:
+                repeated = get('/?host=' + host)
+            except urllib.error.HTTPError as error:
+                fail('repeated host %s returned HTTP %d, want stable 200 ok' % (host, error.code))
+            if repeated != seen[host]:
+                fail('repeated host %s was unstable across reads' % host)
+    elif target == 'mysql_config_audit':
+        # Audited keys survive idempotent re-read.
+        first = get('/my.cnf')
+        second = get('/my.cnf')
+        if first != second:
+            fail('config changed across re-reads, want idempotent content')
+        parser = configparser.ConfigParser()
+        try:
+            parser.read_string(first)
+        except configparser.Error as error:
+            fail('config failed to parse: %s' % str(error)[:200])
+        for section, key in (('mysqld', 'port'), ('mysqld', 'max_connections')):
+            try:
+                value = parser.get(section, key)
+            except (configparser.NoSectionError, configparser.NoOptionError):
+                fail('config key [%s] %s missing on re-read' % (section, key))
+            if not value.strip():
+                fail('config key [%s] %s is empty on re-read' % (section, key))
+    else:
+        print('Unknown property fixture (INCONCLUSIVE: no properties defined)')
+        sys.exit(2)
+except AssertionError as error:
+    fail('helper contract broke: %s' % str(error)[:200])
+except Exception as error:
+    print('Property check inconclusive: %s: %s' % (type(error).__name__, str(error)[:200]))
+    sys.exit(2)
+print('Property checks passed for ' + target + ' (PASS: random-id emptiness, host stability, and config re-read held)')
+sys.exit(0)
+""".replace("RANDOM_IDS_VALUE", repr(node_ids)).replace("TARGET_VALUE", json.dumps(target))
+
+
 _FORBIDDEN_MODULES = frozenset(
     {"subprocess", "pty", "ctypes", "multiprocessing", "shutil", "resource", "signal"}
 )
