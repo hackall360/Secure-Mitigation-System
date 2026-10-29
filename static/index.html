@@ -29,7 +29,7 @@
   </aside>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.4.0</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.5.0</span></a>
       <div class="top-status">
         <span class="chip" id="chip-key" data-state="pending" title="Muse API key in server environment"><i></i>API key</span>
         <span class="chip" id="chip-docker" data-state="pending" title="Docker daemon and base images"><i></i>Docker</span>
@@ -63,6 +63,8 @@
           <button id="mode-demo" class="mode active" type="button" role="radio" aria-checked="true" data-mode="demo"><strong>Bundled demo</strong><small>Use a disposable fixture</small></button>
           <button id="mode-demo-build" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="demo-build"><strong>Green build</strong><small>Greenhouse grows a fresh flaw</small></button>
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
+          <button id="mode-mcp" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="mcp"><strong>MCP snippet</strong><small>External AI client submits code</small></button>
+          <button id="mode-binary" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="binary"><strong>Binary sweep</strong><small>Reversing + 3-pass harness run</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -117,10 +119,25 @@
           <label class="remote-consent wide"><input id="allow-remote" type="checkbox" required><span><strong>Allow source to leave this host</strong><small>Project source and analysis context may be sent to the configured Muse endpoint for inference.</small></span></label>
           <div id="project-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
+        <form id="mcp-form" class="project-form" hidden novalidate>
+          <div class="field"><label for="mcp-language">Language</label><select id="mcp-language" name="language" required><option value="javascript" selected>JavaScript</option><option value="python">Python</option><option value="php">PHP</option></select><small>Runs in the matching sandbox image.</small></div>
+          <div class="field wide"><label for="mcp-filename">Filename</label><input id="mcp-filename" name="filename" required maxlength="128" placeholder="app.js" autocomplete="off"><small>Bare filename, no paths.</small></div>
+          <div class="field wide"><label for="mcp-source">Source snippet</label><textarea id="mcp-source" name="source" required rows="8" spellcheck="false" placeholder="Paste the code to verify (max 64 KiB)."></textarea></div>
+          <div class="field wide"><label for="mcp-contract">Behavior contract</label><textarea id="mcp-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
+          <div id="mcp-errors" class="form-errors wide" role="alert" hidden></div>
+          <div id="mcp-result" class="form-errors wide" role="status" hidden></div>
+        </form>
+        <form id="binary-form" class="project-form" hidden novalidate>
+          <div class="field"><label for="binary-file">Compiled binary</label><input id="binary-file" name="binary" type="file" required><small>ELF, Mach-O, or PE. Max 8 MiB. Bytes stay local; only Docker evidence decides.</small></div>
+          <div class="field wide"><label for="binary-filename">Filename</label><input id="binary-filename" name="filename" required maxlength="128" placeholder="target.elf" autocomplete="off"><small>Bare filename, no paths.</small></div>
+          <div class="field wide"><label for="binary-contract">Behavior contract</label><textarea id="binary-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
+          <div id="binary-errors" class="form-errors wide" role="alert" hidden></div>
+        </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>
           <div id="profile-list" class="profiles" role="radiogroup" aria-labelledby="profile-label"></div>
         </div>
+        <div class="field compact"><label for="sweep-passes">Sweep depth</label><select id="sweep-passes" name="sweep_passes"><option value="1" selected>Single finding (legacy)</option><option value="2">2 passes (standard + deep)</option><option value="3">3 passes (+ threat-actor)</option></select><small>Multi-pass sweep runs every pass and patches each confirmed boundary.</small></div>
         <div class="run-row">
           <p id="target-description" class="target-description">Pick a bundled fixture, press Run — red proves the flaw in Docker, blue patches it.</p>
           <div class="actions">

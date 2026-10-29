@@ -26,6 +26,37 @@ are side-effect-scoped layers. CSP-safe throughout: `textContent` and
 | WebSocket `onmessage` | Routes `payload.team`/`payload.msg` to `writeLine`; unreadable events get a system line |
 | `socket.onerror` / close | System lines; server finishes cleanup before next scan |
 
+## MCP snippet panel (Milestone 2)
+`POST /mcp` (Streamable HTTP JSON-RPC) exposes `submit_code_snippet`;
+the dashboard `MCP snippet` mode posts the same call and renders the
+structured result inline. No WebSocket involved.
+
+| Fact / panel | DOM ids | Render fn | Source fields |
+|---|---|---|---|
+| MCP snippet form | `mcp-form`, `mcp-language`, `mcp-filename`, `mcp-source`, `mcp-contract`, `mcp-errors`, `mcp-result` | `submitMcpSnippet` (`app.js`) | `fetch('/mcp')` JSON-RPC `tools/call submit_code_snippet`; result text `status/pre_probe_exit/post_probe_exit/receipt sha12`. |
+
+## Sweep depth selector (Milestone 3)
+
+Fixture scans accept `?sweep_passes=2|3` (mirrors `--sweep-passes`); absent/1
+keeps the legacy single loop. `summaryEvidence` rolls `pass_results` into the
+shared summary shape (`N/M passes hold`, per-pass reachable/blocked counts).
+
+| Fact / panel | DOM ids | Render fn | Source fields |
+|---|---|---|---|
+| Sweep depth | `sweep-passes` | `socketQuery` (`app.js`) | `?sweep_passes=2|3` on `/ws/combat/{key}`; value `1` sends nothing. |
+| Pass summary | `result-meta` | `renderResultMeta` via `summaryEvidence` | `pass_results[]` (`pass_id`, `pre/post_exit_code`, `cleared`, `receipt`, `regression_passed`). |
+
+## Binary sweep panel (Milestone 4)
+
+`/ws/binary` takes the validated binary as a base64 first frame (`blob_b64`,
+bare `filename`, `contract`; 8 MiB cap, magic-checked server-side) and runs
+the binary 3-pass sweep over the shared socket flow; `summaryEvidence`
+renders `pass_results` the same way as source sweeps.
+
+| Fact / panel | DOM ids | Render fn | Source fields |
+|---|---|---|---|
+| Binary mode | `mode-binary`, `binary-form`, `binary-file`, `binary-filename`, `binary-contract`, `binary-errors` | `submitBinary` (`app.js`) | FileReader → base64 → first WS frame on `/ws/binary`; per-field client validation. |
+
 ## Wave 2 (SPEC 14.8) panels (`renderW2v2`, `static/app.js:807`)
 
 All collectors are defensive (optional fields, odd shapes degrade to null,

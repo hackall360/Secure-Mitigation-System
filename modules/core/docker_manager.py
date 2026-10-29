@@ -105,8 +105,8 @@ def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
 
 
 def _assert_dockerfiles_pinned() -> None:
-    """Fail closed if either Dockerfile drifts off the pinned digest base."""
-    for filename in ("Dockerfile.target", "Dockerfile.verifier"):
+    """Fail closed if any Dockerfile drifts off the pinned digest base."""
+    for filename in ("Dockerfile.target", "Dockerfile.verifier", "Dockerfile.binary"):
         content = (BASE_DIR / "docker" / filename).read_text(encoding="utf-8")
         if PINNED_PYTHON_BASE not in content:
             raise SandboxError(
@@ -115,13 +115,14 @@ def _assert_dockerfiles_pinned() -> None:
 
 
 def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
-    """Rebuild both base images unconditionally, e.g. after a Dockerfile change."""
+    """Rebuild base images unconditionally, e.g. after a Dockerfile change."""
     _assert_dockerfiles_pinned()
     client = client if client is not None else docker.from_env(timeout=600)
     built = []
     for tag, filename in (
         (config.target_base_image, "Dockerfile.target"),
         (config.verifier_base_image, "Dockerfile.verifier"),
+        (config.binary_base_image, "Dockerfile.binary"),
     ):
         client.images.build(
             path=str(BASE_DIR / "docker"),
@@ -188,6 +189,7 @@ class DockerSandboxManager:
         for tag, filename in (
             (self.config.target_base_image, "Dockerfile.target"),
             (self.config.verifier_base_image, "Dockerfile.verifier"),
+            (self.config.binary_base_image, "Dockerfile.binary"),
         ):
             try:
                 self.client.images.get(tag)
@@ -456,6 +458,218 @@ class DockerSandboxManager:
             except Exception as exc:
                 raise SandboxError(
                     "Verifier failed or exceeded its time limit; result is inconclusive."
+                ) from exc
+        finally:
+            if container is not None:
+                try:
+                    container.remove(force=True)
+                except NotFound:
+                    pass
+                finally:
+                    if container in self.containers:
+                        self.containers.remove(container)
+
+    @staticmethod
+    def _create_binary_tar(files: list[tuple[str, bytes, int]]) -> bytes:
+        """Tar archive for binary staging: strict basenames, capped total."""
+        from modules.services.binary_intake import BINARY_MAX_BYTES
+
+        total = sum(len(content) for _, content, _ in files)
+        if total > BINARY_MAX_BYTES + 65_536:
+            raise ValueError("Binary staging archive exceeds the intake budget.")
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as archive:
+            for filename, content, mode in files:
+                path = PurePosixPath(filename)
+                if (
+                    path.is_absolute()
+                    or len(path.parts) != 1
+                    or filename in (".", "..")
+                    or "\\" in filename
+                ):
+                    raise ValueError("Binary archive names must be simple basenames.")
+                entry = tarfile.TarInfo(filename)
+                entry.size, entry.mode = len(content), mode
+                entry.uid = entry.gid = 10001
+                entry.mtime = 0
+                archive.addfile(entry, io.BytesIO(content))
+        return stream.getvalue()
+
+    def require_binary_image(self) -> None:
+        """Fail closed when the binary-analysis base image is missing."""
+        self.client.ping()
+        try:
+            self.client.images.get(self.config.binary_base_image)
+        except ImageNotFound as exc:
+            raise SandboxError(
+                "Binary-analysis base image is missing. Run python main.py --init-images first."
+            ) from exc
+
+    def start_binary_harness(self, network, blob: bytes, *, mitigation: str = ""):
+        """Stage a binary + trusted harness, start the harness HTTP server.
+
+        The binary is injected into a stopped never-executed staging
+        container (network_mode none), committed, then run read-only with
+        the harness as PID 1. The binary executes ONLY as a subprocess of
+        the trusted harness inside the air-gapped network. Returns
+        (container, snapshot); cleanup tracks both.
+        """
+        harness_source = (BASE_DIR / "docker" / "binary_harness.py").read_text(encoding="utf-8")
+        archive = self._create_binary_tar(
+            [
+                ("target.bin", blob, 0o555),
+                ("harness.py", harness_source.encode("utf-8"), 0o444),
+                ("mitigation.txt", mitigation.encode("utf-8"), 0o444),
+            ]
+        )
+        stage = self.client.containers.create(
+            self.config.binary_base_image,
+            command=["true"],
+            network_mode="none",
+            **self._options("target"),
+        )
+        self.containers.append(stage)
+        try:
+            if not stage.put_archive("/workspace", archive):
+                raise SandboxError("Docker rejected the binary staging archive.")
+            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+            image_name = f"{self.config.clone_repo_prefix}:{tag}"
+            self.images.append(image_name)
+            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+        finally:
+            try:
+                stage.remove(force=True)
+            except NotFound:
+                pass
+            finally:
+                if stage in self.containers:
+                    self.containers.remove(stage)
+        container = self._runtime(
+            image_name,
+            network,
+            "target",
+            ["python3", "/workspace/harness.py"],
+            aliases=["target-service"],
+        )
+        ready = container.exec_run(["python3", "-c", READY_SCRIPT])
+        if ready.exit_code != 0:
+            raise SandboxError(
+                "Binary harness did not become ready; the binary may be unexecutable."
+            )
+        return container, image_name
+
+    def replace_binary_harness(self, previous, snapshot: str, network, *, mitigation: str = ""):
+        """Restart the harness on the same snapshot with new mitigation rules."""
+        try:
+            previous.remove(force=True)
+        except NotFound:
+            pass
+        finally:
+            if previous in self.containers:
+                self.containers.remove(previous)
+        return self.start_binary_harness_from_snapshot(snapshot, network, mitigation=mitigation)
+
+    def start_binary_harness_from_snapshot(self, snapshot: str, network, *, mitigation: str = ""):
+        """Restart the harness image with replaced mitigation rules (same binary)."""
+        stage = self.client.containers.create(
+            snapshot,
+            command=["true"],
+            network_mode="none",
+            **self._options("target"),
+        )
+        self.containers.append(stage)
+        try:
+            archive = self._create_binary_tar(
+                [("mitigation.txt", mitigation.encode("utf-8"), 0o444)]
+            )
+            if not stage.put_archive("/workspace", archive):
+                raise SandboxError("Docker rejected the mitigation archive.")
+            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+            image_name = f"{self.config.clone_repo_prefix}:{tag}"
+            self.images.append(image_name)
+            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+        finally:
+            try:
+                stage.remove(force=True)
+            except NotFound:
+                pass
+            finally:
+                if stage in self.containers:
+                    self.containers.remove(stage)
+        container = self._runtime(
+            image_name,
+            network,
+            "target",
+            ["python3", "/workspace/harness.py"],
+            aliases=["target-service"],
+        )
+        ready = container.exec_run(["python3", "-c", READY_SCRIPT])
+        if ready.exit_code != 0:
+            raise SandboxError("Mitigated binary harness did not become ready.")
+        return container, image_name
+
+    def binary_static_profile(self, network, blob: bytes) -> str:
+        """Static reversing profile (file/strings/readelf) inside the sandbox.
+
+        Runs in one shot in the binary base image with no network; output is
+        bounded text for red-team grounding. The binary never executes here
+        (analysis tools only read it).
+        """
+        script = (
+            "import subprocess\n"
+            "for cmd in (['file', '/workspace/target.bin'],"
+            " ['sh', '-c', 'strings /workspace/target.bin | head -100'],"
+            " ['sh', '-c', 'readelf -h -l /workspace/target.bin 2>&1 | head -60']):\n"
+            "    try:\n"
+            "        out = subprocess.run(cmd, stdout=subprocess.PIPE,"
+            " stderr=subprocess.STDOUT, timeout=20)\n"
+            "        print('$ ' + ' '.join(cmd[:2]))\n"
+            "        print(out.stdout.decode('utf-8', errors='replace')[:4000])\n"
+            "    except Exception as exc:\n"
+            "        print('profile tool failed: ' + type(exc).__name__)\n"
+        )
+        archive = self._create_binary_tar(
+            [
+                ("target.bin", blob, 0o555),
+                ("profile.py", script.encode("utf-8"), 0o444),
+            ]
+        )
+        stage = self.client.containers.create(
+            self.config.binary_base_image,
+            command=["true"],
+            network_mode="none",
+            **self._options("verifier"),
+        )
+        self.containers.append(stage)
+        try:
+            if not stage.put_archive("/workspace", archive):
+                raise SandboxError("Docker rejected the binary profile archive.")
+            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+            image_name = f"{self.config.clone_repo_prefix}:{tag}"
+            self.images.append(image_name)
+            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+        finally:
+            try:
+                stage.remove(force=True)
+            except NotFound:
+                pass
+            finally:
+                if stage in self.containers:
+                    self.containers.remove(stage)
+        container = None
+        try:
+            container = self._runtime(
+                image_name, network, "verifier", ["python3", "/workspace/profile.py"]
+            )
+            try:
+                status = container.wait(timeout=self.config.verifier_timeout_seconds)
+                output = container.logs(tail=100).decode("utf-8", errors="replace")[-16_384:]
+                if int(status["StatusCode"]) != 0:
+                    raise SandboxError("Static profile run failed; result is inconclusive.")
+                return output.strip()
+            except Exception as exc:
+                raise SandboxError(
+                    "Static profile failed or timed out; result is inconclusive."
                 ) from exc
         finally:
             if container is not None:
