@@ -235,3 +235,14 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] R1. Property/metamorphic normal-contract checks wired into verification, recorded as evidence, fail-closed. Files: `checks.py` (`project_property_script`), `project_workflow.py` (`properties` + `property_gate_passed` in retain), `tests/test_property_checks.py` (13 tests). Proof: fail-first red (ImportError, gate-disabled rollback FAILED), standalone suite 385 passed. Opt-in: spec contract first line must name the fixture id (producer wiring done in `project_scan.py`).
 - [x] R2. LOW bundle: research fetch caps, epss sanitizer reuse, intel_search CVE shape. Files: `research.py`, `intel_search.py`, `cve_workflow.py`, `tests/test_scanners.py`. Fail-first each (red 3 failed, green post-fix).
 - [ ] R3. Wave 9 docs after R1/R2 gate green.
+
+## S. Root de-bloat 3-wave refactor (carried from brief 2026-10-28-root-debloat-3wave-refactor; branch feature/root-debloat-wave1-audit)
+
+- [/] S1. Wave 1 audit exists on `feature/root-debloat-wave1-audit` (at 39570ac, pre zero-day line); root still has 34 .py + 15 .md. Remains: refresh audit against current zero-day tree (line moved 329->392 tests, sms_* modules already partly extracted by impl-opt-perf), then Wave 2 git-mv migration and Wave 3 merge gate per brief decomposition steps 5-10. Blocked on: zero-day line landing decision (ship) so the audit baseline is stable; do not start Wave 2 moves on a moving baseline.
+- [ ] S2. Wave 2: git-mv non-entrypoint .py into domain packages + non-essential root .md into docs/ subdirs, isolated worktrees, zero deletion.
+- [ ] S3. Wave 3: merge gate, semantic rewire of imports/entrypoints, docs/INDEX.md current, full gate 100% green.
+
+## T. Finish-up 2026-10-29 (brief 2026-10-29-finish-up)
+
+- [x] T1. Wave 8 live-proof failure diagnosed: opt-in property script aliased project plain-text services to the fixture JSON-envelope script; properties exit 2 (JSONDecodeError) vetoed retain fail-closed. Evidence: reports/project-acceptance/project-acceptance.json cycle 1 properties exit_code 2, status rolled_back; standalone R1/R2 branch commits passed because neither had the merge-commit contract wiring.
+- [x] T2. Fix fail-first: split property scripts by real response shape (node_query_sink JSON envelope; new project_lookup_text plain text; phantom node_eval_service removed; project_scan contract retargeted). Files: `checks.py`, `tests/test_property_checks.py`, `.jcode/tools/project_scan.py`. Proof: writer RED (exit 2 unknown fixture) then 50 passed; merged gate 392 passed; live `project_scan.py` PASS 2/2 cycles retained, properties exit 0 both cycles.
