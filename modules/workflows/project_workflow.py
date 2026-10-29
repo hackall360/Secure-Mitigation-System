@@ -95,6 +95,7 @@ class SnapshotVerification(BaseModel):
     regression: ExecutionEvidence
     fresh_target: bool = True
     properties: ExecutionEvidence | None = None
+    mutations: ExecutionEvidence | None = None
 
 
 def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
@@ -122,6 +123,36 @@ def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] 
             return False
     try:
         return int(properties.exit_code) == 0
+    except (TypeError, ValueError):
+        return False
+
+
+def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
+    """Fail-closed bounded-mutation gate: True unless mutations ran and failed.
+
+    ``None`` mutations means the fixture has no mutation contract (arbitrary
+    projects, node fixtures in another agent's lane) or the check did not run,
+    so the gate passes and the existing regression requirement decides. Any
+    recorded mutations exit other than 0 fails the gate; missing/inconclusive
+    evidence never upgrades a verdict.
+    """
+    if isinstance(verification, SnapshotVerification):
+        mutations = verification.mutations
+    elif isinstance(verification, Mapping):
+        mutations = verification.get("mutations")
+    else:
+        mutations = getattr(verification, "mutations", None)
+    if mutations is None:
+        return True
+    if isinstance(mutations, ExecutionEvidence):
+        return mutations.exit_code == 0
+    if isinstance(mutations, Mapping):
+        try:
+            return int(mutations.get("exit_code")) == 0
+        except (TypeError, ValueError):
+            return False
+    try:
+        return int(mutations.exit_code) == 0
     except (TypeError, ValueError):
         return False
 
@@ -514,6 +545,30 @@ class DockerProjectSandbox:
                 properties_ev = ExecutionEvidence(
                     exit_code=2, output="Properties check did not run."
                 )
+            # SPEC 14.8 item 4: bounded mutation-count probes run in the same
+            # capped container mechanism after regression green, mirroring the
+            # probe call shape. PHP + MySQL only (this agent's lane); anything
+            # else skips (mutations stays None) so other lanes are unaffected.
+            mutations_ev: ExecutionEvidence | None = None
+            try:
+                from modules.core.checks import (
+                    mutation_fixture_supported,
+                    project_mutation_script,
+                )
+
+                mutation_id = (self.spec.contract or "").splitlines()[0].strip()
+                if mutation_fixture_supported(mutation_id):
+                    mutation_check = self.manager.run_project_check(
+                        self.network,
+                        self.spec,
+                        snapshot,
+                        script=project_mutation_script(mutation_id),
+                    )
+                    mutations_ev = _check_evidence(mutation_check, 131_072)
+            except Exception:
+                mutations_ev = ExecutionEvidence(
+                    exit_code=2, output="Mutations check did not run."
+                )
             # Critical addition: post-probe liveness against same still-running target.
             # A blocked (1) or inconclusive (2) probe must not earn success if it
             # crashed the service; exit 0 (reachable) needs no liveness override.
@@ -566,6 +621,7 @@ class DockerProjectSandbox:
                 regression=regression_ev,
                 fresh_target=True,
                 properties=properties_ev,
+                mutations=mutations_ev,
             )
         finally:
             if target is not None:
@@ -599,21 +655,28 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
             properties=None
             if value.properties is None
             else _normalize_execution(value.properties, limit),
+            mutations=None
+            if value.mutations is None
+            else _normalize_execution(value.mutations, limit),
         )
     if isinstance(value, Mapping):
         properties = value.get("properties")
+        mutations = value.get("mutations")
         return SnapshotVerification(
             probe=_normalize_execution(value["probe"], limit),
             regression=_normalize_execution(value["regression"], limit),
             fresh_target=bool(value.get("fresh_target", True)),
             properties=None if properties is None else _normalize_execution(properties, limit),
+            mutations=None if mutations is None else _normalize_execution(mutations, limit),
         )
     properties = getattr(value, "properties", None)
+    mutations = getattr(value, "mutations", None)
     return SnapshotVerification(
         probe=_normalize_execution(value.probe, limit),
         regression=_normalize_execution(value.regression, limit),
         fresh_target=bool(getattr(value, "fresh_target", True)),
         properties=None if properties is None else _normalize_execution(properties, limit),
+        mutations=None if mutations is None else _normalize_execution(mutations, limit),
     )
 
 
@@ -1292,6 +1355,11 @@ async def execute_project_workflow(
                 # exit other than 0 vetoes the retain even when the probe is
                 # blocked and regression is green (properties None skips).
                 and property_gate_passed(patched)
+                # SPEC 14.8 item 4 fail-closed mutation gate: a recorded
+                # mutations exit other than 0 vetoes the retain even when the
+                # probe is blocked and regression is green (mutations None
+                # skips, e.g. arbitrary projects and other lanes' fixtures).
+                and mutation_gate_passed(patched)
             )
             if independent_same_finding:
                 independent_check = evidence.independent_verification
@@ -1302,6 +1370,7 @@ async def execute_project_workflow(
                     and independent_check.probe.blocked
                     and independent_check.regression.exit_code == 0
                     and property_gate_passed(independent_check)
+                    and mutation_gate_passed(independent_check)
                 )
             disposition = "retained" if retained else "rolled_back"
             try:
