@@ -3,6 +3,7 @@
 """Trusted normal-input checks, independent of the model's boundary verifier."""
 
 import ast
+import hashlib
 import json
 
 
@@ -256,6 +257,18 @@ sys.exit(0)
 MUTATION_SEED = 20261029
 MUTATION_COUNT = 4
 
+# SPEC 14.9 item 2 (Wave 5, Lane 2 keep): frozen-pool determinism guard.
+# Fuzz4All/TitanFuzz chase coverage with LLM novel-input storms; we pin
+# deterministic per-contract mutants byte-identical across runs, proving
+# robustness inside the verify loop instead of chasing coverage. The digest
+# below freezes the exact pools computed by the _mutation_* builders with
+# MUTATION_SEED; any nondeterminism source (unseeded RNG, set ordering,
+# time/uuid/hash-seed dependence) changes the digest and fails closed.
+FROZEN_MUTATION_POOL_SHA256 = "faf483183d8de114182ebe7cbb92909f00e09f4a19af7920cceaa89ddb27e5cc"
+_FROZEN_POOL_MARKER = (
+    "# Frozen mutation pool sha256 (SPEC 14.9 item 2): " + FROZEN_MUTATION_POOL_SHA256 + "\n"
+)
+
 _MUTATION_FIXTURES = frozenset(
     {
         "php_command_sink",
@@ -268,6 +281,29 @@ _MUTATION_FIXTURES = frozenset(
 def mutation_fixture_supported(fixture_id: str) -> bool:
     """True when a deterministic mutation script exists for this fixture id."""
     return fixture_id in _MUTATION_FIXTURES
+
+
+def mutation_pool_snapshot() -> dict[str, list[str]]:
+    """Return the frozen per-contract mutation id pools keyed by fixture."""
+    return {
+        "mysql_insecure_conf": _mutation_mysql_paths(),
+        "node_query_sink": _mutation_node_ids(MUTATION_SEED),
+        "php_command_sink": _mutation_php_hosts(),
+    }
+
+
+def _assert_frozen_pool() -> None:
+    """Fail closed unless the live pools are byte-identical to the frozen digest."""
+    snapshot = mutation_pool_snapshot()
+    canon = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(canon).hexdigest()
+    if digest != FROZEN_MUTATION_POOL_SHA256:
+        raise ValueError(
+            "Frozen mutation pool drift (FAIL: mutation id pools are not "
+            "byte-identical across runs, nondeterminism source suspected; "
+            f"evidence: live sha256 {digest} != frozen "
+            f"{FROZEN_MUTATION_POOL_SHA256})"
+        )
 
 
 def _mutation_php_hosts() -> list[str]:
@@ -399,13 +435,14 @@ def project_mutation_script(fixture_id: str) -> str:
             "neither php_command_sink nor mysql_insecure_conf)')\n"
             "sys.exit(2)\n"
         )
+    _assert_frozen_pool()
     if fixture_id == "php_command_sink":
-        return _PHP_MUTATION_TEMPLATE.replace(
+        return _FROZEN_POOL_MARKER + _PHP_MUTATION_TEMPLATE.replace(
             "MUTATIONS_VALUE", json.dumps(_mutation_php_hosts())
         ).replace("MUTATION_COUNT_VALUE", str(MUTATION_COUNT))
     if fixture_id == "node_query_sink":
-        return _node_mutation_script()
-    return _MYSQL_MUTATION_TEMPLATE.replace(
+        return _FROZEN_POOL_MARKER + _node_mutation_script()
+    return _FROZEN_POOL_MARKER + _MYSQL_MUTATION_TEMPLATE.replace(
         "PATHS_VALUE", json.dumps(_mutation_mysql_paths())
     ).replace("MUTATION_COUNT_VALUE", str(MUTATION_COUNT))
 
@@ -520,7 +557,10 @@ def project_property_mutation_script(fixture_id: str) -> str:
         )
     mutation_ids = _mutation_node_ids(MUTATION_SEED)
     random_ids = _property_node_ids(20261029)
-    return r"""
+    _assert_frozen_pool()
+    return (
+        _FROZEN_POOL_MARKER
+        + r"""
 import json
 import sys
 import urllib.error
@@ -592,6 +632,7 @@ except Exception as error:
 print('Property checks passed for node_query_sink (PASS: random-id emptiness held). Mutation checks passed for node_query_sink (PASS: 8 seeded ids kept the envelope)')
 sys.exit(0)
 """.replace("RANDOM_IDS_VALUE", repr(random_ids)).replace("MUTATION_IDS_VALUE", repr(mutation_ids))
+    )
 
 
 def validate_verifier_script(script: str) -> None:
