@@ -946,11 +946,11 @@ New `reach_score` / `reach_evidence` fields on CVE summaries (CVE workflow outpu
 
 ### 14.2 CVE disclosure fast lane
 
-New opt-in CVE fast lane: precomputed disclosure trigger + autonomous oracle + fail-closed snapshot autop. NVD-free intel pre-positioning (keyless OSV/CIRCL/GHSA/EPSS) with Docker proof cache. Satisfies the 3 same-day hard requirements from Wave 1: (a) precomputed trigger, (b) NVD-free intel pre-positioning, (c) deterministic fail-closed snapshot autop + tro path + dream.
+New opt-in CVE fast lane on `execute_cve_scan(..., fast_lane=True)`: skips the scanner-binary stage entirely (static signals + keyless OSV only), keeps deterministic ordering and never-raises degradation, and returns the same `CveScanReport` shape. This is the precomputed disclosure trigger from Wave 1 same-day requirement (a): on disclosure day the fast lane produces triage input in minutes without waiting on host scanner binaries. NVD enrichment stays opt-in (`include_nvd`) and off the fast path.
 
 ### 14.3 Demand-driven ghost-probe liveness
 
-New ghost-probe liveness check in `checks.py` + `workflow.py`: the patched target must still answer trusted normal input before a candidate earns `verified`. A killed target earns no credit (fail-closed).
+The fixture workflow already re-runs trusted normal-input checks after the post-patch probe (`workflow.py` `final_health`, trace `after_probe_regression`). The project workflow only does the equivalent when the probe exits 1 (`project_workflow.verify_project_snapshot`). This delta closes the exit-2 gap: post-probe liveness runs whenever the probe exit is not 0, its evidence is named as post-probe regression, and a dead or inconclusive target earns no credit (fail-closed, LAW 4). No new check script is invented; the existing regression command is the liveness oracle.
 
 ### 14.4 Greenhouse generative hardening
 
