@@ -26,6 +26,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 - **Safe by construction.** Non-root users, dropped capabilities, CPU/RAM/PID caps, read-only roots, redacted owner-only artifacts, no secrets in Docker, reports, or UI.
 - **Live-tested.** `dev.py check` gate (lint, format, mocked unit tests, fixture checks) plus live Docker, real-Muse, and headless-browser (Chrome/Firefox) proofs.
 
+### Wave 2 (0.3.0, pending ship)
+
+- **Reachability-ranked CVE output.** CVE scans attach `reach_score` (deterministic 0-100) plus `reach_evidence`, fusing OSV fixed-version ranges with static sink adjacency — keyless, no inference.
+- **CVE disclosure fast lane.** `--fast-lane` runs static + OSV only, in deterministic order, with no Muse or NVD calls.
+- **Tunable AI demos.** Greenhouse takes `--demo-size small|standard`, `--flaw-count 1..8`, and `--demo-seed`; the dashboard exposes the same as Demo size / Flaw count / Demo seed controls.
+- **Ghost-probe liveness for inconclusive probes.** The post-probe liveness check against the still-running target now covers inconclusive (`exit 2`) probes as well as blocked (`exit 1`) ones, so a crashed service cannot earn success.
+
 ## Architecture / How It Works
 
 ```mermaid
