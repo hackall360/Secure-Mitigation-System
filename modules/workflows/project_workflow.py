@@ -185,8 +185,27 @@ class GuardRationale(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
     guard_id: str = Field(min_length=1, max_length=128)
-    reason: str = ""
+    reason: str = Field(default="", min_length=1, max_length=2000)
     trigger: str = Field(default="", max_length=500)
+    cycle: int | None = Field(default=None, ge=1, le=20)
+    pass_number: int | None = Field(default=None, ge=1, le=2)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reason_names_guard(cls, data: Any) -> Any:
+        """Absent reasons default to naming the guard; explicit empties fail closed."""
+        if isinstance(data, dict):
+            reason = data.get("reason")
+            if reason is None:
+                return {
+                    **data,
+                    "reason": (
+                        f"Guard {data.get('guard_id', 'unknown')} rejected the replacement."
+                    ),
+                }
+            if isinstance(reason, str) and not reason.strip():
+                raise ValueError("GuardRationale reason must be non-empty.")
+        return data
 
 
 class ReplacementValidation(BaseModel):
@@ -220,6 +239,8 @@ class CycleReceipt(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
     fixture: str
+    cycle: int = Field(default=1, ge=1, le=20)
+    pass_number: int = Field(default=1, ge=1, le=2)
     pre_probe_exit: int
     post_probe_exit: int
     baseline_regression_exit: int
@@ -234,6 +255,8 @@ class CycleReceipt(BaseModel):
 def build_cycle_receipt(
     *,
     fixture: str,
+    cycle: int = 1,
+    pass_number: int = 1,
     pre: SnapshotVerification,
     patched: SnapshotVerification,
     baseline_regression_exit: int,
@@ -250,6 +273,8 @@ def build_cycle_receipt(
         property_passed = properties.exit_code == 0
     return CycleReceipt(
         fixture=fixture,
+        cycle=cycle,
+        pass_number=pass_number,
         pre_probe_exit=pre.probe.exit_code,
         post_probe_exit=patched.probe.exit_code,
         baseline_regression_exit=baseline_regression_exit,
@@ -828,6 +853,8 @@ def validate_replacements(
     max_changed_files: int,
     max_changed_bytes: int,
     protected_paths: Sequence[str] = (),
+    cycle: int | None = None,
+    pass_number: int | None = None,
 ) -> tuple[ReplacementValidation, dict[str, str]]:
     """Fail closed on paths, hashes, duplicates, no-ops, and configured change bounds."""
 
@@ -839,7 +866,11 @@ def validate_replacements(
                 accepted=False,
                 reason=reason,
                 guard_rationale=GuardRationale(
-                    guard_id=guard_id, reason=reason, trigger=trigger[:500]
+                    guard_id=guard_id,
+                    reason=reason,
+                    trigger=trigger[:500],
+                    cycle=cycle,
+                    pass_number=pass_number,
                 ),
             ),
             {},
@@ -1407,6 +1438,8 @@ async def execute_project_workflow(
                 max_changed_files=bounds.max_changed_files,
                 max_changed_bytes=bounds.max_changed_bytes,
                 protected_paths=protected_paths,
+                cycle=cycle,
+                pass_number=pass_number,
             )
             evidence.replacement_validation = validation
             if not validation.accepted:
@@ -1610,6 +1643,8 @@ async def execute_project_workflow(
             if retained:
                 receipt = build_cycle_receipt(
                     fixture=safe_project.name,
+                    cycle=cycle,
+                    pass_number=pass_number,
                     pre=pre,
                     patched=patched,
                     baseline_regression_exit=(

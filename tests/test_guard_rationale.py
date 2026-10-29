@@ -264,3 +264,51 @@ def test_solver_markers_never_accepted_even_when_small():
     source = target.read_source()
     assert not is_solver_synthesized_shape(source)
     assert not is_solver_synthesized_shape(_node_template_patch(source))
+
+
+def test_guard_rationale_rejects_empty_reason():
+    """Item 5 RED: GuardRationale must require a non-empty reason."""
+    import pytest as _pytest
+    from pydantic import ValidationError as _ValidationError
+
+    with _pytest.raises(_ValidationError):
+        GuardRationale(guard_id="unsafe_path", reason="")
+
+
+def test_guard_rationale_default_reason_names_guard():
+    """Item 5 RED: default reason must name the guard, never be empty."""
+    rationale = GuardRationale(guard_id="unsafe_path")
+    assert rationale.reason != ""
+    assert "unsafe_path" in rationale.reason
+
+
+def test_rejected_cycle_links_guard_rationale_to_cycle():
+    """Item 5 RED: GuardRationale must carry the rejected cycle/pass link."""
+    rationale = GuardRationale(
+        guard_id="unsafe_path",
+        cycle=1,
+        pass_number=1,
+    )
+    assert rationale.cycle == 1
+    assert rationale.pass_number == 1
+
+
+async def test_rejected_cycle_report_carries_linked_rationale():
+    """Item 5 RED: rolled-back cycle evidence rationale names its cycle/pass."""
+    from helpers import (
+        FakeProjectMuse,
+        FakeProjectSandbox,
+        project_verification,
+        run_project_workflow,
+    )
+
+    muse = FakeProjectMuse(red_outcomes=["finding"], invalid_path="../escape.py")
+    sandbox = FakeProjectSandbox([project_verification(1), project_verification(0)])
+    result = await run_project_workflow(muse=muse, sandbox=sandbox)
+    report = result.cycle_reports[0]
+    assert report.status == "rolled_back"
+    rationale = report.evidence.replacement_validation.guard_rationale
+    assert rationale is not None
+    assert rationale.reason != ""
+    assert rationale.cycle == report.cycle == 1
+    assert rationale.pass_number == report.pass_number == 1
