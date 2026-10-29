@@ -3,7 +3,7 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 ![Tests](https://img.shields.io/badge/dev.py_check-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688?logo=fastapi&logoColor=white)
@@ -43,7 +43,7 @@ Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, di
 - **Safe by construction.** Non-root users, dropped capabilities, CPU/RAM/PID caps, read-only roots, redacted owner-only artifacts, no secrets in Docker, reports, or UI.
 - **Live-tested.** `dev.py check` gate (lint, format, mocked unit tests, fixture checks) plus live Docker, real-Muse, and headless-browser (Chrome/Firefox) proofs.
 
-### Wave 2 (0.3.0, pending ship)
+### Wave 2 (0.3.0, shipped 0.4.0)
 
 - **Reachability-ranked CVE output.** CVE scans attach `reach_score` (deterministic 0-100) plus `reach_evidence`, fusing OSV fixed-version ranges with static sink adjacency — keyless, no inference.
 - **CVE disclosure fast lane.** `--fast-lane` runs static + OSV only, in deterministic order, with no Muse or NVD calls.

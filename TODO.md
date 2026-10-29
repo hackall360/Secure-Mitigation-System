@@ -197,7 +197,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
       Files: `README.md`, `docs/reference/CLI.md`. Proof: links/flags verified against `main.py --help` output; gate green.
 - [x] M2. Architecture docs: reachability fusion + fast lane + liveness in `docs/architecture/` (extend PROJECT_WORKFLOW.md or new WAVE2 doc linked from docs index), surface gaps recorded (dashboard socketQuery omits dependency-track vs server 5-set; no WS/TUI CVE fast-lane surface; TUI has no demo mode).
       Files: `docs/architecture/*`, `docs/INDEX.md` if present else record absence. Proof: grep for gap notes; gate green.
-- [/] M3. Ship decision point: LAW 12 bump 0.2.0 -> 0.3.0 + LAW 1 flow ONLY on user "ship it".
+- [x] M3. Ship invoked 2026-10-29: LAW 12 major bump 0.3.0 -> 0.4.0 (new capabilities: receipts, guard rationale, fast-lane topping, mutation probes, freshness/EUVD, templates, blueprint items 1-8, Wave 5 re-run); LAW 1 flow feature -> develop -> main, both pushed, end develop. Proof: ship commit message + gate 493 + live Docker proof.
       Proof so far: README 1178cda, CLI dc7a4b6, arch d193d84 merged; gate 351 passed after docs merge.
       Remains: user invokes ship; then bump APP_VERSION + surfaces, feature -> develop -> main, both pushes, end on develop.
       Next unblocked work without ship: Wave 4 extended research (RESEARCH_V2) can start on this branch.
