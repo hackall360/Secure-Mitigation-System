@@ -964,3 +964,18 @@ The fixture workflow already re-runs trusted normal-input checks after the post-
 4. **Fast-lane tiering.** `execute_cve_scan(fast_lane=True)` output ordering tiers by SSVC-style variables available keyless (KEV flag, EPSS percentile, fixed-version availability) instead of id-sort alone.
 
 Each build: fail-first test, tri-surface where a user-visible surface exists, gate green before merge. Deferred per RESEARCH_V2: eBPF, Wasm sandbox, snapshot fuzzing, proof-carrying code beyond the evidence bundle, EUVD.
+
+## 14.6 Wave 7/8 delta (gated on RESEARCH_V3.md, 2026-10-29)
+
+- Q1 KEV/EPSS reach signals must be wired through the real producer path:
+  `cve_workflow` enriches each OSV summary with `kev_listed` (bool) and
+  `epss_percentile` (float 0..1) from bounded, never-raising lookups per CVE
+  alias before `reachability_score` runs. Tests must go through
+  `summarize_osv_vuln` + enrichment, not a hand-stubbed summary dict.
+- Q2 `research.kev_lookup` caches the KEV catalog per process (one fetch,
+  many ids); failures are not cached. Never-raises contract unchanged.
+- Q3 (Wave 8) Property/metamorphic normal-contract checks run in the same
+  capped container as the regression command: a small deterministic property
+  set per fixture contract, recorded as evidence; failure fails the cycle
+  closed. LOW bundle: cap consistency in `research` fetches, `epss_score`
+  sanitizer reuse, `intel_search.osv_lookup_by_cve` CVE shape check.
