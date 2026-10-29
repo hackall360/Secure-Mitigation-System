@@ -118,17 +118,19 @@ def _queue_evidence(summary: dict[str, Any]) -> str:
 
 def _fast_lane_rank(summary: dict[str, Any]) -> tuple:
     """SSVC-style actionability key: reachable + fixable first, then KEV/EPSS
-    tie-breaks, id as the final deterministic tiebreak."""
+    tie-breaks, id as the final deterministic tiebreak. Stale-dated (>1 day)
+    KEV/EPSS signals rank as absent so ordering agrees with _queue_evidence."""
+    kev = summary.get("kev_listed") is True and _source_fresh(summary.get("kev_date"))
     try:
         pct = float(summary.get("epss_percentile", ""))
     except (TypeError, ValueError):
         pct = -1.0
-    if not 0.0 <= pct <= 1.0:
+    if not 0.0 <= pct <= 1.0 or not _source_fresh(summary.get("epss_date")):
         pct = -1.0
     return (
         -int(summary.get("reach_score") or 0),
         not bool(summary.get("fixed_versions")),
-        summary.get("kev_listed") is not True,
+        not kev,
         -pct,
         summary.get("id") or "",
     )
