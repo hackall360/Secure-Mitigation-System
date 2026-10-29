@@ -329,3 +329,37 @@ def test_tui_command_reaches_tui_main(monkeypatch, capsys):
     monkeypatch.setattr("tui.main", lambda argv=None: seen.setdefault("argv", argv) or 0)
     assert _main.main() == 0
     assert seen["argv"] == []
+
+
+def test_fast_lane_flag_reaches_cve_scan(monkeypatch, tmp_path):
+    """L4: --fast-lane threads through CLI into execute_cve_scan."""
+    import main as _main
+
+    seen = {}
+
+    async def fake_cve(project, emit, **kwargs):
+        seen.update(kwargs)
+        from cve_workflow import CveScanReport
+
+        return CveScanReport(target="p", message="Fast lane: ok")
+
+    monkeypatch.setattr(_main, "execute_cve_scan", fake_cve)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py",
+            "--project",
+            str(tmp_path),
+            "--command",
+            '["python3", "app.py"]',
+            "--test-command",
+            '["python3", "-m", "unittest"]',
+            "--contract",
+            "Preserve API",
+            "--allow-remote-inference",
+            "--cve-scan",
+            "--fast-lane",
+        ],
+    )
+    assert _main.main() == 0
+    assert seen.get("fast_lane") is True
