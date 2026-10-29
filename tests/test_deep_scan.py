@@ -951,6 +951,67 @@ async def test_cve_scan_attaches_reach_score_to_each_summary(monkeypatch):
     assert isinstance(summary["reach_evidence"], list) and summary["reach_evidence"]
 
 
+def test_reachability_score_kev_epss_tie_break():
+    """O2 red: kev_listed/epss_percentile add +5 tie-break signals each."""
+    from deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-xxxx",
+        "cves": ["CVE-2024-1234"],
+        "summary": "Unsafe deserialization in widget",
+        "details": "Deserialization of untrusted data CWE-502 allows code execution.",
+        "fixed_versions": ["2.0"],
+        "kev_listed": True,
+        "epss_percentile": 0.95,
+    }
+    findings = [
+        StaticFinding(
+            rule_id="py-pickle",
+            title="Unsafe deserialization",
+            severity="high",
+            path="app.py",
+            line=2,
+            snippet="data = pickle.loads(blob)",
+            cwe="CWE-502",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert score == 100  # 10+40+40+5+5 capped at 100
+    blob = " ".join(evidence).lower()
+    assert "kev listed" in blob and "epss percentile" in blob
+    assert isinstance(score, int)
+
+
+def test_reachability_score_likelihood_cap_without_fix_or_sink():
+    """O2 red: no fixed + no matched CWE caps likelihood-boosted score at 30."""
+    from deep_scan import StaticFinding, reachability_score
+
+    summary = {
+        "id": "GHSA-yyyy",
+        "cves": ["CVE-2024-5678"],
+        "summary": "Some widget flaw",
+        "details": "No weakness identifier recorded.",
+        "fixed_versions": [],
+        "kev_listed": True,
+        "epss_percentile": "0.99",
+    }
+    findings = [
+        StaticFinding(
+            rule_id="js-innerhtml",
+            title="Unsanitized DOM sink",
+            severity="medium",
+            path="web.js",
+            line=1,
+            snippet="el.innerHTML = user;",
+            cwe="CWE-79",
+        )
+    ]
+    score, evidence = reachability_score(summary, findings)
+    assert score == 20  # 10 + 5 + 5, capped at 30 -> 20
+    assert score <= 30
+    assert isinstance(evidence, list) and evidence
+
+
 def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
     """deep_scan OSV calls use sms_http paced helpers; oversize batch capped."""
     import deep_scan as _ds

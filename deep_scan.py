@@ -295,7 +295,9 @@ def reachability_score(
     Deterministic pure function (no network, no inference): base 10 when the
     summary identifies a record (`cves` non-empty or `id` present), +40 when
     `fixed_versions` is non-empty (a patched range exists to reach), +40 when
-    any static finding's CWE matches a CWE implied by the summary. Implied
+    any static finding's CWE matches a CWE implied by the summary. Likelihood
+    tie-breaks (KEV listing, high EPSS percentile) add +5 each but never lift
+    a record with neither fixed versions nor sink adjacency above 30. Implied
     CWEs come from `summary.get("cwe")` (str or list of str) plus `CWE-\\d+`
     strings found in the `summary`/`details` text. Capped at 100. Evidence
     strings name each contributing signal, presence and absence alike, so a
@@ -351,6 +353,21 @@ def reachability_score(
         evidence.append("no sink adjacency: no static findings to compare (+0)")
     else:
         evidence.append("no sink adjacency: no static finding shares a summary CWE (+0)")
+
+    has_fix = bool(fixed_list)
+    has_sink = matched is not None
+    if summary.get("kev_listed") is True:
+        score += 5
+        evidence.append("KEV listed: known exploited (+5)")
+    try:
+        pct = float(summary.get("epss_percentile", 0))
+    except (TypeError, ValueError):
+        pct = 0.0
+    if pct >= 0.9:
+        score += 5
+        evidence.append("EPSS percentile >=0.9 (+5)")
+    if not has_fix and not has_sink:
+        score = min(score, 30)
 
     return min(score, 100), [str(e)[:160] for e in evidence]
 
