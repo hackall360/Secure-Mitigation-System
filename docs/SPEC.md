@@ -1031,3 +1031,30 @@ Fail-first red (unknown fixture exit 2), wire into both retain decisions.
 Each build: fail-first test, tri-surface where a user-visible surface exists
 (LAW 8), gate green before merge. Deferred per V4: everything Lane 3/5 would
 add beyond item 4 until their full statements land.
+
+## 14.9 Wave 5 delta (gated on RESEARCH_V5, 9-wave swarm, 2026-10-29)
+
+Novelty bar per 14.8. Scope is Lanes 2/4/5 citable only; Lanes 1/3/6 are not
+citable until full texts land (V5 records positions only).
+
+1. **queue_evidence freshness + EUVD exclusion (Lane 5).** `cve_records`/fast
+lane stamps each intel source date; any source older than 1 day is dropped
+from `queue_evidence` (fail-closed absent, never blocks scan); EUVD stays out
+of the fast lane (no keyless JSON endpoint verified 2026-10-29). Fail-first
+through the real enrichment path.
+2. **Frozen-pool mutation inputs (Lane 2 keep).** Mutation ids stay frozen +
+seeded (no live generative loop in-container); an offline pool proposal path
+may exist only outside the verify loop and must freeze+seed before use.
+Fail-first: any nondeterminism across runs fails.
+3. **Guard-discipline template inputs (Lane 4 adoptable).** Template-shaped
+inputs allowed only inside the existing 60-line sanitization guards; never
+widen the budget, never accept solver-synthesized edits. Fail-first on guard
+rejection + rationale.
+4. **Blowfish triage (Lane 6, pending).** Each of the 6 findings verified
+against source, then fixed or cut by severity. No Wave 5 branch cites a
+finding until the coordinator confirms its file:line.
+
+Cut per V5: live generative red loops, open-ended fuzz storms, chain agents,
+solver synthesis, LLM-judged correctness, rescan-only validation, EUVD in
+fast lane. Deferred: Lane 1 edge-variant closes + Lane 3 heuristics until
+full texts land.
