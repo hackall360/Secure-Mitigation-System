@@ -23,6 +23,52 @@ from modules.workflows.deep_scan import (
     summarize_osv_vuln,
 )
 
+# Fast-lane topping (SPEC 14.8 item 3): the day-zero queue is ordered by
+# patchability, not severity. Intake is id-sorted before the detail cap so the
+# capped set never depends on OSV result ordering, and each ranked summary
+# carries an auditable KEV/EPSS tie-break evidence string.
+FAST_LANE_MAX_INTAKE = 10
+
+
+def _queue_evidence(summary: dict[str, Any]) -> str:
+    """One-line auditable tie-break record for a fast-lane ranked summary.
+
+    Pure function of the enriched summary: reach score, first fixed version,
+    KEV listing, EPSS percentile. Absence is recorded explicitly so the queue
+    order is auditable whether signals fired or not. Bounded, deterministic.
+    """
+    try:
+        reach_s = str(int(summary.get("reach_score") or 0))
+    except (TypeError, ValueError):
+        reach_s = "?"
+    fixed = summary.get("fixed_versions") or []
+    fix_s = str(fixed[0])[:40] if fixed else "none"
+    kev_s = "listed" if summary.get("kev_listed") is True else "absent"
+    try:
+        pct = float(summary.get("epss_percentile", ""))
+        epss_s = f"{pct:.2f}" if 0.0 <= pct <= 1.0 else "absent"
+    except (TypeError, ValueError):
+        epss_s = "absent"
+    return f"reach:{reach_s} fix:{fix_s} kev:{kev_s} epss:{epss_s}"
+
+
+def _fast_lane_rank(summary: dict[str, Any]) -> tuple:
+    """SSVC-style actionability key: reachable + fixable first, then KEV/EPSS
+    tie-breaks, id as the final deterministic tiebreak."""
+    try:
+        pct = float(summary.get("epss_percentile", ""))
+    except (TypeError, ValueError):
+        pct = -1.0
+    if not 0.0 <= pct <= 1.0:
+        pct = -1.0
+    return (
+        -int(summary.get("reach_score") or 0),
+        not bool(summary.get("fixed_versions")),
+        summary.get("kev_listed") is not True,
+        -pct,
+        summary.get("id") or "",
+    )
+
 
 class CveScanReport(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -117,7 +163,7 @@ async def execute_cve_scan(
     if fast_lane:
         include_deep_assessment = False
         include_nvd = False
-        max_osv_details = min(max_osv_details, 10)
+        max_osv_details = min(max_osv_details, FAST_LANE_MAX_INTAKE)
 
     settings = config or load_config()
     if isinstance(project, ProjectSpec):
@@ -167,7 +213,8 @@ async def execute_cve_scan(
                     if vid and vid not in vuln_ids:
                         vuln_ids.append(vid)
             await log("system", f"Deep scan: {len(vuln_ids)} unique OSV records; fetching details.")
-            for vid in vuln_ids[:max_osv_details]:
+            intake = sorted(vuln_ids) if fast_lane else vuln_ids
+            for vid in intake[:max_osv_details]:
                 try:
                     record = await blocking(fetch_osv_vuln, vid)
                     summaries.append(summarize_osv_vuln(record))
@@ -275,14 +322,10 @@ async def execute_cve_scan(
             summary["reach_evidence"] = ["scoring unavailable"]
     cve_count = len(summaries)
     if fast_lane:
-        # SSVC-style actionability tiering: reachable + fixable first, id as final tiebreak.
-        summaries.sort(
-            key=lambda s: (
-                -(s.get("reach_score") or 0),
-                not bool(s.get("fixed_versions")),
-                s.get("id") or "",
-            )
-        )
+        # Reachable + fixable first, KEV/EPSS tie-breaks, id final tiebreak.
+        summaries.sort(key=_fast_lane_rank)
+        for summary in summaries:
+            summary["queue_evidence"] = _queue_evidence(summary)
     message = (
         f"Deep scan completed: {len(static_findings)} static signals, "
         f"{len(deps)} dependencies, {cve_count} CVE records."
