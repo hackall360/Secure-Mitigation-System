@@ -40,6 +40,14 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 - **Differential normal-contract gate.** After patch + probe-block, trusted normal-input checks re-run against original and patched targets; equal pass/fail class required, recorded as explicit `CycleEvidence.differential_passed`, mismatch = not verified.
 - **Fast-lane tiering.** Output orders by actionability `(-reach_score, fix availability, id)` instead of id-sort alone. Gate: `dev.py check` 367 passed.
 
+### Wave 7-8: live signals + property contracts (shipped)
+
+- **KEV/EPSS via the real producer path.** `kev_listed`/`epss_percentile` are now wired through `cve_workflow` enrichment into `reachability_score` (previously Wave 5 tests stubbed the summary dict, so the dead `summarize_osv_vuln` path was invisible). Tie-break only; never lowers the fail-closed sink/fixed-version floor.
+- **Per-process KEV catalog cache.** `research.kev_lookup` fetches the CISA catalog once per process instead of per CVE id; fail-first cache test in `tests/test_scanners.py`.
+- **Property/metamorphic normal-contract checks.** Seeded deterministic scripts (`checks.project_property_script`, seed `20261029`) run after regression green and veto a retain on any non-zero exit (`property_gate_passed`); exceptions resolve to exit 2, fail-closed. Opt-in by contract first line naming the check id; anything else skips, so arbitrary projects are unaffected.
+- **Split scripts by real response shape.** `node_query_sink` asserts the JSON envelope; `project_lookup_text` asserts the plain-text contract (exact names for known ids, empty 200 body for seeded random ids); PHP hosts assert byte-stability under repetition; config keys assert idempotent re-read.
+- **LOW bundle.** Research fetch caps, EPSS sanitizer reuse, `intel_search` CVE shape. Gate: `dev.py check` 392 passed; live `project_scan` 2/2 retained with properties exit 0.
+
 ## Architecture / How It Works
 
 ```mermaid
