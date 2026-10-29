@@ -414,6 +414,7 @@ _FORBIDDEN_MODULES = frozenset(
     {"subprocess", "pty", "ctypes", "multiprocessing", "shutil", "resource", "signal"}
 )
 
+
 # Node JSON-envelope mutation contract mirrors targets/node_query_sink/app.js.
 def _mutation_node_ids(seed: int) -> list[str]:
     import random

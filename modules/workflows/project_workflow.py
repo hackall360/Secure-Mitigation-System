@@ -96,6 +96,8 @@ class SnapshotVerification(BaseModel):
     fresh_target: bool = True
     properties: ExecutionEvidence | None = None
     mutations: ExecutionEvidence | None = None
+
+
 def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] | Any) -> bool:
     """Fail-closed mutation-count gate: True unless mutations ran and failed.
 
@@ -614,7 +616,6 @@ class DockerProjectSandbox:
                     # Wave 2 item 4: one combined property+mutation run in the
                     # same capped container as regression — no extra container
                     # runs; both evidences share the combined fail-closed exit.
-                    mutations_attempted = True
                     combined_check = self.manager.run_project_check(
                         self.network,
                         self.spec,
@@ -645,6 +646,8 @@ class DockerProjectSandbox:
                 try:
                     from modules.core.checks import (
                         mutation_fixture_supported as _mutation_supported,
+                    )
+                    from modules.core.checks import (
                         project_mutation_script,
                     )
 
