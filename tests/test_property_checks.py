@@ -12,7 +12,10 @@ import json
 import pytest
 
 from modules.core.checks import project_property_script
+from modules.core.docker_manager import ProjectCheckResult
+from modules.services.projects import ProjectSpec, snapshot_project
 from modules.workflows.project_workflow import (
+    DockerProjectSandbox,
     ExecutionEvidence,
     SnapshotVerification,
     property_gate_passed,
@@ -298,3 +301,54 @@ async def test_docker_sandbox_attaches_property_evidence(tmp_path):
     assert result.properties.exit_code == 0
     assert len(scripts) == 2
     assert "Property checks passed" in scripts[1]
+
+
+@pytest.mark.parametrize("probe_exit", [1, 2])
+def test_exec_unavailable_post_probe_is_inconclusive(tmp_path, probe_exit):
+    """Wave 8 item 3 (wolf) RED: exec-unavailable liveness must be exit 2, never a silent pass."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="arbitrary project without fixture checks.",
+    )
+    snapshot = snapshot_project(spec)
+    calls: list[str] = []
+
+    class _NoExecTarget:
+        """Target without exec_run: exec-based liveness is unavailable."""
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return _NoExecTarget(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            calls.append("script" if script is not None else "command")
+            if script is not None:
+                return ProjectCheckResult(exit_code=probe_exit, stdout="probe", stderr="")
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(%d)" % probe_exit,
+        ["python", "-m", "pytest"],
+        label="exec-unavailable-liveness",
+    )
+    assert result.regression.exit_code == 2
+    assert "inconclusive" in result.regression.output.lower()
+    # The fresh-container check still runs as a crash-confirmer, but its
+    # pass cannot confirm liveness, so the verdict degrades to exit 2.
+    assert calls == ["command", "script", "command"]
