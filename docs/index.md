@@ -1,5 +1,6 @@
 # Docs index
 
+- [ARCHITECTURE.md](ARCHITECTURE.md) — production deep dive (evidence loop, wave specs, isolation, config, project map; executive pitch stays in `README.md`).
 - [architecture/](architecture/) — [ZERO_DAY](architecture/ZERO_DAY.md) (executive), [REPOSITORY](architecture/REPOSITORY.md), [PROJECT_WORKFLOW](architecture/PROJECT_WORKFLOW.md), [SCAN_PROFILES](architecture/SCAN_PROFILES.md), [DISCOVERY_TEAMS](architecture/DISCOVERY_TEAMS.md), [WAVE2](architecture/WAVE2.md), [WAVE5](architecture/WAVE5.md), [WAVE8](architecture/WAVE8.md), [WAVE9](architecture/WAVE9.md), [WAVE10](architecture/WAVE10.md)
 - [guides/](guides/) — [DEVELOPMENT](guides/DEVELOPMENT.md), [PROJECTS](guides/PROJECTS.md), [WORKFLOWS](guides/WORKFLOWS.md)
 - [reference/](reference/) — [MODULES](reference/MODULES.md), [CLI](reference/CLI.md), [DASHBOARD](reference/DASHBOARD.md)
