@@ -124,6 +124,7 @@ class CycleEvidence(BaseModel):
     blue_proposal: BlueProposal | None = None
     replacement_validation: ReplacementValidation | None = None
     patched_verification: SnapshotVerification | None = None
+    differential_passed: bool = False
     independent_red: RedAnalysisArtifacts | None = None
     independent_verification: SnapshotVerification | None = None
     final_blue_report: FinalBlueReport | None = None
@@ -740,6 +741,24 @@ def render_diff(before: Mapping[str, str], after: Mapping[str, str], limit: int)
     return _bounded("".join(pieces), limit)
 
 
+def differential_passed(baseline_exit: int | None, patched_exit: int | None) -> bool:
+    """Explicit normal-contract differential gate: True only when both regressions passed.
+
+    Fail-closed: a missing (None) exit code means the evidence was not observed,
+    so the gate fails. Pure function over recorded exits; performs no Docker runs.
+    """
+    if baseline_exit is None or patched_exit is None:
+        return False
+    return baseline_exit == 0 and patched_exit == 0
+
+
+def differential_class(exit_code: int | None) -> str:
+    """Label one regression exit for audit records."""
+    if exit_code is None:
+        return "missing"
+    return "pass" if exit_code == 0 else "fail"
+
+
 def proposal_report_evidence(proposal: BlueProposal) -> dict[str, object]:
     """Remove full replacement bodies from later report prompts while preserving audit hashes."""
     return {
@@ -1142,6 +1161,12 @@ async def execute_project_workflow(
             )
             patched = normalize_snapshot_verification(patched_raw, bounds.max_evidence_chars)
             evidence.patched_verification = patched
+            evidence.differential_passed = differential_passed(
+                result.baseline_verification.regression.exit_code
+                if result.baseline_verification is not None
+                else None,
+                patched.regression.exit_code,
+            )
             if not patched.fresh_target:
                 raise SandboxError("Patched verification did not use a fresh target.")
 
@@ -1190,6 +1215,10 @@ async def execute_project_workflow(
                 patched.probe.blocked
                 and patched.regression.exit_code == 0
                 and not patched.probe.inconclusive
+                # Explicit differential gate: equivalent to the already-required
+                # (baseline exit 0 via the L895 raise + patched exit 0 above), so it
+                # changes no retain/rollback verdict — it only records the check.
+                and evidence.differential_passed
             )
             if independent_same_finding:
                 independent_check = evidence.independent_verification
