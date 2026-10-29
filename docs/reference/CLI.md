@@ -47,6 +47,12 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--demo-seed N` | — | Variation nonce for AI demo generation (ai-demo only) |
 | `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
 
-CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability.
+CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability (KEV-listed +5, EPSS percentile >=0.9 +5 tie-breaks).
+
+## CVE scan notes
+
+- `--fast-lane` orders findings by reach tier: `reach_score` desc, patched (`fixed_versions`) first, then id.
+- KEV (CISA catalog) is a 5th keyless `cve_records` signal: exploited flag + due date, never raises.
+- GHSA CVE lookup by exact CVE id is fixed (returns matching records only).
 
 Related: [MODULES.md](MODULES.md) (`sms_cli.py` presenter), [guides/PROJECTS.md](../guides/PROJECTS.md) (project intake).
