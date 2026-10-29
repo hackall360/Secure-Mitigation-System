@@ -24,8 +24,8 @@ import random
 import time
 import urllib.parse
 
-from scanner_binaries import ScannerRecord
-from sms_http import paced_request_json
+from modules.intel.scanner_binaries import ScannerRecord
+from modules.shared.sms_http import paced_request_json
 
 USER_AGENT = "Secure-Mitigation-System/0.1 dtrack-client"
 MAX_BODY_BYTES = 8 * 1024 * 1024

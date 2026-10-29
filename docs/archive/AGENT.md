@@ -18,18 +18,18 @@ Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commerci
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
 ## Repository Map
-See [docs/REPOSITORY.md](docs/REPOSITORY.md) for import provenance, verified local
+See [../architecture/REPOSITORY.md](../architecture/REPOSITORY.md) for import provenance, verified local
 validation commands, entry points, and local-state caveats.
 
 For current setup commands, Docker rebuild/cleanup rules, and environment traps,
-see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+see [../guides/DEVELOPMENT.md](../guides/DEVELOPMENT.md).
 
 Arbitrary local projects use `projects.py`, `project_agents.py`, and
 `project_workflow.py`, separate from the fixture workflow. See
-[docs/PROJECTS.md](docs/PROJECTS.md) for snapshot/runtime constraints and
-[docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for evidence and context rules.
+[../guides/PROJECTS.md](../guides/PROJECTS.md) for snapshot/runtime constraints and
+[../architecture/PROJECT_WORKFLOW.md](../architecture/PROJECT_WORKFLOW.md) for evidence and context rules.
 Local Muse serving is an explicit loopback-only opt-in, never a fallback provider.
 
 Scan intensity and team configuration live in [docs/SCAN_PROFILES.md](docs/SCAN_PROFILES.md).
 See [docs/DISCOVERY_TEAMS.md](docs/DISCOVERY_TEAMS.md) for leader/worker payloads
-and [docs/PROJECT_WORKFLOW.md](docs/PROJECT_WORKFLOW.md) for cycle/pass evidence semantics.
+and [../architecture/PROJECT_WORKFLOW.md](../architecture/PROJECT_WORKFLOW.md) for cycle/pass evidence semantics.

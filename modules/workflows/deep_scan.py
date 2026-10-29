@@ -18,7 +18,7 @@ from typing import Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sms_http import paced_get_json, paced_post_json
+from modules.shared.sms_http import paced_get_json, paced_post_json
 
 OSV_QUERY_URL = "https://api.osv.dev/v1/querybatch"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns"

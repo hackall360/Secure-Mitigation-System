@@ -20,9 +20,9 @@ from helpers import (
     silent_emit,
 )
 
-from config import PurpleBoxConfig
-from docker_manager import SandboxError
-from workflow import execute_purple_workflow
+from modules.core.config import PurpleBoxConfig
+from modules.core.docker_manager import SandboxError
+from modules.workflows.workflow import execute_purple_workflow
 
 
 async def test_complete_success_requires_both_checks():
@@ -110,7 +110,7 @@ async def test_missing_key_fails_before_touching_docker():
 
 
 async def test_result_carries_usage_and_cost_from_the_client():
-    from pricing import CallUsage
+    from modules.core.pricing import CallUsage
 
     class MeteredMuse(FakeMuse):
         def __init__(self):
@@ -151,7 +151,7 @@ async def test_research_schemas_reject_work_product():
     import pytest
     from pydantic import ValidationError
 
-    from agents import BlueResearchDigest, RedResearchDigest
+    from modules.core.agents import BlueResearchDigest, RedResearchDigest
 
     with pytest.raises(ValidationError):
         RedResearchDigest(
@@ -192,8 +192,8 @@ async def test_research_off_by_default_no_sidecar_calls():
 
 async def test_research_on_runs_sidecars_and_grounds_contracts(monkeypatch):
     """Opt-in: intel fetch + both digests run, contracts carry grounded intel."""
-    import workflow as _workflow
-    from research import ResearchRecord
+    import modules.workflows.workflow as _workflow
+    from modules.intel.research import ResearchRecord
 
     async def fake_sink(*args, **kwargs):
         return [
@@ -258,7 +258,7 @@ async def test_research_on_runs_sidecars_and_grounds_contracts(monkeypatch):
 
 def test_research_record_truncates_and_source_fallback_order():
     """Records cap summary length; transport prefers OSV/CIRCL over NVD."""
-    import research as _research
+    import modules.intel.research as _research
 
     rec = _research.ResearchRecord(source="osv", summary="x" * 5000)
     assert len(rec.summary) == 1500
@@ -267,8 +267,8 @@ def test_research_record_truncates_and_source_fallback_order():
 
 async def test_research_gather_adds_cve_and_web_records(monkeypatch):
     """I6: CVE ids in the contract get series records; named text gets web notes."""
-    import workflow as _workflow
-    from research import ResearchRecord
+    import modules.workflows.workflow as _workflow
+    from modules.intel.research import ResearchRecord
 
     async def fake_sink(*args, **kwargs):
         return []

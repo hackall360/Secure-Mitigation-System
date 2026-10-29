@@ -258,7 +258,9 @@ def start_scan_thread(
     daemon: bool = True,
 ) -> threading.Thread:
     """Run execute_purple_workflow in-process on a worker thread via asyncio.run."""
-    from workflow import execute_purple_workflow  # lazy: keeps module import stdlib-only
+    from modules.workflows.workflow import (
+        execute_purple_workflow,  # lazy: keeps module import stdlib-only
+    )
 
     fixture_key = state.fixture_key
     state.running = True
@@ -290,7 +292,9 @@ def run_plain(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Secure Mitigation System TUI (plain mode)")
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
     args = parser.parse_args(argv)
-    from workflow import execute_purple_workflow  # lazy import for stdlib-only module top
+    from modules.workflows.workflow import (
+        execute_purple_workflow,  # lazy import for stdlib-only module top
+    )
 
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
     print(f"Secure Mitigation System [plain mode] fixture={args.fixture}")

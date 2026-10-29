@@ -2,7 +2,7 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """Deep scan tests: static signals, manifests, OSV summarization, offline CVE workflow."""
 
-from deep_scan import (
+from modules.workflows.deep_scan import (
     extract_dependencies,
     run_static_scan,
     summarize_osv_vuln,
@@ -54,14 +54,14 @@ def test_summarize_osv_vuln_extracts_cve_cvss_and_fixes():
 
 async def test_fast_lane_forces_off_deep_assessment_and_nvd(monkeypatch):
     """L4 red: fast_lane=True forces include_deep_assessment/include_nvd off."""
-    import cve_workflow as _cw
+    import modules.workflows.cve_workflow as _cw
 
     async def _raise(*args, **kwargs):
         raise AssertionError("Muse/NVD must not be called on the fast lane")
 
     monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
 
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     async def emit(team, message):
         return None
@@ -81,7 +81,7 @@ async def test_fast_lane_forces_off_deep_assessment_and_nvd(monkeypatch):
 
 async def test_fast_lane_sorts_vulnerabilities_by_id(monkeypatch):
     """L4 red: fast_lane sorts vulnerabilities deterministically by id."""
-    import cve_workflow as _cw
+    import modules.workflows.cve_workflow as _cw
 
     summaries = [
         {
@@ -134,7 +134,7 @@ async def test_fast_lane_sorts_vulnerabilities_by_id(monkeypatch):
 
     monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
 
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     async def emit(team, message):
         return None
@@ -155,7 +155,7 @@ async def test_fast_lane_sorts_vulnerabilities_by_id(monkeypatch):
 
 async def test_fast_lane_caps_max_osv_details(monkeypatch):
     """L4 red: fast_lane caps max_osv_details to min(given, 10)."""
-    import cve_workflow as _cw
+    import modules.workflows.cve_workflow as _cw
 
     seen: dict = {}
     monkeypatch.setattr(
@@ -186,7 +186,7 @@ async def test_fast_lane_caps_max_osv_details(monkeypatch):
         },
     )
 
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     async def emit(team, message):
         return None
@@ -221,7 +221,7 @@ def _o4_summary(vid, fixed=(), cwe=None):
 
 async def _o4_run(monkeypatch, summaries, vuln_ids, files, *, fast_lane):
     """O4 helper: run execute_cve_scan with mocked OSV, real reachability scoring."""
-    import cve_workflow as _cw
+    import modules.workflows.cve_workflow as _cw
 
     monkeypatch.setattr(
         _cw,
@@ -238,7 +238,7 @@ async def _o4_run(monkeypatch, summaries, vuln_ids, files, *, fast_lane):
 
     monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
 
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     async def emit(team, message):
         return None
@@ -313,11 +313,11 @@ async def test_non_fast_lane_keeps_insertion_order(monkeypatch):
 
 
 async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
-    from cve_workflow import execute_cve_scan
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     (tmp_path / "app.py").write_text("import pickle\npickle.loads(x)\n", encoding="utf-8")
     (tmp_path / "requirements.txt").write_text("jinja2==3.1.4\n", encoding="utf-8")
-    from projects import ProjectSpec
+    from modules.services.projects import ProjectSpec
 
     spec = ProjectSpec.model_validate(
         {
@@ -340,7 +340,7 @@ async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
 
 
 def test_nvd_summarizer_extracts_cvss_cwe_description():
-    from intel_search import summarize_nvd_record, summarize_nvd_search
+    from modules.intel.intel_search import summarize_nvd_record, summarize_nvd_search
 
     item = {
         "cve": {
@@ -373,7 +373,7 @@ def test_nvd_summarizer_extracts_cvss_cwe_description():
 
 
 def test_demo_materialization_validates_and_builds_spec(tmp_path):
-    from demo_gen import DemoProjectFiles, materialize_demo_project
+    from modules.services.demo_gen import DemoProjectFiles, materialize_demo_project
 
     files = DemoProjectFiles(
         app_py="from http.server import BaseHTTPRequestHandler, HTTPServer\nprint('ok')\n",
@@ -394,8 +394,8 @@ def test_demo_materialization_validates_and_builds_spec(tmp_path):
 
 
 def test_user_reports_never_contain_exploit_scripts():
-    from project_agents import ContextCoverage, RedAnalysisArtifacts, RedReport
-    from project_workflow import (
+    from modules.services.project_agents import ContextCoverage, RedAnalysisArtifacts, RedReport
+    from modules.workflows.project_workflow import (
         CycleEvidence,
         ExecutionEvidence,
         ProjectCycleReport,
@@ -448,8 +448,8 @@ def test_user_reports_never_contain_exploit_scripts():
 def test_websocket_and_cli_reports_withhold_probe_source():
     import json as _json
 
-    from agents import RedTeamFinding
-    from workflow import ScanResult, redact_fixture_result_for_user
+    from modules.core.agents import RedTeamFinding
+    from modules.workflows.workflow import ScanResult, redact_fixture_result_for_user
 
     fr = ScanResult(
         target="t",
@@ -472,13 +472,13 @@ def test_websocket_and_cli_reports_withhold_probe_source():
 def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
     import pytest as _pytest
 
-    from intel_search import nvd_lookup, nvd_search
+    from modules.intel.intel_search import nvd_lookup, nvd_search
 
     with _pytest.raises(ValueError):
         nvd_search("")
     with _pytest.raises(ValueError):
         nvd_lookup("CVE-bad")
-    from demo_gen import DemoProjectFiles, materialize_demo_project
+    from modules.services.demo_gen import DemoProjectFiles, materialize_demo_project
 
     with _pytest.raises(ValueError):
         materialize_demo_project(
@@ -492,14 +492,14 @@ def test_intel_rejects_bad_input_and_demo_rejects_unsafe_generation(tmp_path):
 
 
 def test_persona_prompts_carry_voice_and_safety_override():
-    from personas import (
+    from modules.core.personas import (
         BLUE_LEADER_PERSONA,
         BLUE_PERSONAS,
         GREEN_PERSONA,
         RED_LEADER_PERSONA,
         RED_PERSONAS,
     )
-    from project_agents import blue_persona_prompt, red_persona_prompt
+    from modules.services.project_agents import blue_persona_prompt, red_persona_prompt
 
     assert len(RED_PERSONAS) == 5 and len(BLUE_PERSONAS) == 5
     assert "Warlord" in RED_LEADER_PERSONA.name and "Warden" in BLUE_LEADER_PERSONA.name
@@ -511,7 +511,7 @@ def test_persona_prompts_carry_voice_and_safety_override():
 
 def test_chatter_never_carries_exploit_material():
 
-    from chatter import chatter
+    from modules.services.chatter import chatter
 
     for kind in (
         "red_start",
@@ -536,7 +536,7 @@ class _PersonaWireClient:
     async def _request(self, model, system, payload, schema, **kwargs):
         self.systems.append(system)
         if schema is not None and getattr(schema, "__name__", "") == "ReviewTeamPlan":
-            from project_agents import ReviewAssignment, ReviewTeamPlan
+            from modules.services.project_agents import ReviewAssignment, ReviewTeamPlan
 
             return ReviewTeamPlan(
                 strategy="s",
@@ -551,8 +551,8 @@ class _PersonaWireClient:
 def test_worker_persona_prompts_reach_model_calls():
     import asyncio
 
-    from config import PurpleBoxConfig
-    from project_agents import (
+    from modules.core.config import PurpleBoxConfig
+    from modules.services.project_agents import (
         ProjectAgentRunner,
         RedReport,
         SourceDocument,
@@ -602,7 +602,7 @@ def test_worker_persona_prompts_reach_model_calls():
 
 
 def test_chatter_adversarial_inputs_stay_safe():
-    from chatter import _CHATTER, chatter
+    from modules.services.chatter import _CHATTER, chatter
 
     evil_path = (
         "/etc/shadow\nimport os; os.system('rm -rf /')\n" + "A" * 500 + "<script>alert(1)</script>"
@@ -635,8 +635,8 @@ def test_chatter_adversarial_inputs_stay_safe():
 def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
     import json
 
-    from project_agents import RedReport
-    from project_workflow import EXPLOIT_REDACTED, redact_report_for_user
+    from modules.services.project_agents import RedReport
+    from modules.workflows.project_workflow import EXPLOIT_REDACTED, redact_report_for_user
 
     RedReport(
         outcome="finding",
@@ -679,21 +679,21 @@ def test_redacted_artifacts_contain_no_exploit_or_chatter_payload():
     assert "SECRET" not in blob  # long probe output truncated, short would be redacted
     assert EXPLOIT_REDACTED.split()[0] in blob or "withheld" in blob
     # persona names may appear (safe) but never probe source
-    from chatter import chatter as _c
+    from modules.services.chatter import chatter as _c
 
     line = _c("red_proof", persona="Breakwater", path="src/app.py", code=0, seed=0)
     assert "exit 0" in line or "exit" in line
 
 
 def test_persona_roster_wraps_and_safety_overrides_voice():
-    from personas import (
+    from modules.core.personas import (
         BLUE_LEADER_PERSONA,
         GREEN_PERSONA,
         RED_LEADER_PERSONA,
         blue_persona,
         red_persona,
     )
-    from project_agents import (
+    from modules.services.project_agents import (
         RED_WORKER_SYSTEM_PROMPT,
         blue_persona_prompt,
         red_persona_prompt,
@@ -733,7 +733,7 @@ def test_persona_roster_wraps_and_safety_overrides_voice():
 def test_chatter_fuzz_basename_and_determinism():
     import random
 
-    from chatter import _CHATTER, chatter
+    from modules.services.chatter import _CHATTER, chatter
 
     rng = random.Random(7)
     markers = (
@@ -774,7 +774,7 @@ def test_arena_name_lists_match_backend_wrap_order():
     import json
     from pathlib import Path
 
-    from personas import blue_persona, red_persona
+    from modules.core.personas import blue_persona, red_persona
 
     js = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
     for var in ("RED_NAMES", "BLUE_NAMES"):
@@ -802,10 +802,10 @@ def test_redacted_history_and_chatter_ephemerality():
     import inspect
     import json
 
-    from project_workflow import redact_report_for_user
+    from modules.workflows.project_workflow import redact_report_for_user
 
     # verified_history carries only class names/paths/exit codes, no probe source
-    src = inspect.getsource(__import__("project_workflow"))
+    src = inspect.getsource(__import__("modules.workflows.project_workflow", fromlist=["x"]))
     i = src.index("verified_history.append(")
     block = src[i : i + 700]
     assert "verification_script" not in block
@@ -874,7 +874,7 @@ def test_fixture_chatter_flows_over_log_pipeline():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".jcode" / "tools"))
     from offline_scan import KnownMuse
 
-    from workflow import execute_purple_workflow
+    from modules.workflows.workflow import execute_purple_workflow
 
     events = []
 
@@ -882,7 +882,7 @@ def test_fixture_chatter_flows_over_log_pipeline():
         events.append((team, message))
 
     async def run():
-        from config import PurpleBoxConfig
+        from modules.core.config import PurpleBoxConfig
 
         cfg = PurpleBoxConfig(meta_api_key="offline-check-not-a-key")
 
@@ -928,18 +928,18 @@ def test_cross_platform_compat_guards():
     # container paths stay POSIX by design: backslash rejected, PurePosixPath used
     import pytest as _pt
 
-    from projects import _validate_relative_path
+    from modules.services.projects import _validate_relative_path
 
     with _pt.raises(ValueError):
         _validate_relative_path("src\\app.py")
     assert _validate_relative_path("src/app.py").as_posix() == "src/app.py"
     # chatter basename handles both separators' inputs without leaking dirs
-    from chatter import chatter
+    from modules.services.chatter import chatter
 
     line = chatter("red_start", persona="Breakwater", path="src\\app.py", seed=1)
     assert len(line) <= 220 and "\n" not in line
     # isolation script is documented container-only
-    import checks
+    import modules.core.checks as checks
 
     assert "INSIDE the Linux verifier container only" in checks.ISOLATION_SCRIPT
     # no POSIX-only stdlib imports in host runtime
@@ -954,7 +954,7 @@ def test_cross_platform_compat_guards():
 
 
 def test_reachability_score_fuses_fixed_range_with_sink_adjacency():
-    from deep_scan import StaticFinding, reachability_score
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
 
     summary = {
         "id": "GHSA-xxxx",
@@ -982,7 +982,7 @@ def test_reachability_score_fuses_fixed_range_with_sink_adjacency():
 
 
 def test_reachability_score_low_without_fix_or_matching_sink():
-    from deep_scan import StaticFinding, reachability_score
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
 
     summary = {
         "id": "GHSA-yyyy",
@@ -1008,7 +1008,7 @@ def test_reachability_score_low_without_fix_or_matching_sink():
 
 
 def test_reachability_score_absent_signals_never_raise():
-    from deep_scan import reachability_score
+    from modules.workflows.deep_scan import reachability_score
 
     summary = {
         "id": "GHSA-zzzz",
@@ -1024,8 +1024,8 @@ def test_reachability_score_absent_signals_never_raise():
 
 
 async def test_cve_scan_attaches_reach_score_to_each_summary(monkeypatch):
-    import deep_scan as _ds
-    from cve_workflow import execute_cve_scan
+    import modules.workflows.deep_scan as _ds
+    from modules.workflows.cve_workflow import execute_cve_scan
 
     def fake_post(url, payload, timeout=30.0, tries=3, max_bytes=0):
         assert url == _ds.OSV_QUERY_URL
@@ -1063,7 +1063,7 @@ async def test_cve_scan_attaches_reach_score_to_each_summary(monkeypatch):
 
 def test_reachability_score_kev_epss_tie_break():
     """O2 red: kev_listed/epss_percentile add +5 tie-break signals each."""
-    from deep_scan import StaticFinding, reachability_score
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
 
     summary = {
         "id": "GHSA-xxxx",
@@ -1094,7 +1094,7 @@ def test_reachability_score_kev_epss_tie_break():
 
 def test_reachability_score_likelihood_cap_without_fix_or_sink():
     """O2 red: no fixed + no matched CWE caps likelihood-boosted score at 30."""
-    from deep_scan import StaticFinding, reachability_score
+    from modules.workflows.deep_scan import StaticFinding, reachability_score
 
     summary = {
         "id": "GHSA-yyyy",
@@ -1124,7 +1124,7 @@ def test_reachability_score_likelihood_cap_without_fix_or_sink():
 
 def test_osv_transport_routes_through_sms_http_with_batch_cap(monkeypatch):
     """deep_scan OSV calls use sms_http paced helpers; oversize batch capped."""
-    import deep_scan as _ds
+    import modules.workflows.deep_scan as _ds
 
     calls: list[tuple] = []
 
@@ -1167,7 +1167,7 @@ def _q1_osv_record():
 
 
 def _q1_findings():
-    from deep_scan import StaticFinding
+    from modules.workflows.deep_scan import StaticFinding
 
     return [
         StaticFinding(
@@ -1184,9 +1184,9 @@ def _q1_findings():
 
 def test_q1_enrichment_fires_kev_epss_tie_breaks(monkeypatch):
     """Q1: real summarize_osv_vuln -> _enrich_reach_signals -> reachability_score gives +5/+5."""
-    import cve_workflow as _cw
-    from deep_scan import reachability_score
-    from research import ResearchRecord
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
+    from modules.workflows.deep_scan import reachability_score
 
     calls = {"kev": [], "epss": []}
 
@@ -1225,8 +1225,8 @@ def test_q1_enrichment_fires_kev_epss_tie_breaks(monkeypatch):
 
 def test_q1_enrichment_failure_leaves_score_unchanged(monkeypatch):
     """Q1: lookup failures are fail-closed; the score matches the unenriched baseline."""
-    import cve_workflow as _cw
-    from deep_scan import reachability_score
+    import modules.workflows.cve_workflow as _cw
+    from modules.workflows.deep_scan import reachability_score
 
     def _boom(cve_id):
         raise RuntimeError("intel down")
@@ -1244,8 +1244,8 @@ def test_q1_enrichment_failure_leaves_score_unchanged(monkeypatch):
 
 def test_q1_enrichment_uses_first_cve_alias_once(monkeypatch):
     """Q1: exactly 1 KEV + 1 EPSS lookup against the first CVE alias only."""
-    import cve_workflow as _cw
-    from research import ResearchRecord
+    import modules.workflows.cve_workflow as _cw
+    from modules.intel.research import ResearchRecord
 
     calls = {"kev": [], "epss": []}
 

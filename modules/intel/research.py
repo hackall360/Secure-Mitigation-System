@@ -34,11 +34,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from sms_http import DEFAULT_MAX_BYTES as MAX_BODY_BYTES
-from sms_http import MIN_GAP_SECONDS, USER_AGENT, _pace
-from sms_http import paced_get_json as _get_json
-from sms_http import paced_post_json as _post_json
-from sms_records import sanitize_cve_id, truncate_summary
+from modules.shared.sms_http import DEFAULT_MAX_BYTES as MAX_BODY_BYTES
+from modules.shared.sms_http import MIN_GAP_SECONDS, USER_AGENT, _pace
+from modules.shared.sms_http import paced_get_json as _get_json
+from modules.shared.sms_http import paced_post_json as _post_json
+from modules.shared.sms_records import sanitize_cve_id, truncate_summary
 
 __all__ = [
     "USER_AGENT",
@@ -115,7 +115,7 @@ def osv_lookup(cve_id: str) -> ResearchRecord | None:
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
-        from sms_http import MAX_MAX_BYTES
+        from modules.shared.sms_http import MAX_MAX_BYTES
 
         payload = _get_json(f"https://api.osv.dev/v1/vulns/{safe}", max_bytes=MAX_MAX_BYTES)
     except RuntimeError:
@@ -141,7 +141,7 @@ def circl_lookup(cve_id: str) -> ResearchRecord | None:
     if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", safe):
         return None
     try:
-        from sms_http import MAX_MAX_BYTES
+        from modules.shared.sms_http import MAX_MAX_BYTES
 
         payload = _get_json(f"https://cve.circl.lu/api/cve/{safe}", max_bytes=MAX_MAX_BYTES)
     except RuntimeError:
@@ -369,7 +369,7 @@ def _kev_catalog() -> dict[str, dict] | None:
     if _KEV_CACHE is not None:
         return _KEV_CACHE
     try:
-        from sms_http import MAX_MAX_BYTES
+        from modules.shared.sms_http import MAX_MAX_BYTES
 
         payload = _get_json(KEV_CATALOG_URL, max_bytes=MAX_MAX_BYTES)
     except RuntimeError:

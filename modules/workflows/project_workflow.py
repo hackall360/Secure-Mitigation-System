@@ -14,18 +14,18 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agents import AgentError, MetaMuseClient
-from chatter import chatter
-from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
-from docker_manager import (
+from modules.core.agents import AgentError, MetaMuseClient
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from modules.core.docker_manager import (
     DockerSandboxManager,
     ProjectCheckResult,
     SandboxError,
     VerificationResult,
 )
-from personas import blue_persona, red_persona
-from pricing import ScanUsage
-from project_agents import (
+from modules.core.personas import blue_persona, red_persona
+from modules.core.pricing import ScanUsage
+from modules.services.chatter import chatter
+from modules.services.project_agents import (
     BlueProposal,
     ContextCoverage,
     FinalBlueReport,
@@ -33,10 +33,15 @@ from project_agents import (
     RedAnalysisArtifacts,
     documents_from_mapping,
 )
-from projects import ProjectSnapshot, ProjectSpec, replace_snapshot_files, snapshot_project
-from sms_async import Emit, blocking, make_log
-from sms_budget import resolve_payload_budget
-from sms_text import bounded as _bounded
+from modules.services.projects import (
+    ProjectSnapshot,
+    ProjectSpec,
+    replace_snapshot_files,
+    snapshot_project,
+)
+from modules.shared.sms_async import Emit, blocking, make_log
+from modules.shared.sms_budget import resolve_payload_budget
+from modules.shared.sms_text import bounded as _bounded
 
 
 class ProjectWorkflowError(RuntimeError):
@@ -460,7 +465,7 @@ class DockerProjectSandbox:
             try:
                 import time
 
-                from docker_manager import READY_SCRIPT
+                from modules.core.docker_manager import READY_SCRIPT
 
                 deadline = time.monotonic() + 2.0
                 while time.monotonic() < deadline:
@@ -494,7 +499,7 @@ class DockerProjectSandbox:
             # (properties stays None) so arbitrary projects are unaffected.
             properties_ev: ExecutionEvidence | None = None
             try:
-                from checks import project_property_script, property_fixture_supported
+                from modules.core.checks import project_property_script, property_fixture_supported
 
                 fixture_id = (self.spec.contract or "").splitlines()[0].strip()
                 if property_fixture_supported(fixture_id):
@@ -936,7 +941,7 @@ async def execute_project_workflow(
         agents = agent_factory(muse, settings)
         if settings.research_enabled:
             try:
-                from workflow import _gather_research as _fixture_gather
+                from modules.workflows.workflow import _gather_research as _fixture_gather
 
                 project_digest, project_records = await _fixture_gather(
                     muse,
@@ -1448,9 +1453,9 @@ async def execute_project_workflow(
     return result
 
 
-from sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
-from sms_redact import redact_cycle_evidence as redact_cycle_evidence  # noqa: E402,F401 (re-export; canonical def lives in sms_redact)
-from sms_redact import redact_project_result as _redact_project  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from modules.shared.sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from modules.shared.sms_redact import redact_cycle_evidence as redact_cycle_evidence  # noqa: E402,F401 (re-export; canonical def lives in sms_redact)
+from modules.shared.sms_redact import redact_project_result as _redact_project  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
 
 
 def redact_report_for_user(result: "ProjectWorkflowResult") -> dict:

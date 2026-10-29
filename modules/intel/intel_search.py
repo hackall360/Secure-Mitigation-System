@@ -19,8 +19,8 @@ import os
 import re
 from typing import Any, Mapping, Sequence
 
-from sms_http import paced_get_json
-from sms_records import sanitize_cve_id
+from modules.shared.sms_http import paced_get_json
+from modules.shared.sms_records import sanitize_cve_id
 
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns"

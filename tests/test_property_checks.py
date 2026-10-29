@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from checks import project_property_script
-from project_workflow import (
+from modules.core.checks import project_property_script
+from modules.workflows.project_workflow import (
     ExecutionEvidence,
     SnapshotVerification,
     property_gate_passed,
@@ -226,7 +226,7 @@ async def test_property_failure_rolls_back_verified_patch():
     )
 
     def verification_with_properties(probe: int, regression: int, properties: int | None):
-        from project_workflow import ExecutionEvidence, SnapshotVerification
+        from modules.workflows.project_workflow import ExecutionEvidence, SnapshotVerification
 
         return SnapshotVerification(
             probe=ExecutionEvidence(exit_code=probe, output="evidence"),
@@ -255,9 +255,9 @@ async def test_docker_sandbox_attaches_property_evidence(tmp_path):
     """DockerProjectSandbox runs the property script after regression green."""
     from helpers import TEST_CONFIG as CONFIG
 
-    from docker_manager import ProjectCheckResult
-    from project_workflow import DockerProjectSandbox
-    from projects import ProjectSpec, snapshot_project
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import DockerProjectSandbox
 
     (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
     spec = ProjectSpec(

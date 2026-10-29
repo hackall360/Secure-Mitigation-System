@@ -9,9 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents import MetaMuseClient
-from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
-from deep_scan import (
+from modules.core.agents import MetaMuseClient
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from modules.intel.research import epss_score, kev_lookup
+from modules.services.projects import ProjectSnapshot, ProjectSpec, snapshot_project
+from modules.shared.sms_async import Emit, blocking, make_log
+from modules.workflows.deep_scan import (
     extract_dependencies,
     fetch_osv_vuln,
     muse_deep_assessment,
@@ -19,9 +22,6 @@ from deep_scan import (
     run_static_scan,
     summarize_osv_vuln,
 )
-from projects import ProjectSnapshot, ProjectSpec, snapshot_project
-from research import epss_score, kev_lookup
-from sms_async import Emit, blocking, make_log
 
 
 class CveScanReport(BaseModel):
@@ -214,7 +214,11 @@ async def execute_cve_scan(
 
     if include_nvd and summaries:
         try:
-            from intel_search import nvd_lookup, osv_lookup_by_cve, summarize_nvd_record
+            from modules.intel.intel_search import (
+                nvd_lookup,
+                osv_lookup_by_cve,
+                summarize_nvd_record,
+            )
 
             for summary in summaries[:10]:
                 for cve_id in (summary.get("cves") or [])[:2]:
@@ -261,7 +265,7 @@ async def execute_cve_scan(
     for summary in summaries:
         try:
             _enrich_reach_signals(summary)
-            from deep_scan import reachability_score as _reachability_score
+            from modules.workflows.deep_scan import reachability_score as _reachability_score
 
             score, reach_evidence = _reachability_score(summary, static_findings)
             summary["reach_score"] = score

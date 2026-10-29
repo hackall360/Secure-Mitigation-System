@@ -15,7 +15,7 @@ for red and Wonder for blue, and quality runs Wonder for both roles.
 from dataclasses import dataclass, replace
 from urllib.parse import urlsplit
 
-from config import PurpleBoxConfig
+from modules.core.config import PurpleBoxConfig
 
 
 @dataclass(frozen=True)

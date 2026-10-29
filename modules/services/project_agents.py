@@ -11,16 +11,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agents import AgentError, MetaMuseClient
-from config import PurpleBoxConfig
-from personas import (
+from modules.core.agents import AgentError, MetaMuseClient
+from modules.core.config import PurpleBoxConfig
+from modules.core.personas import (
     BLUE_LEADER_PERSONA,
     BLUE_PERSONAS,
     RED_LEADER_PERSONA,
     RED_PERSONAS,
 )
-from scan_profiles import focus_for_cycle
-from sms_text import take_utf8_prefix as _take_utf8_prefix
+from modules.core.scan_profiles import focus_for_cycle
+from modules.shared.sms_text import take_utf8_prefix as _take_utf8_prefix
 
 # Persona assignment: worker index -> persona (1-based, wraps). Leaders are fixed.
 # Red personas dislike security (offensive InfoSec hacker); blue personas love

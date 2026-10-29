@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 import pytest
 from docker.errors import APIError
 
-from config import PurpleBoxConfig
-from docker_manager import DockerSandboxManager, SandboxError
-from projects import ProjectSpec, snapshot_project
-from registry import BASE_DIR
+from modules.core.config import PurpleBoxConfig
+from modules.core.docker_manager import DockerSandboxManager, SandboxError
+from modules.core.registry import BASE_DIR
+from modules.services.projects import ProjectSpec, snapshot_project
 
 
 def project_spec(tmp_path):
@@ -148,7 +148,7 @@ def test_runner_distinguishes_exception_from_explicit_block(monkeypatch, failure
 def test_docker_status_reports_ready_missing_and_unavailable():
     from docker.errors import DockerException, ImageNotFound
 
-    from docker_manager import docker_status
+    from modules.core.docker_manager import docker_status
 
     client = MagicMock()
     client.containers.list.return_value = []
@@ -162,7 +162,7 @@ def test_docker_status_reports_ready_missing_and_unavailable():
 
 
 def test_stale_cleanup_is_label_scoped_and_keeps_base_images():
-    from docker_manager import remove_stale_resources
+    from modules.core.docker_manager import remove_stale_resources
 
     client = MagicMock()
     container, network, snapshot = MagicMock(), MagicMock(), MagicMock(id="sha256:x")

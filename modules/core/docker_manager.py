@@ -15,16 +15,16 @@ from docker.types import LogConfig, Ulimit
 from requests.exceptions import ReadTimeout
 
 import docker
-from checks import validate_verifier_script
-from config import PurpleBoxConfig
-from projects import (
+from modules.core.checks import validate_verifier_script
+from modules.core.config import PurpleBoxConfig
+from modules.core.registry import BASE_DIR, Target
+from modules.services.projects import (
     MAX_PROJECT_BYTES,
     MAX_PROJECT_FILE_BYTES,
     MAX_PROJECT_FILES,
     ProjectSnapshot,
     ProjectSpec,
 )
-from registry import BASE_DIR, Target
 
 
 class SandboxError(RuntimeError):

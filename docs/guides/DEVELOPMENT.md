@@ -179,7 +179,7 @@ a valid account key to test those separately. No visual browser review or
 performance benchmark was performed. Docker's internal bridge blocks the tested
 public TCP paths but is not proof of host isolation. Fixtures remain a development
 scaffold, not a safe execution boundary for arbitrary hostile repositories.
-The original `VALIDATION.md` remains a historical scaffold report; this section
+The original [`archive/VALIDATION.md`](../archive/VALIDATION.md) remains a historical scaffold report; this section
 supersedes its Docker-unavailable statement for this machine only.
 
 ## Environment template and ignore policy

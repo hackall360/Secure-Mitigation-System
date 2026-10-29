@@ -114,7 +114,7 @@ OFFLINE_SERVER = """
 import sys
 sys.path.insert(0, {root!r}); sys.path.insert(0, {tools!r})
 import uvicorn, main, workflow
-from config import PurpleBoxConfig
+from modules.core.config import PurpleBoxConfig
 from offline_scan import KnownMuse
 real = workflow.execute_purple_workflow
 main.execute_purple_workflow = lambda key, emit, **kw: real(

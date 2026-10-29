@@ -8,8 +8,8 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from agents import MetaMuseClient
-from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from modules.core.agents import MetaMuseClient
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 
 
 @pytest.mark.parametrize("endpoint", ["http://127.0.0.1:8081/v1", "http://[::1]:8081/v1"])

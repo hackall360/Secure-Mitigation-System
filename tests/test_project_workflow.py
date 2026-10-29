@@ -24,9 +24,9 @@ from helpers import (
     silent_emit,
 )
 
-from agents import AgentError
-from config import PurpleBoxConfig
-from project_agents import (
+from modules.core.agents import AgentError
+from modules.core.config import PurpleBoxConfig
+from modules.services.project_agents import (
     BlueProposal,
     FileReplacement,
     ProjectAgentRunner,
@@ -34,7 +34,8 @@ from project_agents import (
     SourceDocument,
     build_source_batches,
 )
-from project_workflow import (
+from modules.services.projects import ProjectSpec
+from modules.workflows.project_workflow import (
     DockerProjectSandbox,
     ProjectWorkflowInput,
     ProjectWorkflowLimits,
@@ -44,7 +45,6 @@ from project_workflow import (
     protected_regression_paths,
     validate_replacements,
 )
-from projects import ProjectSpec
 
 PROJECT = ProjectWorkflowInput(
     name="demo",
@@ -467,7 +467,7 @@ async def test_original_baseline_is_exported_as_observed_evidence():
 
 async def test_project_research_on_runs_grounding_and_stores_records(monkeypatch):
     """H5: opt-in project intel grounds the red contract and lands on the report."""
-    import workflow as _workflow
+    import modules.workflows.workflow as _workflow
 
     async def fake_gather(muse, settings, filename, contract, log):
         await log("research", "fake intel pass")
@@ -532,7 +532,7 @@ def _l2_docker_sandbox(
     - ``post_probe_code``: exit surfaced via target.exec_run (None = no exec_run attr).
     - ``post_check_code``: exit surfaced via run_project_check command=... fallback.
     """
-    from docker_manager import ProjectCheckResult
+    from modules.core.docker_manager import ProjectCheckResult
 
     (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
     spec = ProjectSpec(
@@ -541,7 +541,7 @@ def _l2_docker_sandbox(
         test_command=["python", "-m", "pytest"],
         contract="L2 ghost-probe liveness oracle.",
     )
-    from projects import snapshot_project
+    from modules.services.projects import snapshot_project
 
     snapshot = snapshot_project(spec)
 

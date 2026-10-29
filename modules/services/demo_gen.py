@@ -23,8 +23,8 @@ from typing import Annotated, Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from projects import ProjectSpec
-from sms_budget import check_payload_budget
+from modules.services.projects import ProjectSpec
+from modules.shared.sms_budget import check_payload_budget
 
 DEMO_GEN_SYSTEM_PROMPT = """You are Greenhouse, a cheerful builder who does not care about security at all. You grow demo projects for a defensive security showcase.
 Design a SMALL, SELF-CONTAINED demo web service (Python stdlib http.server only, no third-party deps) that demonstrates input-boundary flaws for a red/blue exercise.

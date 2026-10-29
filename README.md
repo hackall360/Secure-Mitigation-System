@@ -240,7 +240,7 @@ python test_harness.py --api        # two real Muse calls (normal usage cost)
 .venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox
 ```
 
-Default tests are mocked (no Meta/Docker contact). See [`VALIDATION.md`](VALIDATION.md) for the acceptance runs and [`docs/guides/DEVELOPMENT.md`](docs/guides/DEVELOPMENT.md) for the environment, traps, and the browser matrix (Chrome/Chromium/Edge/Brave via CDP, Firefox via WebDriver).
+Default tests are mocked (no Meta/Docker contact). See [`docs/archive/VALIDATION.md`](docs/archive/VALIDATION.md) for the acceptance runs and [`docs/guides/DEVELOPMENT.md`](docs/guides/DEVELOPMENT.md) for the environment, traps, and the browser matrix (Chrome/Chromium/Edge/Brave via CDP, Firefox via WebDriver).
 
 <details>
 <summary><strong>Latest acceptance evidence (2026-10-28)</strong></summary>

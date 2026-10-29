@@ -5,7 +5,7 @@
 import configparser
 import difflib
 
-from registry import Target
+from modules.core.registry import Target
 
 
 class PatchRejected(ValueError):

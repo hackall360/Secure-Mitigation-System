@@ -7,7 +7,7 @@ from typing import Literal
 from docker.errors import DockerException
 from pydantic import BaseModel, Field
 
-from agents import (
+from modules.core.agents import (
     AgentError,
     BlueResearchDigest,
     BlueTeamPatch,
@@ -15,14 +15,14 @@ from agents import (
     RedResearchDigest,
     RedTeamFinding,
 )
-from chatter import chatter
-from checks import normal_behavior_script
-from config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
-from docker_manager import DockerSandboxManager, SandboxError
-from patches import PatchRejected, validate_patch
-from pricing import ScanUsage
-from registry import TARGETS_REGISTRY
-from sms_async import Emit, blocking, make_log
+from modules.core.checks import normal_behavior_script
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
+from modules.core.docker_manager import DockerSandboxManager, SandboxError
+from modules.core.patches import PatchRejected, validate_patch
+from modules.core.pricing import ScanUsage
+from modules.core.registry import TARGETS_REGISTRY
+from modules.services.chatter import chatter
+from modules.shared.sms_async import Emit, blocking, make_log
 
 
 def _sink_keywords(filename: str, contract: str) -> tuple[list[str], list[str]]:
@@ -70,7 +70,7 @@ def _run_opt_in_scanners(settings: PurpleBoxConfig, filename: str, log_callable=
     import tempfile
     from pathlib import Path
 
-    from registry import TARGETS_REGISTRY
+    from modules.core.registry import TARGETS_REGISTRY
 
     target = TARGETS_REGISTRY.get(filename.replace(".py", "").replace(".js", ""))
     if target is None:
@@ -87,35 +87,35 @@ def _run_opt_in_scanners(settings: PurpleBoxConfig, filename: str, log_callable=
         wanted = set(settings.research_scanners)
         if "trivy" in wanted:
             try:
-                import scanner_binaries as _sb
+                import modules.intel.scanner_binaries as _sb
 
                 out.extend(_sb.run_trivy(tmp))
             except Exception:
                 pass
         if "grype" in wanted:
             try:
-                import scanner_binaries as _sb
+                import modules.intel.scanner_binaries as _sb
 
                 out.extend(_sb.run_grype(tmp))
             except Exception:
                 pass
         if "osv-scanner" in wanted:
             try:
-                import scanner_binaries as _sb
+                import modules.intel.scanner_binaries as _sb
 
                 out.extend(_sb.run_osv_scanner(tmp))
             except Exception:
                 pass
         if "dependency-check" in wanted:
             try:
-                import scanner_binaries as _sb
+                import modules.intel.scanner_binaries as _sb
 
                 out.extend(_sb.run_dependency_check(tmp))
             except Exception:
                 pass
         if "dependency-track" in wanted:
             try:
-                import scanner_dtrack as _dt
+                import modules.intel.scanner_dtrack as _dt
 
                 out.extend(_dt.scan_packages(target.filename, []))
             except Exception:
@@ -134,7 +134,7 @@ async def _gather_research(
     """
 
     try:
-        import research as _research
+        import modules.intel.research as _research
     except ImportError:
         return "", []
     sink = f"{filename}: {contract}"[:2000]
@@ -156,7 +156,7 @@ async def _gather_research(
     # (CIRCL + OSV + EPSS + GHSA); named text gets web definition notes.
     # Same untrusted-data rules as every other record below.
     try:
-        from demo_gen import parse_build_intent as _parse_intent
+        from modules.services.demo_gen import parse_build_intent as _parse_intent
 
         intent = _parse_intent(vulns=f"{filename} {contract}")
         if intent.cve_ids:
@@ -188,7 +188,7 @@ async def _gather_research(
         f"[phase intel] {len(records)} intel records across "
         f"{len({getattr(r, 'source', getattr(r, 'scanner', '?')) for r in records})} sources.",
     )
-    from sms_records import to_record_dict as _to_dict
+    from modules.shared.sms_records import to_record_dict as _to_dict
 
     record_dicts = [_to_dict(r) for r in records[:16]]
     digest = ""
@@ -454,8 +454,8 @@ async def execute_purple_workflow(
     return result
 
 
-from sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
-from sms_redact import redact_fixture_result as _redact_fixture  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from modules.shared.sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
+from modules.shared.sms_redact import redact_fixture_result as _redact_fixture  # noqa: E402 (re-export shim; canonical defs live in sms_redact)
 
 
 def redact_fixture_result_for_user(result: "ScanResult") -> dict:

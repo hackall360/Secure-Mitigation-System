@@ -2,8 +2,8 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """Scanner transports: canned-report mapping + absent-binary degradation."""
 
-import scanner_binaries as sb
-import scanner_dtrack as dt
+import modules.intel.scanner_binaries as sb
+import modules.intel.scanner_dtrack as dt
 
 
 def test_trivy_mapping():
@@ -150,7 +150,7 @@ def test_absent_binaries_degrade_to_empty():
 
 def test_cve_records_series_never_raises_and_dedupes(monkeypatch):
     """I3: the CVE series fans out per id, dedupes, and never raises."""
-    import research as _research
+    import modules.intel.research as _research
 
     def fake_circl(cve):
         return _research.ResearchRecord(source="circl", cve_id=cve, title="t", summary="s")
@@ -171,7 +171,7 @@ def test_cve_records_series_never_raises_and_dedupes(monkeypatch):
 
 
 def test_cve_records_empty_for_no_valid_ids():
-    import research as _research
+    import modules.intel.research as _research
 
     assert _research.cve_records([]) == []
     assert _research.cve_records(["not-a-cve"]) == []
@@ -179,7 +179,7 @@ def test_cve_records_empty_for_no_valid_ids():
 
 def test_web_notes_canned_search_plus_extract(monkeypatch):
     """I4: web notes use search hits + intro extracts, dedupe, never raise."""
-    import research as _research
+    import modules.intel.research as _research
 
     calls = []
 
@@ -205,7 +205,7 @@ def test_web_notes_canned_search_plus_extract(monkeypatch):
 
 
 def test_web_notes_transport_failure_degrades_to_empty(monkeypatch):
-    import research as _research
+    import modules.intel.research as _research
 
     monkeypatch.setattr(
         _research, "_get_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
@@ -236,7 +236,7 @@ def _canned_ghsa_advisories():
 
 def test_ghsa_lookup_by_cve_uses_cve_id_param(monkeypatch):
     """O1: CVE-id lookup queries ?cve_id=, carries EPSS + CVSSv4 fields."""
-    import research as _research
+    import modules.intel.research as _research
 
     calls = {}
 
@@ -261,7 +261,7 @@ def test_ghsa_lookup_by_cve_uses_cve_id_param(monkeypatch):
 
 def test_cve_records_uses_ghsa_cve_lookup(monkeypatch):
     """O1: cve_records surfaces the GHSA record for the CVE."""
-    import research as _research
+    import modules.intel.research as _research
 
     monkeypatch.setattr(_research, "circl_lookup", lambda cve: None)
     monkeypatch.setattr(_research, "osv_lookup", lambda cve: None)
@@ -279,7 +279,7 @@ def test_cve_records_uses_ghsa_cve_lookup(monkeypatch):
 
 def test_ghsa_lookup_by_cve_never_raises(monkeypatch):
     """O1: invalid CVE id -> []; transport failure -> []."""
-    import research as _research
+    import modules.intel.research as _research
 
     assert _research.ghsa_lookup_by_cve("bogus!!") == []
     assert _research.ghsa_lookup_by_cve("") == []
@@ -291,8 +291,8 @@ def test_ghsa_lookup_by_cve_never_raises(monkeypatch):
 
 def test_http_leaf_back_compat_aliases_match_sms_http():
     """research._pace/_get_json/_post_json are re-exports of the moved leaf."""
-    import research as _research
-    import sms_http as _leaf
+    import modules.intel.research as _research
+    import modules.shared.sms_http as _leaf
 
     assert _research._pace is _leaf._pace
     assert _research._get_json is _leaf.paced_get_json
@@ -303,7 +303,7 @@ def test_http_leaf_back_compat_aliases_match_sms_http():
 
 def test_http_leaf_pacing_is_per_host(monkeypatch):
     """One host's backoff must not stall an unrelated host."""
-    import sms_http as _leaf
+    import modules.shared.sms_http as _leaf
 
     monkeypatch.setattr(_leaf, "_last_calls", {})
     seen: list[str] = []
@@ -324,7 +324,7 @@ def test_http_leaf_pacing_is_per_host(monkeypatch):
 
 def test_intel_search_routes_through_sms_http(monkeypatch):
     """nvd_search/nvd_lookup/osv_lookup_by_cve call paced_get_json with caps."""
-    import intel_search as _intel
+    import modules.intel.intel_search as _intel
 
     calls: list[tuple] = []
 
@@ -346,7 +346,7 @@ def test_intel_search_routes_through_sms_http(monkeypatch):
 
 def test_dtrack_request_uses_shared_paced_transport(monkeypatch):
     """scanner_dtrack._request delegates to sms_http, never raises."""
-    import scanner_dtrack as _dt
+    import modules.intel.scanner_dtrack as _dt
 
     calls: list[tuple] = []
 
@@ -368,7 +368,7 @@ def test_dtrack_request_uses_shared_paced_transport(monkeypatch):
 
 def test_scanner_which_cache_and_stdout_cap(monkeypatch):
     """PATH lookups cached; oversize stdout degrades to None."""
-    import scanner_binaries as _sb
+    import modules.intel.scanner_binaries as _sb
 
     monkeypatch.setattr(_sb, "_WHICH_CACHE", {})
     lookups: list[str] = []
@@ -388,8 +388,8 @@ def test_scanner_which_cache_and_stdout_cap(monkeypatch):
 
 def test_agents_schema_cache_and_single_pass_extractor():
     """Schema dict reused per model class; extractor is brace-aware in one pass."""
-    from agents import _SCHEMA_CACHE, _extract_json_object, _schema_for
-    from agents import RedTeamFinding as _Red
+    from modules.core.agents import _SCHEMA_CACHE, _extract_json_object, _schema_for
+    from modules.core.agents import RedTeamFinding as _Red
 
     _SCHEMA_CACHE.clear()
     first = _schema_for(_Red)
@@ -403,7 +403,7 @@ def test_agents_schema_cache_and_single_pass_extractor():
 
 def test_kev_lookup_canned_match_and_miss(monkeypatch):
     """O2 red: kev_lookup finds cveID in the CISA KEV catalog, else None."""
-    import research as _research
+    import modules.intel.research as _research
 
     _research._kev_cache_clear()
     catalog = {
@@ -431,7 +431,7 @@ def test_kev_lookup_canned_match_and_miss(monkeypatch):
 
 def test_kev_lookup_caches_catalog_across_ids(monkeypatch):
     """Q2: two kev_lookup calls for different ids trigger exactly one fetch."""
-    import research as _research
+    import modules.intel.research as _research
 
     _research._kev_cache_clear()
     catalog = {
@@ -464,7 +464,7 @@ def test_kev_lookup_caches_catalog_across_ids(monkeypatch):
 
 def test_kev_lookup_failures_not_cached_then_success(monkeypatch):
     """Q2: RuntimeError / non-dict fetches are NOT cached; next call retries."""
-    import research as _research
+    import modules.intel.research as _research
 
     _research._kev_cache_clear()
     catalog = {
@@ -505,7 +505,7 @@ def test_kev_lookup_failures_not_cached_then_success(monkeypatch):
 
 def test_kev_lookup_transport_failure_degrades_to_none(monkeypatch):
     """O2 red: KEV oversize-cap/transport failure degrades to None, never raises."""
-    import research as _research
+    import modules.intel.research as _research
 
     _research._kev_cache_clear()
     monkeypatch.setattr(
@@ -516,7 +516,7 @@ def test_kev_lookup_transport_failure_degrades_to_none(monkeypatch):
 
 def test_cve_records_includes_kev_record(monkeypatch):
     """O2 red: cve_records fans out to kev_lookup as a 5th source per CVE."""
-    import research as _research
+    import modules.intel.research as _research
 
     monkeypatch.setattr(_research, "circl_lookup", lambda cve: None)
     monkeypatch.setattr(_research, "osv_lookup", lambda cve: None)
@@ -536,7 +536,7 @@ def test_cve_records_includes_kev_record(monkeypatch):
 
 def test_dtrack_poll_backs_off_and_exits_early(monkeypatch):
     """Poll uses exponential backoff; instant-done exits without sleeping."""
-    import scanner_dtrack as _dt
+    import modules.intel.scanner_dtrack as _dt
 
     sleeps = []
     monkeypatch.setattr(_dt.time, "sleep", lambda s: sleeps.append(s))
@@ -559,8 +559,8 @@ def test_dtrack_poll_backs_off_and_exits_early(monkeypatch):
 
 def test_r2_osv_and_circl_lookups_use_raised_cap(monkeypatch):
     """R2: OSV/CIRCL direct CVE fetches use MAX_MAX_BYTES like the KEV path."""
-    import research as _research
-    from sms_http import MAX_MAX_BYTES
+    import modules.intel.research as _research
+    from modules.shared.sms_http import MAX_MAX_BYTES
 
     caps: dict[str, int] = {}
 
@@ -577,7 +577,7 @@ def test_r2_osv_and_circl_lookups_use_raised_cap(monkeypatch):
 
 def test_r2_epss_score_sanitizes_cve_id(monkeypatch):
     """R2: epss_score normalizes through sanitize_cve_id (not ad-hoc casing)."""
-    import research as _research
+    import modules.intel.research as _research
 
     seen: dict[str, str] = {}
 
@@ -594,7 +594,7 @@ def test_r2_epss_score_sanitizes_cve_id(monkeypatch):
 
 def test_r2_intel_osv_lookup_rejects_bad_cve_shape(monkeypatch):
     """R2: osv_lookup_by_cve validates CVE shape pre-fetch; invalid => None."""
-    import intel_search as _intel
+    import modules.intel.intel_search as _intel
 
     def _boom(*a, **k):
         raise AssertionError("transport must not run for a malformed CVE id")

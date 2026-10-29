@@ -4,23 +4,33 @@ Each leaf is behavior-identical to the code it replaced; these pin the
 semantics so future extractions cannot drift them.
 """
 
-from sms_budget import check_payload_budget, payload_size_bytes, resolve_payload_budget
-from sms_records import (
+from modules.shared.sms_budget import (
+    check_payload_budget,
+    payload_size_bytes,
+    resolve_payload_budget,
+)
+from modules.shared.sms_records import (
     dedupe_records,
     sanitize_cve_id,
     sanitize_cve_id_strict,
     to_record_dict,
     truncate_summary,
 )
-from sms_redact import (
+from modules.shared.sms_redact import (
     EXPLOIT_REDACTED,
     redact_cycle_evidence,
     redact_fixture_result,
     redact_probe_output,
     redact_project_result,
 )
-from sms_scan_parse import cvss_best, cvss_from_map, cvss_from_vendor_map, cwe_list, ref_list
-from sms_text import bounded, take_utf8_prefix
+from modules.shared.sms_scan_parse import (
+    cvss_best,
+    cvss_from_map,
+    cvss_from_vendor_map,
+    cwe_list,
+    ref_list,
+)
+from modules.shared.sms_text import bounded, take_utf8_prefix
 
 
 def test_sanitize_cve_id_shapes():

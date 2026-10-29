@@ -12,9 +12,9 @@ from typing import Annotated, TypeVar
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
-from config import PurpleBoxConfig, require_api_key
-from pricing import CallUsage, usage_from_response
-from prompts import (
+from modules.core.config import PurpleBoxConfig, require_api_key
+from modules.core.pricing import CallUsage, usage_from_response
+from modules.core.prompts import (
     BLUE_RESEARCH_SYSTEM_PROMPT,
     BLUE_TEAM_SYSTEM_PROMPT,
     RED_RESEARCH_SYSTEM_PROMPT,

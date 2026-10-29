@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from scan_profiles import SCAN_PROFILES
+from modules.core.scan_profiles import SCAN_PROFILES
 
 if TYPE_CHECKING:
-    from config import PurpleBoxConfig
+    from modules.core.config import PurpleBoxConfig
 
 DEFAULT_TARGET_IMAGE = "purplebox-target-base:latest"
 DEFAULT_CONTEXT_BUDGET = 32_768

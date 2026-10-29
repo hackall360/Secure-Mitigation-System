@@ -17,19 +17,20 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from config import ConfigurationError, PurpleBoxConfig, load_config
-from cve_workflow import execute_cve_scan
-from docker_manager import (
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config
+from modules.core.docker_manager import (
     DockerSandboxManager,
     build_base_images,
     docker_status,
     remove_stale_resources,
 )
-from profiles import ProfileError, apply_profile, available_profiles, default_profile
-from project_workflow import execute_project_workflow, redact_report_for_user
-from projects import ProjectSpec
-from registry import BASE_DIR, TARGETS_REGISTRY
-from scan_profiles import SCAN_PROFILES
+from modules.core.profiles import ProfileError, apply_profile, available_profiles, default_profile
+from modules.core.registry import BASE_DIR, TARGETS_REGISTRY
+from modules.core.scan_profiles import SCAN_PROFILES
+from modules.services.projects import ProjectSpec
+from modules.workflows.cve_workflow import execute_cve_scan
+from modules.workflows.project_workflow import execute_project_workflow, redact_report_for_user
+from modules.workflows.workflow import execute_purple_workflow, redact_fixture_result_for_user
 from sms_cli import (
     LoadError,
     Spinner,
@@ -40,7 +41,6 @@ from sms_cli import (
     status_color,
     usage_table,
 )
-from workflow import execute_purple_workflow, redact_fixture_result_for_user
 
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
@@ -98,10 +98,14 @@ async def run_demo_build(
     form widgets (M1-M5): named profiles force cycle counts, custom allows
     explicit cycles, agent counts active on ultra_heavy only.
     """
-    from agents import AgentError, MetaMuseClient
-    from demo_gen import generate_demo_project, materialize_demo_project, parse_build_intent
-    from intel_search import intel_for_demo
-    from project_workflow import redact_report_for_user
+    from modules.core.agents import AgentError, MetaMuseClient
+    from modules.intel.intel_search import intel_for_demo
+    from modules.services.demo_gen import (
+        generate_demo_project,
+        materialize_demo_project,
+        parse_build_intent,
+    )
+    from modules.workflows.project_workflow import redact_report_for_user
 
     intent = parse_build_intent(build_brief=build_brief, vulns=vulns, theme=theme)
     themes = [w for w in (theme or "input validation SQL injection XSS").split() if w][:6]
@@ -118,8 +122,8 @@ async def run_demo_build(
         # CVE endpoint series: exact records + EPSS per requested id.
         if intent.cve_ids:
             try:
-                from research import cve_records as _cve_records
-                from workflow import blocking as _blocking
+                from modules.intel.research import cve_records as _cve_records
+                from modules.workflows.workflow import blocking as _blocking
 
                 cve_hits = await _blocking(_cve_records, intent.cve_ids)
                 intel = list(cve_hits) + list(intel)
@@ -137,8 +141,8 @@ async def run_demo_build(
         web_queries = list(intent.named_types) + list(intent.free_text)
         if web_queries:
             try:
-                from research import web_notes as _web_notes
-                from workflow import blocking as _blocking2
+                from modules.intel.research import web_notes as _web_notes
+                from modules.workflows.workflow import blocking as _blocking2
 
                 notes = await _blocking2(_web_notes, web_queries)
                 intel = list(intel) + list(notes)
@@ -189,7 +193,7 @@ async def run_demo_build(
         except Exception:
             pass
     try:
-        from chatter import chatter as _chatter
+        from modules.services.chatter import chatter as _chatter
 
         await emit("green", _chatter("green", n=len(files.flaw_notes), path="app.py"))
     except Exception:
@@ -209,7 +213,7 @@ async def run_demo_build(
     )
     # Intensity/team/budget (M1-M5): same stamping rule as the CLI ai_demo_runner —
     # named profiles force cycle counts, custom honors explicit cycles.
-    from projects import ProjectSpec as _Spec
+    from modules.services.projects import ProjectSpec as _Spec
 
     dump = spec.model_dump(mode="json")
     if scan_profile in SCAN_PROFILES:
@@ -386,7 +390,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             await socket.close(code=1013)
             return
 
-        from chatter import socket_emit as _socket_emit
+        from modules.services.chatter import socket_emit as _socket_emit
 
         emit = _socket_emit(socket)
 
@@ -517,8 +521,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         return
                     safe = result.model_dump()
                     try:
-                        from project_workflow import redact_report_for_user as _redact_proj
-                        from workflow import redact_fixture_result_for_user as _redact_fixt
+                        from modules.workflows.project_workflow import (
+                            redact_report_for_user as _redact_proj,
+                        )
+                        from modules.workflows.workflow import (
+                            redact_fixture_result_for_user as _redact_fixt,
+                        )
 
                         if target_key is None:
                             safe = _redact_proj(result)
@@ -586,11 +594,11 @@ async def ai_demo_runner(
     show_usage: bool = False,
 ) -> int:
     """AI-built demo mode: intel-grounded generation, then evidence-gated red/blue in Docker."""
-    from agents import MetaMuseClient
-    from config import load_config as _load
-    from demo_gen import generate_demo_project, materialize_demo_project
-    from intel_search import intel_for_demo
-    from profiles import apply_profile as _apply
+    from modules.core.agents import MetaMuseClient
+    from modules.core.config import load_config as _load
+    from modules.core.profiles import apply_profile as _apply
+    from modules.intel.intel_search import intel_for_demo
+    from modules.services.demo_gen import generate_demo_project, materialize_demo_project
 
     settings = _apply(_load(), profile)
     if research:
@@ -632,7 +640,7 @@ async def ai_demo_runner(
             )
             intel = []
     print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
-    from demo_gen import parse_build_intent as _parse
+    from modules.services.demo_gen import parse_build_intent as _parse
 
     _intent = _parse(build_brief=build_brief, vulns=vulns, theme=intel_theme)
     muse = MetaMuseClient(settings)
@@ -658,13 +666,13 @@ async def ai_demo_runner(
     )
     spec = materialize_demo_project(files)
     try:
-        from chatter import chatter as _chatter
+        from modules.services.chatter import chatter as _chatter
 
         print(f"[GREEN] {_chatter('green', n=len(files.flaw_notes), path='app.py')}", flush=True)
     except Exception:
         pass
     # Enrich ProjectSpec with requested intensity/team sizes.
-    from projects import ProjectSpec as _Spec
+    from modules.services.projects import ProjectSpec as _Spec
 
     spec = _Spec.model_validate(
         {
@@ -1447,7 +1455,7 @@ def main() -> int:
             # Spec validation runs first so argparse errors (exit 2) precede
             # the runtime consent failure (exit 1).
             if settings.inference_mode != "local" and not args.allow_remote_inference:
-                from project_workflow import ProjectWorkflowError as _ConsentError
+                from modules.workflows.project_workflow import ProjectWorkflowError as _ConsentError
 
                 raise _ConsentError(
                     "Remote inference consent is required before project source "

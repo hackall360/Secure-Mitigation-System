@@ -21,10 +21,10 @@ sys.path.insert(0, str(ROOT))
 
 import httpx
 
-from agents import MetaMuseClient
-from config import PurpleBoxConfig, load_config
-from project_workflow import execute_project_workflow
-from projects import ProjectSpec
+from modules.core.agents import MetaMuseClient
+from modules.core.config import PurpleBoxConfig, load_config
+from modules.services.projects import ProjectSpec
+from modules.workflows.project_workflow import execute_project_workflow
 
 APP = """from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit

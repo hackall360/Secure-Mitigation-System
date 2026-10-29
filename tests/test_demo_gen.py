@@ -1,5 +1,5 @@
 def test_parse_build_intent_splits_cve_named_free():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(
         build_brief="a tiny notes app",
@@ -15,7 +15,7 @@ def test_parse_build_intent_splits_cve_named_free():
 
 
 def test_parse_build_intent_case_punctuation_duplicates():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="cve-2021-44228 log4shell; XSS!!!, sqli, SQL-INJECTION")
     assert intent.cve_ids == ["CVE-2021-44228"]
@@ -25,7 +25,7 @@ def test_parse_build_intent_case_punctuation_duplicates():
 
 
 def test_parse_build_intent_bare_cve_has_no_free_text():
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="CVE-2024-3094")
     assert intent.cve_ids == ["CVE-2024-3094"]
@@ -40,7 +40,7 @@ def test_parse_build_intent_no_phantom_sinks_from_separator_fragments():
     traversal' — inventing a path-traversal sink the user never requested.
     Only the explicitly named command-injection survives.
     """
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     intent = parse_build_intent(vulns="path/traversal plus command-injection")
     assert intent.named_types == ["OS command injection"]
@@ -55,7 +55,7 @@ def test_parse_build_intent_no_phantom_sinks_from_hypernyms():
     injection'/'header reflection', and 'site' inside 'cross site
     scripting' — inventing sinks the user never named.
     """
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     for hypernym in ("injection", "header", "site"):
         intent = parse_build_intent(vulns=hypernym)
@@ -65,7 +65,7 @@ def test_parse_build_intent_no_phantom_sinks_from_hypernyms():
 
 def test_parse_build_intent_whole_word_aliases_still_match():
     """aa09566 hunk 1: the whole-word restriction keeps every tested case green."""
-    from demo_gen import parse_build_intent
+    from modules.services.demo_gen import parse_build_intent
 
     assert parse_build_intent(vulns="sqli").named_types == ["SQL injection"]
     assert parse_build_intent(vulns="XSS!!!").named_types == ["cross-site scripting"]
@@ -79,7 +79,7 @@ def test_parse_build_intent_whole_word_aliases_still_match():
 
 def test_generate_demo_project_carries_intent_into_payload(monkeypatch):
     """I5 wiring: brief + requested flaws reach the generator payload."""
-    import demo_gen as _dg
+    import modules.services.demo_gen as _dg
 
     captured = {}
 
@@ -116,7 +116,7 @@ def _run_generate(**kwargs):
     """Shared fake-client harness: capture the Muse payload, return (files, payload)."""
     import asyncio as _aio
 
-    import demo_gen as _dg
+    import modules.services.demo_gen as _dg
 
     captured = {}
 

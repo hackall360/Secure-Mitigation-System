@@ -137,11 +137,11 @@ def test_start_scan_thread_uses_workflow(monkeypatch):
         await emit("red", "fixture ready")
         return types.SimpleNamespace(target=key, status="verified", message="all green")
 
-    # start_scan_thread does a lazy `from workflow import execute_purple_workflow`,
+    # start_scan_thread does a lazy `from modules.workflows.workflow import execute_purple_workflow`,
     # so pre-seeding sys.modules redirects it without touching the real module.
     monkeypatch.setitem(
         sys.modules,
-        "workflow",
+        "modules.workflows.workflow",
         types.SimpleNamespace(execute_purple_workflow=fake_workflow),
     )
     state = TuiState(fixture_index=1)
@@ -167,7 +167,9 @@ def test_run_plain_success_degrade_no_curses(monkeypatch, capsys):
         return _types.SimpleNamespace(target=key, status="verified", message="all green")
 
     monkeypatch.setitem(
-        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=fake_workflow)
+        sys.modules,
+        "modules.workflows.workflow",
+        _types.SimpleNamespace(execute_purple_workflow=fake_workflow),
     )
     rc = _tui.run_plain(["--fixture", FIXTURE_ORDER[0]])
     assert rc == 0
@@ -184,7 +186,9 @@ def test_run_plain_failure_returns_one(monkeypatch, capsys):
         raise RuntimeError("docker down")
 
     monkeypatch.setitem(
-        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=boom)
+        sys.modules,
+        "modules.workflows.workflow",
+        _types.SimpleNamespace(execute_purple_workflow=boom),
     )
     assert _tui.run_plain([]) == 1
     assert "RuntimeError" in capsys.readouterr().out
@@ -201,7 +205,9 @@ def test_start_scan_thread_failure_sets_error_state(monkeypatch):
         raise ValueError("no docker here")
 
     monkeypatch.setitem(
-        sys.modules, "workflow", _types.SimpleNamespace(execute_purple_workflow=boom)
+        sys.modules,
+        "modules.workflows.workflow",
+        _types.SimpleNamespace(execute_purple_workflow=boom),
     )
     state = _tui.TuiState()
     q: _queue.Queue = _queue.Queue()

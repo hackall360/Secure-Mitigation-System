@@ -29,7 +29,7 @@ class KnownMuse:
     def __init__(self, key: str):
         self.key = key
         self.harness = load("test_harness")
-        self.agents = load("agents")
+        self.agents = load("modules.core.agents")
 
     async def run_red_team_analysis(self, filename, source, contract):
         return self.agents.RedTeamFinding(
@@ -51,8 +51,8 @@ class KnownMuse:
 
 
 async def scan(key: str) -> bool:
-    config = load("config")
-    workflow = load("workflow")
+    config = load("modules.core.config")
+    workflow = load("modules.workflows.workflow")
     events: list[str] = []
 
     async def emit(team: str, message: str) -> None:
@@ -76,7 +76,7 @@ async def scan(key: str) -> bool:
 
 
 async def main() -> int:
-    registry = load("registry")
+    registry = load("modules.core.registry")
     results = [await scan(key) for key in registry.TARGETS_REGISTRY]
     return 0 if all(results) else 1
 

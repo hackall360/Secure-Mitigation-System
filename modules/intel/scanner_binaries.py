@@ -43,13 +43,13 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-from sms_scan_parse import (
+from modules.shared.sms_scan_parse import (
     cvss_best as _cvss_from_grype_cvss,
 )
-from sms_scan_parse import (
+from modules.shared.sms_scan_parse import (
     cvss_from_vendor_map as _cvss_from_trivy_cvss,
 )
-from sms_scan_parse import cwe_list, ref_list
+from modules.shared.sms_scan_parse import cwe_list, ref_list
 
 MAX_SCAN_BYTES = 8 * 1024 * 1024
 DEFAULT_TIMEOUT = 300.0

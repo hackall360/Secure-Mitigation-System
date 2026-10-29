@@ -11,7 +11,7 @@
   at the repository root. All 34 non-ignore files were verified byte-identical
   to the archive after import. The existing `.gitignore` was preserved and the
   scaffold's rules appended. The source archive was not modified or committed.
-- `VALIDATION.md` contains the scaffold author's original validation report,
+- [`archive/VALIDATION.md`](../archive/VALIDATION.md) contains the scaffold author's original validation report,
   not a record of checks performed in this repository.
 
 ## Local validation of the import
@@ -60,8 +60,8 @@ live checks unless requested. Unit tests are not proof of live integration.
   load `.env`, so export the configured values before starting the application.
 - `.venv/`, `.env`, caches, and `reports/` are ignored local state.
 
-See `README.md` for running the application, `SPEC.md` for design requirements,
-and `AGENT.md` for maintenance constraints.
+See `README.md` for running the application, [`SPEC.md`](../SPEC.md) for design requirements,
+and [`archive/AGENT.md`](../archive/AGENT.md) for maintenance constraints.
 
 ## Current development setup
 

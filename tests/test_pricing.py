@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from agents import AgentError, MetaMuseClient
-from config import PurpleBoxConfig
-from pricing import CallUsage, ScanUsage, estimate_cost, usage_from_response
+from modules.core.agents import AgentError, MetaMuseClient
+from modules.core.config import PurpleBoxConfig
+from modules.core.pricing import CallUsage, ScanUsage, estimate_cost, usage_from_response
 
 FINDING = {
     "vulnerability_class": "type confusion",

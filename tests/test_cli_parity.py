@@ -11,8 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 import main
-from config import PurpleBoxConfig
-from pricing import ScanUsage
+from modules.core.config import PurpleBoxConfig
+from modules.core.pricing import ScanUsage
 
 
 def _result(**over):
@@ -339,7 +339,7 @@ def test_fast_lane_flag_reaches_cve_scan(monkeypatch, tmp_path):
 
     async def fake_cve(project, emit, **kwargs):
         seen.update(kwargs)
-        from cve_workflow import CveScanReport
+        from modules.workflows.cve_workflow import CveScanReport
 
         return CveScanReport(target="p", message="Fast lane: ok")
 
