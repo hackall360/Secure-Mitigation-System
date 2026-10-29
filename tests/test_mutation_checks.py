@@ -525,3 +525,62 @@ def test_mutation_guard_fails_closed_on_pool_drift(monkeypatch):
     monkeypatch.setattr(checks, "_mutation_php_hosts", lambda: ["localhost"])
     with pytest.raises(ValueError, match="[Ff]rozen|[Nn]ondeterminism|[Dd]rift"):
         checks.project_mutation_script("php_command_sink")
+
+
+# ZERO_DAY_BLUEPRINT item 2 (wolf) RED: combined-path build failure must
+# fail closed. A frozen-pool ValueError while building the node
+# property+mutation script must set BOTH properties_ev and mutations_ev
+# to exit-2 evidence; mutations None would pass the gate vacuously.
+async def test_combined_build_failure_sets_both_evidences_exit_2(tmp_path, monkeypatch):
+    """Frozen pool drift on the node combined path vetoes via both gates."""
+    from helpers import TEST_CONFIG as CONFIG
+
+    import modules.core.checks as checks
+    from modules.core.docker_manager import ProjectCheckResult
+    from modules.services.projects import ProjectSpec, snapshot_project
+    from modules.workflows.project_workflow import (
+        DockerProjectSandbox,
+        mutation_gate_passed,
+        property_gate_passed,
+    )
+
+    monkeypatch.setattr(checks, "_mutation_node_ids", lambda seed: ["101"])
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    spec = ProjectSpec(
+        path=tmp_path,
+        command=["python", "app.py"],
+        test_command=["python", "-m", "pytest"],
+        contract="node_query_sink\nGET /lookup fixture.",
+    )
+    snapshot = snapshot_project(spec)
+
+    class _Manager:
+        def start_project(self, network, _spec, _snapshot):
+            return object(), "image"
+
+        def run_project_check(self, network, _spec, _snapshot, *, command=None, script=None):
+            return ProjectCheckResult(exit_code=0, stdout="ok", stderr="")
+
+        def stop_project(self, _target):
+            return None
+
+    sandbox = DockerProjectSandbox.__new__(DockerProjectSandbox)
+    sandbox.config = CONFIG
+    sandbox.spec = spec
+    sandbox.base_snapshot = snapshot
+    sandbox.manager = _Manager()
+    sandbox.network = "test-network"
+    result = sandbox.verify_project_snapshot(
+        {"name": "demo"},
+        {"app.py": "print('ok')\n"},
+        "import sys\nsys.exit(1)",
+        ["python", "-m", "pytest"],
+        label="combined-build-failure",
+    )
+    assert result.properties is not None
+    assert result.mutations is not None
+    assert result.properties.exit_code == 2
+    assert result.mutations.exit_code == 2
+    # Both fail-closed gates must veto, never pass vacuously.
+    assert property_gate_passed(result) is False
+    assert mutation_gate_passed(result) is False

@@ -633,7 +633,14 @@ class DockerProjectSandbox:
                     )
                     properties_ev = _check_evidence(property_check, 131_072)
             except Exception:
+                # ZERO_DAY_BLUEPRINT item 2 (wolf): a combined-path build
+                # failure (e.g. frozen-pool drift) must veto through BOTH
+                # fail-closed gates. mutations None would pass vacuously,
+                # so set both evidences to exit-2 evidence.
                 properties_ev = ExecutionEvidence(
+                    exit_code=2, output="Properties check did not run."
+                )
+                mutations_ev = ExecutionEvidence(
                     exit_code=2, output="Properties check did not run."
                 )
             # SPEC 14.8 item 4: bounded mutation-count probes run in the same
