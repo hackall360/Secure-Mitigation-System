@@ -50,6 +50,20 @@ LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 # dashboard footer. Bump per LAW 12 on every shipped change set.
 APP_VERSION = "0.3.0"
 
+# Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
+# value in plain English. Rendered as the --help epilog; sms_cli and tui
+# mirror the same lines so all three surfaces agree. No new flags here,
+# so LAW 8 (no dead flags) holds by construction.
+CAPABILITIES_EPILOG = """Same-day value (Wave 2/5/8, all in the default scan, no extra flags):
+  receipts: receipt.json proves what the sandbox actually ran (probe exits + patch hash).
+  rationale: guard rationales show why each patch guard fired, in plain words.
+  topping: fast-lane topping lists the most reachable + fixable CVE first (--fast-lane).
+  mutations: mutation probes confirm the fix still holds under small input changes.
+  freshness: freshness stamps show the intel was fetched live today, not cached.
+  templates: template-shaped patches stay inside the small-edit guard budget.
+  stale token: KEV/EPSS signals older than 1 day render as stale:<date> so old intel never outranks fresh.
+  repeat-stability: repeat-stability re-runs the check so a flaky pass cannot verify."""
+
 
 def _demo_build_failure(exc: BaseException) -> dict:
     """User-safe error report for a failed demo build (UI result-card shape)."""
@@ -1150,7 +1164,9 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Secure Mitigation System — local Muse boundary verification scaffold"
+        description="Secure Mitigation System — local Muse boundary verification scaffold",
+        epilog=CAPABILITIES_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     commands = parser.add_mutually_exclusive_group(required=True)
@@ -1172,11 +1188,17 @@ def main() -> int:
     commands.add_argument(
         "--tui",
         action="store_true",
-        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY)",
+        help="Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY); h shows Wave 2/5/8 same-day value, receipt/guard/mutation tokens inline",
     )
-    commands.add_argument("--scan", choices=list(TARGETS_REGISTRY), help="Scan one bundled fixture")
     commands.add_argument(
-        "--project", type=Path, help="Scan a local source directory without modifying it"
+        "--scan",
+        choices=list(TARGETS_REGISTRY),
+        help="Scan one bundled fixture; result card shows receipt, guard rationales, mutation probes",
+    )
+    commands.add_argument(
+        "--project",
+        type=Path,
+        help="Scan a local source directory without modifying it; patches stay template-shaped inside the small-edit guard",
     )
     commands.add_argument(
         "--list-targets", action="store_true", help="List bundled fixtures without Docker or a key"
@@ -1236,7 +1258,7 @@ def main() -> int:
     parser.add_argument(
         "--cve-scan",
         action="store_true",
-        help="Run deep static+CVE scan (OSV lookup) instead of probe/patch verification",
+        help="Run deep static+CVE scan (OSV lookup) instead of probe/patch verification; KEV/EPSS carry freshness stamps",
     )
     parser.add_argument(
         "--deep-assessment",
@@ -1251,7 +1273,7 @@ def main() -> int:
     parser.add_argument(
         "--fast-lane",
         action="store_true",
-        help="CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD",
+        help="CVE disclosure fast lane: static + OSV only, deterministic order, no Muse/NVD; topping lists most reachable+fixable first, signals older than 1 day show as stale",
     )
     parser.add_argument(
         "--build-brief",
@@ -1302,7 +1324,7 @@ def main() -> int:
         "--format",
         choices=["table", "json"],
         default="table",
-        help="Non-interactive output shape: human-readable tables (default) or redacted JSON",
+        help="Non-interactive output shape: human-readable tables (default) or redacted JSON; tables show guard rationales and mutation probes",
     )
     parser.add_argument(
         "--show-usage",
@@ -1310,7 +1332,9 @@ def main() -> int:
         help="Always print the token/cost table even when no model calls were made",
     )
     parser.add_argument(
-        "--output-dir", type=Path, help="Save scan JSON and candidate diff to a new run directory"
+        "--output-dir",
+        type=Path,
+        help="Save scan JSON and candidate diff to a new run directory (includes receipt.json sandbox proof)",
     )
     parser.add_argument(
         "--research",

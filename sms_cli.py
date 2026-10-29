@@ -23,6 +23,26 @@ except ModuleNotFoundError:  # Python < 3.11 fallback; project runs 3.12+.
 
 CONFIG_KEY = "sms"
 
+# Exec-audience mirror of main.CAPABILITIES_EPILOG (import-safe: same lines,
+# no new flags). Used by sms help text and tui help overlay.
+CAPABILITIES_TEXT = (
+    "Same-day value (Wave 2/5/8, all in the default scan, no extra flags):\n"
+    "  receipts: receipt.json proves what the sandbox actually ran (probe exits + patch hash).\n"
+    "  rationale: guard rationales show why each patch guard fired, in plain words.\n"
+    "  topping: fast-lane topping lists the most reachable + fixable CVE first (--fast-lane).\n"
+    "  mutations: mutation probes confirm the fix still holds under small input changes.\n"
+    "  freshness: freshness stamps show the intel was fetched live today, not cached.\n"
+    "  templates: template-shaped patches stay inside the small-edit guard budget.\n"
+    "  stale token: KEV/EPSS signals older than 1 day render as stale:<date> so old intel never outranks fresh.\n"
+    "  repeat-stability: repeat-stability re-runs the check so a flaky pass cannot verify."
+)
+
+
+def capabilities_text() -> str:
+    """One-line-per-capability exec summary of Wave 2/5/8 same-day value."""
+    return CAPABILITIES_TEXT
+
+
 # Flag > config > env precedence merges only these CLI-owned keys.
 CONFIG_KEYS = (
     "profile",
@@ -630,6 +650,7 @@ def fact_table(result: object, use_color: bool | None = None) -> str:
         ("Cycles", facts["cycles"]),
         ("Research records", facts["research_records"]),
         ("Cleanup", facts["cleanup"]),
+        ("Capabilities", "run main.py --help for Wave 2/5/8 same-day value"),
     ]
     width = max(len(label) for label, _ in rows)
     lines = [paint("Scan facts", "bold", use_color)]

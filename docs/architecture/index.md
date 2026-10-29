@@ -10,6 +10,7 @@ System design: repo map, project workflow, scan profiles, discovery teams.
 - [WAVE5.md](WAVE5.md) — GHSA cve_id fix, KEV signal, tie-break band, differential gate, tiering
 - [WAVE8.md](WAVE8.md) — KEV/EPSS enrichment, KEV cache, property gate, LOW bundle, shape trap
 - [WAVE9.md](WAVE9.md) — Wave 2 data flow: receipts/export, guard rationale, topping, mutation gate chain, gate order, shape TRAP
+- [ZERO_DAY.md](ZERO_DAY.md) — executive architecture: blueprint verdicts, 8 build items, gate/live proof, gaps
 - [WAVE10.md](WAVE10.md) — SPEC 14.9: freshness stamping, EUVD exclusion, frozen-pool digest, template-in-budget
 
 Up: [docs/index.md](../index.md)

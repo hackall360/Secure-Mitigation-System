@@ -14,6 +14,23 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
 > **Executive summary.** Secure Mitigation System is a red/blue input-boundary verification harness for code you own: a red-team Muse agent finds an input-handling weakness and proves it with a container exit code, a blue-team Muse agent writes a minimal sanitization patch, and trusted regression checks confirm the boundary holds. It exists for developers and security reviewers who need **evidence, not opinion** — every claim about a boundary is Docker output, and every container is removed afterward.
 
+## Why this exists (the 60-second version)
+
+One loop, evidence-gated (`modules/workflows/workflow.py:build_verdict_receipt`, `modules/workflows/project_workflow.py:build_cycle_receipt`):
+
+- **Red proves it.** A probe runs in an air-gapped container; exit `0` = boundary reached, `1` = blocked, `2` = inconclusive, fail-closed.
+- **Blue fixes only the boundary.** Sanitization-only patch under a 60-line budget (`modules/core/patches.py:EDIT_BUDGET_LINES`); rejected patches carry the firing guard (`project_workflow.py:GuardRationale`).
+- **Regression re-proves it.** Trusted normal-input checks re-run on original and patched targets; equal pass/fail class required (`project_workflow.py:differential_passed`), plus opt-in property gate (`property_gate_passed`) and 4-seed mutation gate (`modules/core/checks.py:MUTATION_SEED=20261029`, `mutation_gate_passed`).
+- Only all-green is `verified`/`retained`; every verdict ships a machine-readable receipt (`workflow.py:export_receipt_json`, `project_workflow.py:export_cycle_receipt_json`) pinning the exits and `patch_sha256`.
+
+Zero-day triage edge (`modules/workflows/cve_workflow.py`, flags `main.py:--cve-scan/--fast-lane/--deep-assessment/--offline-cve`):
+
+- **Reachable+fixable first.** `_fast_lane_rank` orders `(-reach_score, fix availability, kev_listed, epss_percentile, id)`; `_queue_evidence` prints the auditable tie-break `reach:{n} fix:{v} kev:{...} epss:{...}`.
+- **Freshness stamps.** KEV/EPSS signals carry `kev_date`/`epss_date`; older than `_SOURCE_FRESH_DAYS=1` read as absent, fail-closed. `FAST_LANE_EXCLUDED_SOURCES={euvd}` keeps unverified feeds out of the fast lane.
+- **Frozen inputs.** Mutation pools assert `FROZEN_MUTATION_POOL_SHA256` (`modules/core/checks.py`), so a re-run reproduces byte-identical inputs.
+
+Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, differential, topping, freshness, fast lane. LABEL = property (opt-in), mutation (shape check), templates (small diffs). CUT = frozen-pool digest hygiene, receipt JSON, rationale text, demo/greenhouse, scanners/sidecars, dashboard chrome — documentation labels, not deletions.
+
 ## Key Features
 
 - **Evidence-gated verdicts.** Probes run in air-gapped Docker; exit `0` = boundary reached, `1` = blocked, `2` = inconclusive (fails closed). The model proposes; Docker disposes.

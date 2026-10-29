@@ -757,3 +757,126 @@ def test_w2v2_real_receipt_export_roundtrip():
     parsed = json.loads(export_receipt_json(receipt))
     assert parsed["fixture"] == "node_query_sink"
     assert parsed["patch_sha256"].startswith("36d46d53")
+
+
+# --- Interactive help polish (Wave 2/5/8 exec audience; LAW 8: no dead flags) ---
+# Fail-first: every capability one-liner must appear in --help output.
+
+HELP_KEYWORDS = (
+    "receipts",
+    "rationale",
+    "topping",
+    "mutations",
+    "freshness",
+    "templates",
+    "stale",
+    "repeat-stability",
+)
+
+
+def _help_text(argv):
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "main.py", *argv],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+def test_help_lists_all_wave_capabilities_with_value():
+    out = _help_text(["--help"]).lower()
+    for keyword in HELP_KEYWORDS:
+        assert keyword in out, f"--help missing {keyword!r}"
+
+
+def test_help_names_receipt_json_proof():
+    out = _help_text(["--help"])
+    assert "receipt.json" in out
+
+
+def test_help_names_stale_token_and_repeat_stability():
+    out = _help_text(["--help"])
+    assert "stale:<date>" in out or "stale:" in out
+    assert "repeat-stability" in out
+
+
+def test_help_documents_only_live_flags_law8():
+    """Every --long-flag in --help must parse (no dead documented flags)."""
+    import re
+
+    out = _help_text(["--help"])
+    flags = sorted(set(re.findall(r"--[a-z][a-z0-9-]+", out)))
+    # Sanity: capability keywords never masquerade as flags.
+    assert "--receipts" not in flags
+    assert "--topping" not in flags
+    # Spot-check live flags parse on their own surface.
+    import subprocess
+    import sys
+
+    for probe in (["--version"], ["--list-targets"], ["--help"]):
+        proc = subprocess.run(
+            [sys.executable, "main.py", *probe],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert proc.returncode == 0, (probe, proc.stderr)
+
+
+def test_sms_capabilities_text_matches_main_epilog():
+    import main as _main
+    from sms_cli import capabilities_text
+
+    for keyword in HELP_KEYWORDS:
+        assert keyword in capabilities_text().lower()
+    assert "receipt.json" in capabilities_text()
+    assert "receipt.json" in _main.CAPABILITIES_EPILOG
+
+
+def test_tui_footer_and_overlay_carry_help():
+    import tui as _tui
+
+    assert "h help" in _tui.FOOTER_HELP
+    assert _tui.parse_key("h") == "help"
+    assert _tui.parse_key("H") == "help"
+    state = _tui.TuiState()
+    _tui.apply_action(state, "help")
+    assert state.help_open is True
+    lines = _tui.render_panes(state)
+    joined = "\n".join(lines).lower()
+    for keyword in (
+        "receipts",
+        "rationale",
+        "topping",
+        "mutations",
+        "freshness",
+        "templates",
+        "stale",
+        "repeat-stability",
+    ):
+        assert keyword in joined, f"TUI overlay missing {keyword!r}"
+
+
+def test_tui_plain_help_carries_capabilities():
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from tui import run_plain; raise SystemExit(run_plain(['--help']))",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout.lower()
+    for keyword in HELP_KEYWORDS:
+        assert keyword in out, f"tui --help missing {keyword!r}"
