@@ -100,17 +100,46 @@ def _mysql_ok(url: str):
 
 
 def test_node_properties_pass_on_healthy_service():
-    script = project_property_script("node_eval_service")
+    script = project_property_script("node_query_sink")
     assert _run_script(script, _node_ok) == 0
 
 
 def test_node_properties_fail_on_broken_service():
-    script = project_property_script("node_eval_service")
+    script = project_property_script("node_query_sink")
 
     def broken(url: str):
         if "/lookup?id=" in url and not url.endswith(("101", "102")):
             return 200, json.dumps({"status": "ok", "count": 5, "results": [{"id": 1}]}).encode()
         return _node_ok(url)
+
+    assert _run_script(script, broken) == 1
+
+
+def _text_ok(url: str):
+    # Project-workflow plain-text shape (project_scan.py APP + both patches):
+    # exact names for known ids, empty body for any other decimal id.
+    if url.endswith("/lookup?id=101"):
+        return 200, b"Alice"
+    if url.endswith("/lookup?id=102"):
+        return 200, b"Bob"
+    if "/lookup?id=" in url:
+        # Seeded random ids: unknown accounts return an empty plain body.
+        return 200, b""
+    return 404, b"not found"
+
+
+def test_project_lookup_text_passes_on_plaintext_service():
+    script = project_property_script("project_lookup_text")
+    assert _run_script(script, _text_ok) == 0
+
+
+def test_project_lookup_text_fails_on_leaking_service():
+    script = project_property_script("project_lookup_text")
+
+    def broken(url: str):
+        if "/lookup?id=" in url and not url.endswith(("101", "102")):
+            return 200, b"Alice,Bob"
+        return _text_ok(url)
 
     assert _run_script(script, broken) == 1
 
@@ -161,7 +190,16 @@ def _verification(properties_exit: int | None) -> SnapshotVerification:
     )
 
 
-@pytest.mark.parametrize("fixture", ["node_eval_service", "php_command_sink", "mysql_config_audit"])
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "node_query_sink",
+        "project_lookup_text",
+        "php_command_sink",
+        "mysql_config_audit",
+        "mysql_insecure_conf",
+    ],
+)
 def test_property_scripts_are_bounded_and_explicit_exit(fixture):
     script = project_property_script(fixture)
     assert len(script) < 16_384
