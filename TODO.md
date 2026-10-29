@@ -201,3 +201,9 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
       Proof so far: README 1178cda, CLI dc7a4b6, arch d193d84 merged; gate 351 passed after docs merge.
       Remains: user invokes ship; then bump APP_VERSION + surfaces, feature -> develop -> main, both pushes, end on develop.
       Next unblocked work without ship: Wave 4 extended research (RESEARCH_V2) can start on this branch.
+
+## N. Zero-day Wave 4 extended research (brief 2026-10-28-zero-day-9wave item 4)
+
+- [.] N1. Five read-only lanes -> RESEARCH_V2.md: (a) re-verify Wave 1 recall-grounded claims (Semgrep autofix safety, Snyk rescan+unit-test verification, Endor/Snyk reachability) against live sources where reachable; (b) extended horizon: agentic remediation since Wave 1 (new entrants, benchmarks); (c) same-day patching economics/SLA data (KEV timelines, EPSS v5 follow-through); (d) sandbox/proof systems (eBPF, snapshot fuzzing, proof-carrying patches); (e) keyless intel evolution (OSV/GHSA/CIRCL changes).
+      Files: `RESEARCH_V2.md` only (research writes no code). Proof: file committed with A/B/C novelty statements + explicit verified-vs-recall labels; gate green (docs-only).
+- [ ] N2. SPEC delta for Wave 5 gated on RESEARCH_V2 (no implementation before it, strict sequencing).
