@@ -233,5 +233,5 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 ## R. Zero-day Wave 8 (blocked on RESEARCH_V3 Lane C + SPEC SS14.7, done)
 
 - [.] R1. Property/metamorphic normal-contract checks wired into verification, recorded as evidence, fail-closed. Files: `checks.py`, `project_workflow.py`, `tests/`. Fail-first: property failure must fail the cycle.
-- [ ] R2. LOW bundle: research fetch caps, epss sanitizer reuse, intel_search CVE shape. Files: `research.py`, `intel_search.py`, tests. Fail-first each.
+- [x] R2. LOW bundle: research fetch caps, epss sanitizer reuse, intel_search CVE shape. Files: `research.py`, `intel_search.py`, `cve_workflow.py`, `tests/test_scanners.py`. Fail-first each (red 3 failed, green 29 passed test_scanners; full suite 375 passed).
 - [ ] R3. Wave 9 docs after R1/R2 gate green.
