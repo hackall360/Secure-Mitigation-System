@@ -69,7 +69,8 @@ async def execute_cve_scan(
     - Muse deep assessment requires a key unless local inference; disabled by default.
     - `fast_lane` is an opt-in disclosure fast lane: it forces
       `include_deep_assessment=False` and `include_nvd=False`, caps
-      `max_osv_details` to min(given, 10), sorts vulnerabilities by id, and
+      `max_osv_details` to min(given, 10), sorts vulnerabilities by actionability
+      tier (-reach_score, fix availability, id), and
       prefixes the message with "Fast lane: ". Same shape, never raises.
     """
 
@@ -231,7 +232,14 @@ async def execute_cve_scan(
             summary["reach_evidence"] = ["scoring unavailable"]
     cve_count = len(summaries)
     if fast_lane:
-        summaries.sort(key=lambda s: s.get("id") or "")
+        # SSVC-style actionability tiering: reachable + fixable first, id as final tiebreak.
+        summaries.sort(
+            key=lambda s: (
+                -(s.get("reach_score") or 0),
+                not bool(s.get("fixed_versions")),
+                s.get("id") or "",
+            )
+        )
     message = (
         f"Deep scan completed: {len(static_findings)} static signals, "
         f"{len(deps)} dependencies, {cve_count} CVE records."
