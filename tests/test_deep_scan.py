@@ -202,6 +202,116 @@ async def test_fast_lane_caps_max_osv_details(monkeypatch):
     assert len(seen) == 10
 
 
+def _o4_summary(vid, fixed=(), cwe=None):
+    """O4 helper: minimal OSV summary with controllable fix/CWE signals."""
+    return {
+        "id": vid,
+        "summary": "",
+        "details": "",
+        "published": None,
+        "modified": None,
+        "aliases": [],
+        "cves": [],
+        "severity": [],
+        "fixed_versions": list(fixed),
+        "references": [],
+        "cwe": cwe,
+    }
+
+
+async def _o4_run(monkeypatch, summaries, vuln_ids, files, *, fast_lane):
+    """O4 helper: run execute_cve_scan with mocked OSV, real reachability scoring."""
+    import cve_workflow as _cw
+
+    monkeypatch.setattr(
+        _cw,
+        "query_osv_batch",
+        lambda deps: {"results": [{"vulns": [{"id": vid} for vid in vuln_ids]} for _ in deps]},
+    )
+    monkeypatch.setattr(_cw, "fetch_osv_vuln", lambda vid: {"id": vid})
+    monkeypatch.setattr(
+        _cw, "summarize_osv_vuln", lambda rec: next(s for s in summaries if s["id"] == rec["id"])
+    )
+
+    async def _raise(*args, **kwargs):
+        raise AssertionError("Muse must not be called on this path")
+
+    monkeypatch.setattr(_cw, "muse_deep_assessment", _raise)
+
+    from cve_workflow import execute_cve_scan
+
+    async def emit(team, message):
+        return None
+
+    return await execute_cve_scan(files, emit, fast_lane=fast_lane)
+
+
+async def test_fast_lane_orders_higher_reach_first(monkeypatch):
+    """O4: fast_lane orders by actionability (reach_score) before id."""
+    summaries = [
+        _o4_summary("GHSA-aaa"),
+        _o4_summary("GHSA-zzz", fixed=["2.0"]),
+    ]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-aaa", "GHSA-zzz"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["reach_score"] for v in report.vulnerabilities] == [50, 10]
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
+async def test_fast_lane_ties_prefer_fixed_versions(monkeypatch):
+    """O4: equal reach_score orders summaries with fixed_versions first."""
+    summaries = [
+        _o4_summary("GHSA-zzz", fixed=["2.0"], cwe="CWE-79"),
+        _o4_summary("GHSA-aaa", cwe="CWE-502"),
+    ]
+    files = {
+        "requirements.txt": "jinja2==3.1.4\n",
+        "app.py": "import pickle\ndata = pickle.loads(blob)\n",
+    }
+    report = await _o4_run(monkeypatch, summaries, ["GHSA-aaa", "GHSA-zzz"], files, fast_lane=True)
+    assert report.success
+    scores = [v["reach_score"] for v in report.vulnerabilities]
+    assert scores[0] == scores[1] == 50
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
+async def test_fast_lane_ties_fall_back_to_id(monkeypatch):
+    """O4: equal reach and fix status fall back to ascending id."""
+    summaries = [_o4_summary("GHSA-mmm"), _o4_summary("GHSA-zzz"), _o4_summary("GHSA-aaa")]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-mmm", "GHSA-zzz", "GHSA-aaa"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=True,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-aaa", "GHSA-mmm", "GHSA-zzz"]
+
+
+async def test_non_fast_lane_keeps_insertion_order(monkeypatch):
+    """O4: without fast_lane, order follows OSV insertion order (no tier sort)."""
+    summaries = [
+        _o4_summary("GHSA-zzz", fixed=["2.0"]),
+        _o4_summary("GHSA-aaa"),
+    ]
+    report = await _o4_run(
+        monkeypatch,
+        summaries,
+        ["GHSA-zzz", "GHSA-aaa"],
+        {"requirements.txt": "jinja2==3.1.4\n"},
+        fast_lane=False,
+    )
+    assert report.success
+    assert [v["id"] for v in report.vulnerabilities] == ["GHSA-zzz", "GHSA-aaa"]
+
+
 async def test_offline_cve_scan_needs_no_network_or_key(tmp_path):
     from cve_workflow import execute_cve_scan
 
