@@ -225,7 +225,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 ## Q. Zero-day Wave 7 implementation (blocked on RESEARCH_V3 + SPEC SS14.6, done)
 
-- [.] Q1. Wire `kev_listed`/`epss_percentile` through `cve_workflow` enrichment into `reachability_score`; fail-first through real producer path; evidence strings live. Files: `cve_workflow.py`, `tests/test_deep_scan.py`.
-- [ ] Q2. KEV per-process catalog cache in `research.kev_lookup`; fail-first cache test. Files: `research.py`, `tests/test_scanners.py`.
+- [x] Q1. Wire `kev_listed`/`epss_percentile` through `cve_workflow` enrichment into `reachability_score`; fail-first through real producer path; evidence strings live. Files: `cve_workflow.py`, `tests/test_deep_scan.py`.
+- [x] Q2. KEV per-process catalog cache in `research.kev_lookup`; fail-first cache test. Files: `research.py`, `tests/test_scanners.py`.
 - [ ] Q3. Wave 8: property/metamorphic checks + LOW bundle (after Q1/Q2 gate green).
 - [ ] Q4. Wave 9: docs + adventure only if Q1-Q3 clean.
