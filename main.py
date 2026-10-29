@@ -815,13 +815,30 @@ async def cli_runner(
 
 
 def _extract_wave2_receipt(report: dict) -> dict | None:
-    """Item 1 receipt payload for receipt.json. Defensive: dict-or-None only."""
+    """Item 1 (+ project cycles) receipt payload for receipt.json.
+
+    REAL fields first: top-level ``receipt`` (VerdictReceipt dump), then
+    every ``cycle_reports``/``cycles`` entry ``receipt`` (CycleReceipt dump).
+    Legacy ``verdict_receipt`` fallback last. Defensive: dict-or-None only.
+    """
+    if not isinstance(report, dict):
+        return None
     try:
-        receipt = report.get("verdict_receipt")
-        if hasattr(receipt, "model_dump"):
-            receipt = receipt.model_dump()
-        if isinstance(receipt, dict) and receipt:
-            return {str(k)[:64]: v for k, v in list(receipt.items())[:32]}
+        candidates: list = [report.get("receipt"), report.get("verdict_receipt")]
+        for key in ("cycle_reports", "cycles"):
+            items = report.get(key)
+            if isinstance(items, (list, tuple)):
+                for item in items:
+                    if isinstance(item, dict):
+                        candidates.append(item.get("receipt"))
+        for candidate in candidates:
+            if hasattr(candidate, "model_dump"):
+                try:
+                    candidate = candidate.model_dump()
+                except Exception:
+                    continue
+            if isinstance(candidate, dict) and candidate:
+                return {str(k)[:64]: v for k, v in list(candidate.items())[:32]}
     except Exception:
         pass
     return None

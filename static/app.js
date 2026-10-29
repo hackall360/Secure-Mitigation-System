@@ -673,35 +673,74 @@ function w2v2AsRecord(value) {
 
 function w2v2Receipt(payload) {
   try {
-    const receipt = w2v2AsRecord(payload && payload.verdict_receipt);
+    // REAL first: result.receipt (VerdictReceipt) or any cycle.receipt
+    // (CycleReceipt); legacy verdict_receipt fallback.
+    let receipt = w2v2AsRecord(payload && payload.receipt);
+    if (!receipt && Array.isArray(payload && (payload.cycle_reports || payload.cycles))) {
+      for (const cycle of payload.cycle_reports || payload.cycles) {
+        receipt = w2v2AsRecord(cycle && cycle.receipt);
+        if (receipt) break;
+      }
+    }
+    if (!receipt) receipt = w2v2AsRecord(payload && payload.verdict_receipt);
     if (!receipt) return null;
     const parts = [];
     const fixture = receipt.fixture || receipt.target;
     if (fixture) parts.push(String(fixture).slice(0, 64));
-    if (receipt.pre_exit_code !== undefined || receipt.post_exit_code !== undefined) {
-      parts.push(`probe ${receipt.pre_exit_code}/${receipt.post_exit_code}`);
+    const pre = receipt.pre_exit_code ?? receipt.pre_probe_exit;
+    const post = receipt.post_exit_code ?? receipt.post_probe_exit;
+    if (pre !== undefined || post !== undefined) {
+      parts.push(`probe ${pre}/${post}`);
     }
-    ['regression', 'differential', 'properties'].forEach((key) => {
-      if (receipt[key]) parts.push(`${key} ${receipt[key]}`);
-    });
-    const hash = receipt.patch_hash || receipt.patch_sha;
-    if (hash) parts.push(`hash ${String(hash).slice(0, 16)}`);
+    if (receipt.regression_passed) parts.push('regression passed');
+    else if (receipt.baseline_regression_exit !== undefined || receipt.patched_regression_exit !== undefined) {
+      parts.push(`regression ${receipt.baseline_regression_exit}/${receipt.patched_regression_exit}`);
+    }
+    if (receipt.differential_passed === true) parts.push('differential passed');
+    if (receipt.property_passed === true) parts.push('properties passed');
+    const hash = receipt.patch_sha256 || receipt.patch_hash || receipt.patch_sha;
+    if (hash) parts.push(`sha ${String(hash).slice(0, 16)}`);
     return parts.length ? parts.join(' · ').slice(0, 200) : null;
   } catch { return null; }
 }
 
 function w2v2Guards(payload) {
   try {
+    // REAL first: GuardRationale at evidence.replacement_validation or
+    // evidence root (guard_id/reason/trigger); legacy list fallback.
+    const found = [];
+    const readGuard = (item) => {
+      if (typeof item === 'string') return item.trim() ? { text: item.slice(0, 80) } : null;
+      const row = w2v2AsRecord(item);
+      if (!row) return null;
+      const guard = row.guard_id || row.guard || row.rule || row.check || 'guard';
+      const line = row.trigger || row.protected_line || row.line || '';
+      const reason = row.reason || row.action || '';
+      if (!row.guard_id && !row.guard && !reason) return null;
+      return { guard: String(guard).slice(0, 80), line: String(line).slice(0, 80), reason: String(reason).slice(0, 160) };
+    };
+    const top = payload && payload.guard_rationale;
+    if (top) {
+      const g = readGuard(top);
+      if (g) found.push(g);
+    }
+    const cycles = (payload && (payload.cycle_reports || payload.cycles)) || [];
+    if (Array.isArray(cycles)) {
+      for (const cycle of cycles) {
+        const ev = cycle && cycle.evidence;
+        const rv = ev && ev.replacement_validation;
+        for (const cand of [(rv && rv.guard_rationale), ev && ev.guard_rationale]) {
+          if (!cand) continue;
+          const g = readGuard(cand);
+          if (g && !found.some((h) => (h.guard || h.text) === (g.guard || g.text))) found.push(g);
+        }
+        if (found.length >= 3) break;
+      }
+    }
+    if (found.length) return found.slice(0, 8);
     const raw = (payload && (payload.guard_rationales || payload.guard_evidence)) || null;
     if (!Array.isArray(raw) || !raw.length) return [];
-    return raw.slice(0, 8).map((item) => {
-      if (typeof item === 'string') return { text: item.slice(0, 80) };
-      const row = w2v2AsRecord(item) || {};
-      const guard = row.guard || row.rule || row.check || 'guard';
-      const line = row.protected_line || row.line || '';
-      const reason = row.reason || row.action || '';
-      return { guard: String(guard).slice(0, 80), line: String(line).slice(0, 80), reason: String(reason).slice(0, 160) };
-    });
+    return raw.slice(0, 8).map(readGuard).filter(Boolean);
   } catch { return []; }
 }
 
@@ -711,10 +750,11 @@ function w2v2Topping(payload) {
     if (!Array.isArray(vulns) || !vulns.length) return [];
     return vulns.slice(0, 10)
       .map((v) => w2v2AsRecord(v))
-      .filter((v) => v && v.reach_score !== undefined && v.reach_score !== null)
+      .filter((v) => v && (v.queue_evidence || v.reach_score !== undefined && v.reach_score !== null))
       .map((v) => ({
         id: String((v.cves && v.cves[0]) || v.id || 'vuln').slice(0, 40),
         score: v.reach_score,
+        queue: typeof v.queue_evidence === 'string' ? v.queue_evidence.slice(0, 120) : null,
         fixed: Array.isArray(v.fixed_versions) ? v.fixed_versions.slice(0, 4) : [],
         kev: Boolean(v.kev_listed),
         epss: typeof v.epss_percentile === 'number' ? v.epss_percentile : null,
@@ -725,6 +765,33 @@ function w2v2Topping(payload) {
 
 function w2v2Mutation(payload) {
   try {
+    // REAL first: ExecutionEvidence at cycle evidence verifications
+    // (exit_code/output, N/M parsed from output); legacy dict fallback.
+    const readEv = (ev) => {
+      const row = w2v2AsRecord(ev);
+      if (!row || row.exit_code === undefined) return null;
+      const text = String(row.output || '');
+      const match = text.match(/(\d+\s*\/\s*\d+)/);
+      const verb = row.exit_code === 0 ? 'held' : 'failed';
+      if (match) return { text: `${match[1]} mutations ${verb} (exit ${row.exit_code})`.slice(0, 200), failures: 0, total: 0, verdict: verb };
+      return { text: `mutations ${verb} (exit ${row.exit_code})`.slice(0, 80), failures: 0, total: 0, verdict: verb };
+    };
+    const cycles = (payload && (payload.cycle_reports || payload.cycles)) || [];
+    if (Array.isArray(cycles)) {
+      for (const cycle of cycles) {
+        const ev = cycle && cycle.evidence;
+        for (const section of ['patched_verification', 'pre_verification']) {
+          const got = ev && ev[section] && readEv(ev[section].mutations);
+          if (got) return got;
+        }
+        const direct = ev && readEv(ev.mutations);
+        if (direct) return direct;
+      }
+    }
+    if (payload && payload.mutations !== undefined && !w2v2AsRecord(payload.mutations)) {
+      const got = readEv(payload.mutations);
+      if (got) return got;
+    }
     const row = w2v2AsRecord(payload && (payload.mutation_evidence || payload.mutations));
     if (!row) return null;
     const total = row.mutations ?? row.count ?? row.total;
@@ -732,6 +799,7 @@ function w2v2Mutation(payload) {
     const verdict = row.verdict || row.status || '';
     if (typeof total === 'number') return { text: `${failures}/${total} failed${verdict ? ` (${verdict})` : ''}`.slice(0, 200), failures, total, verdict: String(verdict).slice(0, 40) };
     if (verdict) return { text: String(verdict).slice(0, 80), failures: 0, total: 0, verdict: String(verdict).slice(0, 40) };
+    if (row.exit_code !== undefined) return readEv(row);
     return null;
   } catch { return null; }
 }
@@ -761,14 +829,14 @@ function renderW2v2(payload) {
       if (wrap) wrap.hidden = guards.length === 0;
     }
     const topping = w2v2Topping(payload);
-    fact('fact-topping', topping.length ? `${topping[0].id} reach ${topping[0].score}` : 'Not reported', topping.length ? true : undefined);
+    fact('fact-topping', topping.length ? `${topping[0].id} ${topping[0].queue || `reach ${topping[0].score}`}` : 'Not reported', topping.length ? true : undefined);
     const topList = el('topping-list');
     if (topList) {
       topList.replaceChildren();
       topping.forEach((t) => {
         const item = document.createElement('li');
         const name = document.createElement('strong');
-        name.textContent = `${t.id} · reach ${t.score}`;
+        name.textContent = t.queue ? `${t.id} · ${t.queue}` : `${t.id} · reach ${t.score}`;
         item.append(name);
         const bits = [];
         if (t.fixed.length) bits.push(`fix ${t.fixed[0]}`);
@@ -1185,13 +1253,17 @@ el('download-btn').addEventListener('click', () => {
 });
 
 el('download-receipt-btn').addEventListener('click', () => {
-  // LAW 8: live state only — exports the verdict receipt from the current
-  // result payload (hidden when absent); never synthesizes evidence.
-  if (!latestResult || !latestResult.verdict_receipt) { toast('No verdict receipt in this result'); return; }
+  // LAW 8: live state only — exports the real receipt (VerdictReceipt at
+  // result.receipt, CycleReceipt at first cycle.receipt); legacy
+  // verdict_receipt fallback; never synthesizes evidence.
+  const live = latestResult && (latestResult.receipt
+    || ((latestResult.cycle_reports || latestResult.cycles || []).find((c) => c && c.receipt) || {}).receipt
+    || latestResult.verdict_receipt);
+  if (!live) { toast('No verdict receipt in this result'); return; }
   const receipt = {
     notice: 'Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.',
     license_url: 'https://polyformproject.org/licenses/noncommercial/1.0.0',
-    verdict_receipt: latestResult.verdict_receipt
+    receipt: live
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');

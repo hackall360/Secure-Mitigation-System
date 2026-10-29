@@ -597,3 +597,163 @@ def test_w2v2_probes_never_raise_on_garbage():
     )
     assert format_wave2_facts(garbage, use_color=False)["receipt"] == "Not reported"
     assert "verified" in _tui.describe_result(garbage)
+
+
+# --- Wave 2 real-field rendering (zebra rework: merged reality e76b019) ---
+# Probes must read REAL producer fields first; guessed names are fallback only.
+
+
+def _w2v2_real_fixture_result():
+    """Real VerdictReceipt via build_verdict_receipt on a ScanResult-shaped ns."""
+    from modules.workflows.workflow import build_verdict_receipt
+
+    receipt = build_verdict_receipt(
+        fixture="node_query_sink",
+        pre_exit_code=0,
+        post_exit_code=1,
+        regression_passed=True,
+        patch_content="diff-bytes",
+    )
+    return SimpleNamespace(
+        target="node_query_sink",
+        status="verified",
+        message="Probe blocked",
+        diff="--- a/app.js\n+++ b/app.js\n",
+        cleanup_ok=True,
+        pre_exit_code=0,
+        post_exit_code=1,
+        baseline_passed=True,
+        regression_passed=True,
+        receipt=receipt,
+        usage=ScanUsage(),
+        success=True,
+        model_dump=lambda: {"target": "node_query_sink", "status": "verified"},
+    )
+
+
+def _w2v2_real_cycle_result():
+    """Real CycleReceipt + GuardRationale + mutations on a project-shaped ns."""
+    from modules.workflows.project_workflow import (
+        ExecutionEvidence,
+        GuardRationale,
+        SnapshotVerification,
+        build_cycle_receipt,
+    )
+
+    def _ev(exit_code):
+        return SnapshotVerification(
+            probe=ExecutionEvidence(exit_code=exit_code, output="probe"),
+            regression=ExecutionEvidence(exit_code=0, output="regression ok"),
+            fresh_target=True,
+        )
+
+    pre, patched = _ev(0), _ev(1)
+    receipt = build_cycle_receipt(
+        fixture="php_command_sink",
+        pre=pre,
+        patched=patched,
+        baseline_regression_exit=0,
+        differential_passed=True,
+        candidate_diff="diff-bytes",
+    )
+    guard = GuardRationale(guard_id="no-new-sinks", reason="blocked sink", trigger="eval(")
+    patched_with_mut = SnapshotVerification(
+        probe=ExecutionEvidence(exit_code=1, output="blocked"),
+        regression=ExecutionEvidence(exit_code=0, output="regression ok"),
+        fresh_target=True,
+        mutations=ExecutionEvidence(exit_code=0, output="4/4 mutations held"),
+    )
+    cycle = SimpleNamespace(
+        cycle=1,
+        pass_number=1,
+        status="retained",
+        message="ok",
+        receipt=receipt,
+        evidence=SimpleNamespace(
+            replacement_validation=SimpleNamespace(guard_rationale=guard),
+            patched_verification=patched_with_mut,
+        ),
+        model_dump=lambda: {"cycle": 1},
+    )
+    return SimpleNamespace(
+        project="demo",
+        status="verified",
+        message="ok",
+        cycle_reports=[cycle],
+        cycles=[cycle],
+        usage=ScanUsage(),
+        success=True,
+        model_dump=lambda: {"project": "demo", "status": "verified"},
+    )
+
+
+def _w2v2_real_topping_report():
+    """Real queue_evidence string via cve_workflow._queue_evidence."""
+    from modules.workflows.cve_workflow import _queue_evidence
+
+    summary = {
+        "id": "CVE-2024-0001",
+        "cves": ["CVE-2024-0001"],
+        "reach_score": 85,
+        "reach_evidence": ["sink adjacency (+40)"],
+        "fixed_versions": ["1.2.3"],
+        "kev_listed": True,
+        "epss_percentile": 0.97,
+    }
+    summary["queue_evidence"] = _queue_evidence(summary)
+    return SimpleNamespace(
+        target="p",
+        status="completed",
+        message="Fast lane: ok",
+        static_findings=[],
+        dependencies=[],
+        vulnerabilities=[summary],
+        deep_assessment=None,
+        errors=[],
+        usage=ScanUsage(),
+        success=True,
+        model_dump=lambda: {"target": "p", "status": "completed"},
+    )
+
+
+def test_w2v2_real_receipt_renders():
+    """Real result.receipt (VerdictReceipt) renders fixture + sha prefix."""
+    from sms_cli import format_wave2_facts
+
+    facts = format_wave2_facts(_w2v2_real_fixture_result(), use_color=False)
+    assert "node_query_sink" in facts["receipt"]
+    assert "36d46d53" in facts["receipt"]  # sha256('diff-bytes') prefix
+    assert "probe 0/1" in facts["receipt"]
+
+
+def test_w2v2_real_cycle_receipt_guard_mutations_render():
+    """Real cycle.receipt + guard_rationale + mutations render."""
+    from sms_cli import format_wave2_facts
+
+    facts = format_wave2_facts(_w2v2_real_cycle_result(), use_color=False)
+    assert "php_command_sink" in facts["receipt"]
+    assert "no-new-sinks" in facts["guard_rationales"]
+    assert "eval(" in facts["guard_rationales"]
+    assert facts["mutations"] != "Not reported"
+
+
+def test_w2v2_real_queue_evidence_renders():
+    """Real queue_evidence string renders KEV/EPSS tie-break line."""
+    from sms_cli import format_wave2_facts
+
+    facts = format_wave2_facts(_w2v2_real_topping_report(), use_color=False)
+    assert "CVE-2024-0001" in facts["fast_lane_top"]
+    assert "kev:listed" in facts["fast_lane_top"]
+    assert "epss:0.97" in facts["fast_lane_top"]
+
+
+def test_w2v2_real_receipt_export_roundtrip():
+    """export_receipt_json output parses and carries real field names."""
+    import json
+
+    from modules.workflows.workflow import export_receipt_json
+
+    receipt = _w2v2_real_fixture_result().receipt
+    parsed = json.loads(export_receipt_json(receipt))
+    assert parsed["fixture"] == "node_query_sink"
+    assert parsed["patch_sha256"].startswith("36d46d53")

@@ -290,15 +290,26 @@ def _probe_label(exit_code: object) -> str:
 def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
     """Wave 2 items 1-4 fact rows (SPEC 14.8). Read-only defensive probes.
 
-    Each Wave 2 producer (agents 1-4) may or may not have landed its fields
-    yet; every accessor below degrades to "Not reported" on missing or
-    odd-shaped values and never raises. Keys probed (all optional):
-    ``verdict_receipt`` (item 1: fixture/pre/post/regression/differential/
-    properties/patch_hash dict or object), ``guard_rationales`` (item 2:
-    list of {guard, protected_line, reason}), ``mutation_evidence`` (item 4:
-    {mutations, failures, verdict} dict or object), and fast-lane topping
-    (item 3: ``fast_lane_top`` string, else first ``vulnerabilities`` entry
-    with reach_score/reach_evidence). No probe scripts or payloads surface.
+    REAL fields first (merged reality e76b019), guessed names fallback only:
+    1. ``result.receipt``: VerdictReceipt (fixture/pre_exit_code/
+       post_exit_code/regression_passed/differential_passed/patch_sha256),
+       or ``cycle.receipt``: CycleReceipt (fixture/pre_probe_exit/
+       post_probe_exit/baseline_regression_exit/patched_regression_exit/
+       patch_sha256) on any entry of ``cycle_reports``/``cycles``.
+       Legacy fallback: ``verdict_receipt`` dict.
+    2. ``evidence.replacement_validation.guard_rationale``: GuardRationale
+       (guard_id/reason/trigger) on any cycle evidence; also a top-level
+       ``guard_rationale``. Legacy fallback: ``guard_rationales`` list.
+    3. ``vulnerabilities[].queue_evidence`` auditable string
+       (``reach:N fix:X kev:listed/absent epss:N.NN``); else first
+       vulnerabilities entry reach/KEV/EPSS components. Legacy: fast_lane_top.
+    4. ``patched_verification.mutations``/``pre_verification.mutations``:
+       ExecutionEvidence (exit_code/output) on any cycle evidence; also
+       top-level ``mutations`` ExecutionEvidence. Display parses ``N/M`` or
+       exit verdict via mutation_gate_passed semantics (exit 0 held).
+       Legacy fallback: ``mutation_evidence`` dict.
+    Absent/odd-shaped values degrade to "Not reported"; never raises; no
+    probe scripts or payloads surface.
     """
     _ = use_color  # rows are plain facts; color applied by fact_table caller
     facts = {
@@ -335,55 +346,134 @@ def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
                     return maybe
             except Exception:
                 pass
+        try:
+            namespace = vars(value)
+            if isinstance(namespace, dict):
+                return dict(namespace)
+        except TypeError:
+            pass
         return {}
 
-    # Item 1: execution-oracle verdict receipt.
+    def _cycles() -> list:
+        for name in ("cycle_reports", "cycles"):
+            try:
+                items = _field(name)
+            except Exception:
+                continue
+            if isinstance(items, (list, tuple)) and items:
+                return list(items)
+        return []
+
+    # Item 1: execution-oracle verdict receipt — REAL fields first.
     try:
-        receipt = _as_dict(_field("verdict_receipt"))
+        receipt = _as_dict(_field("receipt"))
+        if not receipt:
+            for cycle in _cycles():
+                receipt = _as_dict(getattr(cycle, "receipt", None))
+                if not receipt and isinstance(cycle, dict):
+                    receipt = _as_dict(cycle.get("receipt"))
+                if receipt:
+                    break
+        if not receipt:
+            receipt = _as_dict(_field("verdict_receipt"))  # legacy fallback
         if receipt:
             parts = []
             fixture = receipt.get("fixture") or receipt.get("target")
             if fixture:
                 parts.append(str(fixture)[:64])
-            pre = receipt.get("pre_exit_code")
-            post = receipt.get("post_exit_code")
+            pre = receipt.get("pre_exit_code", receipt.get("pre_probe_exit"))
+            post = receipt.get("post_exit_code", receipt.get("post_probe_exit"))
             if pre is not None or post is not None:
                 parts.append(f"probe {pre}/{post}")
+            reg = receipt.get("regression_passed")
+            if reg is None:
+                base = receipt.get("baseline_regression_exit")
+                patched = receipt.get("patched_regression_exit")
+                if base is not None or patched is not None:
+                    parts.append(f"regression {base}/{patched}")
+            elif reg:
+                parts.append("regression passed")
+            diff = receipt.get("differential_passed")
+            if diff is True:
+                parts.append("differential passed")
+            prop = receipt.get("property_passed")
+            if prop is True:
+                parts.append("properties passed")
+            elif receipt.get("property_exit_code") is not None:
+                parts.append(f"properties exit {receipt.get('property_exit_code')}")
+            patch_hash = (
+                receipt.get("patch_sha256") or receipt.get("patch_hash") or receipt.get("patch_sha")
+            )
+            if patch_hash:
+                parts.append(f"sha {str(patch_hash)[:16]}")
             for key in ("regression", "differential", "properties"):
                 val = receipt.get(key)
-                if val:
+                if val and f"{key} " not in " ".join(parts):
                     parts.append(f"{key} {val}")
-            patch_hash = receipt.get("patch_hash") or receipt.get("patch_sha")
-            if patch_hash:
-                parts.append(f"hash {str(patch_hash)[:16]}")
             if parts:
                 facts["receipt"] = " · ".join(parts)[:200]
     except Exception:
         pass
 
-    # Item 2: sanitization-guard rationale export.
+    # Item 2: sanitization-guard rationale export — REAL GuardRationale first.
     try:
-        rationales = _field("guard_rationales")
-        if rationales is None:
-            rationales = _field("guard_evidence")
-        items = list(rationales) if isinstance(rationales, (list, tuple)) else []
-        shown = []
-        for item in items[:3]:
-            row = _as_dict(item) if not isinstance(item, str) else {}
+        shown: list[str] = []
+
+        def _guard_text(item: object) -> str | None:
             if isinstance(item, str):
-                shown.append(item[:80])
+                return item[:80] if item.strip() else None
+            row = _as_dict(item)
+            if not row:
+                return None
+            guard = row.get("guard_id") or row.get("guard") or row.get("rule") or row.get("check")
+            line = row.get("trigger") or row.get("protected_line") or row.get("line") or ""
+            reason = row.get("reason") or ""
+            if not guard and not reason:
+                return None
+            head = f"{guard}: {line}"[:80] if line else str(guard or reason)[:80]
+            if reason and guard and str(reason)[:40] not in head:
+                head = f"{head} ({str(reason)[:40]})"[:80]
+            return head
+
+        top_guard = _field("guard_rationale")
+        if top_guard is not None:
+            text = _guard_text(top_guard)
+            if text:
+                shown.append(text)
+        for cycle in _cycles():
+            try:
+                ev = getattr(cycle, "evidence", None)
+                if ev is None and isinstance(cycle, dict):
+                    ev = cycle.get("evidence")
+                evd = _as_dict(ev)
+                rv = _as_dict(evd.get("replacement_validation"))
+                cand = rv.get("guard_rationale")
+                if cand is None:
+                    cand = evd.get("guard_rationale")
+                text = _guard_text(cand) if cand is not None else None
+                if text and text not in shown:
+                    shown.append(text)
+            except Exception:
                 continue
-            guard = row.get("guard") or row.get("rule") or row.get("check")
-            line = row.get("protected_line") or row.get("line") or ""
-            if guard:
-                shown.append(f"{guard}: {line}"[:80] if line else str(guard)[:80])
+            if len(shown) >= 3:
+                break
+        if not shown:
+            rationales = _field("guard_rationales")
+            if rationales is None:
+                rationales = _field("guard_evidence")
+            items = list(rationales) if isinstance(rationales, (list, tuple)) else []
+            for item in items[:3]:
+                text = _guard_text(item)
+                if text:
+                    shown.append(text)
+            if len(items) > 3 and shown:
+                shown[-1] = (shown[-1] + f" +{len(items) - 3} more")[:80]
         if shown:
-            extra = f" +{len(items) - 3} more" if len(items) > 3 else ""
-            facts["guard_rationales"] = "; ".join(shown)[:200] + extra
+            facts["guard_rationales"] = "; ".join(shown)[:200]
     except Exception:
         pass
 
-    # Item 3: reachable+fixable fast-lane topping.
+    # Item 3: reachable+fixable fast-lane topping — REAL queue_evidence first.
     try:
         top = _field("fast_lane_top")
         if isinstance(top, str) and top.strip():
@@ -400,33 +490,92 @@ def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
                     else first.get("id")
                 )
                 label = label or first.get("id") or "top vuln"
-                score = first.get("reach_score")
-                fixed = first.get("fixed_versions")
-                fixed_str = ""
-                if isinstance(fixed, (list, tuple)) and fixed:
-                    fixed_str = f" fix {str(fixed[0])[:32]}"
-                kev = " KEV" if first.get("kev_listed") else ""
-                epss = first.get("epss_percentile")
-                epss_str = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
-                facts["fast_lane_top"] = f"{label} reach {score}{fixed_str}{kev}{epss_str}"[:200]
+                queue_ev = first.get("queue_evidence")
+                if isinstance(queue_ev, str) and queue_ev.strip():
+                    facts["fast_lane_top"] = f"{label} {queue_ev.strip()}"[:200]
+                else:
+                    score = first.get("reach_score")
+                    fixed = first.get("fixed_versions")
+                    fixed_str = ""
+                    if isinstance(fixed, (list, tuple)) and fixed:
+                        fixed_str = f" fix {str(fixed[0])[:32]}"
+                    kev = " KEV" if first.get("kev_listed") else ""
+                    epss = first.get("epss_percentile")
+                    epss_s = f" EPSS {float(epss):.2f}" if isinstance(epss, (int, float)) else ""
+                    facts["fast_lane_top"] = f"{label} reach {score}{fixed_str}{kev}{epss_s}"[:200]
     except Exception:
         pass
 
-    # Item 4: bounded mutation-count probes.
+    # Item 4: bounded mutation-count probes — REAL ExecutionEvidence first.
     try:
-        mutation = _as_dict(_field("mutation_evidence"))
-        if not mutation:
-            mutation = _as_dict(_field("mutations"))
-        if mutation:
-            total = mutation.get("mutations") or mutation.get("count") or mutation.get("total")
-            failures = mutation.get("failures") or mutation.get("failed") or 0
-            verdict = mutation.get("verdict") or mutation.get("status") or ""
+        mutation_text: str | None = None
+
+        def _ev_text(ev: object) -> str | None:
+            row = _as_dict(ev)
+            if not row:
+                return None
+            exit_code = row.get("exit_code")
+            output = str(row.get("output") or "")
+            import re as _re
+
+            match = _re.search(r"(\d+)\s*/\s*(\d+)", output)
+            if match:
+                verb = "held" if exit_code == 0 else "failed"
+                return f"{match.group(0)} mutations {verb} (exit {exit_code})"[:200]
+            if exit_code is not None:
+                verb = "held" if exit_code == 0 else "failed"
+                return f"mutations {verb} (exit {exit_code})"[:200]
+            return None
+
+        for cycle in _cycles():
             try:
-                facts["mutations"] = f"{int(failures)}/{int(total)} failed"
-            except (TypeError, ValueError):
-                facts["mutations"] = str(verdict)[:80] or "reported"
-            if verdict:
-                facts["mutations"] = f"{facts['mutations']} ({verdict})"[:200]
+                ev = getattr(cycle, "evidence", None)
+                if ev is None and isinstance(cycle, dict):
+                    ev = cycle.get("evidence")
+                evd = _as_dict(ev)
+                for section in ("patched_verification", "pre_verification"):
+                    text = _ev_text(
+                        evd.get(section, {}).get("mutations")
+                        if isinstance(evd.get(section), dict)
+                        else _as_dict(evd.get(section)).get("mutations")
+                    )
+                    if text:
+                        mutation_text = text
+                        break
+                if mutation_text:
+                    break
+                direct = evd.get("mutations")
+                if direct is not None:
+                    text = _ev_text(direct)
+                    if text:
+                        mutation_text = text
+                        break
+            except Exception:
+                continue
+        if mutation_text is None:
+            top_mut = _field("mutations")
+            if top_mut is not None and not isinstance(top_mut, dict):
+                mutation_text = _ev_text(top_mut)
+            else:
+                mutation = _as_dict(top_mut) if top_mut is not None else {}
+                if not mutation:
+                    mutation = _as_dict(_field("mutation_evidence"))  # legacy
+                if mutation and "exit_code" in mutation:
+                    mutation_text = _ev_text(mutation)
+                elif mutation:
+                    total = (
+                        mutation.get("mutations") or mutation.get("count") or mutation.get("total")
+                    )
+                    failures = mutation.get("failures") or mutation.get("failed") or 0
+                    verdict = mutation.get("verdict") or mutation.get("status") or ""
+                    try:
+                        mutation_text = f"{int(failures)}/{int(total)} failed"
+                    except (TypeError, ValueError):
+                        mutation_text = str(verdict)[:80] or "reported"
+                    if verdict:
+                        mutation_text = f"{mutation_text} ({verdict})"[:200]
+        if mutation_text:
+            facts["mutations"] = mutation_text[:200]
     except Exception:
         pass
     return facts
