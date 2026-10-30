@@ -45,3 +45,53 @@ def test_workspace_has_real_section_navigation_and_accessible_logs():
         attrs = next(attrs for _, attrs in parser.nodes if attrs.get("id") == log)
         assert attrs["tabindex"] == "0"
         assert attrs["role"] == "log"
+
+
+def test_pass_chip_present_in_scan_status_area():
+    """RED: live pass chip renders next to the scan status element."""
+    from html.parser import HTMLParser
+
+    class Elements(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.nodes = []
+
+        def handle_starttag(self, tag, attrs):
+            self.nodes.append((tag, dict(attrs)))
+
+        def handle_data(self, data):
+            if self.nodes:
+                tag, attrs = self.nodes[-1]
+                attrs["_text"] = attrs.get("_text", "") + data
+
+    parser = Elements()
+    parser.feed((ROOT / "static/index.html").read_text())
+    chip = next(
+        (attrs for _, attrs in parser.nodes if attrs.get("id") == "pass-chip"),
+        None,
+    )
+    assert chip is not None, "static/index.html must contain #pass-chip"
+    assert "Pass" in chip.get("_text", "")
+    status_index = next(
+        i for i, (_, attrs) in enumerate(parser.nodes) if attrs.get("id") == "status"
+    )
+    chip_index = next(
+        i for i, (_, attrs) in enumerate(parser.nodes) if attrs.get("id") == "pass-chip"
+    )
+    assert abs(chip_index - status_index) < 12
+
+
+def test_app_js_updates_pass_chip_on_sweep_lines():
+    """RED: app.js render path handles sweep pass start/done strings."""
+    js = (ROOT / "static/app.js").read_text()
+    assert "pass-chip" in js
+    assert "sweep (standard|deep|threat_actor)" in js or "[sweep " in js
+    assert "threat_actor" in js
+    assert "Pass done" in js
+
+
+def test_app_js_directs_binary_fixture_to_binary_mode():
+    """RED: binary_argv_echo in demo/fixture mode shows Binary sweep notice."""
+    js = (ROOT / "static/app.js").read_text()
+    assert "binary_argv_echo" in js
+    assert "Binary sweep mode" in js
