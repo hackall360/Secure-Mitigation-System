@@ -89,6 +89,7 @@
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
           <button id="mode-mcp" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="mcp"><strong>MCP snippet</strong><small>External AI client submits code</small></button>
           <button id="mode-binary" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="binary"><strong>Binary sweep</strong><small>Reversing + 3-pass harness run</small></button>
+          <button id="mode-ingest" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="ingest"><strong>Repo ingest</strong><small>Clone a repo at a pinned commit</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -156,6 +157,11 @@
           <div class="field wide"><label for="binary-filename">Filename</label><input id="binary-filename" name="filename" required maxlength="128" placeholder="target.elf" autocomplete="off"><small>Bare filename, no paths.</small></div>
           <div class="field wide"><label for="binary-contract">Behavior contract</label><textarea id="binary-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
           <div id="binary-errors" class="form-errors wide" role="alert" hidden></div>
+        </form>
+        <form id="ingest-form" class="project-form" hidden novalidate>
+          <div class="field wide"><label for="ingest-repo-url">Repository URL</label><input id="ingest-repo-url" name="repo_url" required placeholder="https://github.com/org/repo" autocomplete="off" spellcheck="false"><small>HTTPS remote only. Cloned at the pinned commit inside Docker; only Docker evidence decides.</small></div>
+          <div class="field wide"><label for="ingest-commit">Pinned commit</label><input id="ingest-commit" name="commit_hash" required maxlength="40" placeholder="40-hex commit sha" autocomplete="off" spellcheck="false"><small>Full 40-hex sha — the staging clone checks out exactly this commit.</small></div>
+          <div id="ingest-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>
