@@ -1,6 +1,6 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Three-pass comprehensive security sweep: standard -> deep -> threat-actor.
+"""Four-pass comprehensive security sweep: standard -> deep -> threat-actor -> chain.
 
 Each pass runs the full evidence-gated loop (red finding -> Docker probe
 exit 0/1/2 -> blue guarded patch -> regression -> re-probe) over the same
@@ -35,14 +35,29 @@ from modules.shared.sms_compress import CompressionReport, compress_context
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.workflow import build_verdict_receipt
 
-SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor")
-SweepPassId = Literal["standard", "deep", "threat_actor"]
+SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor", "chain")
+SweepPassId = Literal["standard", "deep", "threat_actor", "chain"]
 
 _PASS_LABEL: dict[str, str] = {
     "standard": "Standard sweep (common CVE patterns)",
     "deep": "Deep sweep (edge cases, input-mutation handling)",
     "threat_actor": "Threat-actor sweep (logic abuse + technical exploitation)",
+    "chain": "Chain sweep (multi-step logic-abuse chains)",
 }
+
+
+class ChainLink(BaseModel):
+    """One chain-sweep link verdict: Docker exit codes decide, fail closed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    pre_exit: int
+    post_exit: int
+
+    @property
+    def holds(self) -> bool:
+        """A link holds only when its post-patch probe is cleanly blocked."""
+        return self.post_exit == 1
 
 
 class SweepPassResult(BaseModel):
@@ -57,12 +72,20 @@ class SweepPassResult(BaseModel):
     pre_exit_code: int | None = None
     post_exit_code: int | None = None
     regression_passed: bool = False
+    chain_links: list[ChainLink] | None = None
     cleared: bool = False
     receipt: object | None = None
 
     @property
     def holds(self) -> bool:
         """A pass holds when it cleared outright or its patch blocked the probe."""
+        if self.chain_links is not None:
+            return (
+                self.receipt is not None
+                and len(self.chain_links) == 2
+                and all(link.holds for link in self.chain_links)
+                and self.regression_passed
+            )
         return self.cleared or (
             self.receipt is not None and self.post_exit_code == 1 and self.regression_passed
         )
@@ -92,6 +115,16 @@ class SweepScanResult(BaseModel):
     def success(self) -> bool:
         return self.status == "verified" and self.cleanup_ok
 
+    @property
+    def verified(self) -> bool:
+        """Aggregate verdict: verified only when every selected pass holds."""
+        return (
+            self.status == "verified"
+            and self.cleanup_ok
+            and len(self.pass_results) > 0
+            and all(p.holds for p in self.pass_results)
+        )
+
 
 async def execute_sweep_scan(
     target_key: str,
@@ -102,20 +135,20 @@ async def execute_sweep_scan(
     muse_factory=MetaMuseClient,
     max_passes: int = 3,
 ) -> SweepScanResult:
-    """Run the 3-pass sweep over one fixture target.
+    """Run the 4-pass sweep over one fixture target.
 
     Baseline once, then per selected pass: red pass analysis -> probe.
     Exit 1 clears the pass (no blue call). Exit 0 requests a blue patch
     against the CURRENT source (carrying prior passes' patches), then
     regression + re-probe + final health. Exit 2 fails the sweep closed.
-    `max_passes` 1..3 selects a prefix of SWEEP_PASSES (CLI/deep-link).
+    `max_passes` 1..4 selects a prefix of SWEEP_PASSES (CLI/deep-link).
     """
     result = SweepScanResult(target=target_key)
     sandbox = None
     muse = None
     log = make_log(emit)
     selected = [
-        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(3, max_passes))
+        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
 
     try:
@@ -251,6 +284,10 @@ async def execute_sweep_scan(
                 sandbox.run_isolated_verifier, network, finding.verification_script_python
             )
             passed.post_exit_code = post.exit_code
+            passed.chain_links = [
+                ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+            ]
             result.traces[f"{pass_id}:after"] = post.output
             await log(
                 "blue",
