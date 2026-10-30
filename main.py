@@ -1460,6 +1460,8 @@ async def cli_runner(
     research_scanners: str = "",
     *,
     project: ProjectSpec | None = None,
+    ingest_repo: str | None = None,
+    commit_hash: str | None = None,
     cve_scan: bool = False,
     deep_assessment: bool = False,
     offline_cve: bool = False,
@@ -1915,8 +1917,33 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser (also used by ``main()``).
+
+    Tests and tooling import this to inspect the live parser without running
+    a scan. Returns an ``_IngestPairParser``: argparse-level shape (choices,
+    mutual exclusion) plus the ``--ingest-repo``/``--commit-hash`` pair
+    check, so ``parse_args`` itself exits 2 on a half pair.
+    """
+
+    class _IngestPairParser(argparse.ArgumentParser):
+        """Argparse parser enforcing the --ingest-repo/--commit-hash pair.
+
+        Both directions error at ``parse_args`` time: ``--ingest-repo``
+        without ``--commit-hash`` and ``--commit-hash`` without
+        ``--ingest-repo`` each exit 2, mirroring the
+        ``--research-scanners requires --research`` shape.
+        """
+
+        def parse_args(self, args=None, namespace=None):  # type: ignore[override]
+            parsed = super().parse_args(args, namespace)
+            if parsed.ingest_repo and not parsed.commit_hash:
+                self.error("--ingest-repo requires --commit-hash")
+            if parsed.commit_hash and not parsed.ingest_repo:
+                self.error("--commit-hash requires --ingest-repo")
+            return parsed
+
+    parser = _IngestPairParser(
         description="Secure Mitigation System — local Muse boundary verification scaffold",
         epilog=CAPABILITIES_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1980,6 +2007,11 @@ def main() -> int:
         "--binary-target",
         type=Path,
         help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
+    )
+    commands.add_argument(
+        "--ingest-repo",
+        default=None,
+        help="Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires --commit-hash)",
     )
     parser.add_argument(
         "--snippet-language",
@@ -2130,6 +2162,16 @@ def main() -> int:
         "(trivy,grype,osv-scanner,dependency-check,dependency-track). Requires "
         "--research; binaries run on the host, each absent tool is skipped.",
     )
+    parser.add_argument(
+        "--commit-hash",
+        default=None,
+        help="Pinned 40-hex commit for --ingest-repo (required with --ingest-repo)",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     # --config defaults (flag > config > env > default), unknown keys error.
     file_values: dict = {}
@@ -2176,17 +2218,28 @@ def main() -> int:
     with_config = f" (config: {args.config})" if args.config is not None else ""
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    if args.profile is not None and not (args.scan or args.project or args.ai_demo):
-        parser.error("--profile requires --scan, --project, or --ai-demo")
-    if args.output_dir is not None and not (
-        args.scan or args.project or args.ai_demo or args.binary_target
+    if args.profile is not None and not (
+        args.scan or args.project or args.ai_demo or args.ingest_repo
     ):
-        parser.error("--output-dir requires --scan, --project, --ai-demo, or --binary-target")
-    # --research/--research-scanners run on every scan surface: fixture, project, ai-demo.
-    if args.research and not (args.scan or args.project or args.ai_demo):
-        parser.error("--research requires --scan, --project, or --ai-demo")
+        parser.error("--profile requires --scan, --project, --ai-demo, or --ingest-repo")
+    if args.output_dir is not None and not (
+        args.scan or args.project or args.ai_demo or args.binary_target or args.ingest_repo
+    ):
+        parser.error(
+            "--output-dir requires --scan, --project, --ai-demo, --binary-target, or --ingest-repo"
+        )
+    # --research/--research-scanners run on every scan surface: fixture, project, ai-demo, ingest.
+    if args.research and not (args.scan or args.project or args.ai_demo or args.ingest_repo):
+        parser.error("--research requires --scan, --project, --ai-demo, or --ingest-repo")
     if args.research_scanners and not args.research:
         parser.error("--research-scanners requires --research")
+    # --ingest-repo/--commit-hash mirror the --research/--research-scanners
+    # pair shape: each requires the other (argparse exit 2). --ingest-repo
+    # itself is mutually exclusive with --scan via the command group above.
+    if args.ingest_repo and not args.commit_hash:
+        parser.error("--ingest-repo requires --commit-hash")
+    if args.commit_hash and not args.ingest_repo:
+        parser.error("--commit-hash requires --ingest-repo")
     if args.project and (not args.command or not args.test_command or not args.contract):
         parser.error("--project requires --command, --test-command, and --contract")
     if args.ai_demo and args.scan:
@@ -2427,6 +2480,32 @@ def main() -> int:
                     fast_lane=args.fast_lane,
                     out_format=out_format,
                     show_usage=args.show_usage,
+                )
+            )
+        if args.ingest_repo:
+            # Wave 4 repo intake (Phase 1): validate the URL + pinned commit
+            # through RepoIntakeSpec (ValueError -> argparse exit 2), then
+            # run the standard fixture scan surface. The Docker staging
+            # clone lands in a later wave; cli_runner carries the pair
+            # through as ingest_repo/commit_hash kwargs.
+            try:
+                from modules.services.repo_intake import RepoIntakeSpec
+
+                RepoIntakeSpec(url=args.ingest_repo, commit_hash=args.commit_hash)
+            except ValueError:
+                parser.error("Invalid ingest settings. Use an https:// URL and a 40-hex commit.")
+            return asyncio.run(
+                cli_runner(
+                    args.scan,
+                    args.output_dir,
+                    args.profile,
+                    args.research,
+                    args.research_scanners,
+                    ingest_repo=args.ingest_repo,
+                    commit_hash=args.commit_hash,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                    sweep_passes=args.sweep_passes,
                 )
             )
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).

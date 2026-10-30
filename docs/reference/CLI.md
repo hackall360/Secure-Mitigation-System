@@ -23,6 +23,7 @@ Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
+| `--ingest-repo URL` | Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires `--commit-hash`; Phase 1, Wave 4) |
 
 > Engine leaves (`sms_compress`, `sms_vault`, `sms_api`) are library modules, not CLI flags.
 
@@ -68,6 +69,7 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--output-dir PATH` | — | Save scan JSON + candidate diff to a new run dir (includes `receipt.json`) |
 | `--research` | off | Opt-in research sidecars for `--scan` (keyless OSV/CIRCL/GHSA/EPSS) |
 | `--research-scanners LIST` | — | Comma-separated local scanners for `--research` grounding (requires `--research`) |
+| `--commit-hash HEX` | — | Pinned 40-hex commit for `--ingest-repo` (required with `--ingest-repo`) |
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
