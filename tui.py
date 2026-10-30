@@ -34,7 +34,7 @@ FIXTURE_ORDER = ("node_query_sink", "php_command_sink", "mysql_insecure_conf")
 FIXTURE_SHORT = ("Node query", "PHP command", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3 fixture  m mcp  b binary  p project  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3 fixture  m mcp  b binary  p project  i ingest  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
 
 # Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
 # same plain-English value lines). Toggled with h; must stay terminal-safe.
@@ -55,8 +55,10 @@ CAPABILITIES_LINES = (
     "mode:mcp submit a code snippet for review (key m)",
     "mode:binary sweep one compiled binary file (key b)",
     "mode:project two-cycle project workout (key p)",
+    "mode:ingest validated repo intake at a pinned commit (key i)",
     "mode:demo replay a themed demo script (key v)",
     "mode:cve look up live CVE intel keyless (key c)",
+    "hud: live token counter + vault indicator stream on the HUD",
 )
 
 
@@ -104,7 +106,7 @@ def queue_emit(event_queue: "queue.Queue[tuple[str, str]]"):
 
 # Known scan-mode values for TuiState.mode (LAW 4: user-typed metadata only,
 # never scan output; probe/payload content must not live in rendered text).
-TUI_MODES = ("fixture", "sweep", "mcp", "binary", "project", "demo", "cve")
+TUI_MODES = ("fixture", "sweep", "mcp", "binary", "project", "ingest", "demo", "cve")
 
 # Canonical mode order shared by dispatch routing and --mode choices.
 MODE_ORDER = TUI_MODES
@@ -182,6 +184,9 @@ class TuiState:
     project_command: str = ""
     project_test_command: str = ""
     project_contract: str = ""
+    ingest_repo: str = ""
+    ingest_commit: str = ""
+    ingest_branch: str = ""
     demo_theme: str = ""
     demo_vulns: str = ""
     running: bool = False
@@ -287,6 +292,8 @@ def parse_key(key: object) -> str:
         return "mode:binary"
     if lowered == "p":
         return "mode:project"
+    if lowered == "i":
+        return "mode:ingest"
     if lowered == "g":
         return "mode:sweep"
     if lowered == "v":
@@ -674,6 +681,34 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         spec = _project_spec_from_state(state)
         result = await _project_workflow.execute_project_workflow(spec, emit)
         return _summarize_result("project", result), result
+    if mode == "ingest":
+        from modules.services.repo_intake import RepoIntakeSpec
+        from modules.services.sms_api import build_ingest_event, build_telemetry_event
+
+        url = _state_field(state, "ingest_repo")
+        commit = _state_field(state, "ingest_commit", "commit_hash")
+        spec = RepoIntakeSpec(url=url, commit_hash=commit)  # ValueError -> fail closed
+        ingest_evt = build_ingest_event(repo_url=spec.url, sha=spec.commit_hash)
+        await emit(ingest_evt["team"], ingest_evt["msg"])
+        from modules.workflows.workflow import execute_purple_workflow as _execute_ingest_scan
+
+        result = await _execute_ingest_scan(state.fixture_key, emit)
+        try:
+            compression = getattr(result, "compression", None)
+            raw = int(getattr(compression, "raw_tokens_estimated", 0) or 0)
+            sent = int(getattr(compression, "compressed_tokens_sent", 0) or 0)
+            ratio = float(getattr(compression, "compression_ratio", 0.0) or 0.0)
+            telemetry_evt = build_telemetry_event(
+                raw=raw,
+                sent=sent,
+                savings_pct=round(ratio * 100.0, 1),
+                novel=0,
+                known=0,
+            )
+            await emit(telemetry_evt["team"], telemetry_evt["msg"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+        return _summarize_result("ingest", result), result
     if mode == "demo":
         import main as main_mod
         from modules.core.config import load_config
@@ -782,6 +817,9 @@ def _state_from_args(args: argparse.Namespace) -> TuiState:
         "project_command",
         "project_test_command",
         "project_contract",
+        "ingest_repo",
+        "ingest_commit",
+        "ingest_branch",
         "allow_remote",
         "demo_theme",
         "demo_vulns",
@@ -896,6 +934,22 @@ def _add_dispatch_flags(parser: argparse.ArgumentParser) -> None:
         "--project-fast-lane",
         action="store_true",
         help="CVE disclosure fast lane: static + OSV only, deterministic order",
+    )
+    parser.add_argument(
+        "--ingest-repo",
+        default="",
+        help="HTTPS repo URL for ingest mode (requires --commit-hash, like main.py)",
+    )
+    parser.add_argument(
+        "--commit-hash",
+        dest="ingest_commit",
+        default="",
+        help="Pinned 40-hex commit for ingest mode (requires --ingest-repo)",
+    )
+    parser.add_argument(
+        "--ingest-branch",
+        default="",
+        help="Branch label recorded with the ingest intake (metadata only, never executed)",
     )
     parser.add_argument(
         "--project-deep-assessment",
@@ -1075,6 +1129,9 @@ def run_plain(argv: list[str] | None = None) -> int:
         or getattr(args, "project_deep_assessment", False)
         or getattr(args, "demo_theme", "")
         or getattr(args, "demo_vulns", "")
+        or getattr(args, "ingest_repo", "")
+        or getattr(args, "ingest_commit", "")
+        or getattr(args, "ingest_branch", "")
         or getattr(args, "contract", "")
         or getattr(args, "snippet_language", "")
     ):
