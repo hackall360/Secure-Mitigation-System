@@ -212,6 +212,22 @@ function lightAgent(name) {
     if (empty) empty.remove();
   }
 }
+function updatePassChip(text) {
+  const chip = el('pass-chip');
+  if (!chip) return;
+  const start = /\[sweep (standard|deep|threat_actor)\]/.exec(text);
+  if (start) {
+    const n = start[1] === 'standard' ? 1 : start[1] === 'deep' ? 2 : 3;
+    const label = start[1] === 'standard' ? 'standard' : start[1] === 'deep' ? 'deep' : 'threat-actor';
+    chip.textContent = `Pass ${n}: ${label}`;
+    chip.dataset.state = 'running';
+    return;
+  }
+  if (/sweep verified/i.test(text) || /sweep failed/i.test(text)) {
+    chip.textContent = 'Pass done';
+    chip.dataset.state = 'idle';
+  }
+}
 function writeComms(team, text) {
   const comms = el('comms-log');
   if (!comms) return;
@@ -224,6 +240,7 @@ function writeComms(team, text) {
 }
 function writeLine(team, text) {
   const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  updatePassChip(String(text));
   try { if (window.Panels && typeof window.Panels.renderTimeline === 'function') window.Panels.renderTimeline(known, text); } catch { /* timeline is decorative */ }
   if (known === 'red' || known === 'blue') {
     append(logs[known], buildEntry(known, text, false));
@@ -1052,6 +1069,12 @@ function startScan() {
   userCancelled = false;
   const key = el('target-select').value;
   if (sourceMode === 'demo' && !targets[key]) { toast('Choose a target first, then run again'); return; }
+  if (sourceMode === 'demo' && key === 'binary_argv_echo') {
+    el('setup').hidden = false;
+    el('setup').textContent = 'binary_argv_echo is a compiled ELF fixture — switch to Binary sweep mode to verify it through the binary harness, not the fixture socket.';
+    toast('binary_argv_echo needs Binary sweep mode');
+    return;
+  }
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
   if (sourceMode === 'binary') { submitBinary(); return; }
