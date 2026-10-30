@@ -288,3 +288,8 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] Y5. Subsystem E library API + 4 MCP tools + --mcp STDIO (RED tests). Remains: implement + gates 1-3.
 - [ ] Y6. Subsystem F README executive refactor + UI/TUI badges + LAW 12 bump (LAW 11 browser matrix). Remains: implement + gates 1-3.
 - [ ] Y7. Ship: full gate green, live Docker proof, browser E2E, feature -> develop -> main -> develop per LAW 1/5.
+
+- [x] Y6. Subsystem F README executive refactor + 0.7.0 bump + badges + demo guide + docs parity (README, ARCHITECTURE V1, CLI/MODULES refs; tests/test_docs_presentation.py +2). Proof: 599-pass gate + ui_scan Chrome/Firefox + version consistency (APP_VERSION/dashboard/README/MCP serverInfo 0.7.0).
+- [x] W1. binary_sweep compression+vault parity + source-path routing guards (tests 8 pass). Files: modules/workflows/binary_sweep.py, workflow.py, sweep.py, main.py socket guard, tests/test_binary_fixture.py.
+- [x] W2. MCP HTTP live sms_scan_source/sms_scan_binary/sms_query_vault_stats + shared envelope + routing guards (tests/test_mcp_server.py +4). Proof: 605-pass gate + --mcp STDIO 5-tool handshake.
+- [x] W3. ARCHITECTURE V1 section + CLI/MODULES reference rows. Proof: docs greps + 605-pass gate.

@@ -13,6 +13,12 @@
 > both render the result card (pre 0/1, regression passed, cleanup clean);
 > `fact-compression` + `fact-vault` + `sweep-passes` IDs confirmed in DOM.
 > Invariants held: air-gapped sandbox untouched; fail-closed; session cleanup.
+> Final Gate 2 (2026-10-29 22:05 -0700): `dev.py offline-scan` 3/3 verified
+> (pre=0/post=1, cleanup clean, images present).
+> Final Gate 3: `ui_scan.py node_query_sink --offline` Chrome (:8799) result
+> card verified. Swarm sub-agents unavailable this session (every model id
+> resolves to a rejecting Anthropic route); all slices executed solo with
+> the same write/no-write + file:line discipline.
 
 ## Subsystem A — Dynamic Context Compression Engine
 
@@ -33,7 +39,7 @@
   3. Wire into `workflow.py` + `sweep.py` + `agents.py` call path; attach stats.
   4. Surface: `--scan` JSON facts, TUI facts, dashboard badge + report JSON.
   5. Gate 1 + Gate 2 + Gate 3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Subsystem B — Role-Separated Encrypted Threat & Mitigation Vault
 
@@ -53,7 +59,7 @@
   3. Wire query into `workflow.py` pre-red + commit-back on verified; stats tool.
   4. Surface in CLI/TUI/UI badge.
   5. Gates 1–3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Subsystem C — Three-Pass Comprehensive Pentester Sweep
 
@@ -71,7 +77,7 @@
   1. Audit prompts + UI pass indicator coverage; add RED tests for gaps.
   2. Fill gaps (prompt hardening, UI/TUI pass badges, report fields).
   3. Gates 1–3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Subsystem D — Compiled Binary RE, Triage & Binary Patching
 
@@ -90,7 +96,7 @@
   3. Sandbox-side telemetry script + mitigation artifact synthesis.
   4. Wire `--scan`/`--tui`/dashboard fixture select.
   5. Live Docker proof + Gates 1–3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Subsystem E — Library API + MCP Server
 
@@ -108,7 +114,7 @@
   2. `sms_api.py` (or `modules/services/sms_api.py`) + MCP tool registration.
   3. `--mcp` STDIO transport in `main.py`.
   4. Docs + Gates 1–3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Subsystem F — Presentation, README Refactor, 3-Minute Demo
 
@@ -123,7 +129,7 @@
   1. README rewrite + ARCHITECTURE backfill; dashboard/TUI badge wiring.
   2. Old-vs-new browser mapping (LAW 11) + `ui_scan.py` extension.
   3. LAW 12 bump + Gates 1–3.
-- Verification Gate Status: `[ ] UNVERIFIED`
+- Verification Gate Status: `[x] VERIFIED_ZERO_DELTA`
 
 ## Execution order (sequential, gates after each)
 
