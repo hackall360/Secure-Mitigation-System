@@ -260,7 +260,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] U2. Writer A (`feature/tui-models`, worktree `/tmp/wt-tui-models`): TuiState mode/depth/fields + parse_key/apply_action + render_panes + footer/help; `tests/test_tui_modes.py` fail-first. Proof: probe 15/15 GREEN + modes 6/6 (commit 5f3a497); pre-existing test_tui.py 2-fail noted.
 - [x] U3. Writer B (`feature/tui-dispatch`, worktree `/tmp/wt-tui-dispatch`): prompt helper + mode dispatch + `_curses_main` wiring + `run_plain` flags; `tests/test_tui_dispatch.py` + `tests/test_tui_plain.py` fail-first. Proof: 51 passed (probe 17 + dispatch 11 + plain 8 + test_tui 15), commits 6d76e85 + a6728c4.
 - [x] U4. Spawner merge: merge both writer branches into `feature/tui-parity`, full `dev.py check` green, live TUI proof (plain sweep + binary), CLI/dashboard regression check. Proof: merges 270dc22 + d2b2a52; conflict unified TUI_MODES/MODE_ORDER; spawner fix honors sys.modules fakes so test_tui.py passes any order; 72/72 TUI files green; gate 557 passed + ruff clean; live Docker proofs: fixture + sweep + binary modes reached real Docker phases and failed closed on unreachable loopback Muse endpoint (no fallback provider contacted); docs MODULES.md + CLI.md TUI parity rows.
-- [.] U5. Ship: TODO close-out, LAW 12 version decision, feature → develop → main on go-ahead.
+- [x] U5. Ship: TODO close-out, LAW 12 version decision (0.5.0 -> 0.6.0 major: TUI tri-surface parity — new modes/keys/flags), feature → develop → main on go-ahead. Proof: gate 557 + ruff clean; version consistent (APP_VERSION, README badge, MCP serverInfo, dashboard footer).
 
 ## Wave 9 swarm close (2026-10-29; blueprint ZERO_DAY_BLUEPRINT.md@cb79d4d)
 
