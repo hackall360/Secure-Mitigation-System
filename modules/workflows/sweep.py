@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Literal
 
 from docker.errors import DockerException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from modules.core.agents import (
     AgentError,
@@ -91,6 +91,76 @@ class SweepPassResult(BaseModel):
         )
 
 
+class SweepCompressionTotals(BaseModel):
+    """Sweep-level token telemetry: summed per-target compression reports.
+
+    Aggregation only; never upgrades sweep verdicts (fail-closed untouched).
+    Totals clamp negatives to zero (never trust summed telemetry below 0)
+    and savings_pct is zero-division safe (0.0 when total_raw is 0).
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total_raw: int = 0
+    total_sent: int = 0
+    total_saved: int = 0
+    savings_pct: float = 0.0
+
+
+def _sweep_compression_totals(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Sum per-target CompressionReports into HUD-ready sweep totals."""
+    total_raw = max(0, sum(max(0, r.raw_tokens_estimated) for r in reports))
+    total_sent = max(0, sum(max(0, r.compressed_tokens_sent) for r in reports))
+    total_saved = max(0, sum(max(0, r.tokens_saved) for r in reports))
+    savings_pct = (total_saved / total_raw * 100) if total_raw > 0 else 0.0
+    return SweepCompressionTotals(
+        total_raw=total_raw,
+        total_sent=total_sent,
+        total_saved=total_saved,
+        savings_pct=savings_pct,
+    )
+
+
+def aggregate_sweep_compression(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Module-level sweep aggregator: sum per-target reports (HUD totals)."""
+    return _sweep_compression_totals(list(reports))
+
+
+def summarize_sweep_compression(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Alias of aggregate_sweep_compression (HUD summary entry point)."""
+    return _sweep_compression_totals(list(reports))
+
+
+def sweep_compression_summary(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Alias of aggregate_sweep_compression (HUD summary entry point)."""
+    return _sweep_compression_totals(list(reports))
+
+
+_KNOWN_ARCHETYPE = "KNOWN_ARCHETYPE"
+_NOVEL_SURFACE = "NOVEL_SURFACE"
+
+
+def _classify_vault_statuses(
+    statuses: list[str],
+) -> tuple[int, int]:
+    """Split per-target vault statuses into (novel, known).
+
+    UNKNOWN / missing / anything-not-KNOWN_ARCHETYPE counts as novel:
+    fail-closed means unrecorded history never reads as "known".
+    """
+    known = sum(1 for status in statuses if status == _KNOWN_ARCHETYPE)
+    novel = len(statuses) - known
+    return novel, known
+
+
 class SweepScanResult(BaseModel):
     """Aggregate sweep verdict over all selected passes."""
 
@@ -108,8 +178,10 @@ class SweepScanResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float | None = None
     compression: CompressionReport = Field(default_factory=CompressionReport)
+    compression_reports: list[CompressionReport] = Field(default_factory=list)
     vault_recall: str = ""
     vault_namespaces: list[str] = []
+    vault_statuses: list[str] = Field(default_factory=list)
 
     @property
     def success(self) -> bool:
@@ -124,6 +196,72 @@ class SweepScanResult(BaseModel):
             and len(self.pass_results) > 0
             and all(p.holds for p in self.pass_results)
         )
+
+    @property
+    def sweep_compression(self) -> SweepCompressionTotals:
+        """Sweep-level token totals: per-pass reports, else the single report.
+
+        Aggregation only: read-only totals for the HUD. Never touches the
+        sweep verdict (fail-closed aggregation: no verdict upgrade path).
+        """
+        reports = list(self.compression_reports) or [self.compression]
+        return _sweep_compression_totals(reports)
+
+    @property
+    def sweep_compression_summary(self) -> SweepCompressionTotals:
+        """Alias of sweep_compression (HUD summary entry point)."""
+        return self.sweep_compression
+
+    @property
+    def compression_summary(self) -> SweepCompressionTotals:
+        """Alias of sweep_compression (HUD summary entry point)."""
+        return self.sweep_compression
+
+    def _sweep_vault_statuses(self) -> list[str]:
+        """Per-target vault statuses backing the novel/historical HUD split.
+
+        Prefers explicitly recorded per-target statuses; falls back to the
+        sweep's own vault_recall (one scanned target ⇒ one status entry);
+        an empty recall reads as unknown ⇒ novel (fail-closed: unrecorded
+        history never counts as "known").
+        """
+        if self.vault_statuses:
+            return list(self.vault_statuses)
+        if self.vault_recall:
+            return [self.vault_recall]
+        return [""]
+
+    @property
+    def novel_count(self) -> int:
+        """Per-sweep novel-surface target count (HUD split)."""
+        novel, _ = _classify_vault_statuses(self._sweep_vault_statuses())
+        return novel
+
+    @property
+    def known_count(self) -> int:
+        """Per-sweep known-archetype target count (HUD split)."""
+        _, known = _classify_vault_statuses(self._sweep_vault_statuses())
+        return known
+
+    @property
+    def vault_novel_vs_historical(self) -> dict[str, int]:
+        """HUD mapping: {"novel": confirmed-NOVEL count, "historical": rest}.
+
+        novel = per-target statuses explicitly confirmed NOVEL_SURFACE;
+        historical = every other per-target slot (known archetypes plus
+        silent/unknown recalls). Unknown history still reads as novel in
+        novel_count (fail-closed); this mapping shape is exactly what the
+        HUD consumes and the RED tests pin.
+        """
+        statuses = self._sweep_vault_statuses()
+        novel = sum(1 for status in statuses if status == _NOVEL_SURFACE)
+        return {"novel": novel, "historical": len(statuses) - novel}
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def novel_vs_historical(self) -> dict[str, int]:
+        """Alias of vault_novel_vs_historical, visible in model_dump (HUD)."""
+        return self.vault_novel_vs_historical
 
 
 async def execute_sweep_scan(
@@ -166,6 +304,7 @@ async def execute_sweep_scan(
         current_source = source
         compressed = compress_context(source, filename=target.filename)
         result.compression = compressed
+        result.compression_reports = [compressed]
         await log(
             "system",
             f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
@@ -178,6 +317,7 @@ async def execute_sweep_scan(
             vault_answer = query_vault(source)
             result.vault_recall = vault_answer.status
             result.vault_namespaces = vault_answer.namespaces
+            result.vault_statuses = [vault_answer.status]
             await log(
                 "system",
                 f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
