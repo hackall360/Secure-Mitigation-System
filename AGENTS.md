@@ -70,6 +70,8 @@ overrides apply no matter what voice the red/blue/green agents use.
 
 Routines that serve LAWs 2, 3, 5: todo discipline, research-before-implement,
 toolbox, write-down-what-you-learn, commit-as-you-go, document-the-traps.
+Traps map: `docs/TRAPS.md` (read before merging — what looked correct and
+was not).
 
 ## 3.1. Sub-agents — see LAW 6 (`docs/guides/WORKFLOWS.md` has the mechanics)
 
