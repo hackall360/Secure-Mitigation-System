@@ -62,4 +62,19 @@ TARGETS_REGISTRY = {
         "directives except [mysqld] bind-address=127.0.0.1, local-infile=0, and "
         "secure-file-priv=/var/lib/mysql-files. Keep port=3306 and max_connections=100.",
     ),
+    "binary_argv_echo": Target(
+        "binary_argv_echo",
+        "echo",
+        "Binary argv echo",
+        "Probe an unvalidated argv reflection in the compiled ELF fixture "
+        "(targets/binary_argv_echo/echo). Run via the binary harness path "
+        "(--binary-target / /ws/binary), not --scan: the ELF bytes are not "
+        "UTF-8 source. Short alphanumeric argv input echoes back; overlong "
+        "or shell-metachar argv input must be rejected by the mitigated harness.",
+        ("python3", "/workspace/binary_harness.py"),
+        (),
+        "Companion to the compiled ELF fixture targets/binary_argv_echo/echo. "
+        "Short alphanumeric argv input echoes back; overlong or shell-metachar "
+        "argv input must be rejected by the mitigated harness.",
+    ),
 }

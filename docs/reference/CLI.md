@@ -18,9 +18,10 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--health` | Report readiness (models, profiles, Docker) without Docker or a key |
 | `--ai-demo` | AI-built demo mode: Muse designs a novel vulnerable demo, then red/blue exercise it in Docker |
 | `--mcp-snippet PATH` | Verify one source snippet file through the red/blue Docker loop; prints the VerdictReceipt JSON (MCP submit_code_snippet over CLI) |
+| `--mcp` | MCP STDIO transport: JSON-RPC on stdin/stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt) |
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
-| `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules |
+| `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
 
 ## TUI parity (`tui.py` plain mode; tri-surface with CLI/dashboard)
 

@@ -24,8 +24,10 @@ from modules.core.docker_manager import DockerSandboxManager, SandboxError
 from modules.core.patches import PatchRejected
 from modules.core.pricing import ScanUsage
 from modules.services.binary_intake import BinaryRejected, BinarySpec, validate_binary_blob
+from modules.services.binary_telemetry import summarize_profile
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
+from modules.shared.sms_compress import compress_context
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.sweep import SWEEP_PASSES, SweepPassResult, SweepScanResult
 from modules.workflows.workflow import build_verdict_receipt
@@ -110,7 +112,30 @@ async def execute_binary_sweep(
         network = await blocking(sandbox.create_isolated_network)
         profile = await blocking(sandbox.binary_static_profile, network, spec.blob)
         result.traces["profile"] = profile[:2000]
-        await log("system", "[phase profile] Static reversing profile collected in-sandbox.")
+        summary = summarize_profile(profile)
+        compressed_profile = compress_context(profile, filename=spec.filename)
+        result.compression = compressed_profile
+        try:
+            from modules.intel.sms_vault import query_vault
+
+            vault_answer = query_vault(profile)
+            result.vault_recall = vault_answer.status
+            result.vault_namespaces = vault_answer.namespaces
+            await log(
+                "system",
+                f"[phase vault] {vault_answer.status} "
+                f"({vault_answer.record_count} prior binary profiles).",
+            )
+        except Exception as exc:
+            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+            result.vault_recall = "VAULT_UNAVAILABLE"
+        await log(
+            "system",
+            f"[phase profile] Static reversing profile collected in-sandbox "
+            f"(format={summary.get('format')}, signals={len(summary.get('signals', []))}, "
+            f"profile {compressed_profile.raw_tokens_estimated}->"
+            f"{compressed_profile.compressed_tokens_sent} tokens).",
+        )
         container, snapshot = await blocking(sandbox.start_binary_harness, network, spec.blob)
         baseline = await blocking(sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT)
         result.traces["baseline"] = baseline.output
@@ -239,6 +264,32 @@ async def execute_binary_sweep(
                     "All binary sweep passes hold: every confirmed boundary is "
                     "mitigated and harness checks passed. Review the mitigation rules."
                 )
+                try:
+                    from modules.intel.sms_vault import VaultNamespace, commit_verified
+
+                    commit_verified(
+                        namespace=VaultNamespace.RED,
+                        source=profile,
+                        payload={
+                            "kind": "binary_profile",
+                            "fixture": spec.filename,
+                            "format": spec.binary_format,
+                            "signals": summarize_profile(profile).get("signals", []),
+                        },
+                    )
+                    if result.cumulative_diff:
+                        commit_verified(
+                            namespace=VaultNamespace.BLUE,
+                            source=result.cumulative_diff,
+                            payload={
+                                "kind": "binary_mitigation",
+                                "fixture": spec.filename,
+                                "passes": [p.pass_id for p in result.pass_results],
+                            },
+                        )
+                    await log("system", "[phase vault] Binary profile + rules committed.")
+                except Exception as exc:
+                    await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
             else:
                 result.status = "failed"
                 result.message = "One or more binary sweep passes did not hold."

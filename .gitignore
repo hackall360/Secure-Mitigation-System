@@ -159,6 +159,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Secure Mitigation System: encrypted vault key material + local vault blobs
+# (LAW 4 secret discipline — never committed; key is owner-only 0600).
+vault.key
+*.vault
+.sms-vault/
+
 # Spyder project settings
 .spyderproject
 .spyproject
