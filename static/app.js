@@ -740,7 +740,7 @@ function w2v2AsRecord(value) {
   return null;
 }
 
-function w2v2Receipt(payload) {
+function w2v2ReceiptRecord(payload) {
   try {
     // REAL first: result.receipt (VerdictReceipt) or any cycle.receipt
     // (CycleReceipt); legacy verdict_receipt fallback.
@@ -752,6 +752,30 @@ function w2v2Receipt(payload) {
       }
     }
     if (!receipt) receipt = w2v2AsRecord(payload && payload.verdict_receipt);
+    return receipt;
+  } catch { return null; }
+}
+
+function w2v2Chain(receipt) {
+  try {
+    // W7 receipt-chain badge (render only): chain_ok asserts positive
+    // membership in an intact chain, so an unlinked/genesis receipt or one
+    // without chain fields reads broken — never upgrades a verdict.
+    if (!w2v2AsRecord(receipt)) return null;
+    if (typeof receipt.chain_ok === 'boolean') {
+      return receipt.chain_ok ? { ok: true, text: 'chain ok' } : { ok: false, text: 'chain broken' };
+    }
+    const prev = receipt.prev_receipt_sha;
+    const digest = receipt.patch_sha256 || receipt.patch_hash || receipt.patch_sha;
+    const linked = typeof prev === 'string' && prev.length > 0 && prev !== '0'.repeat(64);
+    const ok = !!(linked && prev === digest);
+    return { ok, text: ok ? 'chain ok' : 'chain broken' };
+  } catch { return null; }
+}
+
+function w2v2Receipt(payload) {
+  try {
+    const receipt = w2v2ReceiptRecord(payload);
     if (!receipt) return null;
     const parts = [];
     const fixture = receipt.fixture || receipt.target;
@@ -768,7 +792,9 @@ function w2v2Receipt(payload) {
     if (receipt.differential_passed === true) parts.push('differential passed');
     if (receipt.property_passed === true) parts.push('properties passed');
     const hash = receipt.patch_sha256 || receipt.patch_hash || receipt.patch_sha;
-    if (hash) parts.push(`sha ${String(hash).slice(0, 16)}`);
+    if (hash) parts.push(`sha ${String(hash).slice(0, 12)}`);
+    const chain = w2v2Chain(receipt);
+    if (chain) parts.push(chain.text);
     return parts.length ? parts.join(' · ').slice(0, 200) : null;
   } catch { return null; }
 }
@@ -877,6 +903,13 @@ function renderW2v2(payload) {
   try {
     const receipt = w2v2Receipt(payload);
     fact('fact-receipt', receipt || 'Not reported', receipt ? true : undefined);
+    const chain = w2v2Chain(w2v2ReceiptRecord(payload));
+    fact('fact-receipt-chain', chain ? chain.text : 'Not reported', chain ? chain.ok : undefined);
+    const badge = el('receipt-chain-badge');
+    if (badge) {
+      badge.textContent = chain ? (chain.ok ? 'chain verified' : 'chain broken') : 'chain unknown';
+      badge.dataset.state = chain ? (chain.ok ? 'verified' : 'failed') : 'idle';
+    }
     const guards = w2v2Guards(payload);
     fact('fact-guards', guards.length ? guards.map((g) => g.text || `${g.guard}${g.line ? `: ${g.line}` : ''}`).join('; ').slice(0, 200) : 'Not reported', guards.length ? true : undefined);
     const list = el('guard-list');

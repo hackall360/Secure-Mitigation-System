@@ -425,7 +425,22 @@ def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
                 receipt.get("patch_sha256") or receipt.get("patch_hash") or receipt.get("patch_sha")
             )
             if patch_hash:
-                parts.append(f"sha {str(patch_hash)[:16]}")
+                parts.append(f"sha {str(patch_hash)[:12]}")
+            # W7 receipt-chain token (render only): an explicit chain_ok flag
+            # wins; otherwise mirror verify_receipt semantics locally (linked
+            # prev_receipt_sha must re-attest the SAME digest, the all-zero
+            # digest is the genesis sentinel = unlinked). Unlinked receipts
+            # read "chain broken"; records never upgrade a verdict.
+            chain_flag = receipt.get("chain_ok")
+            if isinstance(chain_flag, bool):
+                parts.append("chain ok" if chain_flag else "chain broken")
+            else:
+                prev = receipt.get("prev_receipt_sha")
+                linked = isinstance(prev, str) and len(prev) > 0 and prev != "0" * 64
+                if linked and prev == patch_hash:
+                    parts.append("chain ok")
+                else:
+                    parts.append("chain broken")
             for key in ("regression", "differential", "properties"):
                 val = receipt.get(key)
                 if val and f"{key} " not in " ".join(parts):
