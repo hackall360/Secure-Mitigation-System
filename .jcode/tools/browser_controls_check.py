@@ -99,7 +99,16 @@ def main() -> int:
         assert results["mcp_form_visible"] and results["mcp_errors_visible"], results
         assert results["sweep_options"] == ["1", "2", "3"], results
         assert results["binary_form_visible"] and results["binary_file_type"] == "file", results
-        assert results["mcp_tools"] == ["submit_code_snippet"], results
+        # V1 Subsystem E shipped 5 MCP tools (submit_code_snippet + sms_*); assert order-independent superset.
+        expected_tools = {
+            "submit_code_snippet",
+            "sms_scan_source",
+            "sms_scan_binary",
+            "sms_query_vault_stats",
+            "sms_verify_receipt",
+        }
+        assert expected_tools.issubset(set(results["mcp_tools"])), results
+        assert set(results["mcp_tools"]) == expected_tools, results
         print("BROWSER-CONTROLS: PASS all new controls operable")
         wd_request(base, "DELETE", f"/session/{session}", None)
         return 0
