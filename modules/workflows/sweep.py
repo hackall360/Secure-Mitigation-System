@@ -85,6 +85,8 @@ class SweepScanResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float | None = None
     compression: CompressionReport = Field(default_factory=CompressionReport)
+    vault_recall: str = ""
+    vault_namespaces: list[str] = []
 
     @property
     def success(self) -> bool:
@@ -132,6 +134,19 @@ async def execute_sweep_scan(
             f"{compressed.compressed_tokens_sent} tokens "
             f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
         )
+        try:
+            from modules.intel.sms_vault import query_vault
+
+            vault_answer = query_vault(source)
+            result.vault_recall = vault_answer.status
+            result.vault_namespaces = vault_answer.namespaces
+            await log(
+                "system",
+                f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
+            )
+        except Exception as exc:
+            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+            result.vault_recall = "VAULT_UNAVAILABLE"
         muse = muse_factory(settings)
         sandbox = await blocking(sandbox_factory, settings)
         await blocking(sandbox.require_base_images)
@@ -269,6 +284,34 @@ async def execute_sweep_scan(
                     "All sweep passes hold: every confirmed boundary is blocked and "
                     "trusted normal-input checks passed. Review the candidate diff."
                 )
+                try:
+                    from modules.intel.sms_vault import VaultNamespace, commit_verified
+
+                    for passed in result.pass_results:
+                        if passed.finding is not None and passed.pre_exit_code == 0:
+                            commit_verified(
+                                namespace=VaultNamespace.RED,
+                                source=source,
+                                payload={
+                                    "kind": "sweep_boundary",
+                                    "fixture": target_key,
+                                    "pass_id": passed.pass_id,
+                                    "sink": passed.finding.sink_location,
+                                },
+                            )
+                    if result.cumulative_diff:
+                        commit_verified(
+                            namespace=VaultNamespace.BLUE,
+                            source=result.cumulative_diff,
+                            payload={
+                                "kind": "sweep_patch",
+                                "fixture": target_key,
+                                "passes": [p.pass_id for p in result.pass_results],
+                            },
+                        )
+                    await log("system", "[phase vault] Sweep findings committed.")
+                except Exception as exc:
+                    await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
             else:
                 result.status = "failed"
                 result.message = "One or more sweep passes did not hold after patching."
