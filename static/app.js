@@ -46,6 +46,10 @@ const BLUE_NAMES = ['Bastion', 'Stitch', 'Librarian', 'Sentinel', 'Proofreader',
 let startedAt = 0;
 let timer = null;
 let eventCount = 0;
+let scoreAgents = 0;
+let scoreVulns = 0;
+let scorePatches = 0;
+let scoreVerified = 0;
 let currentStage = -1;
 let activeFilter = 'all';
 let popCount = 0;
@@ -55,6 +59,18 @@ let sourceMode = 'demo';
 let inferenceMode = 'hosted';
 
 /* ---------- small helpers ---------- */
+
+function renderScoreboard() {
+  // Session aggregates only: roster presence + result outcomes. No backend call.
+  try {
+    const agents = document.querySelectorAll('#red-roster .agent, #blue-roster .agent, #green-roster .agent').length;
+    const set = (id, value) => { const node = el(id); if (node) node.textContent = String(value); };
+    set('score-agents', Math.max(scoreAgents, agents));
+    set('score-vulns', scoreVulns);
+    set('score-patches', scorePatches);
+    set('score-verified', scoreVerified);
+  } catch { /* scoreboard is decorative */ }
+}
 
 function status(text, state = 'idle') {
   const node = el('status');
@@ -269,6 +285,7 @@ function logText(team) {
 /* ---------- pipeline ---------- */
 
 function setStage(name, state = 'active') {
+  try { if (window.SMSGraph) window.SMSGraph.update({ stage: name }); } catch { /* decorative */ }
   const index = STAGES.indexOf(name);
   if (index < 0) return;
   if (state === 'active' && index < currentStage) return;
@@ -1002,6 +1019,11 @@ function showResult(payload) {
   el('download-patch-btn').hidden = !diff;
   el('result-panel').hidden = false;
   el('result-panel').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
+  try { if (window.SMSGraph) window.SMSGraph.update({ result: payload }); } catch { /* decorative */ }
+  if (payload.pre_probe_exit === 0 || payload.status === 'verified') scoreVulns += 1;
+  if (payload.diff || payload.cumulative_diff) scorePatches += 1;
+  if (payload.status === 'verified') scoreVerified += 1;
+  renderScoreboard();
   status(label, payload.status);
   finishPipeline({ ...payload, cleanup_ok: cleanupOk });
 }
@@ -1020,6 +1042,75 @@ function socketQuery() {
     }
   }
   return params.length ? `?${params.join('&')}` : '';
+}
+
+/* ---------- hash routes: landing + #/demo + #/live (shared core) ---------- */
+
+const ROUTE_MODES = { demo: ['demo', 'demo-build'], live: ['project', 'mcp', 'binary'] };
+
+function currentRoute() {
+  const hash = (location.hash || '').split('?')[0];
+  if (hash === '#/demo') return 'demo';
+  if (hash === '#/live') return 'live';
+  return 'landing';
+}
+
+function applyRoute() {
+  // Views are display-only; every control keeps its id and handler (LAW 8/10C).
+  const route = currentRoute();
+  const demo = route === 'demo';
+  const live = route === 'live';
+  const landing = !demo && !live;
+  const show = (id, on) => { const node = el(id); if (node) node.hidden = !on; };
+  show('view-landing', landing);
+  show('view-demo', demo);
+  show('view-live', live);
+  document.querySelectorAll('[data-route]').forEach((link) => {
+    const on = link.dataset.route === route || (link.dataset.route === 'landing' && landing);
+    link.classList.toggle('current', on);
+    if (on) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
+  // Mode <-> route sync: demo route owns fixture/greenhouse modes, live owns
+  // project/mcp/binary. Guarded while a scan runs (setSourceMode refuses then).
+  if (demo && !ROUTE_MODES.demo.includes(sourceMode)) setSourceMode('demo');
+  if (live && !ROUTE_MODES.live.includes(sourceMode)) setSourceMode('project');
+  try { if (window.SMSGraph) window.SMSGraph.kick(); } catch { /* decorative */ }
+}
+
+function bootRoutes() {
+  // Deep-linkable + back-button safe; legacy #anchors keep working (no capture).
+  if (!location.hash || location.hash === '#main') history.replaceState(null, '', '#/');
+  window.addEventListener('hashchange', applyRoute);
+  document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => {
+    if (ROUTE_MODES.demo.includes(button.dataset.mode) && currentRoute() !== 'demo') location.hash = '#/demo';
+    else if (ROUTE_MODES.live.includes(button.dataset.mode) && currentRoute() !== 'live') location.hash = '#/live';
+    applyRoute();
+  }));
+  // HUD capability toggles: every toggle drives a real surface (no dead controls).
+  const hud = (id, fn) => {
+    const node = el(id);
+    if (!node) return;
+    node.addEventListener('click', () => {
+      const on = node.getAttribute('aria-pressed') !== 'true';
+      node.setAttribute('aria-pressed', String(on));
+      node.classList.toggle('off', !on);
+      try { fn(on); } catch { /* toggle target missing is not fatal */ }
+    });
+  };
+  hud('hud-toggle-sweep', (on) => { const n = el('sweep-passes'); if (n) n.closest('.field').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-profile', (on) => { const n = el('profile-row'); if (n) n.hidden = !on; });
+  hud('hud-toggle-research', (on) => {
+    const r = el('research-toggle');
+    if (r) { r.checked = on; }
+    const rs = el('research-scanners-toggle');
+    if (rs && rs.closest('label')) rs.closest('label').style.display = on ? '' : 'none';
+  });
+  hud('hud-toggle-compression', (on) => { const n = el('fact-compression'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-vault', (on) => { const n = el('fact-vault'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-differential', (on) => { document.querySelectorAll('#cycle-reports, #mutation-evidence').forEach((n) => { n.style.display = on ? '' : 'none'; }); });
+  hud('hud-toggle-binary', (on) => { const b = document.querySelector('[data-mode="binary"]'); if (b) b.style.display = on ? '' : 'none'; });
+  applyRoute();
 }
 
 /* ---------- lifecycle ---------- */
@@ -1102,6 +1193,7 @@ function startScan() {
     buildRoster(el('blue-roster'), BLUE_NAMES.slice(0, (spec && spec.blue_agents) || 5), 'Warden');
     buildRoster(el('green-roster'), [], 'Greenhouse');
   } catch { /* decorative */ }
+  try { scoreAgents = (spec && (spec.red_agents + spec.blue_agents)) || 10; renderScoreboard(); } catch { /* decorative */ }
   el('stop-btn').hidden = false;
   el('stop-btn').disabled = false;
   status('Verification running', 'running');
@@ -1540,4 +1632,7 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 updateScanProfile();
+bootRoutes();
+try { if (window.SMSGraph) window.SMSGraph.init('phase-graph'); } catch { /* timeline strip remains */ }
+renderScoreboard();
 initialize();

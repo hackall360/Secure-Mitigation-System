@@ -300,3 +300,12 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] W1b. CLI rows writer (worktree /tmp/wt-w1-cli, branch feature/w1-cli-rows): sms_compress/vault/api rows in CLI.md + parity test. Proof: tests/test_cli_parity.py 41 pass; commit 579f68b.
 - [x] W1c. UI pass writer (worktree /tmp/wt-w1-ui, branch feature/w1-ui-pass): #pass-chip live element + binary_argv_echo Binary-mode redirect. Proof: node --check OK, design tests 5 pass; commit a0fb70e.
 - [x] W1d. Spawner merge: w1-cli-rows + w1-ui-pass into w1-proj-telemetry (no conflicts, disjoint scopes), full gate 615 passed, Gates 2 (offline-scan 3/3 verified) + 3 (ui_scan Chrome card, pass-chip in DOM).
+
+## Z. UI guidance-matrix directive (brief 2026-10-30-ui-guidance-matrix; branch feature/ui-guidance-matrix; ledger docs/plans/GUIDANCE_MATRIX_UI.md)
+
+- [x] Z0. Phase 0 recon + ledger: backend telemetry inventory + frontend gap audit. Files: `docs/plans/GUIDANCE_MATRIX_UI.md`, `.jcode/briefs/2026-10-30-ui-guidance-matrix.md`. Proof: ledger on disk; 2 sidecars (guppy/frontend, humpback/backend) on route-pinned `meta-muse:muse-spark-1.3-contributor`; baseline gate 615 passed.
+- [x] Z1. RED tests fail-first: `tests/test_ui_guidance.py` 9 contracts. Proof: 8 failed/1 passed pre-change (functional absences), 9 passed post-change, no weakening.
+- [x] ZA. Subsystem A split routes: `#/` landing + `#/demo` + `#/live` views, hash router + mode sync, shared core single-mounted. Files: `static/index.html`, `static/app.js` (`currentRoute/applyRoute/bootRoutes`). Proof: RED route tests green; CDP operate-proof (mode_after_live=project).
+- [x] ZB. Subsystem B graph engine: `static/graph.js` SMSGraph canvas-2D force layout, team colors green/red/blue/purple + particles + freeze, timeline strip fallback. Files: `static/graph.js`, `static/index.html` (`#phase-graph` + script), `static/app.js` (stage/result feed). Proof: RED graph tests green; node --check OK; graph_fallback=false live with strip mounted.
+- [x] ZC. Subsystem C HUD: `#scoreboard` (agents/vulns/patches/verified) + 7 capability toggles wired to existing surfaces + terminal semantics kept. Files: `static/index.html`, `static/app.js` (`renderScoreboard`, HUD wiring). Proof: RED HUD tests green; dashboard suites 39 passed; CDP toggle-flip PASS.
+- [.] Z2. Full gate + live Docker + browser matrix + docs/version. Remains: TRAPS entry, version decision, ship only on user go-ahead. Proof so far: gate 624 green; offline_scan 3/3 verified; ui_scan Chrome+Firefox cards; CDP operate-proof PASS.
