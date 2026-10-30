@@ -123,6 +123,121 @@ def snippet_tool_definition() -> dict[str, Any]:
     }
 
 
+def sms_scan_source_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_scan_source (fixture scan)."""
+    return {
+        "name": "sms_scan_source",
+        "title": "Scan a bundled source fixture",
+        "description": (
+            "Run the evidence-gated red/blue cycle (or 3-pass sweep) over a "
+            "bundled fixture key. Docker evidence alone decides the verdict."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "maxLength": 64},
+                "max_passes": {"type": "integer", "minimum": 1, "maximum": 3},
+            },
+            "required": ["target"],
+            "additionalProperties": False,
+        },
+        "outputSchema": snippet_output_schema(),
+    }
+
+
+def sms_scan_binary_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_scan_binary (binary harness sweep)."""
+    return {
+        "name": "sms_scan_binary",
+        "title": "Sweep a compiled binary through the trusted harness",
+        "description": (
+            "Submit base64 binary bytes (ELF/Mach-O/PE, max 8 MiB) plus a "
+            "behavior contract; the air-gapped harness loop probes and "
+            "mitigates it. Docker evidence alone decides the verdict."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "maxLength": 128},
+                "blob_b64": {"type": "string"},
+                "contract": {"type": "string", "maxLength": 8192},
+                "max_passes": {"type": "integer", "minimum": 1, "maximum": 3},
+            },
+            "required": ["filename", "blob_b64", "contract"],
+            "additionalProperties": False,
+        },
+        "outputSchema": snippet_output_schema(),
+    }
+
+
+def sms_query_vault_stats_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_query_vault_stats (redacted telemetry)."""
+    return {
+        "name": "sms_query_vault_stats",
+        "title": "Query encrypted vault telemetry",
+        "description": (
+            "Redacted counts per vault namespace (red/blue/green) plus a "
+            "token-savings estimate. Never returns payload material."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"stats": {"type": "object"}},
+            "required": ["stats"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def sms_verify_receipt_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_verify_receipt (digest validation)."""
+    return {
+        "name": "sms_verify_receipt",
+        "title": "Validate a VerdictReceipt digest",
+        "description": (
+            "Structural validation of a VerdictReceipt digest (schema, "
+            "64-hex sha, sane exit codes). Docker evidence earns receipts; "
+            "this tool only checks their shape."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "fixture": {"type": "string"},
+                "pre_exit_code": {"type": "integer"},
+                "post_exit_code": {"type": "integer"},
+                "regression_passed": {"type": "boolean"},
+                "differential_passed": {"type": "boolean"},
+                "patch_sha256": {"type": "string"},
+            },
+            "required": ["fixture", "pre_exit_code", "post_exit_code", "patch_sha256"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "valid": {"type": "boolean"},
+                "fixture": {"type": ["string", "null"]},
+                "reason": {"type": ["string", "null"]},
+            },
+            "required": ["valid"],
+            "additionalProperties": False,
+        },
+    }
+
+
+MCP_TOOLS: list[dict[str, Any]] = [
+    snippet_tool_definition(),
+    sms_scan_source_tool_definition(),
+    sms_scan_binary_tool_definition(),
+    sms_query_vault_stats_tool_definition(),
+    sms_verify_receipt_tool_definition(),
+]
+
+
 def validate_snippet_arguments(raw: dict[str, Any]) -> McpSnippetArguments:
     """Validate raw tool arguments; raises ValueError with a safe message."""
     try:
@@ -200,6 +315,18 @@ def jsonrpc_error(rpc_id: Any, code: int, message: str, data: Any = None) -> dic
     return {"jsonrpc": "2.0", "id": rpc_id, "error": error}
 
 
+def _wrap_tool_result(rpc_id: Any, structured: dict[str, Any]) -> dict[str, Any]:
+    """Wrap a structured tool result in the MCP content envelope."""
+    text = " ".join(f"{key}={value}" for key, value in structured.items() if value is not None)
+    return jsonrpc_result(
+        rpc_id,
+        {
+            "content": [{"type": "text", "text": text or "ok"}],
+            "structuredContent": structured,
+        },
+    )
+
+
 def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
     """Pure JSON-RPC dispatch for initialize/tools-list (no I/O, never raises)."""
     rpc_id = body.get("id")
@@ -211,7 +338,9 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
             rpc_id,
             {
                 "protocolVersion": MCP_PROTOCOL_VERSION,
-                "capabilities": {"tools": {"submit_code_snippet": True}},
+                "capabilities": {
+                    "tools": {tool["name"]: True for tool in MCP_TOOLS},
+                },
                 "serverInfo": {
                     "name": "secure-mitigation-system",
                     "version": "0.6.0",
@@ -221,10 +350,45 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
     if method == "notifications/initialized":
         return jsonrpc_result(rpc_id, {})
     if method == "tools/list":
-        return jsonrpc_result(rpc_id, {"tools": [snippet_tool_definition()]})
+        return jsonrpc_result(rpc_id, {"tools": MCP_TOOLS})
     if method == "ping":
         return jsonrpc_result(rpc_id, {})
+    if method == "tools/call":
+        params = body.get("params") or {}
+        name = params.get("name") if isinstance(params, dict) else None
+        arguments = params.get("arguments") if isinstance(params, dict) else None
+        arguments = arguments if isinstance(arguments, dict) else {}
+        if name == "sms_query_vault_stats":
+            try:
+                from modules.services.sms_api import query_vault_stats
+
+                return _wrap_tool_result(rpc_id, {"stats": query_vault_stats()})
+            except Exception as exc:
+                return jsonrpc_error(rpc_id, -32603, f"Vault stats failed ({type(exc).__name__}).")
+        if name == "sms_verify_receipt":
+            try:
+                from modules.services.sms_api import verify_receipt
+
+                return _wrap_tool_result(rpc_id, verify_receipt(arguments))
+            except Exception as exc:
+                return jsonrpc_error(
+                    rpc_id, -32603, f"Receipt check failed ({type(exc).__name__})."
+                )
+        if name in ("sms_scan_source", "sms_scan_binary"):
+            return jsonrpc_error(
+                rpc_id,
+                -32001,
+                f"Tool {name} runs Docker scans; call it over the live /mcp HTTP "
+                "endpoint or --mcp STDIO transport, not the offline dispatcher.",
+            )
+        return jsonrpc_error(rpc_id, -32602, f"Unknown tool: {name}.")
     return jsonrpc_error(rpc_id, -32601, f"Method not found: {method}.")
 
 
-McpToolKind = Literal["submit_code_snippet"]
+McpToolKind = Literal[
+    "submit_code_snippet",
+    "sms_scan_source",
+    "sms_scan_binary",
+    "sms_query_vault_stats",
+    "sms_verify_receipt",
+]

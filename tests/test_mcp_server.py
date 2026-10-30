@@ -46,6 +46,13 @@ def test_mcp_tools_list_exposes_snippet_tool(client):
     tools = resp.json()["result"]["tools"]
     names = [t["name"] for t in tools]
     assert "submit_code_snippet" in names
+    for expected in (
+        "sms_scan_source",
+        "sms_scan_binary",
+        "sms_query_vault_stats",
+        "sms_verify_receipt",
+    ):
+        assert expected in names, expected
     tool = next(t for t in tools if t["name"] == "submit_code_snippet")
     assert "inputSchema" in tool
     assert "outputSchema" in tool
