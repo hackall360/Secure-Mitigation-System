@@ -34,7 +34,7 @@ FIXTURE_ORDER = ("node_query_sink", "php_command_sink", "mysql_insecure_conf")
 FIXTURE_SHORT = ("Node query", "PHP command", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3 fixture  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3 fixture  m mcp  b binary  p project  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
 
 # Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
 # same plain-English value lines). Toggled with h; must stay terminal-safe.
@@ -50,6 +50,13 @@ CAPABILITIES_LINES = (
     "repeat-stability re-runs the check so flaky passes fail closed",
     "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
     "binary: /ws/binary sweep or CLI --binary-target FILE (ELF/Mach-O/PE)",
+    "mode:fixture scan one bundled fixture end to end",
+    "mode:sweep re-run the check up to 3 passes (+/- depth)",
+    "mode:mcp submit a code snippet for review (key m)",
+    "mode:binary sweep one compiled binary file (key b)",
+    "mode:project two-cycle project workout (key p)",
+    "mode:demo replay a themed demo script (key v)",
+    "mode:cve look up live CVE intel keyless (key c)",
 )
 
 
@@ -95,9 +102,88 @@ def queue_emit(event_queue: "queue.Queue[tuple[str, str]]"):
     return _emit
 
 
+# Known scan-mode values for TuiState.mode (LAW 4: user-typed metadata only,
+# never scan output; probe/payload content must not live in rendered text).
+TUI_MODES = ("fixture", "sweep", "mcp", "binary", "project", "demo", "cve")
+
+# Canonical mode order shared by dispatch routing and --mode choices.
+MODE_ORDER = TUI_MODES
+
+
+def prompt_line(prompt: str, default: str = "", input_func=input) -> str:
+    """Read one text line for curses prompts. Testable: empty/EOF -> default."""
+    try:
+        typed = input_func(prompt)
+    except (EOFError, KeyboardInterrupt):
+        return default
+    if typed is None:
+        return default
+    text = str(typed).strip()
+    return text if text else default
+
+
+_SNIPPET_LANGUAGE_BY_SUFFIX = {
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".py": "python",
+    ".php": "php",
+}
+
+
+def _state_mode(state: TuiState) -> str:
+    return str(getattr(state, "mode", "fixture") or "fixture")
+
+
+def _state_sweep_passes(state: TuiState) -> int:
+    depth = getattr(state, "sweep_depth", None)
+    passes = getattr(state, "sweep_passes", None)
+    try:
+        explicit = int(passes) if passes is not None else 1
+    except (TypeError, ValueError):
+        explicit = 1
+    if passes is not None and explicit != 1:
+        depth = passes
+    for value in (depth, passes):
+        if value is not None:
+            try:
+                return max(1, min(3, int(value)))
+            except (TypeError, ValueError):
+                pass
+    return 1
+
+
+def _state_field(state: TuiState, *names: str, default: str = "") -> str:
+    for name in names:
+        value = getattr(state, name, None)
+        if value:
+            return str(value)
+    return default
+
+
+def _infer_snippet_language(filename: str, explicit: str = "") -> str:
+    if explicit and str(explicit).strip().lower() in ("javascript", "python", "php"):
+        return str(explicit).strip().lower()
+    import os as _os
+
+    return _SNIPPET_LANGUAGE_BY_SUFFIX.get(_os.path.splitext(filename)[1].lower(), "")
+
+
 @dataclass
 class TuiState:
     fixture_index: int = 0
+    mode: str = "fixture"
+    sweep_depth: int = 1
+    mcp_snippet: str = ""
+    mcp_contract: str = ""
+    binary_path: str = ""
+    binary_contract: str = ""
+    project_path: str = ""
+    project_command: str = ""
+    project_test_command: str = ""
+    project_contract: str = ""
+    demo_theme: str = ""
+    demo_vulns: str = ""
     running: bool = False
     stop_requested: bool = False
     filter_kind: str | None = None
@@ -195,6 +281,22 @@ def parse_key(key: object) -> str:
         return "stop"
     if lowered == "f":
         return "filter"
+    if lowered == "m":
+        return "mode:mcp"
+    if lowered == "b":
+        return "mode:binary"
+    if lowered == "p":
+        return "mode:project"
+    if lowered == "g":
+        return "mode:sweep"
+    if lowered == "v":
+        return "mode:demo"
+    if lowered == "c":
+        return "mode:cve"
+    if char == "+":
+        return "depth:inc"
+    if char == "-":
+        return "depth:dec"
     if lowered == "h":
         return "help"
     if lowered == "q":
@@ -206,8 +308,17 @@ def apply_action(state: TuiState, action: str) -> str:
     """Apply a parsed action to state (no threads/curses). Returns the action."""
     if action.startswith("select:"):
         state.fixture_index = int(action.split(":")[1]) % len(FIXTURE_ORDER)
+        state.mode = "fixture"
         if not state.running:
             state.result_summary = f"selected {state.fixture_key}; press Enter."
+    elif action.startswith("mode:"):
+        mode = action.split(":", 1)[1]
+        if mode in TUI_MODES:
+            state.mode = mode
+    elif action == "depth:inc":
+        state.sweep_depth = min(3, state.sweep_depth + 1)
+    elif action == "depth:dec":
+        state.sweep_depth = max(1, state.sweep_depth - 1)
     elif action == "filter":
         order: list[str | None] = [None, "red", "blue", "system"]
         state.filter_kind = order[(order.index(state.filter_kind) + 1) % len(order)]
@@ -242,7 +353,8 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
         mark = "*" if i == state.fixture_index else " "
         chips.append(f"{mark}{i + 1}:{short}")
     filt = f"filter:{state.filter_kind or 'all'}"
-    lines.append((" ".join(chips) + "  " + filt)[:width].ljust(width))
+    mode_chip = f"mode:{state.mode}  depth:{state.sweep_depth}"
+    lines.append((" ".join(chips) + "  " + filt + "  " + mode_chip)[:width].ljust(width))
 
     pane_width = max(10, (width - 4) // 3)
     titles = [f" {name.upper()} ".center(pane_width, "-")[:pane_width] for name in PANES]
@@ -360,37 +472,491 @@ def start_scan_thread(
     return thread
 
 
-def run_plain(argv: list[str] | None = None) -> int:
-    """Non-TTY / no-curses degrade: pick fixture, run scan, print redacted lines."""
-    from sms_cli import CAPABILITIES_TEXT
+_SNIPPET_FILENAME_BY_LANGUAGE = {
+    "javascript": "snippet.js",
+    "python": "snippet.py",
+    "php": "snippet.php",
+}
 
-    parser = argparse.ArgumentParser(
-        description="Secure Mitigation System TUI (plain mode)",
-        epilog=CAPABILITIES_TEXT,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+_DEFAULT_SNIPPET_CONTRACT = "Preserve normal behavior. Only harden untrusted inputs."
+_DEFAULT_PROJECT_CONTRACT = "Preserve normal behavior. Only harden untrusted inputs."
+
+
+def _coerce_argv(value: object, default: list[str]) -> list[str]:
+    """Coerce a command field to argv list. Strings via JSON argv or shlex."""
+    if value is None:
+        return list(default)
+    if isinstance(value, (list, tuple)):
+        parts = [str(item) for item in value if str(item)]
+        return parts or list(default)
+    text = str(value).strip()
+    if not text:
+        return list(default)
+    if text.startswith("["):
+        try:
+            import json as _json
+
+            parsed = _json.loads(text)
+            if isinstance(parsed, list) and all(isinstance(p, str) for p in parsed) and parsed:
+                return list(parsed)
+        except Exception:
+            pass
+    import shlex as _shlex
+
+    try:
+        parts = [p for p in _shlex.split(text) if p]
+    except Exception:
+        parts = [p for p in text.split() if p]
+    return parts or list(default)
+
+
+def _state_int(state: TuiState, name: str, default: int, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(getattr(state, name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _result_field(result: object, name: str, default: str = "?") -> str:
+    if isinstance(result, dict):
+        value = result.get(name, default)
+        return str(value)[:120] if value is not None else default
+    value = getattr(result, name, default)
+    try:
+        text = str(value)
+    except Exception:
+        return default
+    return text[:120] if text else default
+
+
+def _result_target(result: object) -> str:
+    target = _result_field(result, "target", "")
+    if target and target != "?":
+        return target
+    project = _result_field(result, "project", "")
+    return project if project and project != "?" else "?"
+
+
+def _summarize_result(prefix: str, result: object) -> str:
+    """LAW-4-safe one-line summary: status/message/target only, never blobs."""
+    try:
+        if isinstance(result, bool):
+            return f"{prefix}: {'done' if result else 'failed'}"
+        if isinstance(result, int):
+            return f"{prefix}: exit {int(result)}"
+        if isinstance(result, dict):
+            status = _result_field(result, "status", "?")
+            message = _result_field(result, "message", "")
+            text = f"{status}: {message}".strip(": ").strip()
+            return f"{prefix}: {text}"[:200] if text else f"{prefix}: done"
+        return f"{prefix}: {_result_target(result)} -> {describe_result(result)}"[:200]
+    except Exception:
+        return f"{prefix}: done"
+
+
+def _rc_from_outcome(outcome: object) -> int:
+    """Exit code from a backend outcome. Completion twins describe_result."""
+    if isinstance(outcome, bool):
+        return 0 if outcome else 1
+    if isinstance(outcome, int):
+        return int(outcome)
+    if isinstance(outcome, dict):
+        return 0 if str(outcome.get("status", "")) != "error" else 1
+    success = getattr(outcome, "success", None)
+    if isinstance(success, bool):
+        return 0 if success else 1
+    status = str(getattr(outcome, "status", "") or "").lower()
+    if status in ("error", "failed"):
+        return 1
+    return 0
+
+
+def _project_spec_from_state(state: TuiState):
+    """Build a validated ProjectSpec from state project fields (or raise).
+
+    Consent pass-through (not consent override): ``allow_remote`` flows from
+    state into the spec unchanged, and the REAL ``execute_project_workflow``
+    / ``execute_cve_scan`` path enforces it (ProjectWorkflowError, before any
+    scan) when inference is hosted. Dispatch never defaults consent to True.
+    """
+    from modules.services.projects import DEFAULT_TARGET_IMAGE, ProjectSpec
+
+    allow_remote = bool(
+        getattr(state, "allow_remote", getattr(state, "project_allow_remote_inference", False))
     )
-    parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
+    return ProjectSpec.model_validate(
+        {
+            "path": _state_field(state, "project_path", default=".") or ".",
+            "image": _state_field(state, "project_image") or DEFAULT_TARGET_IMAGE,
+            "command": _coerce_argv(getattr(state, "project_command", None), ["true"]),
+            "test_command": _coerce_argv(getattr(state, "project_test_command", None), ["true"]),
+            "contract": _state_field(state, "project_contract", "contract")
+            or _DEFAULT_PROJECT_CONTRACT,
+            "cycles": _state_int(state, "project_cycles", 1, 1, 20),
+            "context_budget": _state_int(state, "project_context_budget", 32768, 1024, 131072),
+            "allow_remote_inference": allow_remote,
+        }
+    )
+
+
+async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
+    """Run state.mode's backend; returns (LAW-4-safe summary, raw outcome).
+
+    Backends are lazy-imported at call time so monkeypatching the canonical
+    source modules redirects them. Backend exceptions propagate (run_plain
+    maps them to exit 1; the dispatch thread maps them to error state).
+    """
+    mode = _state_mode(state)
+    if mode not in MODE_ORDER:
+        raise ValueError(f"Unknown TUI mode {mode!r}.")
+    if mode == "sweep":
+        from modules.workflows.sweep import execute_sweep_scan
+
+        result = await execute_sweep_scan(
+            state.fixture_key, emit, max_passes=_state_sweep_passes(state)
+        )
+        return _summarize_result(f"sweep {state.fixture_key}", result), result
+    if mode == "mcp":
+        import main as main_mod
+        from modules.services import mcp_bridge
+
+        path = _state_field(state, "snippet_path", "mcp_snippet", "mcp_path")
+        source = _state_field(state, "snippet_source", "mcp_source")
+        if not source and path:
+            try:
+                from pathlib import Path as _Path
+
+                source = _Path(path).read_text(encoding="utf-8")
+            except OSError:
+                source = ""
+        language = _infer_snippet_language(
+            path or _state_field(state, "snippet_filename", "mcp_filename"),
+            _state_field(state, "snippet_language", "mcp_language"),
+        )
+        if not language:
+            raise ValueError("Cannot infer snippet language; choose javascript, python, or php.")
+        import os as _os
+
+        filename = _os.path.basename(path) if path else ""
+        if not filename or filename.startswith("."):
+            filename = _SNIPPET_FILENAME_BY_LANGUAGE[language]
+        raw = {
+            "filename": filename,
+            "language": language,
+            "source": source,
+            "contract": _state_field(state, "contract", "mcp_contract")
+            or _DEFAULT_SNIPPET_CONTRACT,
+        }
+        arguments = mcp_bridge.validate_snippet_arguments(raw)
+        result = await main_mod.execute_mcp_snippet_scan(arguments, emit)
+        return _summarize_result("mcp snippet", result), result
+    if mode == "binary":
+        from modules.services import binary_intake
+        from modules.workflows import binary_sweep as _binary_sweep
+
+        path = _state_field(state, "binary_path", "binary_target")
+        contract = _state_field(state, "binary_contract", "contract") or (_DEFAULT_PROJECT_CONTRACT)
+        spec = binary_intake.validate_binary_file(path, contract=contract)
+        result = await _binary_sweep.execute_binary_sweep(spec, emit)
+        return _summarize_result("binary", result), result
+    if mode == "project":
+        from modules.workflows import project_workflow as _project_workflow
+
+        spec = _project_spec_from_state(state)
+        result = await _project_workflow.execute_project_workflow(spec, emit)
+        return _summarize_result("project", result), result
+    if mode == "demo":
+        import main as main_mod
+        from modules.core.config import load_config
+
+        settings = load_config()
+        allow_remote = bool(
+            getattr(state, "allow_remote", getattr(state, "project_allow_remote_inference", False))
+        )
+        intel_offline = False
+        if settings.inference_mode != "local" and not allow_remote:
+            # Consent parity with main.ai_demo_runner: hosted Muse receives
+            # generated source, so the demo stays offline unless consented.
+            intel_offline = True
+        outcome = await main_mod.run_demo_build(
+            emit,
+            settings,
+            theme=_state_field(state, "demo_theme"),
+            vulns=_state_field(state, "demo_vulns"),
+            intel_offline=intel_offline,
+        )
+        return _summarize_result("demo", outcome), outcome
+    if mode == "cve":
+        from modules.workflows import cve_workflow as _cve_workflow
+
+        spec = _project_spec_from_state(state)
+        result = await _cve_workflow.execute_cve_scan(
+            spec,
+            emit,
+            include_osv=not bool(getattr(state, "project_offline_cve", False)),
+            include_deep_assessment=bool(getattr(state, "project_deep_assessment", False)),
+            fast_lane=bool(getattr(state, "project_fast_lane", False)),
+        )
+        return _summarize_result("cve", result), result
+    from modules.workflows.workflow import execute_purple_workflow
+
+    result = await execute_purple_workflow(state.fixture_key, emit)
+    return _summarize_result(f"fixture {state.fixture_key}", result), result
+
+
+def dispatch_scan(state: TuiState, emit, stop_event: threading.Event | None = None) -> str:
+    """Route ``state.mode`` to its backend; sync, returns a LAW-4-safe summary.
+
+    ``emit`` is an async ``(kind, message)`` callable. Backend exceptions
+    propagate so callers (run_plain exit codes, dispatch-thread error state)
+    fail closed with the exception type only.
+    """
+    if stop_event is not None and stop_event.is_set():
+        return "cancelled before scan."
+    summary, _outcome = asyncio.run(_dispatch_core(state, emit))
+    return summary
+
+
+def start_dispatch_thread(
+    state: TuiState,
+    event_queue: "queue.Queue[tuple[str, str]]",
+    stop_event: threading.Event | None = None,
+    *,
+    daemon: bool = True,
+) -> threading.Thread:
+    """Run dispatch_scan for state.mode on a worker thread via asyncio.run."""
+    if stop_event is None:
+        stop_event = threading.Event()
+    mode = _state_mode(state)
+    state.running = True
+    state.stop_requested = False
+    state.status = f"scanning {mode}"
+    emit = queue_emit(event_queue)
+
+    def _worker() -> None:
+        try:
+            summary, _outcome = asyncio.run(_dispatch_core(state, emit))
+            event_queue.put(("system", summary))
+            state.result_summary = summary
+            state.status = "done"
+        except Exception as exc:  # fail closed: report type only, never internals
+            event_queue.put(("system", f"system: scan failed ({type(exc).__name__})"))
+            state.result_summary = f"scan failed ({type(exc).__name__})."
+            state.status = "error"
+        finally:
+            state.running = False
+            stop_event.set()
+
+    thread = threading.Thread(target=_worker, name=f"tui-dispatch-{mode}", daemon=daemon)
+    thread.start()
+    return thread
+
+
+def _state_from_args(args: argparse.Namespace) -> TuiState:
+    """Build a TuiState from run_plain/main argparse. Unknown mode -> exit 2."""
+    mode = str(getattr(args, "mode", "fixture") or "fixture")
+    if mode not in MODE_ORDER:
+        raise SystemExit(2)
+    if mode == "sweep":
+        mode = "sweep"
+    state = TuiState()
+    for name in (
+        "mode",
+        "sweep_depth",
+        "sweep_passes",
+        "mcp_snippet",
+        "mcp_contract",
+        "contract",
+        "binary_path",
+        "binary_contract",
+        "project_path",
+        "project_command",
+        "project_test_command",
+        "project_contract",
+        "allow_remote",
+        "demo_theme",
+        "demo_vulns",
+        "snippet_path",
+        "snippet_language",
+        "snippet_source",
+        "snippet_filename",
+        "mcp_filename",
+        "mcp_language",
+        "mcp_source",
+        "mcp_path",
+        "binary_target",
+        "project_image",
+        "project_cycles",
+        "project_context_budget",
+        "project_allow_remote_inference",
+        "project_offline_cve",
+        "project_fast_lane",
+        "project_deep_assessment",
+    ):
+        state.__dict__[name] = getattr(args, name, getattr(state, name, None))
+    state.mode = mode
+    if getattr(args, "fixture", None):
+        try:
+            state.fixture_index = list(FIXTURE_ORDER).index(args.fixture)
+        except ValueError:
+            pass
+    return state
+
+
+def _add_dispatch_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--sweep-passes",
+        "--mode",
+        choices=list(MODE_ORDER),
+        default="fixture",
+        help="Scan mode (default: fixture single finding loop)",
+    )
+    parser.add_argument(
+        "--contract",
+        default="",
+        help="Behavior contract for snippet/binary/project scans",
+    )
+    parser.add_argument(
+        "--snippet",
+        dest="snippet_path",
+        default="",
+        help="Snippet file to verify through the red/blue Docker loop (mcp mode)",
+    )
+    parser.add_argument(
+        "--snippet-language",
+        choices=["javascript", "python", "php"],
+        default="",
+        help="Snippet language (default: inferred from file extension)",
+    )
+    parser.add_argument("--snippet-source", default="", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--project-path",
+        default=".",
+        help="Local project root for project/cve modes",
+    )
+    parser.add_argument(
+        "--project-image",
+        default="",
+        help="Runtime image for project/cve modes (default: target base image)",
+    )
+    parser.add_argument(
+        "--project-command",
+        default="",
+        help='Target argv as JSON, e.g. ["python3", "app.py"]',
+    )
+    parser.add_argument(
+        "--project-test-command",
+        default="",
+        help='Trusted regression argv as JSON, e.g. ["python3", "-m", "unittest"]',
+    )
+    parser.add_argument(
+        "--binary-path",
+        dest="binary_path",
+        default="",
+        help="Binary file to sweep in binary mode (same as --binary-target)",
+    )
+    parser.add_argument(
+        "--project-contract",
+        default="",
+        help="Expected behavior and sanitization-only patch constraints",
+    )
+    parser.add_argument(
+        "--project-cycles",
         type=int,
-        default=None,
-        help="Multi-pass sweep depth 1-3 (default: single finding loop)",
+        default=1,
+        help="Red/blue cycles for project mode, 1 to 20 (default: 1)",
     )
     parser.add_argument(
-        "--binary-target",
-        default=None,
-        help="Sweep one compiled binary file through the trusted harness 3-pass loop",
+        "--project-context-budget",
+        type=int,
+        default=32768,
+        help="Bounded per-call source context budget (default: 32768)",
     )
-    args = parser.parse_args(argv)
-    from modules.workflows.binary_sweep import execute_binary_sweep
-    from modules.workflows.sweep import execute_sweep_scan
-    from modules.workflows.workflow import (
-        execute_purple_workflow,  # lazy import for stdlib-only module top
+    parser.add_argument(
+        "--project-allow-remote-inference",
+        "--allow-remote-inference",
+        dest="project_allow_remote_inference",
+        action="store_true",
+        help="Consent to send project source/evidence to hosted Muse",
     )
+    parser.add_argument(
+        "--project-offline-cve",
+        action="store_true",
+        help="Skip OSV network lookup in cve mode; static signals only",
+    )
+    parser.add_argument(
+        "--project-fast-lane",
+        action="store_true",
+        help="CVE disclosure fast lane: static + OSV only, deterministic order",
+    )
+    parser.add_argument(
+        "--project-deep-assessment",
+        action="store_true",
+        help="Add Muse triage of static signals in cve mode",
+    )
+    parser.add_argument(
+        "--demo-theme",
+        default="",
+        help="Threat-intel themes for demo generation",
+    )
+    parser.add_argument(
+        "--demo-vulns",
+        default="",
+        help="Requested demo flaws: CVE IDs, named types, or free text",
+    )
+
+
+def _run_state_scan(state: TuiState, *, header: str) -> int:
+    """Run dispatch core on the calling thread; print redacted lines + summary."""
+    event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+    print(header)
+    emit = queue_emit(event_queue)
+    try:
+        _summary, outcome = asyncio.run(_dispatch_core(state, emit))
+    except SystemExit:
+        raise
+    except Exception as exc:
+        while True:
+            try:
+                kind, text = event_queue.get_nowait()
+            except queue.Empty:
+                break
+            print(f"[{kind}] {text}")
+        print(f"scan failed ({type(exc).__name__})")
+        return 1
+    while True:
+        try:
+            kind, text = event_queue.get_nowait()
+        except queue.Empty:
+            break
+        print(f"[{kind}] {text}")
+    print(_summarize_result(_state_mode(state), outcome))
+    return _rc_from_outcome(outcome)
+
+
+def _run_plain_legacy(args: argparse.Namespace) -> int:
+    """Pre-dispatch plain behavior: fixture single/sweep or binary target.
+
+    Kept so ``--fixture`` + ``--sweep-passes``/``--binary-target`` invocations
+    (no ``--mode``) behave byte-identically to before.
+    """
+    import sys as _sys
+
+    _wf = _sys.modules.get("modules.workflows.workflow")
+    if _wf is None:
+        from modules.workflows import workflow as _wf_mod
+
+        _wf = _wf_mod
+    execute_purple_workflow = _wf.execute_purple_workflow
+    _sweep = _sys.modules.get("modules.workflows.sweep")
+    _bsweep = _sys.modules.get("modules.workflows.binary_sweep")
 
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
     depth = "sweep" if args.sweep_passes else "single"
     if args.binary_target:
+        if _bsweep is not None:
+            execute_binary_sweep = _bsweep.execute_binary_sweep
+        else:
+            from modules.workflows.binary_sweep import execute_binary_sweep
         from modules.services.binary_intake import (
             BinaryRejected,
             validate_binary_file,
@@ -418,6 +984,11 @@ def run_plain(argv: list[str] | None = None) -> int:
     print(f"Secure Mitigation System [plain mode] fixture={args.fixture} {depth}")
     try:
         if args.sweep_passes:
+            if _sweep is None:
+                from modules.workflows import sweep as _sweep_mod
+
+                _sweep = _sweep_mod
+            execute_sweep_scan = _sweep.execute_sweep_scan
             result = asyncio.run(
                 execute_sweep_scan(
                     args.fixture,
@@ -438,6 +1009,62 @@ def run_plain(argv: list[str] | None = None) -> int:
         print(f"[{kind}] {text}")
     print(describe_result(result))
     return 0
+
+
+def _run_plain_dispatch(args: argparse.Namespace) -> int:
+    mode = str(getattr(args, "mode", "fixture") or "fixture")
+    if mode not in MODE_ORDER:
+        raise SystemExit(2)
+    if hasattr(args, "binary_target") and args.binary_target:
+        if not getattr(args, "binary_path", ""):
+            args.binary_path = args.binary_target
+    state = _state_from_args(args)
+    return _run_state_scan(state, header=f"Secure Mitigation System [plain mode] mode={mode}")
+
+
+def run_plain(argv: list[str] | None = None) -> int:
+    """Non-TTY / no-curses degrade: pick fixture, run scan, print redacted lines."""
+    from sms_cli import CAPABILITIES_TEXT
+
+    parser = argparse.ArgumentParser(
+        description="Secure Mitigation System TUI (plain mode)",
+        epilog=CAPABILITIES_TEXT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
+    parser.add_argument(
+        "--sweep-passes",
+        type=int,
+        default=None,
+        help="Multi-pass sweep depth 1-3 (default: single finding loop)",
+    )
+    parser.add_argument(
+        "--binary-target",
+        default=None,
+        help="Sweep one compiled binary file through the trusted harness 3-pass loop",
+    )
+    _add_dispatch_flags(parser)
+    args = parser.parse_args(argv)
+    explicit = set(argv or [])
+    if "--mode" in explicit or getattr(args, "mode", "fixture") != "fixture":
+        return _run_plain_dispatch(args)
+    if (
+        getattr(args, "snippet_path", "")
+        or getattr(args, "project_image", "")
+        or getattr(args, "project_command", "")
+        or getattr(args, "project_test_command", "")
+        or getattr(args, "project_contract", "")
+        or getattr(args, "project_allow_remote_inference", False)
+        or getattr(args, "project_offline_cve", False)
+        or getattr(args, "project_fast_lane", False)
+        or getattr(args, "project_deep_assessment", False)
+        or getattr(args, "demo_theme", "")
+        or getattr(args, "demo_vulns", "")
+        or getattr(args, "contract", "")
+        or getattr(args, "snippet_language", "")
+    ):
+        return _run_plain_dispatch(args)
+    return _run_plain_legacy(args)
 
 
 def _curses_main(stdscr, state: TuiState) -> None:
@@ -498,7 +1125,10 @@ def _curses_main(stdscr, state: TuiState) -> None:
             if state.running or worker is not None:
                 continue
             stop_event = threading.Event()
-            worker = start_scan_thread(state, event_queue, stop_event)
+            if _state_mode(state) == "fixture" and _state_sweep_passes(state) <= 1:
+                worker = start_scan_thread(state, event_queue, stop_event)
+            else:
+                worker = start_dispatch_thread(state, event_queue, stop_event)
             continue
 
 
@@ -511,8 +1141,9 @@ def main(argv: list[str] | None = None) -> int:
         epilog="h help overlay: receipts, rationale, topping, mutations, freshness, templates, stale token, repeat-stability (same-day value).",
     )
     parser.add_argument("--fixture", choices=list(FIXTURE_ORDER), default=FIXTURE_ORDER[0])
+    _add_dispatch_flags(parser)
     args = parser.parse_args(argv)
-    state = TuiState(fixture_index=list(FIXTURE_ORDER).index(args.fixture))
+    state = _state_from_args(args)
     try:
         curses.wrapper(_curses_main, state)
     except Exception as exc:
