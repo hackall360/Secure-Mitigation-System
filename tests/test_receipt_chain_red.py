@@ -14,7 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from modules.services.sms_api import verify_receipt
-from modules.workflows.workflow import build_verdict_receipt, VerdictReceipt
+from modules.workflows.workflow import VerdictReceipt, build_verdict_receipt
 
 PATCH = "diff --git a/f b/f\n+fixed\n"
 

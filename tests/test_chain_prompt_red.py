@@ -76,9 +76,7 @@ def test_sweep_max_passes_accepts_four():
             self.red_calls: list = []
             self.blue_calls = 0
 
-        async def run_red_team_pass_analysis(
-            self, pass_id, filename, source, contract=""
-        ):
+        async def run_red_team_pass_analysis(self, pass_id, filename, source, contract=""):
             self.red_calls.append(pass_id)
             return RedTeamFinding(
                 vulnerability_class=f"test boundary {pass_id}",

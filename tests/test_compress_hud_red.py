@@ -36,9 +36,7 @@ def _module_aggregator():
     ):
         if hasattr(sweep_mod, name):
             return getattr(sweep_mod, name)
-    raise AttributeError(
-        "missing sweep-level token aggregator helper in modules.workflows.sweep"
-    )
+    raise AttributeError("missing sweep-level token aggregator helper in modules.workflows.sweep")
 
 
 def test_sweep_result_exposes_sweep_compression_totals():

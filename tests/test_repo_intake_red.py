@@ -8,6 +8,7 @@ The future ``modules/services/repo_intake.py`` will expose ``RepoIntakeSpec``
 ModuleNotFoundError is the expected RED failure. No network, no real clone,
 no exploit payloads. Docker boundary is mocked only (LAW 9C).
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -65,4 +66,6 @@ def test_intake_refuses_host_paths():
     assert not hasattr(spec, "host_path")
     sandbox = MagicMock()
     with pytest.raises((ValueError, TypeError, AttributeError)):
-        intake_repo_to_snapshot(spec, ["python3", "/workspace/src/app.py"], sandbox=sandbox, host_path="/tmp/evil")
+        intake_repo_to_snapshot(
+            spec, ["python3", "/workspace/src/app.py"], sandbox=sandbox, host_path="/tmp/evil"
+        )

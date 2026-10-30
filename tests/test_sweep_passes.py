@@ -71,7 +71,7 @@ def _run_sweep(codes, muse=None):
 def test_sweep_pass_ids_ordered():
     from modules.workflows.sweep import SWEEP_PASSES
 
-    assert tuple(SWEEP_PASSES) == ("standard", "deep", "threat_actor")
+    assert tuple(SWEEP_PASSES) == ("standard", "deep", "threat_actor", "chain")
 
 
 def test_sweep_runs_all_three_passes_when_first_confirms():

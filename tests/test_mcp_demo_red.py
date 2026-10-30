@@ -38,7 +38,9 @@ def test_demo_module_shape_and_contract(monkeypatch):
         "language",
         "source",
     ]
-    monkeypatch.setattr(demo, "_post_rpc", lambda *a, **k: {"jsonrpc": "2.0", "id": 1, "result": {}})
+    monkeypatch.setattr(
+        demo, "_post_rpc", lambda *a, **k: {"jsonrpc": "2.0", "id": 1, "result": {}}
+    )
     result = demo.run_demo(
         base_url="http://127.0.0.1:9",
         filename="snippet.py",
