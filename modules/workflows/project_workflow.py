@@ -41,6 +41,7 @@ from modules.services.projects import (
 )
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_budget import resolve_payload_budget
+from modules.shared.sms_compress import CompressionReport, compress_context
 from modules.shared.sms_text import bounded as _bounded
 
 
@@ -359,6 +360,9 @@ class ProjectWorkflowResult(BaseModel):
     usage: ScanUsage = Field(default_factory=ScanUsage)
     total_tokens: int = 0
     total_cost_usd: float | None = None
+    compression: CompressionReport = Field(default_factory=CompressionReport)
+    vault_recall: str = ""
+    vault_namespaces: list[str] = []
     cleanup: CleanupReport = Field(default_factory=CleanupReport)
 
     @property
@@ -1291,6 +1295,33 @@ async def execute_project_workflow(
             sandbox = await blocking(sandbox_factory, settings)
         original_files = dict(safe_project.files)
         cumulative_files = dict(original_files)
+        try:
+            snapshot_text = "\n".join(
+                f"===== {path} =====\n{content}" for path, content in sorted(original_files.items())
+            )
+            compressed = compress_context(snapshot_text, filename=safe_project.name)
+            result.compression = compressed
+            await log(
+                "system",
+                f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+                f"{compressed.compressed_tokens_sent} tokens "
+                f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
+            )
+        except Exception as exc:
+            await log("system", f"[phase compress] Compression unavailable ({type(exc).__name__}).")
+        try:
+            from modules.intel.sms_vault import query_vault
+
+            vault_answer = query_vault(snapshot_text)
+            result.vault_recall = vault_answer.status
+            result.vault_namespaces = vault_answer.namespaces
+            await log(
+                "system",
+                f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
+            )
+        except Exception as exc:
+            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+            result.vault_recall = "VAULT_UNAVAILABLE"
         muse = muse_factory(settings)
         agents = agent_factory(muse, settings)
         if settings.research_enabled:

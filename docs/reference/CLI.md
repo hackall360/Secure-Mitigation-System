@@ -22,6 +22,9 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
+| `sms_compress` | Context compression middleware (engine leaf) |
+| `sms_vault` | Encrypted vault (engine leaf) |
+| `sms_api` | Library entrypoints (engine leaf) |
 
 ## TUI parity (`tui.py` plain mode; tri-surface with CLI/dashboard)
 
