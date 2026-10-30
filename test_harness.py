@@ -102,6 +102,11 @@ def local_checks() -> None:
     )
     RedTeamFinding.model_validate_json(finding.model_dump_json())
     for key, target in TARGETS_REGISTRY.items():
+        if key == "binary_argv_echo":
+            # Compiled ELF fixture: no UTF-8 source to patch-guard here;
+            # covered by tests/test_binary_fixture.py + the binary Docker loop.
+            compile(normal_behavior_script(key), "normal_check.py", "exec")
+            continue
         source = target.read_source()
         patched = known_patch(key, source)
         patch = BlueTeamPatch(
@@ -120,6 +125,11 @@ def local_checks() -> None:
 def docker_checks() -> None:
     settings = load_config()
     for key, target in TARGETS_REGISTRY.items():
+        if key == "binary_argv_echo":
+            # Compiled ELF fixture runs through the binary harness loop
+            # (execute_binary_sweep), not the source start_cloneable_target.
+            print(f"SKIP: {key}: covered by the binary harness loop", flush=True)
+            continue
         print(f"RUN: {key}: starting sandbox and baseline checks", flush=True)
         with DockerSandboxManager(settings) as manager:
             manager.require_base_images()

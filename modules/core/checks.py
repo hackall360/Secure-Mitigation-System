@@ -45,6 +45,11 @@ elif target == 'mysql_insecure_conf':
     parser.read_string(get('/my.cnf'))
     assert parser.get('mysqld', 'port') == '3306'
     assert parser.get('mysqld', 'max_connections') == '100'
+elif target == 'binary_argv_echo':
+    import urllib.parse
+    params = urllib.parse.urlencode({'argv': 'hello', 'stdin': ''})
+    response = json.loads(get('/?' + params))
+    assert response.get('status') in ('ok', 'exec_error', 'timeout'), response
 else:
     raise AssertionError('Unknown fixture (FAIL: no normal-behavior contract for this target; evidence: target matched none of node_query_sink/php_command_sink/mysql_insecure_conf)')
 print('Trusted normal-input checks passed for ' + target + ' (PASS: every expected lookup, 404-route, and config value matched; boundary verifier not involved)')

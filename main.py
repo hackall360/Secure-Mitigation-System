@@ -1941,6 +1941,11 @@ def main() -> int:
                 )
             )
         if args.binary_target:
+            candidate = Path(str(args.binary_target))
+            if candidate.name == "binary_argv_echo" and not candidate.exists():
+                bundled = Path(__file__).resolve().parent / "targets" / "binary_argv_echo" / "echo"
+                if bundled.exists():
+                    args.binary_target = bundled
             return asyncio.run(
                 binary_sweep_runner(
                     args.binary_target,

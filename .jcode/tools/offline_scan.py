@@ -77,7 +77,10 @@ async def scan(key: str) -> bool:
 
 async def main() -> int:
     registry = load("modules.core.registry")
-    results = [await scan(key) for key in registry.TARGETS_REGISTRY]
+    # Source-only loop: the compiled binary_argv_echo ELF runs through the
+    # binary harness (execute_binary_sweep), not execute_purple_workflow.
+    keys = [k for k in registry.TARGETS_REGISTRY if k != "binary_argv_echo"]
+    results = [await scan(key) for key in keys]
     return 0 if all(results) else 1
 
 

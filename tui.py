@@ -972,6 +972,12 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
         )
 
         print(f"Secure Mitigation System [plain mode] binary={args.binary_target}")
+        from pathlib import Path as _Path
+
+        if str(args.binary_target) == "binary_argv_echo":
+            bundled = _Path(__file__).resolve().parent / "targets" / "binary_argv_echo" / "echo"
+            if bundled.exists():
+                args.binary_target = str(bundled)
         try:
             spec = validate_binary_file(args.binary_target, contract="TUI binary sweep.")
         except BinaryRejected as exc:
