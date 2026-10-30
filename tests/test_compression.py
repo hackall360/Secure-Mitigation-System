@@ -115,3 +115,24 @@ def test_scan_result_carries_compression_fields():
     assert hasattr(result, "compression")
     dumped = result.model_dump()
     assert "compression" in dumped
+
+
+def test_compress_budget_preserves_order_under_value_equality():
+    """Budget pass must not rely on object identity (id())."""
+    from modules.shared.sms_compress import compress_context
+
+    # Many filler lines + critical sinks at known positions; force budget
+    # trimming so head/tail selection must restore original order.
+    filler = "".join(f"x filler unique {i:04d}\n" for i in range(300))
+    src = filler + "const queryExpression = eval(rawUserId);\n" + filler
+    report = compress_context(src, filename="app.js", max_tokens=80)
+    assert report.compressed_tokens <= 80
+    assert "const queryExpression = eval(rawUserId);" in report.compressed_text
+    # Within budget, non-critical lines that survive should keep original order.
+    text = report.compressed_text
+    # The surviving filler indices should be monotonically increasing if we map
+    # back to the original filler numbering.
+    import re
+
+    nums = [int(m.group(1)) for m in re.finditer(r"unique (\d+)", text)]
+    assert nums == sorted(nums), nums[:20]

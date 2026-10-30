@@ -282,8 +282,32 @@ def compress_context(
             else:
                 break  # tail end exhausted the budget; middle drops
         take_head = not take_head
-    position = {id(line): idx for idx, line in enumerate(pruned)}
-    ordered = sorted(critical + head + tail, key=lambda line: position.get(id(line), 0))
+    # Preserve original relative order without relying on object identity:
+    # head/tail elements are shared objects from pruned, so id() works today,
+    # but value-equal strings with different identities (e.g., after a copy)
+    # would silently mis-order. Anchor by scanning pruned for the first
+    # equal value when id lookup misses.
+    pruned_index_by_id = {id(line): idx for idx, line in enumerate(pruned)}
+    # Fallback by value+occurrence: occurrence-sensitive so duplicate values
+    # keep first-seen order rather than collapsing.
+    value_positions: dict[str, list[int]] = {}
+    for idx, line in enumerate(pruned):
+        value_positions.setdefault(line, []).append(idx)
+    seen_counts: dict[str, int] = {}
+
+    def _pos(line: str) -> int:
+        if id(line) in pruned_index_by_id:
+            return pruned_index_by_id[id(line)]
+        lst = value_positions.get(line)
+        if lst:
+            used = seen_counts.get(line, 0)
+            # Clamp to last occurrence if more duplicates than stored.
+            pos = lst[min(used, len(lst) - 1)]
+            seen_counts[line] = used + 1
+            return pos
+        return 0
+
+    ordered = sorted(critical + head + tail, key=_pos)
     candidate = "\n".join(ordered)
     if lines and source.endswith("\n"):
         candidate += "\n"
