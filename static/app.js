@@ -600,6 +600,12 @@ function renderUsage(payload) {
   const ratio = Number(compression.compression_ratio || 0);
   const badge = el('fact-compression');
   if (badge) badge.textContent = raw ? `${raw.toLocaleString()} → ${sent.toLocaleString()} tokens (saved ${saved.toLocaleString()}, ${Math.round(ratio * 100)}%)` : '—';
+  const vaultBadge = el('fact-vault');
+  if (vaultBadge) {
+    const recall = payload.vault_recall || '';
+    const namespaces = (payload.vault_namespaces || []).join(',');
+    vaultBadge.textContent = recall && recall !== 'VAULT_UNAVAILABLE' ? `${recall}${namespaces ? ` (${namespaces})` : ''}` : '—';
+  }
   const list = el('usage-calls');
   list.replaceChildren();
   calls.forEach((call) => {

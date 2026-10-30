@@ -636,6 +636,17 @@ def format_facts(result: object, use_color: bool | None = None) -> dict:
         )
     except (TypeError, ValueError):
         facts["compression"] = "Not reported"
+    vault_recall = get("vault_recall", "") or ""
+    vault_namespaces = get("vault_namespaces", None) or []
+    try:
+        namespaces = ", ".join(str(n) for n in list(vault_namespaces)) or "—"
+    except TypeError:
+        namespaces = "—"
+    facts["vault_recall"] = (
+        f"{vault_recall} ({namespaces})"
+        if vault_recall and vault_recall != "VAULT_UNAVAILABLE"
+        else "Not reported"
+    )
     return facts
 
 
@@ -661,6 +672,7 @@ def fact_table(result: object, use_color: bool | None = None) -> str:
         ("Cycles", facts["cycles"]),
         ("Research records", facts["research_records"]),
         ("Compression", facts.get("compression", "Not reported")),
+        ("Vault recall", facts.get("vault_recall", "Not reported")),
         ("Cleanup", facts["cleanup"]),
         ("Capabilities", "run main.py --help for Wave 2/5/8 same-day value"),
     ]

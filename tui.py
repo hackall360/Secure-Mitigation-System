@@ -425,6 +425,9 @@ def describe_wave2(result: object) -> str:
             tokens.append(f"[mutations {mutations[:40]}]")
         if compression and compression != "Not reported":
             tokens.append(f"[compress {compression[:60]}]")
+        vault = str(format_facts(result).get("vault_recall") or "")
+        if vault and vault != "Not reported":
+            tokens.append(f"[vault {vault[:40]}]")
         return (" " + " ".join(tokens)) if tokens else ""
     except Exception:
         return ""
