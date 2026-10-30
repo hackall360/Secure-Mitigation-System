@@ -209,23 +209,3 @@ def paced_post_json(
         tries=tries,
         max_bytes=max_bytes,
     )
-
-
-def raw_get_json(
-    url: str,
-    headers: dict | None = None,
-    timeout: float = 20.0,
-    max_bytes: int = DEFAULT_MAX_BYTES,
-) -> dict | list:
-    """Single-attempt GET JSON with a response cap. No pacing, no retries."""
-    timeout = _clamp_timeout(timeout)
-    max_bytes = _clamp_max_bytes(max_bytes)
-    heads = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    if headers:
-        heads.update(headers)
-    request = urllib.request.Request(url, headers=heads, method="GET")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        raw = response.read(max_bytes + 1)
-    if len(raw) > max_bytes:
-        raise ValueError(f"intel response exceeded the {max_bytes} byte cap")
-    return json.loads(raw.decode("utf-8"))
