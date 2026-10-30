@@ -69,6 +69,9 @@ def test_key_file_is_owner_only(tmp_path, monkeypatch):
     monkeypatch.setenv("PURPLEBOX_VAULT_DIR", str(tmp_path / "vault"))
     store = vault.VaultStore(namespace=vault.VaultNamespace.GREEN)
     store.commit({"kind": "archetype", "note": "shape"})
+    import stat as _stat
+
+    assert _stat.S_IMODE(os.stat(store.vault_dir).st_mode) == 0o700
     mode = os.stat(store.key_path).st_mode & 0o777
     assert mode == 0o600, oct(mode)
 

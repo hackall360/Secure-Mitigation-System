@@ -316,6 +316,11 @@ async def execute_purple_workflow(
     try:
         if target_key not in TARGETS_REGISTRY:
             raise ValueError("Unknown fixture. Choose one of the registered targets.")
+        if target_key == "binary_argv_echo":
+            raise ValueError(
+                "binary_argv_echo is a compiled ELF fixture: use the binary harness "
+                "path (execute_binary_sweep), not the source workflow."
+            )
         settings = config or load_config()
         require_api_key(settings)
         target = TARGETS_REGISTRY[target_key]

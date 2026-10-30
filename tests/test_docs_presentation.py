@@ -57,3 +57,29 @@ def test_architecture_doc_holds_dense_specs():
         "Verdict receipts",
     ):
         assert marker in text, marker
+
+
+def test_readme_v1_sections():
+    text = README.read_text(encoding="utf-8")
+    for marker in (
+        "3-minute demo guide",
+        "Competitive differentiation",
+        "--mcp",
+        "sms_scan_source",
+        "sms_verify_receipt",
+        "binary_argv_echo",
+        "Context compression",
+        "Vault recall",
+    ):
+        assert marker in text, marker
+
+
+def test_readme_version_badge_matches_app():
+    import re
+
+    text = README.read_text(encoding="utf-8")
+    match = re.search(r"version-([0-9]+\.[0-9]+\.[0-9]+)-blue", text)
+    assert match, "version badge missing"
+    import main as app_module
+
+    assert match.group(1) == app_module.APP_VERSION

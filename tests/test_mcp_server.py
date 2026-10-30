@@ -241,3 +241,73 @@ def test_mcp_snippet_baseline_mapping():
         {"filename": "i.php", "language": "php", "source": "x", "contract": "c"}
     )
     assert snippet_baseline_key(php) == "php_command_sink"
+
+
+def test_mcp_http_scan_source_live(client, monkeypatch):
+    """W2: POST /mcp sms_scan_source runs the live loop via sms_api."""
+    from modules.workflows.workflow import ScanResult
+
+    async def fake_scan(target, emit, config=None, max_passes=1):
+        assert target == "node_query_sink"
+        assert max_passes == 1
+        return ScanResult(
+            target="node_query_sink",
+            status="verified",
+            message="ok",
+            pre_exit_code=0,
+            post_exit_code=1,
+            baseline_passed=True,
+            regression_passed=True,
+        )
+
+    monkeypatch.setattr("modules.services.sms_api.scan_source", fake_scan)
+    resp = client.post(
+        "/mcp",
+        json=_rpc(
+            "tools/call",
+            {"name": "sms_scan_source", "arguments": {"target": "node_query_sink"}},
+        ),
+    )
+    assert resp.status_code == 200, resp.text
+    structured = resp.json()["result"]["structuredContent"]
+    assert structured["status"] == "verified"
+    assert structured["pre_probe_exit"] == 0
+    assert structured["post_probe_exit"] == 1
+
+
+def test_mcp_http_scan_source_rejects_unknown_target(client):
+    resp = client.post(
+        "/mcp",
+        json=_rpc(
+            "tools/call",
+            {"name": "sms_scan_source", "arguments": {"target": "nope"}},
+        ),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" in body and body["error"]["code"] == -32602
+
+
+def test_mcp_http_scan_binary_rejects_bad_blob(client):
+    resp = client.post(
+        "/mcp",
+        json=_rpc(
+            "tools/call",
+            {
+                "name": "sms_scan_binary",
+                "arguments": {"filename": "x", "blob_b64": "!!!", "contract": "c"},
+            },
+        ),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["error"]["code"] == -32602
+
+
+def test_mcp_http_vault_stats_live(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("PURPLEBOX_VAULT_DIR", str(tmp_path / "vault"))
+    resp = client.post(
+        "/mcp", json=_rpc("tools/call", {"name": "sms_query_vault_stats", "arguments": {}})
+    )
+    assert resp.status_code == 200, resp.text
+    stats = resp.json()["result"]["structuredContent"]["stats"]
+    assert "red" in stats and "tokens_saved_estimate" in stats

@@ -195,6 +195,10 @@ class VaultStore:
         self._key = load_or_create_key(self.vault_dir)
         self.namespace_dir = self.vault_dir / namespace.value
         self.namespace_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.namespace_dir.chmod(0o700)
+        except OSError:
+            pass
 
     def _blob_path(self, record_id: str) -> Path:
         if not re.fullmatch(r"[0-9a-f]{32}", record_id):

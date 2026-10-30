@@ -2,13 +2,17 @@
 
 > LAW 2 source: `.jcode/briefs/2026-10-30-v1-guidance-directive.md`.
 > Baseline (2026-10-29 21:30 -0700): `python3 .jcode/tools/dev.py check` GREEN —
-> 557 passed, ruff check clean, ruff format clean, compileall OK, node --check OK,
-> harness PASS (local), `--list-targets` OK. Branch: `feature/v1-guidance-matrix`.
-> Invariants: air-gapped sandbox (`internal=True`, non-root, dropped caps,
-> read-only roots, no host mounts, exits 0/1/2); fail-closed; session cleanup.
-> NOTE: `cryptography` importable under system python3 (46.0.5) but NOT in
-> `.venv` — Subsystem B must use stdlib (`hashlib`/`hmac`/AES-free) or add the
-> dependency to requirements + hash-locked lock files via `dev.py`.
+> 557 passed. Branch: `feature/v1-guidance-matrix`.
+> Latest Gate 1 (2026-10-29 21:53 -0700): **599 passed**, ruff clean/format
+> clean, harness PASS, `--list-targets` OK (4 entries incl. binary_argv_echo).
+> Gate 2 live Docker: `dev.py offline-scan` 3/3 verified (pre=0/post=1,
+> cleanup clean); vault recall proven KNOWN_ARCHETYPE post-commit;
+> `--mcp` STDIO 5-tool handshake proven; `--version` 0.7.0;
+> `--list-targets` 4 entries.
+> Gate 3 browser: `ui_scan.py node_query_sink --offline` Chrome + Firefox
+> both render the result card (pre 0/1, regression passed, cleanup clean);
+> `fact-compression` + `fact-vault` + `sweep-passes` IDs confirmed in DOM.
+> Invariants held: air-gapped sandbox untouched; fail-closed; session cleanup.
 
 ## Subsystem A — Dynamic Context Compression Engine
 

@@ -15,6 +15,10 @@ for the repo map and [guides/DEVELOPMENT.md](../guides/DEVELOPMENT.md) for setup
 | `sms_redact.py` | Shared redaction for user-facing reports: dict-level, no model imports (LAW 4). |
 | `sms_scan_parse.py` | Shared scanner-field shaping: CVSS picks, CWE lists, reference lists. |
 | `sms_text.py` | Shared text bounding: char-limit cuts with omission notes, UTF-8 prefixes. |
+| `sms_compress.py` | Context compression middleware: structural dedup, semantic pruning, token-budget prioritization; sink/flow sentences preserved; `CompressionReport`/`CompressionStats`/`DictionaryStore` (0600 persisted). |
+| `sms_vault.py` | Encrypted Red/Blue/Green vault: AES-256-GCM at rest, owner-only key, sink fingerprinting, KNOWN_ARCHETYPE vs NOVEL_SURFACE query, commit-after-verified, redacted stats. |
+| `sms_api.py` | First-class Python library API: `scan_source`, `scan_binary`, `query_vault_stats`, `verify_receipt` (structured Pydantic in/out). |
+| `binary_telemetry.py` | Host-side summarizer for in-sandbox static profiles (format + danger signals; never executes). |
 
 ## Presentation
 

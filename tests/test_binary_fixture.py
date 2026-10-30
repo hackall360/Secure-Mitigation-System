@@ -81,8 +81,43 @@ def test_telemetry_extractor_shape():
     assert "format" in summary or "signals" in summary
 
 
+def test_binary_sweep_result_carries_compression_and_vault():
+    from modules.workflows.sweep import SweepScanResult
+
+    result = SweepScanResult(target="binary:echo")
+    dumped = result.model_dump()
+    assert "compression" in dumped
+    assert "vault_recall" in dumped
+    facts_ns = __import__("sms_cli").format_facts(result)
+    assert "compression" in facts_ns and "vault_recall" in facts_ns
+
+
 def test_dashboard_lists_binary_fixture():
     from pathlib import Path
 
     html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
     assert "binary" in html.lower()
+
+
+def test_source_workflows_refuse_binary_fixture():
+    """LAW 8 routing: binary_argv_echo fails closed on the source paths."""
+    import asyncio
+
+    from modules.workflows.sweep import execute_sweep_scan
+    from modules.workflows.workflow import execute_purple_workflow
+
+    async def _collect(coro):
+        events = []
+
+        async def emit(team, message):
+            events.append(team)
+
+        return await coro(emit)
+
+    for runner in (
+        lambda emit: execute_purple_workflow("binary_argv_echo", emit),
+        lambda emit: execute_sweep_scan("binary_argv_echo", emit),
+    ):
+        result = asyncio.run(_collect(runner))
+        assert result.status == "error"
+        assert "binary harness" in result.message

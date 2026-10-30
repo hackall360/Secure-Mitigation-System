@@ -3,7 +3,7 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-![Version](https://img.shields.io/badge/version-0.6.0-blue)
+![Version](https://img.shields.io/badge/version-0.7.0-blue)
 ![Tests](https://img.shields.io/badge/dev.py_check-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688?logo=fastapi&logoColor=white)
@@ -14,27 +14,30 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
 > An autonomous purple-team CI/CD pipeline that uses Meta Muse to write security patches, and air-gapped Docker to cryptographically prove they work.
 
-Every claim is Docker output, not model opinion: a red-team agent proves a
-boundary is reachable (exit `0`), a blue-team agent writes a minimal patch, and
-trusted regression checks re-prove the boundary holds (exit `1`). Only
-all-green is `verified` — and every verdict ships a machine-readable receipt.
+**The executive hook:** every claim on this page is Docker output, not model opinion. A red-team agent proves a boundary is reachable (sandbox exit `0`), a blue-team agent writes a minimal patch, and trusted regression checks re-prove the boundary holds (exit `1`). Only all-green is `verified` — and every verdict ships a machine-readable `VerdictReceipt`.
 
-## How it works
+## How it works (V1: 3-pass sweep, vault, binary, MCP)
 
 ```mermaid
 flowchart TD
-    SRC["fixture source / project snapshot"] --> BASE["baseline: trusted normal-input checks<br/>(must pass)"]
-    BASE --> RED["RED agent (Muse Spark)<br/>finding + verification probe<br/>(Python, stdlib only)"]
+    SRC["fixture source / project snapshot / compiled binary"] --> CMP["Context compression<br/>dedup + prune + budget (saves tokens)"]
+    CMP --> VLT{"Encrypted vault lookup<br/>KNOWN_ARCHETYPE vs NOVEL_SURFACE"}
+    VLT --> BASE["baseline: trusted normal-input checks<br/>(must pass)"]
+    BASE --> P1["Pass 1 COMMON<br/>known CVE sink patterns"]
+    P1 --> P2["Pass 2 DEEP MUTATION<br/>encoding / coercion / truncation"]
+    P2 --> P3["Pass 3 THREAT-ACTOR<br/>logic abuse + novel zero-day synthesis"]
+    P3 --> RED["RED agent (Muse Spark)<br/>finding + verification probe"]
     RED --> PROBE{"sandbox probe<br/>exit 0 = reached<br/>exit 1 = blocked<br/>exit 2 = inconclusive"}
-    PROBE -- 0 --> BLUE["BLUE agent (Muse Wonder)<br/>minimal sanitization patch<br/>(guarded diff)"]
+    PROBE -- 0 --> BLUE["BLUE agent (Muse Wonder)<br/>minimal patch / binary mitigation rules"]
     PROBE -- 1/2 --> FAIL["not_confirmed / failed<br/>fail closed"]
-    BLUE --> REG["fresh clone of patched snapshot<br/>regression checks + probe re-run"]
-    REG -- "held" --> VERIFIED["verified + full Docker cleanup"]
+    BLUE --> REG["fresh clone: regression + probe re-run"]
+    REG -- "held" --> COM["commit finding + patch to encrypted vault"]
+    COM --> VERIFIED["verified + VerdictReceipt + full cleanup"]
     REG -- "broken" --> FAIL
+    VERIFIED --> SURF["CLI / TUI / Web UI / MCP / Python library"]
 ```
 
-Each cycle separates **red discovery and proof → blue sanitization proposal →
-red re-verification → blue final report**. The model proposes; Docker disposes.
+Binary targets take the same loop through the trusted reversing harness (`file`/`strings`/`readelf` in-sandbox, `reject:` mitigation rules out). Surfaces: `--scan` / `--tui` / Web dashboard / `POST /mcp` / `python main.py --mcp` (STDIO) / `from modules.services.sms_api import scan_source`.
 Technical deep dive: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quick start
@@ -66,11 +69,41 @@ python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, 
 Muse *Greenhouse* generates a novel flawed service from live NVD intel, then
 red breaks it in Docker and blue fixes it — no staged fixture, no canned
 finding. More scans: `--scan`, `--project`, `--cve-scan`, `--tui`,
-`--mcp-snippet` (external AI clients via `POST /mcp`), `--sweep-passes 3`
+`--mcp-snippet` (external AI clients via `POST /mcp`), `--mcp` (MCP STDIO:
+`sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`,
+`sms_verify_receipt`), `--sweep-passes 3`
 (standard + deep + threat-actor), `--binary-target` (compiled ELF/Mach-O/PE
-through the reversing harness); full flag reference in
+through the reversing harness, or `binary_argv_echo` for the bundled
+fixture); full flag reference in
 [`docs/reference/CLI.md`](docs/reference/CLI.md) and the production deep
 dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## 3-minute demo guide
+
+**Part 1 — the Greenhouse showcase (90 seconds).** One command, no key, no
+Docker: `python main.py --list-targets`, then open the dashboard and run the
+bundled demo. Watch the pass indicator (`Pass 1 Common → Pass 2 Deep →
+Pass 3 Threat-actor`), the vault badge (`Vault recall: Novel discovery →
+committed to vault` on a second run of the same fixture), and the
+compression badge (`Context compression: tokens saved X%`).
+
+**Part 2 — your own target (90 seconds).** Scan a repo
+(`python main.py --scan node_query_sink --sweep-passes 3`), sweep a binary
+(`python main.py --binary-target binary_argv_echo`), or call the engine from
+code (`from modules.services.sms_api import scan_source, verify_receipt`) or
+any MCP client (`python main.py --mcp`, tools `sms_scan_source`,
+`sms_scan_binary`, `sms_query_vault_stats`, `sms_verify_receipt`).
+
+## Competitive differentiation
+
+| Capability | SMS (this repo) | Typical LLM wrapper |
+|---|---|---|
+| Verdict authority | Air-gapped Docker exits `0`/`1`/`2` | Model opinion / lint score |
+| Sweep depth | 3 passes incl. threat-actor zero-day synthesis | Single-shot finding |
+| Binary targets | In-sandbox RE + harness mitigation rules | Source-only |
+| Cross-session memory | AES-256-GCM vault (red/blue/green) | Stateless per run |
+| Token efficiency | Compression middleware + vault priors on every report | Full context every call |
+| Machine consumers | MCP server (HTTP + STDIO) + Python library | CLI stdout only |
 
 ## AI narrative: ~90% Muse-built
 
