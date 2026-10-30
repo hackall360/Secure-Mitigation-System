@@ -34,7 +34,7 @@ FIXTURE_ORDER = ("node_query_sink", "php_command_sink", "mysql_insecure_conf")
 FIXTURE_SHORT = ("Node query", "PHP command", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3 fixture  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3 fixture  m mcp  b binary  p project  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
 
 # Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
 # same plain-English value lines). Toggled with h; must stay terminal-safe.
@@ -50,6 +50,13 @@ CAPABILITIES_LINES = (
     "repeat-stability re-runs the check so flaky passes fail closed",
     "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
     "binary: /ws/binary sweep or CLI --binary-target FILE (ELF/Mach-O/PE)",
+    "mode:fixture scan one bundled fixture end to end",
+    "mode:sweep re-run the check up to 3 passes (+/- depth)",
+    "mode:mcp submit a code snippet for review (key m)",
+    "mode:binary sweep one compiled binary file (key b)",
+    "mode:project two-cycle project workout (key p)",
+    "mode:demo replay a themed demo script (key v)",
+    "mode:cve look up live CVE intel keyless (key c)",
 )
 
 
@@ -95,9 +102,26 @@ def queue_emit(event_queue: "queue.Queue[tuple[str, str]]"):
     return _emit
 
 
+# Known scan-mode values for TuiState.mode (LAW 4: user-typed metadata only,
+# never scan output; probe/payload content must not live in rendered text).
+TUI_MODES = ("fixture", "sweep", "mcp", "binary", "project", "demo", "cve")
+
+
 @dataclass
 class TuiState:
     fixture_index: int = 0
+    mode: str = "fixture"
+    sweep_depth: int = 1
+    mcp_snippet: str = ""
+    mcp_contract: str = ""
+    binary_path: str = ""
+    binary_contract: str = ""
+    project_path: str = ""
+    project_command: str = ""
+    project_test_command: str = ""
+    project_contract: str = ""
+    demo_theme: str = ""
+    demo_vulns: str = ""
     running: bool = False
     stop_requested: bool = False
     filter_kind: str | None = None
@@ -195,6 +219,22 @@ def parse_key(key: object) -> str:
         return "stop"
     if lowered == "f":
         return "filter"
+    if lowered == "m":
+        return "mode:mcp"
+    if lowered == "b":
+        return "mode:binary"
+    if lowered == "p":
+        return "mode:project"
+    if lowered == "g":
+        return "mode:sweep"
+    if lowered == "v":
+        return "mode:demo"
+    if lowered == "c":
+        return "mode:cve"
+    if char == "+":
+        return "depth:inc"
+    if char == "-":
+        return "depth:dec"
     if lowered == "h":
         return "help"
     if lowered == "q":
@@ -206,8 +246,17 @@ def apply_action(state: TuiState, action: str) -> str:
     """Apply a parsed action to state (no threads/curses). Returns the action."""
     if action.startswith("select:"):
         state.fixture_index = int(action.split(":")[1]) % len(FIXTURE_ORDER)
+        state.mode = "fixture"
         if not state.running:
             state.result_summary = f"selected {state.fixture_key}; press Enter."
+    elif action.startswith("mode:"):
+        mode = action.split(":", 1)[1]
+        if mode in TUI_MODES:
+            state.mode = mode
+    elif action == "depth:inc":
+        state.sweep_depth = min(3, state.sweep_depth + 1)
+    elif action == "depth:dec":
+        state.sweep_depth = max(1, state.sweep_depth - 1)
     elif action == "filter":
         order: list[str | None] = [None, "red", "blue", "system"]
         state.filter_kind = order[(order.index(state.filter_kind) + 1) % len(order)]
@@ -242,7 +291,8 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
         mark = "*" if i == state.fixture_index else " "
         chips.append(f"{mark}{i + 1}:{short}")
     filt = f"filter:{state.filter_kind or 'all'}"
-    lines.append((" ".join(chips) + "  " + filt)[:width].ljust(width))
+    mode_chip = f"mode:{state.mode}  depth:{state.sweep_depth}"
+    lines.append((" ".join(chips) + "  " + filt + "  " + mode_chip)[:width].ljust(width))
 
     pane_width = max(10, (width - 4) // 3)
     titles = [f" {name.upper()} ".center(pane_width, "-")[:pane_width] for name in PANES]
