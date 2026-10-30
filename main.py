@@ -57,7 +57,7 @@ LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 # Single source of truth for the release version (LAW 12: 0.major.minor).
 # Every surface renders this: FastAPI metadata, /api/health, --version,
 # dashboard footer. Bump per LAW 12 on every shipped change set.
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 
 # Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
 # value in plain English. Rendered as the --help epilog; sms_cli and tui
@@ -615,6 +615,11 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     seed=demo_seed,
                 )
             else:
+                if target_key == "binary_argv_echo":
+                    raise ValueError(
+                        "binary_argv_echo is a compiled ELF fixture: use the Binary "
+                        "sweep mode (/ws/binary) or --binary-target, not the fixture socket."
+                    )
                 if sweep_depth is not None:
                     coroutine = execute_sweep_scan(
                         target_key, emit, config=scan_config, max_passes=sweep_depth
@@ -745,6 +750,121 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         rpc_id = body.get("id")
         if method == "tools/call":
             params = body.get("params") or {}
+            tool_name = params.get("name")
+            if tool_name in ("sms_scan_source", "sms_scan_binary", "sms_query_vault_stats"):
+                if tool_name == "sms_query_vault_stats":
+                    from modules.services.sms_api import query_vault_stats
+
+                    structured = {"stats": query_vault_stats()}
+                    return JSONResponse(
+                        jsonrpc_result(
+                            rpc_id,
+                            {
+                                "content": [{"type": "text", "text": "vault stats"}],
+                                "structuredContent": structured,
+                            },
+                        ),
+                        status_code=200,
+                    )
+                try:
+                    settings = config or load_config()
+                    settings.validate()
+                except ConfigurationError as exc:
+                    return JSONResponse(
+                        jsonrpc_error(rpc_id, -32000, f"Server not ready: {exc}."),
+                        status_code=200,
+                    )
+                lock = application.state.scan_lock
+                if lock.locked():
+                    return JSONResponse(
+                        jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
+                        status_code=200,
+                    )
+                live_arguments = params.get("arguments") or {}
+                if tool_name == "sms_scan_source":
+                    try:
+                        target = str(live_arguments.get("target") or "")
+                        if target not in TARGETS_REGISTRY:
+                            raise ValueError(f"Unknown target: {target!r}.")
+                        max_passes = int(live_arguments.get("max_passes") or 1)
+                    except (ValueError, TypeError) as exc:
+                        return JSONResponse(
+                            jsonrpc_error(rpc_id, -32602, f"Invalid scan arguments: {exc}."),
+                            status_code=200,
+                        )
+
+                    async def _emit_source(team: str, message: str) -> None:
+                        messages_live.append(f"[{team}] {message}")
+
+                    messages_live: list[str] = []
+                    async with lock:
+                        try:
+                            from modules.services.sms_api import scan_source
+
+                            live_result = await scan_source(
+                                target, _emit_source, config=settings, max_passes=max_passes
+                            )
+                        except Exception as exc:
+                            return JSONResponse(
+                                jsonrpc_error(
+                                    rpc_id, -32603, f"Source scan failed ({type(exc).__name__})."
+                                ),
+                                status_code=200,
+                            )
+                    structured = structured_result(live_result)
+                    return _mcp_scan_response(rpc_id, structured)
+                if tool_name == "sms_scan_binary":
+                    import base64 as _base64
+
+                    try:
+                        blob = _base64.b64decode(
+                            str(live_arguments.get("blob_b64") or ""), validate=True
+                        )
+                        from modules.services.binary_intake import validate_binary_blob
+
+                        validate_binary_blob(
+                            blob,
+                            filename=str(live_arguments.get("filename") or "upload.bin"),
+                            contract=str(live_arguments.get("contract") or ""),
+                        )
+                        max_passes_bin = int(live_arguments.get("max_passes") or 3)
+                    except Exception as exc:
+                        return JSONResponse(
+                            jsonrpc_error(rpc_id, -32602, f"Invalid binary: {exc}."),
+                            status_code=200,
+                        )
+                    import tempfile as _tempfile
+                    from pathlib import Path as _Path
+
+                    try:
+                        with _tempfile.NamedTemporaryFile(delete=False) as tmp:
+                            tmp.write(blob)
+                            tmp_path = tmp.name
+
+                        async def _emit_bin(team: str, message: str) -> None:
+                            messages_bin.append(f"[{team}] {message}")
+
+                        messages_bin: list[str] = []
+                        from modules.services.sms_api import scan_binary as _scan_bin
+
+                        async with lock:
+                            live_bin = await _scan_bin(
+                                tmp_path,
+                                _emit_bin,
+                                config=settings,
+                                contract=str(live_arguments.get("contract") or ""),
+                                max_passes=max_passes_bin,
+                            )
+                        _Path(tmp_path).unlink(missing_ok=True)
+                    except Exception as exc:
+                        return JSONResponse(
+                            jsonrpc_error(
+                                rpc_id, -32603, f"Binary scan failed ({type(exc).__name__})."
+                            ),
+                            status_code=200,
+                        )
+                    structured = structured_result(live_bin)
+                    return _mcp_scan_response(rpc_id, structured)
             if params.get("name") != SNIPPET_TOOL_NAME:
                 return JSONResponse(
                     jsonrpc_error(rpc_id, -32602, f"Unknown tool: {params.get('name')}."),
@@ -787,28 +907,33 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         status_code=200,
                     )
             structured = structured_result(result)
-            return JSONResponse(
-                jsonrpc_result(
-                    rpc_id,
-                    {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": (
-                                    f"status={structured['status']} "
-                                    f"pre_probe_exit={structured['pre_probe_exit']} "
-                                    f"post_probe_exit={structured['post_probe_exit']}"
-                                ),
-                            }
-                        ],
-                        "structuredContent": structured,
-                    },
-                ),
-                status_code=200,
-            )
+            return _mcp_scan_response(rpc_id, structured)
         return JSONResponse(handle_mcp_request(body), status_code=200)
 
     return application
+
+
+def _mcp_scan_response(rpc_id: object, structured: dict) -> JSONResponse:
+    """Shared /mcp structured scan envelope (content + structuredContent)."""
+    return JSONResponse(
+        jsonrpc_result(
+            rpc_id,
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"status={structured['status']} "
+                            f"pre_probe_exit={structured['pre_probe_exit']} "
+                            f"post_probe_exit={structured['post_probe_exit']}"
+                        ),
+                    }
+                ],
+                "structuredContent": structured,
+            },
+        ),
+        status_code=200,
+    )
 
 
 app = create_app()
@@ -885,6 +1010,257 @@ async def mcp_snippet_runner(
     if show_usage:
         print(usage_table(result.usage))
     return 0 if getattr(result, "success", False) else 1
+
+
+def mcp_stdio_runner() -> int:
+    """MCP STDIO transport: JSON-RPC on stdin/stdout, one response per line.
+
+    Synchronous tools (vault stats, receipt validation) answer inline via
+    handle_mcp_request. Docker-running tools (submit_code_snippet,
+    sms_scan_source, sms_scan_binary) execute the live loop and return the
+    structured result. A `shutdown` notification ends the session.
+    """
+    import sys as _sys
+
+    from modules.services.mcp_bridge import (
+        SNIPPET_TOOL_NAME,
+        handle_mcp_request,
+        structured_result,
+        validate_snippet_arguments,
+    )
+
+    for raw_line in _sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            body = json.loads(line)
+        except ValueError:
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error."},
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        if not isinstance(body, dict):
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Invalid Request."},
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        if body.get("method") in ("shutdown", "notifications/exit"):
+            break
+        method = body.get("method")
+        params = body.get("params") if isinstance(body.get("params"), dict) else {}
+        name = params.get("name") if isinstance(params, dict) else None
+        arguments = params.get("arguments") if isinstance(params, dict) else {}
+        arguments = arguments if isinstance(arguments, dict) else {}
+        if method == "tools/call" and name == SNIPPET_TOOL_NAME:
+            try:
+                snippet_args = validate_snippet_arguments(arguments)
+            except ValueError as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {"code": -32602, "message": str(exc)},
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+
+            async def _emit_snippet(team: str, message: str) -> None:
+                sys.stderr.write(f"[{team}] {message}\n")
+
+            try:
+                from modules.core.config import load_config as _load
+
+                result = asyncio.run(
+                    execute_mcp_snippet_scan(snippet_args, _emit_snippet, config=_load())
+                )
+            except Exception as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {
+                                "code": -32603,
+                                "message": f"Snippet scan failed ({type(exc).__name__}).",
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": "snippet scan complete"}],
+                            "structuredContent": structured_result(result),
+                        },
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        if method == "tools/call" and name == "sms_scan_source":
+            target = str(arguments.get("target") or "")
+            try:
+                max_passes = int(arguments.get("max_passes") or 1)
+            except (TypeError, ValueError):
+                max_passes = 1
+
+            async def _emit_source(team: str, message: str) -> None:
+                sys.stderr.write(f"[{team}] {message}\n")
+
+            try:
+                from modules.core.config import load_config as _load
+                from modules.services.sms_api import scan_source
+
+                result = asyncio.run(
+                    scan_source(target, _emit_source, config=_load(), max_passes=max_passes)
+                )
+            except Exception as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {
+                                "code": -32603,
+                                "message": f"Source scan failed ({type(exc).__name__}).",
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": "source scan complete"}],
+                            "structuredContent": structured_result(result),
+                        },
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        if method == "tools/call" and name == "sms_scan_binary":
+            import base64 as _base64
+            import tempfile as _tempfile
+            from pathlib import Path as _Path
+
+            try:
+                blob = _base64.b64decode(str(arguments.get("blob_b64") or ""), validate=True)
+                from modules.services.binary_intake import validate_binary_blob
+
+                validate_binary_blob(
+                    blob,
+                    filename=str(arguments.get("filename") or "upload.bin"),
+                    contract=str(arguments.get("contract") or "Preserve normal behavior."),
+                )
+            except Exception as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {"code": -32602, "message": f"Invalid binary: {exc}."},
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+            try:
+                from modules.core.config import load_config as _load
+                from modules.services.sms_api import scan_binary as _scan_binary_run
+
+                with _tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    tmp.write(blob)
+                    tmp_path = tmp.name
+
+                async def _emit_binary(team: str, message: str) -> None:
+                    sys.stderr.write(f"[{team}] {message}\n")
+
+                try:
+                    max_passes_raw = arguments.get("max_passes") or 3
+                    max_passes_bin = int(max_passes_raw)
+                except (TypeError, ValueError):
+                    max_passes_bin = 3
+                result = asyncio.run(
+                    _scan_binary_run(
+                        tmp_path,
+                        _emit_binary,
+                        config=_load(),
+                        contract=str(arguments.get("contract") or ""),
+                        max_passes=max_passes_bin,
+                    )
+                )
+                _Path(tmp_path).unlink(missing_ok=True)
+            except Exception as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {
+                                "code": -32603,
+                                "message": f"Binary scan failed ({type(exc).__name__}).",
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": "binary scan complete"}],
+                            "structuredContent": structured_result(result),
+                        },
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        response = handle_mcp_request(body)
+        _sys.stdout.write(json.dumps(response) + "\n")
+        _sys.stdout.flush()
+    return 0
 
 
 async def binary_sweep_runner(
@@ -1596,6 +1972,11 @@ def main() -> int:
         help="Verify one source snippet file through the red/blue Docker loop and print the VerdictReceipt JSON (MCP submit_code_snippet over CLI)",
     )
     commands.add_argument(
+        "--mcp",
+        action="store_true",
+        help="MCP STDIO transport: read JSON-RPC requests on stdin, write responses on stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt)",
+    )
+    commands.add_argument(
         "--binary-target",
         type=Path,
         help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
@@ -1856,6 +2237,7 @@ def main() -> int:
         not args.project
         and not args.ai_demo
         and not args.mcp_snippet
+        and not args.mcp
         and not args.binary_target
         and (
             args.image
@@ -1929,6 +2311,8 @@ def main() -> int:
             from tui import main as _tui_main
 
             return _tui_main([])
+        if args.mcp:
+            return mcp_stdio_runner()
         if args.mcp_snippet:
             return asyncio.run(
                 mcp_snippet_runner(
@@ -1941,6 +2325,11 @@ def main() -> int:
                 )
             )
         if args.binary_target:
+            candidate = Path(str(args.binary_target))
+            if candidate.name == "binary_argv_echo" and not candidate.exists():
+                bundled = Path(__file__).resolve().parent / "targets" / "binary_argv_echo" / "echo"
+                if bundled.exists():
+                    args.binary_target = bundled
             return asyncio.run(
                 binary_sweep_runner(
                     args.binary_target,

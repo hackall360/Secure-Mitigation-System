@@ -400,9 +400,13 @@ def describe_wave2(result: object) -> str:
     "" when nothing is present or anything is odd-shaped.
     """
     try:
-        from sms_cli import format_wave2_facts  # lazy: keeps module import light
+        from sms_cli import format_facts, format_wave2_facts  # lazy: keeps module import light
 
         facts = format_wave2_facts(result)
+        try:
+            compression = str(format_facts(result).get("compression") or "")
+        except Exception:
+            compression = ""
     except Exception:
         return ""
     try:
@@ -419,6 +423,11 @@ def describe_wave2(result: object) -> str:
         mutations = str(facts.get("mutations") or "")
         if mutations and mutations != "Not reported":
             tokens.append(f"[mutations {mutations[:40]}]")
+        if compression and compression != "Not reported":
+            tokens.append(f"[compress {compression[:60]}]")
+        vault = str(format_facts(result).get("vault_recall") or "")
+        if vault and vault != "Not reported":
+            tokens.append(f"[vault {vault[:40]}]")
         return (" " + " ".join(tokens)) if tokens else ""
     except Exception:
         return ""
@@ -963,6 +972,12 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
         )
 
         print(f"Secure Mitigation System [plain mode] binary={args.binary_target}")
+        from pathlib import Path as _Path
+
+        if str(args.binary_target) == "binary_argv_echo":
+            bundled = _Path(__file__).resolve().parent / "targets" / "binary_argv_echo" / "echo"
+            if bundled.exists():
+                args.binary_target = str(bundled)
         try:
             spec = validate_binary_file(args.binary_target, contract="TUI binary sweep.")
         except BinaryRejected as exc:

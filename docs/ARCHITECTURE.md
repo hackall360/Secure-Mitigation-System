@@ -133,7 +133,6 @@ legacy single loop), WS `?sweep_passes=2|3`, dashboard Sweep depth selector
 `verified`, zero leftovers.
 
 ## Binary sweep (Milestone 4)
-
 `docker/Dockerfile.binary` (pinned digest + locked `file`/`binutils`/`xxd`,
 non-root, read-only roots) feeds `docker_manager` binary plumbing:
 `binary_base_image` config, pin coverage in `_assert_dockerfiles_pinned`,
@@ -155,6 +154,35 @@ per-pass `VerdictReceipt` over the mitigation sha. Surfaces: CLI
 sweep mode, TUI `--binary-target`. Live proof: static ELF (821 KiB) 3-pass
 real Docker run, P1 `pre=0/post=1` receipt-pinned, P2/P3 clear, `verified`,
 zero leftovers.
+
+## V1: compression, encrypted vault, binary fixture, library + MCP tools
+
+**Compression** (`modules/shared/sms_compress.py`): structural line dedup,
+semantic pruning of boilerplate, and token-budget prioritization in front of
+every red/blue call; security-critical sink/flow sentences are never dropped.
+`CompressionReport` (raw/compressed/saved/ratio) rides `ScanResult` and
+`SweepScanResult` into CLI facts, TUI suffixes, dashboard badges, and report
+JSON; `CompressionStats`/`DictionaryStore` (0600 persisted) accumulate
+cross-session savings.
+
+**Vault** (`modules/intel/sms_vault.py`): AES-256-GCM Red/Blue/Green
+namespaces on disk, owner-only key + directories, sink/structure
+fingerprinting, `KNOWN_ARCHETYPE` ("done before") vs `NOVEL_SURFACE` query
+before every run, commit-after-verified, redacted stats only. Dirty default
+vaults from local runs stay in `~/.cache` (git-ignored); key material never
+enters logs, reports, or Docker.
+
+**Binary fixture** (`targets/binary_argv_echo/`, registry key
+`binary_argv_echo`): C source + compiled ELF proving the binary harness path
+out of the box via `--binary-target binary_argv_echo`, `/ws/binary`, or the
+dashboard Binary sweep mode. Source workflows fail closed on this key with a
+routing error; `binary_telemetry.summarize_profile` interprets in-sandbox
+`file`/`strings`/`readelf` output on the host without executing anything.
+
+**Library + MCP** (`modules/services/sms_api.py`, `mcp_bridge.MCP_TOOLS`,
+`main.py --mcp`): `scan_source`/`scan_binary`/`query_vault_stats`/
+`verify_receipt` for external Python callers; five MCP tools over `POST /mcp`
+(vault stats inline, scans live under the scan lock) and `--mcp` STDIO.
 
 ## Configuration
 

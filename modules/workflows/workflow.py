@@ -23,6 +23,7 @@ from modules.core.pricing import ScanUsage
 from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
+from modules.shared.sms_compress import CompressionReport, compress_context
 
 
 def _sink_keywords(filename: str, contract: str) -> tuple[list[str], list[str]]:
@@ -289,6 +290,9 @@ class ScanResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float | None = None
     research_records: list[dict] = Field(default_factory=list)
+    compression: CompressionReport = Field(default_factory=CompressionReport)
+    vault_recall: str = ""
+    vault_namespaces: list[str] = []
 
     @property
     def success(self) -> bool:
@@ -312,6 +316,11 @@ async def execute_purple_workflow(
     try:
         if target_key not in TARGETS_REGISTRY:
             raise ValueError("Unknown fixture. Choose one of the registered targets.")
+        if target_key == "binary_argv_echo":
+            raise ValueError(
+                "binary_argv_echo is a compiled ELF fixture: use the binary harness "
+                "path (execute_binary_sweep), not the source workflow."
+            )
         settings = config or load_config()
         require_api_key(settings)
         target = TARGETS_REGISTRY[target_key]
@@ -349,6 +358,30 @@ async def execute_purple_workflow(
             research_digest, result.research_records = await _gather_research(
                 muse, settings, target.filename, target.contract, log
             )
+        compressed = compress_context(source, filename=target.filename)
+        result.compression = compressed
+        await log(
+            "system",
+            f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+            f"{compressed.compressed_tokens_sent} tokens "
+            f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
+        )
+        try:
+            from modules.intel.sms_vault import VaultNamespace, commit_verified, query_vault
+
+            vault_answer = query_vault(source)
+            result.vault_recall = vault_answer.status
+            result.vault_namespaces = vault_answer.namespaces
+            await log(
+                "system",
+                f"[phase vault] {vault_answer.status} "
+                f"({vault_answer.record_count} prior records"
+                + (f" in {','.join(vault_answer.namespaces)}" if vault_answer.namespaces else "")
+                + ").",
+            )
+        except Exception as exc:
+            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+            result.vault_recall = "VAULT_UNAVAILABLE"
         await log(
             "red",
             chatter("red_start", persona="Breakwater", path=target.filename, seed=1),
@@ -469,6 +502,32 @@ async def execute_purple_workflow(
                     regression_passed=result.regression_passed,
                     patch_content=result.patch.patched_file_content,
                 )
+                try:
+                    commit_verified(
+                        namespace=VaultNamespace.RED,
+                        source=source,
+                        payload={
+                            "kind": "boundary_escape",
+                            "fixture": target_key,
+                            "sink": finding.sink_location,
+                            "vulnerability_class": finding.vulnerability_class,
+                        },
+                    )
+                    commit_verified(
+                        namespace=VaultNamespace.BLUE,
+                        source=result.patch.patched_file_content,
+                        payload={
+                            "kind": "sanitization_patch",
+                            "fixture": target_key,
+                            "strategy": result.patch.sanitization_strategy,
+                        },
+                    )
+                    await log("system", "[phase vault] Verified finding + patch committed.")
+                except Exception as exc:
+                    await log(
+                        "system",
+                        f"[phase vault] Commit skipped ({type(exc).__name__}).",
+                    )
             result.message = (
                 "Boundary probe blocked and trusted normal-input checks passed. Review the candidate diff."
                 if result.status == "verified"

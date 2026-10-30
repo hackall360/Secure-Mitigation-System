@@ -277,3 +277,19 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] X3. M3 3-pass sweep (standard/deep/threat-actor): per-pass red prompts + `run_red_team_pass_analysis`, `execute_sweep_scan` never stops at first finding, blue cumulative patches, verified only when all passes hold. Files: `modules/workflows/sweep.py`, `modules/core/prompts.py`, `modules/core/agents.py`, `main.py` (CLI `--sweep-passes`, WS `?sweep_passes=`, redaction), `tui.py`, `static/` (selector + summaryEvidence), `tests/test_sweep_passes.py` (9 pass). Proof: live Docker 3-pass P1 pre=0/post=1 receipt-pinned, P2/P3 clear, verified, 0 leftovers.
 - [x] X4. M4 binary 3-pass sweep via trusted harness: `docker/Dockerfile.binary` (pinned digest + locked file/binutils/xxd), `binary_harness.py` (bounded argv/stdin, 5s timeout, reject: rules), docker_manager binary staging/harness/profile methods, `binary_intake.py` (ELF/Mach-O/PE, 8 MiB), `binary_sweep.py` 3-pass loop with per-pass receipts. Files: + CLI `--binary-target`, WS `/ws/binary`, dashboard mode, TUI flag, `tests/test_binary_intake.py` (12 pass). Proof: live Docker static ELF P1 pre=0/post=1 receipt-pinned, P2/P3 clear, verified, 0 leftovers.
 - [x] X5. Ship prep: `docs/ARCHITECTURE.md` M2-M4 sections, CLI/DASHBOARD reference rows, README pointers, LAW 11 browser proof (Chrome+Firefox offline Boundary check passed; new MCP/sweep/binary controls operated in Firefox via `.jcode/tools/browser_controls_check.py`), LAW 12 major bump 0.4.0 -> 0.5.0 (`APP_VERSION`, dashboard footer, README badge, MCP serverInfo, all parity-checked). Proof: `dev.py check` 531 passed.
+
+## Y. V1.0.0 closed-loop guidance execution (brief 2026-10-30-v1-guidance-directive; branch feature/v1-guidance-matrix; ledger docs/plans/V1_GUIDANCE_MATRIX.md)
+
+- [.] Y0. Phase 0 recon + matrix init: baseline gate 557 passed, brief filed, matrix created. Proof: this item + docs/plans/V1_GUIDANCE_MATRIX.md.
+- [ ] Y1. Subsystem A compression engine (`modules/shared/sms_compress.py`, stats on ScanResult, CLI/TUI/UI badges; RED tests/test_compression.py). Remains: implement + gates 1-3.
+- [ ] Y2. Subsystem B encrypted vault (`modules/intel/sms_vault.py` RED/BLUE/GREEN, key 0600, fingerprint query, commit-back; RED tests/test_vault.py). Remains: implement + gates 1-3.
+- [ ] Y3. Subsystem C sweep gap closure (prompt/UI/report audit + fill; RED tests). Remains: audit + implement + gates 1-3.
+- [ ] Y4. Subsystem D binary fixture + mitigation artifact (targets/binary fixture + registry, telemetry script, shim guards; RED tests). Remains: implement + live Docker proof + gates 1-3.
+- [ ] Y5. Subsystem E library API + 4 MCP tools + --mcp STDIO (RED tests). Remains: implement + gates 1-3.
+- [ ] Y6. Subsystem F README executive refactor + UI/TUI badges + LAW 12 bump (LAW 11 browser matrix). Remains: implement + gates 1-3.
+- [ ] Y7. Ship: full gate green, live Docker proof, browser E2E, feature -> develop -> main -> develop per LAW 1/5.
+
+- [x] Y6. Subsystem F README executive refactor + 0.7.0 bump + badges + demo guide + docs parity (README, ARCHITECTURE V1, CLI/MODULES refs; tests/test_docs_presentation.py +2). Proof: 599-pass gate + ui_scan Chrome/Firefox + version consistency (APP_VERSION/dashboard/README/MCP serverInfo 0.7.0).
+- [x] W1. binary_sweep compression+vault parity + source-path routing guards (tests 8 pass). Files: modules/workflows/binary_sweep.py, workflow.py, sweep.py, main.py socket guard, tests/test_binary_fixture.py.
+- [x] W2. MCP HTTP live sms_scan_source/sms_scan_binary/sms_query_vault_stats + shared envelope + routing guards (tests/test_mcp_server.py +4). Proof: 605-pass gate + --mcp STDIO 5-tool handshake.
+- [x] W3. ARCHITECTURE V1 section + CLI/MODULES reference rows. Proof: docs greps + 605-pass gate.

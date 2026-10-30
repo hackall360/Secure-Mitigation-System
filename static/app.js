@@ -593,6 +593,19 @@ function renderUsage(payload) {
   if (!calls.length) return;
   el('usage-cost').textContent = formatCost(payload.cost_usd);
   el('usage-tokens').textContent = `${(payload.total_tokens || 0).toLocaleString()} tokens · ${calls.length} model call${calls.length === 1 ? '' : 's'}`;
+  const compression = payload.compression || {};
+  const raw = Number(compression.raw_tokens_estimated || 0);
+  const sent = Number(compression.compressed_tokens_sent || 0);
+  const saved = Number(compression.tokens_saved || 0);
+  const ratio = Number(compression.compression_ratio || 0);
+  const badge = el('fact-compression');
+  if (badge) badge.textContent = raw ? `${raw.toLocaleString()} → ${sent.toLocaleString()} tokens (saved ${saved.toLocaleString()}, ${Math.round(ratio * 100)}%)` : '—';
+  const vaultBadge = el('fact-vault');
+  if (vaultBadge) {
+    const recall = payload.vault_recall || '';
+    const namespaces = (payload.vault_namespaces || []).join(',');
+    vaultBadge.textContent = recall && recall !== 'VAULT_UNAVAILABLE' ? `${recall}${namespaces ? ` (${namespaces})` : ''}` : '—';
+  }
   const list = el('usage-calls');
   list.replaceChildren();
   calls.forEach((call) => {

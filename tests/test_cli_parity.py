@@ -522,6 +522,59 @@ def test_w2v2_fact_table_includes_wave2_rows():
         assert row in table
 
 
+def test_fact_table_includes_compression_row():
+    """Subsystem A LAW 8: CLI fact table always shows the compression row."""
+    from sms_cli import fact_table, format_facts
+
+    compression = SimpleNamespace(
+        raw_tokens_estimated=120,
+        compressed_tokens_sent=80,
+        tokens_saved=40,
+        compression_ratio=0.3333,
+    )
+    result = SimpleNamespace(
+        target="t",
+        status="verified",
+        message="ok",
+        diff="",
+        pre_exit_code=0,
+        post_exit_code=1,
+        baseline_passed=True,
+        regression_passed=True,
+        cleanup_ok=True,
+        compression=compression,
+    )
+    facts = format_facts(result, use_color=False)
+    assert facts["compression"] == "120 -> 80 tokens (saved 40, ratio 0.33)"
+    assert "Compression" in fact_table(result, use_color=False)
+    plain = SimpleNamespace(target="t", status="verified", message="ok", diff="")
+    assert format_facts(plain, use_color=False)["compression"] == "Not reported"
+
+
+def test_fact_table_includes_vault_row():
+    """Subsystem B LAW 8: CLI fact table always shows the vault recall row."""
+    from sms_cli import fact_table, format_facts
+
+    result = SimpleNamespace(
+        target="t",
+        status="verified",
+        message="ok",
+        diff="",
+        pre_exit_code=0,
+        post_exit_code=1,
+        baseline_passed=True,
+        regression_passed=True,
+        cleanup_ok=True,
+        vault_recall="KNOWN_ARCHETYPE",
+        vault_namespaces=["red", "blue"],
+    )
+    facts = format_facts(result, use_color=False)
+    assert facts["vault_recall"] == "KNOWN_ARCHETYPE (red, blue)"
+    assert "Vault recall" in fact_table(result, use_color=False)
+    plain = SimpleNamespace(target="t", status="verified", message="ok", diff="")
+    assert format_facts(plain, use_color=False)["vault_recall"] == "Not reported"
+
+
 def test_w2v2_write_run_report_exports_receipt_json():
     """Item 1: run report writes receipt.json when verdict_receipt present."""
     report = _w2v2_receipt_result().model_dump()
