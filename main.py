@@ -751,9 +751,10 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         if method == "tools/call":
             params = body.get("params") or {}
             tool_name = params.get("name")
-            if tool_name == "sms_scan_status":
-                # Pollable status: registry read only, no Docker, no lock,
-                # no config. Answered here so it stays pollable mid-scan.
+            if tool_name in ("sms_scan_status", "sms_verify_receipt"):
+                # Pollable status + offline receipt check: registry read /
+                # structural validation only. No Docker, no lock, no
+                # config. Answered here so they stay usable mid-scan.
                 return JSONResponse(handle_mcp_request(body), status_code=200)
             if tool_name in ("sms_scan_source", "sms_scan_binary", "sms_query_vault_stats"):
                 if tool_name == "sms_query_vault_stats":
