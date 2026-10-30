@@ -591,3 +591,19 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 8px 
   .backdrop::before, .flow-pulse, #fx-layer, .scanline { display: none; }
   .orb-red, .orb-blue { translate: 0 0; }
 }
+
+/* ---------- 20 guidance routes + scoreboard + graph + HUD (2026-10-30) ---------- */
+.route-view[hidden] { display: none; }
+.route-view .btn { margin-right: 8px; }
+.scoreboard { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.scoreboard > div { display: flex; flex-direction: column; }
+.scoreboard dt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
+.scoreboard dd { margin: 0; font-size: 17px; font-weight: 700; }
+#phase-graph { display: block; width: 100%; height: 160px; margin: 12px 0 0; }
+.workspace-rail nav a.current { font-weight: 700; }
+.hud-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.hud-toggle.off { opacity: 0.45; }
+@media (max-width: 760px) {
+  .scoreboard { flex-wrap: wrap; gap: 10px; }
+  #phase-graph { height: 120px; }
+}

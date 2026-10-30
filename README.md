@@ -3,7 +3,7 @@
 Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-![Version](https://img.shields.io/badge/version-0.7.0-blue)
+![Version](https://img.shields.io/badge/version-0.8.0-blue)
 ![Tests](https://img.shields.io/badge/dev.py_check-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.162.0-009688?logo=fastapi&logoColor=white)
@@ -79,6 +79,17 @@ fixture); full flag reference in
 dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 3-minute demo guide
+
+**Part 0 — the dashboard (30 seconds).** Open the console: `#/` landing, then
+`#/demo` for the guaranteed happy path (bundled fixtures + Greenhouse) or
+`#/live` for real-time verification (local project, compiled binary, MCP
+snippet) — modes sync to the route, and one shared visualization core renders
+every run. The pipeline card carries a live phase graph (`static/graph.js`,
+green generation / red attack / blue defense / purple verified-freeze, edge
+particles, timeline strip fallback); the header scoreboard aggregates Active
+Agents / Vulns Found / Patches Applied / Verified Purple; HUD toggles flip
+sweep, profile, research, compression, vault, differential, and binary panels.
+Full panel map: [`docs/reference/DASHBOARD.md`](docs/reference/DASHBOARD.md).
 
 **Part 1 — the Greenhouse showcase (90 seconds).** One command, no key, no
 Docker: `python main.py --list-targets`, then open the dashboard and run the

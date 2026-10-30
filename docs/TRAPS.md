@@ -61,3 +61,20 @@ here, not in scattered notes.
   `rc=1` and `Muse request failed or timed out; no fallback provider was
   contacted` — that IS the live proof (real Docker phases ran, cleanup
   ran, no fallback contacted).
+
+## UI guidance-matrix pass (2026-10-30, branch feature/ui-guidance-matrix)
+
+- **Trap: `serve-up --port` foreground-hangs the shell — the server is up while the tool never returns.**
+  Wrong assumption: `dev.py serve-up --port 18080` failing to return means the server failed to start.
+  Evidence: `/api/health` answered `ok` + `api_key_configured=true` and `/` served the new DOM while the `serve-up` wrapper still held the foreground past the 120s timeout (went to background task `312701v1f2`, had to cancel + `pkill -f serve.*18080`). Prefer `serve-up` for LAW 7 drills, but for DOM-proof serving use the `ui_scan.start_server(port, offline)` helper pattern (returns a Popen once `/api/health` answers) or background the command yourself.
+- **Trap: run `offline_scan.py` under `.venv/bin/python`, never system python3.**
+  Wrong assumption: system python has the Docker SDK because the repo imports it.
+  Evidence: `ModuleNotFoundError: No module named 'docker.errors'` on system python; venv run gives 3/3 verified.
+- **Trap: `browser_controls_check.py` asserts a stale 1-tool MCP list.**
+  Wrong assumption: its `mcp_tools == ["submit_code_snippet"]` failure means the dashboard regressed.
+  Evidence: live `/mcp tools/list` correctly returns all 5 library/MCP tools (V1 Subsystem E shipped); the tool's assertion predates it. Fix the tool, not the dashboard.
+- **Trap: the edit tool needs byte-exact anchor whitespace; `sed -n | cat -A` first.**
+  Evidence: two failed `edit` calls on `static/index.html` (guessed 2-space vs real 4-space/6-space nesting + one long single-line anchor) before switching to a Python replace script with `repr()`-verified anchors.
+- **Trap: `graph.js` `isFallback()` semantics — live canvas still reports fallback while the strip is mounted.**
+  Wrong assumption (first draft): `isFallback()` should return false once canvas binds.
+  Evidence: the strip `#scan-timeline` is ALWAYS mounted (it is the fallback path), so a naive "strip exists => fallback" check reports fallback=true on a healthy live graph. Shipped logic: internal `fallback` flag (canvas bind failure) decides; the strip reference documents the degraded path. CDP proof showed `graph_fallback=false` with the strip mounted.
