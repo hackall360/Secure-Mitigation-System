@@ -149,3 +149,20 @@ def test_terminal_semantics_preserved_csp_safe():
         assert attrs.get("tabindex") == "0", f"#{log} must stay focusable"
     html = (ROOT / "static/index.html").read_text()
     assert "onclick" not in html and "onchange" not in html, "no inline handlers (CSP)"
+
+
+# --- Docs parity (LAW 5): dashboard changes must surface in README + reference ---
+
+
+def test_readme_describes_guidance_routes_graph_hud():
+    """RED docs: README covers the route/graph/HUD surfaces."""
+    text = (ROOT / "README.md").read_text()
+    for marker in ("#/demo", "#/live", "phase graph", "scoreboard", "HUD"):
+        assert marker in text, f"README missing {marker!r}"
+
+
+def test_dashboard_reference_covers_guidance_layer():
+    """RED docs: DASHBOARD.md maps graph.js routes/scoreboard/toggles."""
+    text = (ROOT / "docs" / "reference" / "DASHBOARD.md").read_text()
+    for marker in ("graph.js", "scoreboard", "hud-toggle", "#/demo"):
+        assert marker in text, f"DASHBOARD.md missing {marker!r}"

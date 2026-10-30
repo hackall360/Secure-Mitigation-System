@@ -80,6 +80,17 @@ dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 3-minute demo guide
 
+**Part 0 — the dashboard (30 seconds).** Open the console: `#/` landing, then
+`#/demo` for the guaranteed happy path (bundled fixtures + Greenhouse) or
+`#/live` for real-time verification (local project, compiled binary, MCP
+snippet) — modes sync to the route, and one shared visualization core renders
+every run. The pipeline card carries a live phase graph (`static/graph.js`,
+green generation / red attack / blue defense / purple verified-freeze, edge
+particles, timeline strip fallback); the header scoreboard aggregates Active
+Agents / Vulns Found / Patches Applied / Verified Purple; HUD toggles flip
+sweep, profile, research, compression, vault, differential, and binary panels.
+Full panel map: [`docs/reference/DASHBOARD.md`](docs/reference/DASHBOARD.md).
+
 **Part 1 — the Greenhouse showcase (90 seconds).** One command, no key, no
 Docker: `python main.py --list-targets`, then open the dashboard and run the
 bundled demo. Watch the pass indicator (`Pass 1 Common → Pass 2 Deep →
