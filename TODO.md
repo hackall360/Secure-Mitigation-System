@@ -254,6 +254,14 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 
 - [x] Measure dashboard outcomes against baseline `d7763fa` with `.jcode/tools/ui_design_metrics.py`: at 1440px and 390px, placeholder contrast improves 3.07:1 to 6.90:1, mode rows improve 2/3 to 1, keyboard-focusable logs improve 0 to 4, and rendered decorative animations fall 11 to 0. All assertions pass. Evidence: `reports/ui-design-metrics.json`; measurement scope and limitations documented in `docs/guides/DEVELOPMENT.md`. These usability outcomes supplement the passing real-browser scan matrix, not a claim of measured subjective preference.
 
+## U. TUI parity gap closure (brief 2026-10-30-tui-parity; branch feature/tui-parity)
+
+- [x] U1. Reader: entry-point contracts for mcp/binary/sweep/project/demo/cve (signatures, gating, consent rules, redactors). Read-only, no writes. Proof: report with file:line anchors.
+- [x] U2. Writer A (`feature/tui-models`, worktree `/tmp/wt-tui-models`): TuiState mode/depth/fields + parse_key/apply_action + render_panes + footer/help; `tests/test_tui_modes.py` fail-first. Proof: probe 15/15 GREEN + modes 6/6 (commit 5f3a497); pre-existing test_tui.py 2-fail noted.
+- [x] U3. Writer B (`feature/tui-dispatch`, worktree `/tmp/wt-tui-dispatch`): prompt helper + mode dispatch + `_curses_main` wiring + `run_plain` flags; `tests/test_tui_dispatch.py` + `tests/test_tui_plain.py` fail-first. Proof: 51 passed (probe 17 + dispatch 11 + plain 8 + test_tui 15), commits 6d76e85 + a6728c4.
+- [x] U4. Spawner merge: merge both writer branches into `feature/tui-parity`, full `dev.py check` green, live TUI proof (plain sweep + binary), CLI/dashboard regression check. Proof: merges 270dc22 + d2b2a52; conflict unified TUI_MODES/MODE_ORDER; spawner fix honors sys.modules fakes so test_tui.py passes any order; 72/72 TUI files green; gate 557 passed + ruff clean; live Docker proofs: fixture + sweep + binary modes reached real Docker phases and failed closed on unreachable loopback Muse endpoint (no fallback provider contacted); docs MODULES.md + CLI.md TUI parity rows.
+- [.] U5. Ship: TODO close-out, LAW 12 version decision, feature → develop → main on go-ahead.
+
 ## Wave 9 swarm close (2026-10-29; blueprint ZERO_DAY_BLUEPRINT.md@cb79d4d)
 
 - [x] W1. Wave 7 strategy: blueprint from 10 inward verdicts (frog/goat/lion/wolf/horse/koala/llama/mouse/otter/panda), panda SHIP/LABEL/CUT, 8-item Wave 8 build order. Files: `ZERO_DAY_BLUEPRINT.md`. Proof: commit `cb79d4d`.

@@ -22,6 +22,26 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules |
 
+## TUI parity (`tui.py` plain mode; tri-surface with CLI/dashboard)
+
+Verified via `python3 tui.py --help` 2026-10-30: the TUI exposes every CLI
+scan surface. Curses keys: `1/2/3` fixture, `m` mcp, `b` binary, `p`
+project, `g` sweep, `v` demo, `c` cve, `+/-` depth (1-3), `Enter/s` start,
+`x/Esc` stop, `f` filter, `h` help, `q` quit. Plain-mode flags mirror the
+curses modes:
+
+| Flag | Help |
+|---|---|
+| `--mode {fixture,sweep,mcp,binary,project,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
+| `--snippet PATH` (`--snippet-language`, `--contract`) | MCP snippet file through the red/blue Docker loop (mcp mode) |
+| `--binary-path PATH` (alias: `--binary-target`) | Binary sweep in binary mode |
+| `--project-path/--project-command/--project-test-command/--project-contract/--project-cycles/...` | Project two-cycle workout (project/cve modes) |
+| `--demo-theme/--demo-vulns` | Themed demo replay (demo mode) |
+
+`--sweep-passes N` / `--binary-target PATH` without `--mode` keep the legacy
+single-surface behavior via `_run_plain_legacy`; any dispatch flag routes
+through `_run_state_scan` + `dispatch_scan`.
+
 ## Modifiers
 
 | Flag | Default | Help |

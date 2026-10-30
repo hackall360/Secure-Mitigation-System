@@ -21,7 +21,7 @@ for the repo map and [guides/DEVELOPMENT.md](../guides/DEVELOPMENT.md) for setup
 | Module | Role |
 |---|---|
 | `sms_cli.py` | Non-interactive CLI presentation: ANSI colors, stderr spinner, fact/usage tables. |
-| `tui.py` | Terminal UI (80x24, stdlib + curses only): read-only view over `main`/`workflow`. |
+| `tui.py` | Terminal UI (80x24, stdlib + curses only; plain-text degrade when no TTY): tri-surface parity with CLI/dashboard — fixture, 3-pass sweep (`g`/`+/-`), MCP snippet (`m`), binary sweep (`b`), project two-cycle (`p`), demo replay (`v`), CVE lookup (`c`) — via `dispatch_scan` + `_run_state_scan`; mode/depth chips in `render_panes`, `FOOTER_HELP` key map, `run_plain --mode/--snippet/--binary-path/--project-*/--demo-*` (exit 2 on unknown mode). |
 
 ## Dashboard layers
 
