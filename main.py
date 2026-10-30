@@ -751,6 +751,10 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         if method == "tools/call":
             params = body.get("params") or {}
             tool_name = params.get("name")
+            if tool_name == "sms_scan_status":
+                # Pollable status: registry read only, no Docker, no lock,
+                # no config. Answered here so it stays pollable mid-scan.
+                return JSONResponse(handle_mcp_request(body), status_code=200)
             if tool_name in ("sms_scan_source", "sms_scan_binary", "sms_query_vault_stats"):
                 if tool_name == "sms_query_vault_stats":
                     from modules.services.sms_api import query_vault_stats
@@ -793,6 +797,13 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             status_code=200,
                         )
 
+                    from modules.services.mcp_bridge import (
+                        new_scan_id,
+                        scan_status_mark_done,
+                        scan_status_phase_sink,
+                        scan_status_register,
+                    )
+
                     async def _emit_source(team: str, message: str) -> None:
                         messages_live.append(f"[{team}] {message}")
 
@@ -801,9 +812,15 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         try:
                             from modules.services.sms_api import scan_source
 
+                            source_scan_id = new_scan_id()
+                            scan_status_register(source_scan_id, phase="red")
                             live_result = await scan_source(
-                                target, _emit_source, config=settings, max_passes=max_passes
+                                target,
+                                scan_status_phase_sink(source_scan_id, _emit_source),
+                                config=settings,
+                                max_passes=max_passes,
                             )
+                            scan_status_mark_done(source_scan_id)
                         except Exception as exc:
                             return JSONResponse(
                                 jsonrpc_error(
@@ -845,16 +862,31 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             messages_bin.append(f"[{team}] {message}")
 
                         messages_bin: list[str] = []
+                        from modules.services.mcp_bridge import (
+                            new_scan_id as _new_scan_id,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_mark_done as _scan_done,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_phase_sink as _phase_sink,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_register as _scan_register,
+                        )
                         from modules.services.sms_api import scan_binary as _scan_bin
 
                         async with lock:
+                            binary_scan_id = _new_scan_id()
+                            _scan_register(binary_scan_id, phase="red")
                             live_bin = await _scan_bin(
                                 tmp_path,
-                                _emit_bin,
+                                _phase_sink(binary_scan_id, _emit_bin),
                                 config=settings,
                                 contract=str(live_arguments.get("contract") or ""),
                                 max_passes=max_passes_bin,
                             )
+                            _scan_done(binary_scan_id)
                         _Path(tmp_path).unlink(missing_ok=True)
                     except Exception as exc:
                         return JSONResponse(
@@ -898,7 +930,27 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
             async with lock:
                 try:
-                    result = await execute_mcp_snippet_scan(arguments, _emit, config=settings)
+                    from modules.services.mcp_bridge import (
+                        new_scan_id as _snippet_scan_id,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_mark_done as _snippet_done,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_phase_sink as _snippet_sink,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_register as _snippet_register,
+                    )
+
+                    snippet_scan_id = _snippet_scan_id()
+                    _snippet_register(snippet_scan_id, phase="red")
+                    result = await execute_mcp_snippet_scan(
+                        arguments,
+                        _snippet_sink(snippet_scan_id, _emit),
+                        config=settings,
+                    )
+                    _snippet_done(snippet_scan_id)
                 except Exception as exc:
                     return JSONResponse(
                         jsonrpc_error(
