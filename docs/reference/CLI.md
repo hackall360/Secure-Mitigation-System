@@ -1,6 +1,6 @@
 # CLI reference
 
-Generated from `main.py` argparse (`main()`), 2026-10-28. Run
+Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 `python3 main.py --help` for the live text.
 
 ## Commands (mutually exclusive, one required)
@@ -12,6 +12,7 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--docker-status` | Report Docker daemon and image readiness |
 | `--cleanup` | Remove leftover session resources |
 | `--serve` | Serve the local dashboard |
+| `--tui` | Live terminal UI: panes, pipeline, result card (curses; degrades to plain text without a TTY); `h` shows Wave 2/5/8 receipt/guard/mutation tokens |
 | `--scan {fixture}` | Scan one bundled fixture |
 | `--project PATH` | Scan a local source directory without modifying it |
 | `--list-targets` | List bundled fixtures without Docker or a key |
@@ -22,9 +23,8 @@ Generated from `main.py` argparse (`main()`), 2026-10-28. Run
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
-| `sms_compress` | Context compression middleware (engine leaf) |
-| `sms_vault` | Encrypted vault (engine leaf) |
-| `sms_api` | Library entrypoints (engine leaf) |
+
+> Engine leaves (`sms_compress`, `sms_vault`, `sms_api`) are library modules, not CLI flags.
 
 ## TUI parity (`tui.py` plain mode; tri-surface with CLI/dashboard)
 
@@ -62,6 +62,12 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--context-budget N` | 32768 | Bounded per-call source context budget |
 | `--allow-remote-inference` | off | Consent to send source/evidence to hosted Muse endpoint |
 | `--profile {economy,balanced,quality,custom}` | — | Model profile for `--scan` (default: configured models) |
+| `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
+| `--format {table,json}` | table | Non-interactive output shape (tables show guard rationales + mutation probes) |
+| `--show-usage` | off | Always print token/cost table even when no model calls were made |
+| `--output-dir PATH` | — | Save scan JSON + candidate diff to a new run dir (includes `receipt.json`) |
+| `--research` | off | Opt-in research sidecars for `--scan` (keyless OSV/CIRCL/GHSA/EPSS) |
+| `--research-scanners LIST` | — | Comma-separated local scanners for `--research` grounding (requires `--research`) |
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
@@ -73,7 +79,6 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--demo-size {small,standard}` | standard | Greenhouse demo size: small (fewer routes) or standard (full set) |
 | `--flaw-count N` | — | Bound the requested demo flaws to 1..8 (default: keep them all; clamps; ai-demo only) |
 | `--demo-seed N` | — | Variation nonce for AI demo generation (ai-demo only) |
-| `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
 
 CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability (KEV-listed +5, EPSS percentile >=0.9 +5 tie-breaks).
 
