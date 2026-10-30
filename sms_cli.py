@@ -625,6 +625,17 @@ def format_facts(result: object, use_color: bool | None = None) -> dict:
         facts["research_records"] = str(len(list(research)))
     except TypeError:
         facts["research_records"] = "0"
+    compression = get("compression", None)
+    try:
+        raw = int(getattr(compression, "raw_tokens_estimated", 0) or 0)
+        sent = int(getattr(compression, "compressed_tokens_sent", 0) or 0)
+        saved = int(getattr(compression, "tokens_saved", 0) or 0)
+        ratio = float(getattr(compression, "compression_ratio", 0.0) or 0.0)
+        facts["compression"] = (
+            f"{raw} -> {sent} tokens (saved {saved}, ratio {ratio:.2f})" if raw else "Not reported"
+        )
+    except (TypeError, ValueError):
+        facts["compression"] = "Not reported"
     return facts
 
 
@@ -649,6 +660,7 @@ def fact_table(result: object, use_color: bool | None = None) -> str:
         ("Mutations", wave2.get("mutations", "Not reported")),
         ("Cycles", facts["cycles"]),
         ("Research records", facts["research_records"]),
+        ("Compression", facts.get("compression", "Not reported")),
         ("Cleanup", facts["cleanup"]),
         ("Capabilities", "run main.py --help for Wave 2/5/8 same-day value"),
     ]

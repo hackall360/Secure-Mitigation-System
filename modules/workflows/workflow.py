@@ -23,6 +23,7 @@ from modules.core.pricing import ScanUsage
 from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
+from modules.shared.sms_compress import CompressionReport, compress_context
 
 
 def _sink_keywords(filename: str, contract: str) -> tuple[list[str], list[str]]:
@@ -289,6 +290,7 @@ class ScanResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float | None = None
     research_records: list[dict] = Field(default_factory=list)
+    compression: CompressionReport = Field(default_factory=CompressionReport)
 
     @property
     def success(self) -> bool:
@@ -349,6 +351,14 @@ async def execute_purple_workflow(
             research_digest, result.research_records = await _gather_research(
                 muse, settings, target.filename, target.contract, log
             )
+        compressed = compress_context(source, filename=target.filename)
+        result.compression = compressed
+        await log(
+            "system",
+            f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+            f"{compressed.compressed_tokens_sent} tokens "
+            f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
+        )
         await log(
             "red",
             chatter("red_start", persona="Breakwater", path=target.filename, seed=1),

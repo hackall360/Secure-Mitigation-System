@@ -400,9 +400,13 @@ def describe_wave2(result: object) -> str:
     "" when nothing is present or anything is odd-shaped.
     """
     try:
-        from sms_cli import format_wave2_facts  # lazy: keeps module import light
+        from sms_cli import format_facts, format_wave2_facts  # lazy: keeps module import light
 
         facts = format_wave2_facts(result)
+        try:
+            compression = str(format_facts(result).get("compression") or "")
+        except Exception:
+            compression = ""
     except Exception:
         return ""
     try:
@@ -419,6 +423,8 @@ def describe_wave2(result: object) -> str:
         mutations = str(facts.get("mutations") or "")
         if mutations and mutations != "Not reported":
             tokens.append(f"[mutations {mutations[:40]}]")
+        if compression and compression != "Not reported":
+            tokens.append(f"[compress {compression[:60]}]")
         return (" " + " ".join(tokens)) if tokens else ""
     except Exception:
         return ""

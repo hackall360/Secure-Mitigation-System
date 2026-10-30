@@ -31,6 +31,7 @@ from modules.core.pricing import ScanUsage
 from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
+from modules.shared.sms_compress import CompressionReport, compress_context
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.workflow import build_verdict_receipt
 
@@ -83,6 +84,7 @@ class SweepScanResult(BaseModel):
     usage: ScanUsage = Field(default_factory=ScanUsage)
     total_tokens: int = 0
     cost_usd: float | None = None
+    compression: CompressionReport = Field(default_factory=CompressionReport)
 
     @property
     def success(self) -> bool:
@@ -122,6 +124,14 @@ async def execute_sweep_scan(
         target = TARGETS_REGISTRY[target_key]
         source = target.read_source()
         current_source = source
+        compressed = compress_context(source, filename=target.filename)
+        result.compression = compressed
+        await log(
+            "system",
+            f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+            f"{compressed.compressed_tokens_sent} tokens "
+            f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
+        )
         muse = muse_factory(settings)
         sandbox = await blocking(sandbox_factory, settings)
         await blocking(sandbox.require_base_images)
