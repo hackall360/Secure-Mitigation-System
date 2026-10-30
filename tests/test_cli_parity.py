@@ -1008,3 +1008,12 @@ def test_w5r2_docs_line_refs_track_sources():
     assert "modules/workflows/project_workflow.py:102,131" in modules
     assert "modules/workflows/cve_workflow.py:31,135,417" in modules
     assert "modules/workflows/cve_workflow.py:39,42" in modules
+
+
+def test_cli_reference_lists_v1_leaves():
+    """W1 CLI rows: CLI.md commands table lists v1 engine leaves + MCP/binary rows."""
+    from pathlib import Path
+
+    cli = (Path(__file__).resolve().parents[1] / "docs" / "reference" / "CLI.md").read_text()
+    for token in ("sms_compress", "sms_vault", "sms_api", "--mcp", "binary_argv_echo"):
+        assert token in cli, f"CLI.md missing {token!r}"
