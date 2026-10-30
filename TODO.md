@@ -293,3 +293,10 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] W1. binary_sweep compression+vault parity + source-path routing guards (tests 8 pass). Files: modules/workflows/binary_sweep.py, workflow.py, sweep.py, main.py socket guard, tests/test_binary_fixture.py.
 - [x] W2. MCP HTTP live sms_scan_source/sms_scan_binary/sms_query_vault_stats + shared envelope + routing guards (tests/test_mcp_server.py +4). Proof: 605-pass gate + --mcp STDIO 5-tool handshake.
 - [x] W3. ARCHITECTURE V1 section + CLI/MODULES reference rows. Proof: docs greps + 605-pass gate.
+
+## W1 integration (brief 2026-10-30-rubric-reissue; branch feature/w1-proj-telemetry)
+
+- [x] W1a. Project telemetry writer (worktree: own checkout, branch feature/w1-proj-telemetry): compression/vault_recall/vault_namespaces on ProjectWorkflowResult + once-per-run [phase compress]/[phase vault] logs. Proof: tests/test_project_telemetry.py 6 pass; branch tests 53/53; merged gate 615.
+- [x] W1b. CLI rows writer (worktree /tmp/wt-w1-cli, branch feature/w1-cli-rows): sms_compress/vault/api rows in CLI.md + parity test. Proof: tests/test_cli_parity.py 41 pass; commit 579f68b.
+- [x] W1c. UI pass writer (worktree /tmp/wt-w1-ui, branch feature/w1-ui-pass): #pass-chip live element + binary_argv_echo Binary-mode redirect. Proof: node --check OK, design tests 5 pass; commit a0fb70e.
+- [x] W1d. Spawner merge: w1-cli-rows + w1-ui-pass into w1-proj-telemetry (no conflicts, disjoint scopes), full gate 615 passed, Gates 2 (offline-scan 3/3 verified) + 3 (ui_scan Chrome card, pass-chip in DOM).
