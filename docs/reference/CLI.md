@@ -37,10 +37,11 @@ curses modes:
 
 | Flag | Help |
 |---|---|
-| `--mode {fixture,sweep,mcp,binary,project,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
+| `--mode {fixture,sweep,mcp,binary,project,ingest,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
 | `--snippet PATH` (`--snippet-language`, `--contract`) | MCP snippet file through the red/blue Docker loop (mcp mode) |
 | `--binary-path PATH` (alias: `--binary-target`) | Binary sweep in binary mode |
 | `--project-path/--project-command/--project-test-command/--project-contract/--project-cycles/...` | Project two-cycle workout (project/cve modes) |
+| `--ingest-repo URL` (`--commit-hash HEX`, `--ingest-branch TEXT`) | Validated repo intake at a pinned commit (ingest mode; `i` key); emits redacted ingest + telemetry HUD events, then runs the fixture loop |
 | `--demo-theme/--demo-vulns` | Themed demo replay (demo mode) |
 
 `--sweep-passes N` / `--binary-target PATH` without `--mode` keep the legacy
@@ -118,6 +119,23 @@ Behavior surfaces through existing rows only:
 | EUVD exclusion (`FAST_LANE_EXCLUDED_SOURCES`, `assert_fast_lane_source_allowed`) | None (fail-closed only) | Raises `AssertionError` if a future wiring consults `euvd`; no CLI row, never blocks allowed sources. |
 | Template/solver-shape guard (`is_solver_synthesized_shape`, `patches.py:27`) | `Guard rationales` row (`guard_id="solver_synthesized_shape"`) | Same `guard_rationale` `{guard_id, reason, trigger}` shape; 60-line `EDIT_BUDGET_LINES` unchanged. |
 | Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`modules/core/checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
+
+## Wave 6 HUD (telemetry + ingest + demo client) — dashboard + TUI parity
+
+Wave 6 adds the live HUD surfaces with no new `main.py` flags. The helpers
+live in `modules/services/sms_api.py` (`build_telemetry_event`,
+`build_ingest_event`, `build_result_hud`); all three emit shapes are valid
+`writeLine` payloads (`{team, type: log, msg}`), and the ingest message
+redacts the URL to host + short sha (no `@`, no credentials, no paths).
+
+| Surface | Location | Rows / behavior |
+|---|---|---|
+| Dashboard fact rows | `static/index.html` `fact-tokens`, `fact-vault-indicator` | `Live token counter` + `Vault indicator` sit next to `fact-compression`/`fact-vault` in the same `.facts` grid; populated live from `telemetry`/`ingest` WS events and from result `hud_tokens`/`hud_vault` via `build_result_hud`. |
+| Dashboard timeline | `static/app.js` `buildEntry` + Telemetry/Ingest filters | `telemetry` + `ingest` teams keep their own tags (`tag-telemetry`, `tag-ingest` in `static/app.css`) and filter buttons instead of collapsing to `system`. |
+| Dashboard toggles | `static/app.js` `hud-toggle-compression`, `hud-toggle-vault` | The compression toggle hides the token row with it; the vault toggle hides the vault-indicator row with it. |
+| TUI suffix | `tui.py` `describe_wave2` via `format_facts` | Telemetry tokens auto-flow: `[compress ...]` + `[vault ...]` append to the result line from the same `compression`/`vault_recall` fields `fact_table` shows. |
+| TUI ingest mode | `tui.py` `mode:ingest` (`i` key), `--ingest-repo` + `--commit-hash` (+ `--ingest-branch` label) | Validates through `RepoIntakeSpec` (fail closed), emits the redacted ingest event, runs the fixture loop, then emits the telemetry event. |
+| Demo MCP client | `scripts/mcp_client_demo.py` (stdlib `urllib` only) | `run_demo(base_url, filename, language, source)` returns `{status, pre_probe_exit, post_probe_exit, receipt_sha}`; `--help` exits 0; dead localhost port fails closed non-zero; oversize sources rejected client-side; localhost-only + short timeout per LAW 10I. |
 
 ## CVE scan notes
 

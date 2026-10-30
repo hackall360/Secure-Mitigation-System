@@ -451,6 +451,8 @@ body.scanning .live-dot { background: var(--green); box-shadow: 0 0 0 4px rgba(1
 .tag-blue { color: var(--blue); background: var(--blue-soft); }
 .tag-research { color: var(--teal); background: rgba(94,234,212,.1); }
 .tag-green { color: var(--green); background: rgba(110,231,168,.1); }
+.tag-telemetry { color: var(--teal); background: rgba(94,234,212,.14); }
+.tag-ingest { color: var(--blue); background: var(--blue-soft); }
 .tag-system { color: var(--purple-2); }
 
 /* ---------- 16 overlays: toast, terminal pops, footer ---------- */

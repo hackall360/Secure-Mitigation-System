@@ -137,7 +137,7 @@ function clearEmpty(area) {
 }
 
 function buildEntry(team, text, withTag) {
-  const normalized = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const normalized = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
   const line = document.createElement('div');
   line.className = 'entry';
   line.dataset.team = normalized;
@@ -250,12 +250,14 @@ function writeComms(team, text) {
   const m = CHATTER_RE.exec(String(text));
   if (!m) return;
   lightAgent(m[1]);
-  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
   const line = buildEntry(known, text, true);
   append(comms, line);
 }
 function writeLine(team, text) {
-  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
+  if (known === 'telemetry') fact('fact-tokens', String(text).slice(0, 200));
+  if (known === 'ingest') fact('fact-vault-indicator', String(text).slice(0, 200));
   updatePassChip(String(text));
   try { if (window.Panels && typeof window.Panels.renderTimeline === 'function') window.Panels.renderTimeline(known, text); } catch { /* timeline is decorative */ }
   if (known === 'red' || known === 'blue') {
@@ -639,6 +641,20 @@ function renderUsage(payload) {
     const recall = payload.vault_recall || '';
     const namespaces = (payload.vault_namespaces || []).join(',');
     vaultBadge.textContent = recall && recall !== 'VAULT_UNAVAILABLE' ? `${recall}${namespaces ? ` (${namespaces})` : ''}` : '—';
+  }
+  const hudTokens = payload.hud_tokens || {};
+  const liveTokens = el('fact-tokens');
+  if (liveTokens) {
+    const hRaw = Number(hudTokens.raw || 0);
+    const hSent = Number(hudTokens.sent || 0);
+    liveTokens.textContent = hRaw ? `live ${hRaw.toLocaleString()} → ${hSent.toLocaleString()} tokens` : (raw ? `live ${raw.toLocaleString()} → ${sent.toLocaleString()} tokens` : '—');
+  }
+  const hudVault = payload.hud_vault || {};
+  const vaultIndicator = el('fact-vault-indicator');
+  if (vaultIndicator) {
+    const novel = hudVault.novel !== undefined ? Number(hudVault.novel) : NaN;
+    const knownHits = hudVault.known !== undefined ? Number(hudVault.known) : NaN;
+    vaultIndicator.textContent = Number.isFinite(novel) ? `${novel} novel vs ${Number.isFinite(knownHits) ? knownHits : 0} historical` : (vaultBadge ? vaultBadge.textContent : '—');
   }
   const list = el('usage-calls');
   list.replaceChildren();
@@ -1106,8 +1122,8 @@ function bootRoutes() {
     const rs = el('research-scanners-toggle');
     if (rs && rs.closest('label')) rs.closest('label').style.display = on ? '' : 'none';
   });
-  hud('hud-toggle-compression', (on) => { const n = el('fact-compression'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
-  hud('hud-toggle-vault', (on) => { const n = el('fact-vault'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-compression', (on) => { const n = el('fact-compression'); if (n) n.closest('div').style.display = on ? '' : 'none'; const t = el('fact-tokens'); if (t) t.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-vault', (on) => { const n = el('fact-vault'); if (n) n.closest('div').style.display = on ? '' : 'none'; const v = el('fact-vault-indicator'); if (v) v.closest('div').style.display = on ? '' : 'none'; });
   hud('hud-toggle-differential', (on) => { document.querySelectorAll('#cycle-reports, #mutation-evidence').forEach((n) => { n.style.display = on ? '' : 'none'; }); });
   hud('hud-toggle-binary', (on) => { const b = document.querySelector('[data-mode="binary"]'); if (b) b.style.display = on ? '' : 'none'; });
   applyRoute();
