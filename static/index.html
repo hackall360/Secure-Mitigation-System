@@ -11,6 +11,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/panels.js" defer></script>
+  <script src="/static/graph.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/fx.js" defer></script>
 </head>
@@ -18,8 +19,11 @@
   <div class="backdrop" aria-hidden="true"><div class="grid-glow"></div><div class="orb orb-red"></div><div class="orb orb-blue"></div></div><div class="scanline" aria-hidden="true"></div>
   <a class="skip" href="#main">Skip to dashboard</a>
   <aside class="workspace-rail" aria-label="Workspace navigation">
-    <a class="rail-brand" href="#main" aria-label="Secure Mitigation System dashboard"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27 7v8c0 6-5 11-11 14C10 26 5 21 5 15V7Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m11 16 3 3 7-8" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>SMS</span></a>
+    <a class="rail-brand" href="#/" aria-label="Secure Mitigation System dashboard"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27 7v8c0 6-5 11-11 14C10 26 5 21 5 15V7Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m11 16 3 3 7-8" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>SMS</span></a>
     <nav aria-label="Dashboard sections">
+      <a href="#/" data-route="landing"><span>Home</span></a>
+      <a href="#/demo" data-route="demo"><span>Demo</span></a>
+      <a href="#/live" data-route="live"><span>Live</span></a>
       <a href="#configure"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>Configure</span></a>
       <a href="#pipeline-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Pipeline</span></a>
       <a href="#agent-traces"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16"/></svg><span>Agents</span></a>
@@ -29,8 +33,14 @@
   </aside>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.7.0</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.8.0</span></a>
       <div class="top-status">
+        <dl id="scoreboard" class="scoreboard" aria-label="Session scoreboard">
+          <div><dt>Active Agents</dt><dd id="score-agents">0</dd></div>
+          <div><dt>Vulns Found</dt><dd id="score-vulns">0</dd></div>
+          <div><dt>Patches Applied</dt><dd id="score-patches">0</dd></div>
+          <div><dt>Verified Purple</dt><dd id="score-verified">0</dd></div>
+        </dl>
         <span class="chip" id="chip-key" data-state="pending" title="Muse API key in server environment"><i></i>API key</span>
         <span class="chip" id="chip-docker" data-state="pending" title="Docker daemon and base images"><i></i>Docker</span>
         <span class="chip" id="chip-server" data-state="pending" title="Local orchestrator connection"><i></i>Orchestrator</span>
@@ -39,6 +49,19 @@
     </header>
 
     <main id="main">
+      <section id="view-landing" class="card route-view" aria-label="Landing">
+        <header class="card-head"><div><p class="eyebrow">Welcome</p><h2>Challenge the boundary. Verify the defense.</h2></div></header>
+        <p>Run the guaranteed <a href="#/demo">Demo happy path</a> on bundled fixtures, or connect <a href="#/live">Live input</a> (project, binary, snippet) for real-time verification. One shared visualization core renders every run.</p>
+        <p><a class="btn primary" href="#/demo">Start the demo</a> <a class="btn ghost" href="#/live">Go live</a></p>
+      </section>
+      <section id="view-demo" class="card route-view" aria-label="Demo route">
+        <header class="card-head"><div><p class="eyebrow">Demo route</p><h2>Guaranteed happy path</h2></div></header>
+        <p class="hint">Bundled fixtures + Green build. Use the Configure card below, then Run.</p>
+      </section>
+      <section id="view-live" class="card route-view" aria-label="Live route">
+        <header class="card-head"><div><p class="eyebrow">Live route</p><h2>Real-time verification</h2></div></header>
+        <p class="hint">Local project, compiled binary, or MCP snippet. Use the Configure card below, then Run.</p>
+      </section>
       <section class="hero">
         <div>
           <p class="eyebrow"><span class="eyebrow-line"></span>Boundary verification workspace</p>
@@ -150,6 +173,7 @@
       </section>
 
       <section class="card pipeline-card" aria-labelledby="pipeline-title">
+        <canvas id="phase-graph" width="640" height="160" aria-label="Phase graph" role="img"></canvas>
         <header class="card-head">
           <div><p class="eyebrow">02 / Execute</p><h2 id="pipeline-title">Verification pipeline</h2></div>
           <div class="progress-wrap" aria-hidden="true"><div id="progress" class="progress"><span></span></div></div>
@@ -251,6 +275,15 @@
           <h2 id="telemetry-title"><span class="live-dot" aria-hidden="true"></span>Sandbox activity</h2>
           <div class="panel-tools">
             <div class="filters" role="group" aria-label="Filter activity">
+              <div class="hud-toggles" role="group" aria-label="Capability toggles">
+                <button id="hud-toggle-sweep" class="hud-toggle" type="button" aria-pressed="true">Sweep</button>
+                <button id="hud-toggle-profile" class="hud-toggle" type="button" aria-pressed="true">Profile</button>
+                <button id="hud-toggle-research" class="hud-toggle" type="button" aria-pressed="false">Research</button>
+                <button id="hud-toggle-compression" class="hud-toggle" type="button" aria-pressed="true">Compression</button>
+                <button id="hud-toggle-vault" class="hud-toggle" type="button" aria-pressed="true">Vault</button>
+                <button id="hud-toggle-differential" class="hud-toggle" type="button" aria-pressed="true">Differential</button>
+                <button id="hud-toggle-binary" class="hud-toggle" type="button" aria-pressed="true">Binary</button>
+              </div>
               <button class="filter active" data-filter="all" aria-pressed="true">All</button>
               <button class="filter" data-filter="system" aria-pressed="false">System</button>
               <button class="filter" data-filter="red" aria-pressed="false">Red</button>

@@ -9,8 +9,23 @@ are side-effect-scoped layers. CSP-safe throughout: `textContent` and
 | File | Hooks in / out |
 |---|---|
 | `static/app.js` | Owns `writeLine(team, msg)`, WebSocket fan-out (`/ws/project`, `/ws/combat/{target}`), all `fetch()` and `addEventListener` wiring. |
+| `static/graph.js` | Phase-graph renderer in: `SMSGraph.update({stage} | {result})` from `setStage`/`showResult`. Out: none (canvas only, decorative). Canvas-2D force layout, team colors (green/red/blue/purple), edge particles, purple freeze on verified, `prefers-reduced-motion` static. |
 | `static/fx.js` | Motion layer in: cursor glow, parallax CSS vars, stage data-flow pulses. Out: none (visual only). WAAPI + rAF-throttled, transform/opacity only, honors `prefers-reduced-motion`. Companion CSS at tail of `static/app.css`. |
-| `static/panels.js` | Timeline markers in: `writeLine(team, msg)` calls from `app.js`. Out: marker strip (max 100 markers). |
+| `static/panels.js` | Timeline markers in: `writeLine(team, msg)` calls from `app.js`. Out: marker strip (max 100 markers). Doubles as the graph fallback path: stays mounted and rendering even when `SMSGraph` is off (`isFallback()`). |
+
+## Guidance routes, scoreboard, HUD (2026-10-30)
+
+Hash routes in the single served shell — no server route churn, deep-linkable,
+back-button safe. Modes sync to the route; every control keeps its id/handler.
+
+| Route / surface | DOM ids | Render fn | Source |
+|---|---|---|---|
+| `#/` landing | `view-landing` | `applyRoute`/`bootRoutes` (`app.js`) | Static hero; links to `#/demo` / `#/live`. |
+| `#/demo` happy path | `view-demo` | `applyRoute` + `setSourceMode('demo')` | Bundled fixtures + Green build (`demo`, `demo-build` modes). |
+| `#/live` real-time | `view-live` | `applyRoute` + `setSourceMode('project')` | Project / MCP / binary (`project`, `mcp`, `binary` modes). |
+| Phase graph | `phase-graph` | `SMSGraph.init/update/kick` (`graph.js`) | Stage/result events; `isFallback()` true only when canvas bind fails. |
+| Scoreboard | `scoreboard`, `score-agents`, `score-vulns`, `score-patches`, `score-verified` | `renderScoreboard` (`app.js`) | Roster presence + result outcomes (pre_probe_exit, diff, verified). Session-only, no backend call. |
+| HUD toggles | `hud-toggle-sweep/profile/research/compression/vault/differential/binary` | `bootRoutes` hud wiring (`app.js`) | Each flips an existing surface (sweep select, profile row, research checkbox, fact rows, cycle reports, binary mode). No dead controls. |
 
 ## Key hooks (`app.js`)
 
