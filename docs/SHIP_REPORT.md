@@ -53,3 +53,49 @@ Plus sibling forge work as-is EXCEPT the open items below.
 ## Recommendation
 
 Ship when human approves: merge `feature/overnight-forge` → develop (LAW 1 flow), LAW 12 bump decision (minor: fixes+hardening only from my side; sibling may argue major for taxonomy breadth — human call), then push both lines. No action taken pending approval.
+
+---
+
+# SHIP UPDATE — frontier-delta directive (2026-10-31T18:25Z)
+
+Branch: `feature/overnight-forge` (79 commits: 64 sibling forge + 15 consolidation).
+Gate status: **798 passed, 0 failed** (evidence: Phase-0 re-run + Gate-2 re-run today).
+UI lockdown: `git diff --stat main...HEAD -- static/ templates/` EMPTY.
+Zero external effects: no pushes, no CVE filed, no maintainer contact, no public
+PRs/issues (the single "disclosure" commit adds a local PRIVATE draft with a
+DO-NOT-SEND header; `git log` audit confirms nothing left the machine).
+
+## Gate verdicts (this directive)
+
+- **Gate 1 (suite ≥798 + spot-check report): PASS.** 798 passed; `phase0/spotcheck-report.md`
+  (10 priors live-replayed exit 0/1/0, 5 chains receipt-verified, 76 meta rows valid).
+- **Gate 2 (third-party repro + patch in Docker + teardown): PASS.**
+  `phase0/validator-repro-log.txt` (exit 0, 3 bypasses) →
+  `phase0/validator-patched-log.txt` (exit 1 + benign 0); label-scoped reap after
+  every session, no orphans (only pre-existing scbx-*/katzu remain).
+- **Gate 3 (novelty log + draft + zero external effects): PASS.**
+  `novelty_search.md` (NVD/OSV/GHSA/repo-issues, no match, neighbors distinguished);
+  `DISCLOSURE_DRAFT.md` PRIVATE with timeline placeholder, NOT sent.
+- **Gate 4 (this update): WRITTEN.**
+
+## Final honest evidence level
+
+`validator-isurl-host-case`: HYPOTHESIS → REPRODUCED_LOCALLY → PATCH_VERIFIED →
+NOVELTY_CHECKED → READY_FOR_RESPONSIBLE_DISCLOSURE (all local; send is human-only).
+
+## Remaining Δ (honest)
+
+1. Keyless-novelty scope: no commercial feeds consulted (stated in novelty log).
+2. Packaged `validators.test.js` not re-run here (no babel in sandbox — flagged in
+   draft as the maintainer's `npm test` verification).
+3. Severity SMALL in isolation (boundary-must-rely-on-string-lists +
+   attacker-must-influence-case); class precedent CVE-2026-18660 (Jetty, 8.8 High)
+   cited to show the shape matters elsewhere.
+4. C41/C42/C48 stay PARKED as fixtures; sibling run stays STALE (unchanged).
+
+## Push recommendation
+
+Ready to ship on human approval: merge `feature/overnight-forge` → develop (LAW 1),
+human decides LAW-12 bump, then push both lines. The ONLY remaining human-only
+actions: (a) ship/merge decision, (b) sending the disclosure draft through the
+maintainer's private channel. Everything else is done and evidenced locally.
