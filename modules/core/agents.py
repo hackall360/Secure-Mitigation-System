@@ -319,6 +319,28 @@ class MetaMuseClient:
                     return schema.model_validate_json(cleaned)
                 except (ValidationError, ValueError) as exc:
                     # Usage already recorded above; re-raise as AgentError.
+                    # Env-gated debug: dump the raw content so recurring
+                    # schema clusters (forge F14/F15) can be diagnosed.
+                    try:
+                        import os as _os
+                        import tempfile as _tf
+
+                        _dbg = _os.environ.get("PURPLEBOX_LOG_RAW_RESPONSES")
+                        if _dbg:
+                            _fd, _dp = _tf.mkstemp(
+                                prefix=f"schemadebug-{role}-",
+                                suffix=".txt",
+                                dir=_dbg if _os.path.isdir(_dbg) else None,
+                            )
+                            with _os.fdopen(_fd, "w") as _fh:
+                                _fh.write(f"ROLE={role} MODEL={model}\n")
+                                _fh.write(f"CLEANED_LEN={len(cleaned)}\n")
+                                _fh.write("----- CLEANED -----\n")
+                                _fh.write(cleaned[:8000])
+                                _fh.write("\n----- RAW -----\n")
+                                _fh.write(content[:8000])
+                    except Exception:
+                        pass
                     raise AgentError(
                         "Muse returned invalid JSON or an unexpected response schema."
                     ) from exc

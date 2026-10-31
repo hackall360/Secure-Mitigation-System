@@ -173,3 +173,31 @@ rule applies: destroy container, log here, begin next cycle immediately.
   rarer failure mode on the same shape — budget pressure, not schema.
 - Standing rule: least-nested quoting in fixtures; snapshot per-attempt
   reports; stop-line 5.
+
+## F15 — C48 root cause PROVEN: Red second-pass hallucination (2026-10-31, 6 attempts)
+
+- Captured via new PURPLEBOX_LOG_RAW_RESPONSES debug dump (env-gated,
+  zero-cost when unset): the faulting role is
+  `project_red_verification_report`, NOT Blue. Red returned
+  `outcome: no_finding` WITH a full `verification_script_python` ->
+  `ValueError: A no-finding report must not include finding fields.`
+  Evidence: validation/task-4806-c48f-redtruefault.txt.
+- Worse than a schema slip: Red HALLUCINATED a hardened fixture
+  ("next_url requires leading single /, rejects //, backslash, control
+  chars and urlsplit scheme/netloc falling back to /login") — NONE of
+  which exists in the supplied source — and reviewed THAT instead.
+  It contradicted its own pass-1 exit-0 proof ("bottled a proof" x6).
+- Mechanism hypothesis: canonical fixture shapes (login?next= redirect,
+  LIKE-search) pattern-match training-dominant SECURE versions; the
+  second-pass reviewer grades the remembered-secure variant. C47
+  (rare ESCAPE shape) stayed grounded and cleared. So F14's
+  nested-quote rule is DEMOTED to coincidence: C47's clear is better
+  explained by shape-distinctiveness than by quoting.
+- Mitigations (Green-side, no harness change): shape-distinctive
+  fixtures (rare sink spellings, non-canonical route+param names);
+  candidacy: response-splitting (stdlib emits raw CRLF, proven) as a
+  rarer-in-training sibling of open-redirect. Parked at stop-line 6.
+- Standing correction: Blue-schema clusters (C40 3x, C46 5x, C48 5x)
+  were NEVER proven Blue-side; at least C48 is proven RED-side. All
+  "transient Blue flake" attributions before this capture are
+  SUSPECT — reclassify as unattributed model flake unless captured.

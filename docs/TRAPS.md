@@ -166,3 +166,16 @@ here, not in scattered notes.
   immediately. Suspected mechanism: nested quotes inside JSON strings
   break model-side escaping. Prefer double-quoted SQL strings and bind
   parameters outside the string literal entirely.
+
+## Schema-fault attribution requires capture (forge Cycle 48, 2026-10-31)
+
+- Never attribute a "Muse returned invalid JSON or an unexpected response
+  schema" fault to a side (Red vs Blue) without the payload: the C48
+  cluster looked Blue-side for 5 attempts (emit log shows Blue phase)
+  but the captured payload proves the faulting role was
+  project_red_verification_report. Set PURPLEBOX_LOG_RAW_RESPONSES to a
+  directory to capture failing payloads (env-gated, off by default).
+- Canonical shapes (login?next=, LIKE-search) risk Red second-pass
+  hallucination of the training-dominant secure variant. Prefer
+  shape-distinctive fixtures; F14 nested-quote rule demoted to
+  coincidence pending its own capture.
