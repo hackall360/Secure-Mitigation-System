@@ -187,3 +187,13 @@ and taxonomy link.
 - Taxonomy: new T4f subclass. Vault: red `f7332fd6e860`,
   blue `25afac938546`.
 - Gate-3: replay PASS (renamed variant; traversal blocked).
+
+## D16 — T1d SOLO close prior (Cycle 25, 2026-10-31)
+
+- Solo fixture (ONE-sink rule): stored nickname re-read into WHERE.
+  Red two-step exit 0 (`amy' OR '1'='1` → hey,yo); Blue parameterized
+  re-read → exit 1, regressions 0/0. First-try — CLOSES the C24 OPEN.
+- Evidence: run `validation/task-2501-c25-report.json` (receipt pre=0/post=1,
+  patch sha `23f052ba…`), `validation/task-2502-c25-vault.txt`.
+- Taxonomy: T1d-closed. Vault: red `a25a9265a074`, blue `893ae13cafc2`.
+- Gate-3: replay PASS (renamed schema; injection → stranger).

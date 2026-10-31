@@ -834,3 +834,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Conclusion: Δ(C.24-retained) → 0; Δ(C.24-T1d) stays OPEN by record.
   Taxonomy: new T4f subclass (greeter containment). T1d queued solo.
 - Reusable prior created: T4f containment + the ONE-sink Green rule.
+
+## E25 — Cycle 25: T1d SOLO follow-up, first-try VERIFIED (closes C24 OPEN)
+
+- Hypothesis: the ONE-sink solo tree lets Red prove the Gate-0 second-order
+  signal the multi-sink tree orphaned.
+- Result: TRUE — success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "Second-order SQL injection ...
+  stored nick ... concatenated into WHERE clause". Blue: parameterized
+  the re-read. 6 calls p11290/c16122 ≈$0.14 — cheapest full cycle tied.
+  Evidence: run `validation/task-2501-c25-live.txt`,
+  `validation/task-2501-c25-report.json`.
+- Gate-3 replay PASS on renamed schema (injected stored nick →
+  `stranger`, benign `hey` preserved; first script's assert bug was mine).
+- Vault: red `a25a9265a074`, blue `893ae13cafc2` (closes C24 OPEN
+  `f7332fd6e860). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2502-c25-vault.txt`.
+- Conclusion: the C24 OPEN record is now CLOSED-by-proof. The ONE-sink
+  rule is VALIDATED end-to-end (orphan → solo → close). Δ(C.25) → 0.
+  Every OPEN record tonight is now closed: C17-T2e (C18), C24-T1d (C25).
+- Reusable prior created: T1d two-step store-then-read probe + re-read
+  parameterization template.
