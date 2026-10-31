@@ -1485,3 +1485,13 @@ Run: `overnight_1793434523077_12855248373640259943`.
   stdlib but dead in PHP 8.4's SAPI. Explains why T6f (Python) verified
   and no PHP sibling was ever queued. No CVE, no disclosure. Zero keyed
   spend (Docker-local battery only).
+
+## E62 — Cycle 62 scout: parse_str+EXTR_SKIP composition NEGATIVE (Docker-local, zero spend)
+
+- Battery: 2-arg `parse_str(qs, $q)` + `extract($q, EXTR_SKIP)` resists
+  role-overwrite AND `GLOBALS[pwned]` injection (both absent). The
+  composition is SAFE: array indirection quarantines, SKIP protects.
+- Pairs with T5e (C52): bare `extract($_GET)` = live hole; add EITHER
+  the 2-arg array (+read explicitly, best) or EXTR_SKIP and the hole
+  dies. Documents the exact minimal delta between vulnerable and safe.
+  No CVE, no disclosure.
