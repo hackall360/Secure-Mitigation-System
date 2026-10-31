@@ -1281,3 +1281,14 @@ Run: `overnight_1793434523077_12855248373640259943`.
   + ast-parse drivers are now a stable recipe.
 - Blue: env-or-random (1 line + import). Gate-3 4/4. Vault NOVEL.
   Taxonomy v31. Conclusion: Δ(C.44) → 0 (fallback-secret closed).
+
+## E45 — Cycle 45: T7f alg-none VERIFIED attempt 2 (scout-mirror)
+
+- Green: unsigned-JWT mint + honoring verifier + role-gated /admin.
+  Gate-0: benign user forbidden; forged admin panel.
+- Attempt 1: Red exit-0 bottled; Blue-schema transient. Attempt 2:
+  VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.18 (6 calls).
+- Blue: fail-closed 1-line. Gate-3 4/4. Vault NOVEL. Taxonomy v32.
+- Scout-mirror doctrine: C3 (PyJWT NEGATIVE) + C45 (hand-rolled POSITIVE)
+  belong together — ecosystem-got-it-right vs bespoke-got-it-wrong.
+  Conclusion: Δ(C.45) → 0.

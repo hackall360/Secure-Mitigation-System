@@ -313,3 +313,10 @@ and taxonomy link.
 - Blue: no predictable fallback (env-or per-process random).
 - Gate-3: 4/4. Taxonomy v31. Vault: red `1ae5d3597970`, blue
   `50d963c60c86`. NOVEL_SURFACE.
+
+## D28 — T7f alg-none prior (Cycle 45, 2026-10-31)
+
+- Red: user token recorded, role flipped, empty sig kept, admin panel.
+- Blue: alg=none -> None fail-closed.
+- Gate-3: 4/4. Taxonomy v32. Vault: red `bcff6f456366`, blue
+  `b862da4e1750`. NOVEL_SURFACE. Pairs with C3 PyJWT scout.

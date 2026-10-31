@@ -232,3 +232,19 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   tokens, cross-restart invalidation. Vault: red `1ae5d3597970`, blue
   `50d963c60c86`; NOVEL_SURFACE. Fix doctrine: NEVER a predictable
   fallback for a signing secret — crash or randomize, never default.
+
+## T7f note (alg-none JWT bypass, hand-rolled verifier)
+
+- Subclass T7f (proven forge Cycle 45, Python, 2 attempts: 1x transient
+  Blue-schema, then VERIFIED): hand-rolled `verify` honors `alg=none`
+  (returns claims with no signature); `admin_path` gates on role.
+  Flip role claim, keep empty sig -> admin panel. Stateless.
+- Mirror of C3 scout: the REAL PyJWT rejects `alg=none` (NEGATIVE) —
+  the vuln lives in hand-rolled verifiers, not the library. Pair them
+  in training: scout says what the ecosystem got right, forge shows
+  what bespoke code gets wrong.
+- Blue: `alg=none` -> None (fail-closed, 1 line). Mint path now issues
+  unusable tokens — correct for a verifier with no HMAC path; a real
+  fix would add HMAC mint+verify together (out of surgical scope).
+- Gate-3 unseen 4/4: forged admin, HS256-empty-sig, case-smuggled algs,
+  missing alg. Vault: red `bcff6f456366`, blue `b862da4e1750`; NOVEL.

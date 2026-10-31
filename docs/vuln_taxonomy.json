@@ -1,5 +1,5 @@
 {
-  "version": "31",
+  "version": "32",
   "classes": [
     {
       "id": "T1",
@@ -213,7 +213,8 @@
         "T7a": "/grant?role= cookie gate + /order?id= concat SQL (forge Cycle 4)",
         "T7b": "Python hardware-key serial gate + concat lookup, HTTP cookie round-trip (forge Cycle 35)",
         "T7c": "Python price-cookie tamper, no server-side check vs PRICES (forge Cycle 40, Link A; gate returns expected)",
-        "T7e": "Python fallback-secret HMAC role token (forge Cycle 44; env-or-random fix)"
+        "T7e": "Python fallback-secret HMAC role token (forge Cycle 44; env-or-random fix)",
+        "T7f": "Python alg-none-honoring hand-rolled JWT verify (forge Cycle 45; fail-closed fix; mirrors C3 scout)"
       },
       "priors": {
         "T7b": {
@@ -227,6 +228,10 @@
         "T7e": {
           "red": "1ae5d3597970",
           "blue": "50d963c60c86"
+        },
+        "T7f": {
+          "red": "bcff6f456366",
+          "blue": "b862da4e1750"
         }
       }
     },
@@ -309,6 +314,11 @@
       "version": "31",
       "date": "2026-10-31",
       "change": "Cycle 44: +T7e (predictable-fallback-secret token forgery, CWE-798); vault recall check; Gate-3 4/4; no-predictable-fallback doctrine"
+    },
+    {
+      "version": "32",
+      "date": "2026-10-31",
+      "change": "Cycle 45: +T7f (alg-none bypass); vault recall check; Gate-3 4/4; C3-scout mirror doctrine"
     }
   ]
 }
