@@ -364,7 +364,9 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] AA27. Wave 27 outcome: tribunal weighted **8.80** (was 8.75, +0.05 ingest live-fire). Movers: 2a-3 → 8.0 (runtime proven on real frames). Proof: matrix.
 - [ ] AA28. Wave 28 cooperating probe shape (verifier contract for one-shot targets).
 - [x] AA28. Wave 28 outcome: target-service pairing implemented (`_ensure_target` + alias + bounded readiness + teardown; 3 RED green). Live: sanitized tree → correct no_findings; vulnerable tree → red exit-0 proof + blue exit-0 re-probe (status partial on verdict threshold, wiring complete). Ingest→verify loop fully fires with real Muse+Docker on ingested bytes. Server torn down, zero leftovers.
-- [ ] AA29. Wave 29 sustained-load + 429 drill (bounded fault-injection).
+- [x] AA29. Wave 29 outcome: 429 storm drill (3 RED green) — drives real `_request`: exactly 2 posts, 1 capped sleep (Retry-After 3600 → ≤5.5s), named rate-limit AgentError. Implementation already bounded (attempt==0 gate); test is the deliverable + regression pin. Gate 761 green, lint clean. Commits `30ade91` + `23b1028`.
 - [ ] AA30. Wave 30 FINAL TRIBUNAL + HARD GATE + WILD CRUCIBLE #3 (gate takes precedence).
+- [x] AA30. Wave 30 outcome: GATE GREEN (761, exit 0, no prod changes since Wave 25 loop) + CRUCIBLE #3 FULL PASS (stdlib SSTI-analog: RED XSS at exact sink, pre-probe 0, BLUE allowlist+escaping, cleanup ok; unsuitable candidates rejected transparently) + FINAL TRIBUNAL weighted **8.81** (was 8.80, +0.01; climb 7.32 → 8.81 = +1.49). Remaining Δ 0.69 itemized (wire storm, single-payload chaining, vault scale, verdict threshold, video pass). Matrix complete: 30/30 waves.
+
 
 
