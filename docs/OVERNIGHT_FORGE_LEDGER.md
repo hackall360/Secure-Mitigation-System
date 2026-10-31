@@ -11,6 +11,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T08:36Z | 3 (scout) | none (local code reading + loopback) | 0 | PyJWT JWKS/alg, Python | n/a | n/a | n/a | NEGATIVE (valuable): 5/5 guards hold, no candidate, checklist prior kept |
 | 2026-10-31T08:41Z | 4 | spark-1.3 + wonder-1.0 | p14157/c27695 ≈$0.28 | T7 role-gate + T1 SQLi, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: unified A→B script, 1-line parameterize; vault T7+T1; Gate-3 PASS |
 | 2026-10-31T08:53Z | 5 | spark-1.3 + wonder-1.0 (3 attempts) | ≈$0.30 total | T3 cmd-arg, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 3 (slim agents=1): a1+a2 RedReport schema faults, a3 escapeshellarg; vault T3a; Gate-3 PASS |
+| 2026-10-31T09:04Z | 6 (scout) | none (local reading + in-process WSGI) | 0 | werkzeug safe_join traversal, Python | n/a | n/a | n/a | NEGATIVE (valuable): 10+6 battery, all 404, no candidate; battery kept |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

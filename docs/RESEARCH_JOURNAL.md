@@ -225,3 +225,21 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (≥300s) and never SIGTERM it; verify `cleanup=True` per card AND zero
   session resources after. No code change needed (harness behaved; operator
   killed it).
+
+## E6b — Cycle 6 scout: werkzeug safe_join/send_from_directory (NEGATIVE, valuable)
+
+- Hypothesis: a traversal bypass (`..`/absolute/encoded/doubledot/nested/
+  backslash) escapes `send_from_directory` at the audited commit.
+- Method: LOCAL clones (werkzeug @ `2adaad1a`, flask @ `49943b5a`); unit
+  battery on `safe_join` + end-to-end in-process WSGI `Client` battery (no
+  sockets). werkzeug-debugger triage from Cycle 3 carried over (trust-gated).
+- Control: `welcome.txt` serves 200 in every battery.
+- Result: 5/5 defensive shapes hold — all escapes → `None`/404; `%2e` forms
+  404 end-to-end; backslash is literal-filename on POSIX (documented);
+  symlinks documented out-of-scope. NO candidate; no disclosure.
+- Conclusion: second consecutive guarded-target negative. Pattern: mature
+  Pallets code is a hardened audit classroom, not a finding source. Next
+  scout (Cycle 9) MUST pick the planned smaller class: single-maintainer
+  upload/auth helper, not a flagship framework.
+- Reusable prior created: traversal-audit battery (10 safe_join shapes + 6
+  end-to-end WSGI paths) reusable against any file-serve target.

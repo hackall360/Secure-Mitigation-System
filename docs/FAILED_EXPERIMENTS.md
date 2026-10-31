@@ -33,3 +33,9 @@ rule applies: destroy container, log here, begin next cycle immediately.
   transient. Slimming agents 5→1 fixed it. Lesson: small trees get slim
   fan-out (cheaper + schema-reliable); 5-agent default is for large
   surfaces. Evidence: `task-501/502-c5*-error.json`.
+
+## F5 — Scout Cycle 6: werkzeug traversal audit finds no hole (2026-10-31)
+
+- 10-shape `safe_join` battery + 6-path end-to-end WSGI battery: all escapes
+  404 at `2adaad1a`. Backslash/symlink edges are documented behavior.
+  Reusable battery kept; next scout goes smaller (single-maintainer class).
