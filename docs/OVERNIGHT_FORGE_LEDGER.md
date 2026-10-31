@@ -56,3 +56,4 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
+| 2026-10-31T11:59Z | 39 (scout) | none (local reading + node ESM) | 0 | escape-string-regexp, JS zero-dep | n/a | n/a | n/a | NEGATIVE (valuable): all metas incl u-safe -; astral/NUL fine; cross-validates forge allowlists |

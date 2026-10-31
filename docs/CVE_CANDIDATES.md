@@ -198,3 +198,36 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
   exotic target must be runnable with ZERO build (single-file, no babel/
   bundler), like `he` (C21) was.
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 39 — `sindresorhus/is` triage (NO-OP, 2026-10-31)
+
+- Triaged and REJECTED without cloning-deep: TS-source library needing a
+  build step (no `node --experimental-strip-types` on this runtime) —
+  same build-blocked class as validator.js (C33) and @hapi/shot (C15).
+  Running a third build-blocked scout would repeat the lesson, not extend
+  it. Zero-BUILD rule now explicit: no `src/`-only, no babel/tsc-required,
+  no install-required targets. Next scout must be runnable as-is
+  (single-file JS/PHP, like `he` was).
+
+## Scout Cycle 39 — `escape-string-regexp` @ `a7f7daba` (2026-09-19), MIT (2026-10-31)
+
+- HYPOTHESIS tested: the canonical zero-dep single-file regex escaper
+  misses a metacharacter (esp. `-` in classes, u-flag strictness, astral,
+  NUL) or over-escapes into breakage.
+- Method: LOCAL clone only (depth 2, `index.js` single-file, ESM, no
+  deps, no build — the zero-build rule SATISFIED, closing the C15/C33
+  gap). LOCAL node batteries, no network.
+- Results (all LOCAL, deterministic):
+  1. All 14 metachars escaped (`|\\{}()[]^$+*?.` + `-`→`\x2d`);
+     `/`, space, alphanumerics, `_`, `é`, newline correctly untouched.
+  2. Escaped output is a faithful literal inside `new RegExp()` (roundtrip
+     true, hostile-similar rejected) — the security property holds.
+  3. `\-`→`\x2d` choice is u-flag-safe (`[\x2d]` valid in u-mode);
+     astral literals match with and without `u`; NUL bytes match literally
+     (not regex-special, correctly unescaped).
+- Verdict: **no candidate**. The escaper is CORRECT, including the
+  non-obvious `\x2d` decision (comment in source explains the u-mode
+  rationale — evidence of deliberate hardening). Cross-validates the
+  forge's own regex-allowlist Blues (C2/C8/C14/C18/C27/C37 all rely on
+  exact char-class discipline).
+- Responsible disclosure: nothing to disclose (no finding).

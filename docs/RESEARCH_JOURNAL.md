@@ -1212,3 +1212,18 @@ Run: `overnight_1793434523077_12855248373640259943`.
   check-then-resolve) proven — the family now spans store (T8b), manifest
   (T8c), and codec-layer (T8d) selectors. Taxonomy: new T8d subclass.
 - Reusable prior created: T8d decode-first + layer-correct replay rule.
+
+## E39 — Cycle 39 scout: escape-string-regexp (NEGATIVE-valuable, rule closed)
+
+- Hypothesis: the canonical regex escaper misses a metacharacter class.
+- Method: LOCAL clone + batteries (metas, u-flag, astral, NUL).
+- Result: CORRECT on every axis, including the documented `\x2d`
+  u-mode decision. NO candidate.
+- Conclusion: the zero-build exotic loop is now CLOSED — one NEGATIVE
+  (`he`), one INCONCLUSIVE that became the rule (`validator`),
+  one NEGATIVE that met it (`escape-string-regexp`), plus a NO-OP triage
+  (`is`, rejected without spend). The scout doctrine is complete and
+  stable: single-file + runnable-as-is + local batteries. Further scouts
+  only on demand.
+- Reusable prior created: escaper-audit battery (metas, u-flag, astral,
+  NUL, literal-roundtrip) + the escaper as reference for forge allowlists.
