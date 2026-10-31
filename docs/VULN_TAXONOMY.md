@@ -281,3 +281,20 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Gate-3 unseen 5/5. Vault: red `bfaf17580b2e`, blue `d641d25b8956`;
   NOVEL_SURFACE. First-try clear on a fresh rare shape SUPPORTS the
   F15 mechanism (no training-dominant secure variant to hallucinate).
+
+## T5d note (config section-name injection + hallucination-starvation)
+
+- Subclass T5d (proven forge Cycle 51, Python, v2 fixture VERIFIED
+  first-try): `render(section)` passes the user deck name into
+  `cp.get` with a `db_password` fallback read; `deck=secrets`
+  discloses the credential. Stateless, no interpolation anywhere.
+- Blue: section allowlist (public-only, ValueError otherwise).
+  Gate-3 unseen 5/5 (direct, DEFAULT, case, empty, traversal).
+- F15 doctrine refined — HALLUCINATION STARVATION: v1 (identically
+  severe `${secrets:db_password}` interpolation) deterministically
+  provoked Red's `$$`-escaping confabulation twice (captured); v2
+  (same breach, zero `$` characters) starved that exact vocabulary
+  and cleared first-try. When a fixture stalls on second-pass
+  contradiction, reshape to REMOVE the confabulated fix's vocabulary
+  rather than re-running blind.
+- Vault: red `f9475d1d9c08`, blue `524f3d596eaa`; NOVEL_SURFACE.

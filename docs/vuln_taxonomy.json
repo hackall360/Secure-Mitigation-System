@@ -1,5 +1,5 @@
 {
-  "version": "34",
+  "version": "35",
   "classes": [
     {
       "id": "T1",
@@ -173,12 +173,17 @@
       "blue_pattern": "server-side authorization on Link B independent of client role claim",
       "subclasses": {
         "T5a": "role-grant endpoint (Link A) gates dynamic query (Link B)",
-        "T5b": "Node promo-code gate + template-string eval projection (forge Cycle 14)"
+        "T5b": "Node promo-code gate + template-string eval projection (forge Cycle 14)",
+        "T5d": "Python config section-name injection (forge Cycle 51 v2, no-$ reshape; section allowlist fix)"
       },
       "proven_by": "targets/node_chain_link (Wave 14, gate 725)",
       "priors": {
         "red": "1f9cdccfa4b4",
-        "blue": "3f2a9723607d"
+        "blue": "3f2a9723607d",
+        "T5d": {
+          "red": "f9475d1d9c08",
+          "blue": "524f3d596eaa"
+        }
       }
     },
     {
@@ -339,6 +344,11 @@
       "version": "34",
       "date": "2026-10-31",
       "change": "Cycle 49: +T6f (response splitting, CWE-113/93); first-try VERIFIED supports F15 shape-distinctiveness; vault recall; Gate-3 5/5"
+    },
+    {
+      "version": "35",
+      "date": "2026-10-31",
+      "change": "Cycle 51: +T5d (section-name injection); v1 interpolation PROVOKED Red hallucination x2 (captured), v2 starved it (hallucination-starvation doctrine); vault; Gate-3 5/5"
     }
   ]
 }

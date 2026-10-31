@@ -1339,3 +1339,17 @@ Run: `overnight_1793434523077_12855248373640259943`.
   line 5, (6) fault attribution only via capture (debug var armed).
 - Thinnest families: T5 (2 members), T6 (4). Next: T5/T6 breadth with
   distinctive shapes. ~2.5h to 16:15Z wake. No pushes (all local).
+
+## E51 — Cycle 51: T5d VERIFIED via hallucination-starvation reshape
+
+- v1 (ExtendedInterpolation user-vars): Gate-0 PASS, Red exit-0 x2, but
+  Red second-pass confabulated `safe_vars` + `$$`-escaping twice
+  (captured via debug var, archived task-5101/5102-redtruefault).
+  Identical confabulation 2x = content-deterministic trigger.
+- v2 (section-name injection, zero `$` chars, same severity): VERIFIED
+  first-try — pre 0, post 1, regressions 0/0. Cost $0.16. No faults.
+- Doctrine: hallucination-starvation (remove the confabulated fix's
+  vocabulary from the fixture). Stronger than F15's vague
+  "distinctiveness": it is a TARGETED reshape guided by the captured
+  payload. The debug var paid for itself twice in three cycles.
+- Gate-3 5/5. Vault NOVEL. Taxonomy v35. Conclusion: Δ(C.51) → 0.

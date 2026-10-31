@@ -328,3 +328,11 @@ and taxonomy link.
 - Blue: first-line + printable-ASCII strip + safe fallback.
 - Gate-3: 5/5. Taxonomy v34. Vault: red `bfaf17580b2e`, blue
   `d641d25b8956`. NOVEL_SURFACE. F15 prescription validated.
+
+## D30 — T5d section-injection prior (Cycle 51, 2026-10-31)
+
+- Red: deck=public recorded, deck=secrets discloses credential.
+- Blue: section allowlist (public-only).
+- Gate-3: 5/5. Taxonomy v35. Vault: red `f9475d1d9c08`, blue
+  `524f3d596eaa`. NOVEL_SURFACE. v1 interpolation variant archived
+  as hallucination-trigger specimen.
