@@ -4,6 +4,21 @@ Owner: Jcode agent. This file is the work queue. Check items off as they land.
 Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
 Every item names its files and its proof.
 
+## BB. Repo remodel (brief 2026-10-31-refactor-directive; branch feature/overnight-forge)
+
+- [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
+- [.] BB1+L. Lead sweep A: `library/` rename + `web/` map + `tui/` map + `mcp/` map (no root moves; shims intact), law mirror + harness AGENTS + agents INDEX, plan doc. Next: sweep B docs stash+MVP pages, sweep C README+AGENTS+INDEX content, gate + live proof per sweep.
+- [ ] BB1. Web sweep: web/ categorization (static + server routes/WS), per-file what/where/why index, minimal rewiring, behavior preserved.
+- [ ] BB2. TUI sweep: tui/ categorization (tui.py + CLI surface as decided), index, rewiring, behavior preserved.
+- [ ] BB3. Library sweep: library/ with core/ + shared/ (central core module direction), index, rewiring, behavior preserved.
+- [ ] BB4. MCP sweep: mcp/ categorization (bridge + tools + STDIO/HTTP surfaces), index, rewiring, behavior preserved.
+- [ ] BB5. Laws mirror: `.jcode/laws/` numbered 00-<Name> files (canonical LAWS.md stays at root per LAW 0; .jcode is git-ignored).
+- [ ] BB6. AGENTS split: root AGENTS.md project-specific; `.jcode/AGENTS.md` harness-specific.
+- [ ] BB7. Sub-agents: `.jcode/agents/<Name>.md` + INDEX.md with when-to-use (heavy focus #1).
+- [ ] BB8. Docs rework + technical deep-dive doc (heavy focus #2); prompt-history stashed out of readable tree, canonical content preserved.
+- [ ] BB9. README rewrite: 3-5 min simple read, 3-5 metaphors max, GitHub-rendered mermaid, truthful Muse red/blue/green story.
+- [ ] BB10. Integration: full `dev.py check` green + live proof where surfaces changed, docs updated, merged per LAW 1 on go-ahead.
+
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
 - [x] A1. Red research-only Muse prompt (`RED_RESEARCH_SYSTEM_PROMPT` in

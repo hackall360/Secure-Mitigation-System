@@ -1000,14 +1000,14 @@ def test_w5r2_docs_line_refs_track_sources():
     assert "main.py:870" in cli, "CLI.md write_run_report line moved (was 854-861)"
     assert "tui.py:280" in cli, "CLI.md describe_wave2 line moved (was 244)"
     assert "main.py:1093" in cli or "main.py:1095" in cli, "CLI.md receipt section moved"
-    assert "modules/workflows/workflow.py:238,262" in modules
-    assert "modules/workflows/project_workflow.py:207" in modules
-    assert "modules/workflows/project_workflow.py:285,320" in modules
-    assert "modules/core/patches.py:57" in modules
-    assert "modules/core/checks.py:423,543" in modules
-    assert "modules/workflows/project_workflow.py:102,131" in modules
-    assert "modules/workflows/cve_workflow.py:31,135,417" in modules
-    assert "modules/workflows/cve_workflow.py:39,42" in modules
+    assert "library/workflows/workflow.py:238,262" in modules
+    assert "library/workflows/project_workflow.py:207" in modules
+    assert "library/workflows/project_workflow.py:285,320" in modules
+    assert "library/core/patches.py:57" in modules
+    assert "library/core/checks.py:423,543" in modules
+    assert "library/workflows/project_workflow.py:102,131" in modules
+    assert "library/workflows/cve_workflow.py:31,135,417" in modules
+    assert "library/workflows/cve_workflow.py:39,42" in modules
 
 
 def test_cli_reference_lists_v1_leaves():
