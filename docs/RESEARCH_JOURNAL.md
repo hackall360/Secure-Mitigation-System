@@ -1147,3 +1147,27 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Reusable prior created: T8c manifest-selector template + twin-plant rule
   (3rd confirmation: suffix-appended sinks need a planted twin — C13 tar,
   C28 include, C36 manifest).
+
+## E37 — Cycle 37: Node T3g exec-string VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven `exec()` shell-string sink verifies with
+  an execFile+allowlist Blue patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "OS Command Injection via unsanitized
+  `host` ... concatenated into `child_process.exec` shell string". Blue:
+  hostname allowlist (RFC-ish, ≤253) + `execFile('echo',[host])` — the
+  shell is GONE, not escaped. 6 calls p9376/c12188 ≈$0.15 — cheapest Node
+  cycle. Evidence: run `validation/task-3701-c37-live.txt`,
+  `validation/task-3701-c37-report.json`.
+- Gate-3 replay PASS (4/4 evil blocked, benign kept). Note the doctrine
+  step-up: C5/C13/C23 escaped the shell; C37 ELIMINATES it (execFile argv).
+  Strongest T3 fix tonight — recorded as the preferred pattern in the
+  taxonomy note.
+- Vault: red `a7fe96cb1c35`, blue `a16b36b9ab0c`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3702-c37-vault.txt`.
+- Conclusion: Δ(C.37) → 0. T3g (exec-family) proven — the T3 family now
+  spans shell-arg (T3a), tar (T3c), backtick (T3d), include (T3dd),
+  format-template (T3e), triple-stash (T3f), exec-string (T3g). Taxonomy:
+  new T3g subclass.
+- Reusable prior created: T3g execFile+allowlist template (prefer
+  shell-elimination over shell-escaping).

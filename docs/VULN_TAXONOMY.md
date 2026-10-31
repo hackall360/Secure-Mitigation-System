@@ -173,3 +173,11 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   proof (claim → Set-Cookie → replay → cross-tier leak) exits 0;
   both-slot parameterization → exit 1. HTTP-proof rule 3/3.
 - Priors: red `5695f826a247`, blue `bdc3912b9d28` (vault, forge-c35).
+
+## T3g note (exec-string sink, shell elimination doctrine)
+
+- Subclass T3g (proven forge Cycle 37, Node): `exec('echo ' + host)`.
+  Fix: hostname allowlist (RFC-ish, ≤253) + `execFile('echo', [host])` —
+  eliminate the shell, don't escape it. Preferred T3 pattern (stronger
+  than C5/C13/C23 escaping).
+- Priors: red `a7fe96cb1c35`, blue `a16b36b9ab0c` (vault, forge-c37).

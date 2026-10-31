@@ -265,3 +265,14 @@ and taxonomy link.
 - Taxonomy: new T8c subclass. Vault: red `a4357fa1433b`,
   blue `538245a2bf00`.
 - Gate-3: replay PASS (renamed variant; escape dead).
+
+## D23 — T3g exec-string prior (Cycle 37, 2026-10-31)
+
+- Novel fixture: Node `exec('echo ' + host)` shell string. Red exit 0
+  (`;`/`$()`/backtick/pipe all execute); Blue hostname allowlist +
+  `execFile` argv (NO shell) → exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-3701-c37-report.json` (receipt pre=0/post=1,
+  patch sha `ee8d931d…`), `validation/task-3702-c37-vault.txt`.
+- Taxonomy: new T3g subclass (shell ELIMINATION doctrine). Vault:
+  red `a7fe96cb1c35`, blue `a16b36b9ab0c`.
+- Gate-3: replay PASS (renamed variant; shell dead, benign kept).

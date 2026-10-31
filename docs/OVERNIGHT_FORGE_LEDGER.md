@@ -50,6 +50,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T11:36Z | 35 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.29 total | T7b hw-key chain, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): HTTP round-trip honored; HTTP-proof 3/3; vault T7b; Gate-3 PASS |
 | 2026-10-31T11:38Z | 36a | none (docker battery) | 0 | T8c theme-pack selector | n/a | n/a | n/a | Gate-0 PASS: twin-planted escape leaks pre-patch |
 | 2026-10-31T11:43Z | 36 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.27 total | T8c theme selector, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): allowlist+containment; twin-plant rule 3rd confirm; vault T8c; Gate-3 PASS |
+| 2026-10-31T11:47Z | 37 | spark-1.3 + wonder-1.0 (slim, short) | p9376/c12188 ≈$0.15 | T3g exec-string, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: execFile ELIMINATES shell (strongest T3 fix); vault T3g; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
