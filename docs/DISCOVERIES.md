@@ -1,0 +1,19 @@
+# Discoveries — novel findings only, with evidence links
+
+Run: `overnight_1793434523077_12855248373640259943`.
+
+None yet. Entries require: Docker evidence (Red exit 0 pre-patch / exit 1
+post-patch + regression exit 0), evidence file path in run `validation/`,
+and taxonomy link.
+
+## D1 — T4a traversal guard prior (Cycle 1, 2026-10-31)
+
+- Novel fixture: traversal-gated file read (`read_doc` join-without-check) +
+  co-located eval sink, Python. Red exit 0 (traversal to planted secret),
+  Blue realpath-containment patch → Red exit 1, regressions 0/0.
+- Evidence: run `validation/task-101-c1-report.json` (receipt pre=0/post=1,
+  patch sha `9eb8e75d…`), `validation/task-102-c1-vault.txt` (vault ids,
+  KNOWN_ARCHETYPE recall).
+- Taxonomy: T4/T4a. Vault: red `6ad9156807d4`, blue `366e65412fc8`.
+- Gate-3: replay PASS on unseen renamed variant (traversal + absolute-path
+  blocked, benign preserved) — prior generalizes.
