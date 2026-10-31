@@ -49,12 +49,10 @@ def test_registry_entries_have_required_shape():
 
 
 def test_module_versions_match_leaf_constants():
-    import importlib
-
     assert tags.MODULE_VERSIONS, "MODULE_VERSIONS must not be empty"
     for module_name, version in tags.MODULE_VERSIONS.items():
         assert re.fullmatch(r"0\.\d+\.\d+", version), (module_name, version)
-        leaf = importlib.import_module(module_name)
+        leaf = tags._load_module(module_name)
         assert getattr(leaf, "__version__", None) == version, module_name
 
 
