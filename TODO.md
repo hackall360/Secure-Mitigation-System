@@ -4,7 +4,7 @@ Owner: Jcode agent. This file is the work queue. Check items off as they land.
 Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
 Every item names its files and its proof.
 
-## BB. Repo remodel (brief 2026-10-31-refactor-directive; branch feature/overnight-forge)
+## BB. Repo remodel (brief 2026-10-31-refactor-directive)
 
 - [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
 - [x] BB1+L. Lead sweep A: DONE + committed. `library/` rename (git-mv, shim), web/tui/mcp maps, law mirror, harness AGENTS, agents INDEX, plan doc. Proof: gate 798 passed + All checks passed.
@@ -19,6 +19,10 @@ Every item names its files and its proof.
 - [x] BB7. Sub-agents: DONE (5 files + INDEX when-to-use). Proof: merge `fef8bee`.
 - [x] BB8. Docs rework + HOW_IT_WORKS: DONE (stash + MVP pages + deep-dive). Proof: sweep B commit.
 - [x] BB9. README rewrite: DONE (plain 4-min, 2 mermaid, markers kept). Proof: merge `4dd3fcf` + 20/20 pins.
+
+## CC. Ship remodel (brief 2026-10-31-ship-remodel; was feature/overnight-forge)
+
+- [.] CC1. Pre-merge: working tree clean on forge; gate green pre-change (21:28: 798 passed post-merge); unmerged inventory: forge, agents-split, readme-remodel, subagents-index (based on develop HEAD, already absorbed into forge) + work-tags (Oct-28 stale base, dry-run conflicts in dev.py + static/index.html, old filenames — left untouched). Plan: merge forge into develop; DO NOT bulk-merge stale/duplicate branches.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
