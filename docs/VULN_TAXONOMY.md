@@ -388,3 +388,21 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   (pickle is safe iff bytes are authenticated first). Gate-3 4/4:
   unsigned, truncated, re-signed-impossible role-swap, malformed.
 - Vault: red `5f7e3716924a`, blue `f5490b20f270`; NOVEL_SURFACE.
+
+## T4h note (canonical join-discard traversal + grounding A/B)
+
+- Subclass T4h (proven forge Cycle 58, Python, FIRST-TRY): raw
+  `os.path.join(BASE, name)` to `open()`; `../flag.txt` and absolute
+  paths escape. The MOST canonical shape of the night (T4a's sibling).
+- A/B result: canonical + grounding-quote → first-try clear, zero
+  faults, zero debug dumps. Stalls (C48/C54v1/C55a2/C51v1,
+  all UNGROUNDED) vs clears (C55a3, C58, both GROUNDED). Promoting
+  grounding from "cheap default" to RULE (with the honest caveat: no
+  same-fixture on/off control yet — the next stall should run one).
+- Blue: realpath + commonpath containment (gold standard; blocks the
+  directory itself too). Gate-3 6/6 (dotdot, absolute, nested,
+  self-dir, empty, encoded).
+- Vault NOVEL_SURFACE (fingerprint-exact: T4a's basename-strip prior
+  does not recall — near-duplicate blindness is a known vault
+  limitation, recorded for future recall work).
+- Vault: red `8ebc974c1a72`, blue `aa63d31e68ff`.

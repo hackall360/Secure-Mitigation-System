@@ -378,3 +378,10 @@ and taxonomy link.
 - shell-quote@1.12.0 quote()/parse() correct on 12 metachar corners
   incl newline-in-quotes and operator-only tokens; round-trips clean.
   Cross-validates forge T3 quoting doctrine. No action.
+
+## D37 — T4h traversal prior (Cycle 58, 2026-10-31)
+
+- Red: notes recorded, dotdot/absolute leak out-of-scope file.
+- Blue: realpath + commonpath containment.
+- Gate-3: 6/6. Taxonomy v41. Vault: red `8ebc974c1a72`, blue
+  `aa63d31e68ff`. NOVEL_SURFACE. Grounding-rule evidence.

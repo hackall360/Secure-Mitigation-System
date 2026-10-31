@@ -1428,3 +1428,16 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (C5/C13/C23 escaping, C53 allowlist-as-stronger) itself holds.
   Pairs with C3 (PyJWT), C6 (werkzeug), C39 (escape-string-regexp) as
   the 4th NEGATIVE ecosystem scout. No CVE, no disclosure.
+
+## E58 — Cycle 58: T4h VERIFIED first-try (grounding promotion)
+
+- Green: textbook join-discard traversal + grounding quote. Gate-0:
+  benign notes, dotdot + absolute both leak. Benign executable (real
+  files served). Cost $0.13 — cheapest VERIFIED of the night.
+- First-try clear on the most canonical shape attempted. Evidence
+  ledger for grounding: UNGROUNDED stalls C48(6), C51v1 x2, C54v1 x2,
+  C55a2 vs GROUNDED clears C55a3, C58. Promoted to RULE; the prescribed
+  next-stall A/B (same fixture, grounding on/off) still stands as the
+  decisive experiment.
+- Blue: gold-standard containment. Gate-3 6/6. Vault NOVEL.
+  Taxonomy v41. Conclusion: Δ(C.58) → 0.
