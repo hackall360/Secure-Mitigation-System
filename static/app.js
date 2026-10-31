@@ -99,6 +99,40 @@ function toast(text) {
   toastTimer = setTimeout(() => { node.hidden = true; }, 2200);
 }
 
+/* ---------- scan error banner: throttle / daemon events stay visible ---------- */
+// Tribunal S3-7 render half: WS error/busy text (rate limit, Docker trouble)
+// must surface above the pipeline, not just in the log stream. chip-key goes
+// amber while the banner is visible — a live WS-state readout, not a control.
+function showBanner(text) {
+  const node = el('scan-banner');
+  if (!node) return;
+  node.textContent = String(text);
+  node.hidden = false;
+  chip('chip-key', 'warn');
+}
+
+function clearBanner() {
+  const node = el('scan-banner');
+  if (!node) return;
+  node.textContent = '';
+  node.hidden = true;
+  const key = el('chip-key');
+  if (key && key.dataset.state === 'warn') chip('chip-key', configured ? 'ok' : 'pending');
+}
+
+// Error-surface routing: only throttle/daemon wording triggers the banner;
+// ordinary staged log lines pass through untouched. Wave-13 backend wording
+// for the rate-limit path (agents.py) and the daemon-unreachable path
+// (docker_manager.py) both match the filters below: "Muse API rate limit
+// reached (HTTP 429) ..." and "Docker daemon is unreachable while ...".
+function maybeShowBanner(text) {
+  const t = String(text || '');
+  const lowered = t.toLowerCase().replace(/-/g, ' ');
+  // Throttle + daemon wording only: busy-refusal text is shown explicitly by
+  // the caller, transport hiccups stay log-only via writeLine.
+  if (lowered.includes('rate limit') || lowered.includes('429') || /docker/i.test(t)) showBanner(t);
+}
+
 async function copyText(text, label) {
   if (!text) { toast('Nothing to copy yet'); return; }
   try {
@@ -291,6 +325,9 @@ function setStage(name, state = 'active') {
   const index = STAGES.indexOf(name);
   if (index < 0) return;
   if (state === 'active' && index < currentStage) return;
+  // A stage advancing means the scan is making progress again: a stale
+  // throttle/daemon banner no longer describes live state, so dismiss it.
+  if (state === 'active') clearBanner();
   if (window.SMSFx) window.SMSFx.onStage(name, state);
   document.querySelectorAll('#pipeline li').forEach((item, i) => {
     if (state === 'active') {
@@ -1282,14 +1319,17 @@ function handleSocketMessage(event) {
       if (payload.type === 'busy') {
         status('Another scan is already running — wait for it to finish, then run again', 'error');
         writeLine(payload.team || 'system', 'Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
+        showBanner('Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
         toast('Server is busy — try again when the current scan finishes');
       } else {
         status(payload.msg || 'Server rejected the request — fix the highlighted fields, then run again', 'error');
         writeLine(payload.team || 'system', `${payload.msg || 'Invalid request.'} Fix the highlighted fields, then run again.`);
+        maybeShowBanner(payload.msg || 'Invalid request.');
         toast('Request rejected — check the highlighted fields');
       }
     } else {
       writeLine(payload.team, payload.msg);
+      maybeShowBanner(payload.msg);
     }
   } catch {
     writeLine('system', 'Received an unreadable server event — the scan continues; check the server terminal if this repeats.');
