@@ -372,3 +372,9 @@ and taxonomy link.
 - Blue: HMAC sign-then-verify before loads.
 - Gate-3: 4/4. Taxonomy v40. Vault: red `5f7e3716924a`, blue
   `f5490b20f270`. NOVEL_SURFACE. C41's concept, done right.
+
+## D36 — shell-quote scout NEGATIVE (Cycle 57, 2026-10-31)
+
+- shell-quote@1.12.0 quote()/parse() correct on 12 metachar corners
+  incl newline-in-quotes and operator-only tokens; round-trips clean.
+  Cross-validates forge T3 quoting doctrine. No action.

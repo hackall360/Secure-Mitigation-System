@@ -1417,3 +1417,14 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Reusable: proof-burden calibration — match the proof to Red's
   demonstrated opcode-crafting ceiling; high-burden proofs need the
   oracle-smuggle fallback designed in.
+
+## E57 — Cycle 57 scout: shell-quote 1.12.0 NEGATIVE-valuable (local clone, removed after)
+
+- Battery (node, no network): quote() neutralizes spaces (single-quote
+  wrap), ;$`()|&~#!, newline-in-quotes, unicode passthrough; parse∘quote
+  round-trips 12/12 incl adversarial corners. Zero findings.
+- Value: cross-validates the night's T3 doctrine from the ecosystem
+  side — the quoting primitive the forge tells Blue to emulate
+  (C5/C13/C23 escaping, C53 allowlist-as-stronger) itself holds.
+  Pairs with C3 (PyJWT), C6 (werkzeug), C39 (escape-string-regexp) as
+  the 4th NEGATIVE ecosystem scout. No CVE, no disclosure.
