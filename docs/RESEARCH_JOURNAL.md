@@ -1016,3 +1016,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
   T9b-closed.
 - Reusable prior created: HTTP-cookie-chain contract template (the exact
   wording that forces gate proofs) + T9b gate proof shape.
+
+## E32 — Cycle 32: Node T3f triple-stash template VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven raw-override verifies with a normalize
+  patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "User-controlled `tpl` ... selects
+  triple-stash `{{{name}}}` raw sink ... bypassing escaping". Blue went
+  defense-in-depth: route-level normalize (`{{{x}}}`→`{{x}}`) PLUS renderer
+  raw-branch removal. 6 calls p11994/c24285 ≈$0.33 (richest Node cycle —
+  the dual-layer patch explains it).
+  Evidence: run `validation/task-3201-c32-live.txt`,
+  `validation/task-3201-c32-report.json`.
+- Gate-3 replay PASS on renamed variant (raw path dead, escape kept).
+- Vault: red `1a97e89f1406`, blue `024cb234faeb`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3202-c32-vault.txt`.
+- Conclusion: Δ(C.32) → 0. T3f (mustache-style raw-override injection,
+  CWE-74) proven — the THIRD CWE-74 family member (C29 str.format, C32
+  triple-stash) alongside the deliberate `he`-negative (C21). The forge
+  now both breaks AND vindicates encoders.
+- Reusable prior created: T3f normalize+remove-raw-branch template.

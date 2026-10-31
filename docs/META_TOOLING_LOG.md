@@ -68,3 +68,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T11:08Z | muse-wonder-1.0 | C30 (2 calls) | Blue | dual-slot parameterize, re-probe exit 1 |
 | 2026-10-31T11:13Z | muse-spark-1.3 | C31 (4 calls) | Red | HTTP cookie-roundtrip chain probe exit 0 pre-patch |
 | 2026-10-31T11:13Z | muse-wonder-1.0 | C31 (2 calls) | Blue | dual-slot parameterize, re-probe exit 1 |
+| 2026-10-31T11:18Z | muse-spark-1.3 | C32 (4 calls) | Red | T3f raw-override probe exit 0 pre-patch |
+| 2026-10-31T11:18Z | muse-wonder-1.0 | C32 (2 calls) | Blue | normalize + remove-raw-branch, re-probe exit 1 |

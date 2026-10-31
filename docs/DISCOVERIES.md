@@ -243,3 +243,14 @@ and taxonomy link.
   patch sha `fa4bceeeb…`), `validation/task-3102-c31-vault.txt`.
 - Taxonomy: T9b-closed. Vault: red `5016cfe59e99`, blue `78cbd6661296`.
 - Gate-3: replay PASS (renamed schema; gate-honored injection dead).
+
+## D21 — T3f triple-stash prior (Cycle 32, 2026-10-31)
+
+- Novel fixture: Node mini-mustache with `{{{ }}}` raw override reachable
+  via the `tpl` param. Red exit 0 (script renders raw); Blue normalize +
+  branch-removal → exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-3201-c32-report.json` (receipt pre=0/post=1,
+  patch sha `391e2cf4…`), `validation/task-3202-c32-vault.txt`.
+- Taxonomy: new T3f subclass (3rd CWE-74 member). Vault:
+  red `1a97e89f1406`, blue `024cb234faeb`.
+- Gate-3: replay PASS (renamed variant; raw path dead).
