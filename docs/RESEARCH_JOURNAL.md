@@ -243,3 +243,76 @@ Run: `overnight_1793434523077_12855248373640259943`.
   upload/auth helper, not a flagship framework.
 - Reusable prior created: traversal-audit battery (10 safe_join shapes + 6
   end-to-end WSGI paths) reusable against any file-serve target.
+
+## E7a — Cycle 7 attempt 1: SSRF fixture UNVERIFIABLE in sandbox (NEGATIVE, attempt 1 of 3)
+
+- Hypothesis: an SSRF-gated fetch chain verifies like the T7 cookie-gated chain.
+- Method: new Green tree (`/profile?user=` → `http://<user>.internal/`;
+  `/theme?spec=` eval, decimal-only contract); keyed slim agents=1.
+- Result: INCONCLUSIVE — Red's own probe is excellent honest work: Link B
+  confirmed vuln (`7*7` → `49`), but every Link A SSRF shape returned 502
+  (`target-service:8080#probe`, `127.0.0.1:8080`, `localhost:8080` all
+  `upstream error`), and even baseline `no-such-host` TIMED OUT inside the
+  air-gapped sandbox (`network_mode=none` — DNS/egress cannot resolve, and
+  the 2s urlopen timeout + verifier deadline collide). Red correctly exited 2
+  instead of forcing a verdict. Fail-closed held: no changes requested.
+  Cost: 3 calls ≈$0.12.
+  Evidence: run `validation/task-701-c7-live.txt`, `task-701-c7-report.json`.
+- Conclusion: the FIXTURE is at fault, not Red/Blue. An SSRF that must reach
+  a live upstream cannot prove inside `network_mode=none`. Corrective vector
+  for attempt 2: Green redesign — make Link A RESOLVE LOCALLY (point the
+  fetch at `target-service:8080` itself, i.e. a self-referential profile
+  endpoint served by the SAME app), so the chain proves without egress.
+  The vuln shape (host interpolated into fetch URL) is preserved; only the
+  target becomes loopback-reachable. This is Green fixture surgery, attempt 2.
+
+## E7b — Cycle 7 attempt 2: loopback redesign still 502 (NEGATIVE, attempt 2 of 3)
+
+- Hypothesis: pointing Link A at self-served `/profiles/` makes the chain
+  loopback-provable.
+- Method: new Green tree with `INTERNAL_HOST="target-service"`, `/profiles/`
+  static JSON served by the same app; default `user="target-service"`.
+- Result: INCONCLUSIVE again — Red's normal check
+  `/profile?user=target-service` → **502**. Why: inside the sandbox the
+  target's own hostname is `target-service` ONLY as seen by the PROBER
+  (verifier container, via network alias); the TARGET container itself
+  resolving `http://target-service:8080/...` requires hairpin through the
+  isolated network's embedded DNS — which evidently fails (the target cannot
+  dial its own alias; `fetch_profile('target-service')` → URLError in
+  isolation). The default benign path itself is broken in-sandbox, so ANY
+  probe fails the normal check first. Cost: 3 calls ≈$0.10.
+  Evidence: run `validation/task-702-c7b-live.txt`, `task-702-c7b-report.json`.
+- Conclusion: Green surgery needed again — Link A must fetch WITHOUT the
+  network: attempt 3 replaces the HTTP self-fetch with a LOCAL profile-store
+  read whose KEY is attacker-influenced (`profiles/<user>.json` file path,
+  i.e. T8-becomes-T4: SSRF-shaped selector over a local store). The vuln
+  class shifts from true-SSRF to selector-injection, but the CHAIN shape
+  (Link A selector → Link B eval, one unified script) is preserved and
+  provable. Attempt 3 of 3: if the unified chain verifies, commit T8b as a
+  selector-injection subclass with the lesson; if not, REJECT the SSRF
+  family for sandbox-provable chains and log F-reject.
+
+## E7c — Cycle 7 attempt 3 (7c selector shape): VERIFIED (closes Cycle 7)
+
+- Hypothesis: recasting Link A as a loopback-free local-store selector keeps
+  the unified-chain semantics provable in the sandbox.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok. Red vuln: "Chained local file read
+  via path traversal in fetch_profile ... and Python code injection via
+  eval in apply_theme" — ONE unified script hitting /profile + /theme +
+  secret. Blue patched BOTH links (regex allowlist + realpath/commonpath
+  for A; decimal-regex for B) and still fit the surgical budget.
+  6 calls p12834/c24207 ≈$0.25 — the richest patch of the night.
+  Evidence: run `validation/task-703-c7c-live.txt`, `task-703-c7c-report.json`.
+- Gate-3 replay PASS on renamed variant (traversal + eval both blocked,
+  benign ok).
+- Vault: red `256ab8c3e090`, blue `95a4d221b4c2`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-704-c7-vault.txt`.
+- Conclusion: Δ(C.7,D.7,E.7) → 0 with a lesson bigger than the fixture:
+  TRUE SSRF is unprovable in `network_mode=none` (DNS/egress dead, self-dial
+  fails) — the forge's provable SSRF class is selector-injection over local
+  resources (T8b), which keeps the exact chain semantics (attacker-controlled
+  resource selector + sink). Taxonomy extended: new T8 class with a/b
+  subclasses (a=true-SSRF unprovable-here, b=selector provable).
+- Reusable prior created: T8b+T2c unified probe + dual allowlist+containment
+  template (vault records above).

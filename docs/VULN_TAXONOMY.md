@@ -62,3 +62,20 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Blue pattern: parameterize Link B sink (tautology neutralizes to empty);
   server-side Link A authorization is follow-up hardening.
 - Priors: red `4a9146b18ac3`, blue `b09cb5a8f3ee` (vault, forge-c4).
+
+## T8 SSRF-shaped selector → sink chain (CWE-918 family / CWE-73)
+
+- Subclass T8a (attempted forge Cycle 7, 2026-10-31): true egress-SSRF
+  (`http://<user>.internal/`, self-fetch via own alias). UNPROVABLE in
+  `network_mode=none` — external DNS/egress dead, target cannot dial its
+  own alias (502). Red correctly exits 2. Lesson, not a prior.
+- Subclass T8b (proven forge Cycle 7c): profile-name selector over a LOCAL
+  store (`profiles/<user>.json`) chained with eval (T2c). ONE unified Red
+  script (traversal to `../../secret.json` + arithmetic eval) exits 0;
+  Blue dual patch (regex allowlist + realpath/commonpath; decimal-regex)
+  → exit 1, regressions 0.
+- Taint: query param → local-store path; query param → eval.
+- Red shape: `user=../../secret` + `spec=7*6` in one script.
+- Blue pattern: allowlist-regex fullmatch + realpath/commonpath containment
+  (Link A); decimal-regex allowlist (Link B).
+- Priors (T8b): red `256ab8c3e090`, blue `95a4d221b4c2` (vault, forge-c7).

@@ -55,3 +55,17 @@ and taxonomy link.
 - Taxonomy: T3/T3a (first forge proof of the T3 family). Vault:
   red `bc06d91cdbed`, blue `e63fc6e43cea`.
 - Gate-3: replay PASS in Docker PHP (renamed variant; injection inert).
+
+## D5 — T8b+T2c selector-chain prior (Cycle 7, 2026-10-31)
+
+- Novel fixture: profile-store selector (`profiles/<user>.json`, T8b) + eval
+  theme (T2c). Red ONE unified script (traversal to `../../secret.json` +
+  eval) exit 0; Blue dual patch (regex allowlist + realpath/commonpath;
+  decimal-regex) → Red exit 1, regressions 0/0. Attempts 1-2 proved
+  TRUE SSRF unprovable in `network_mode=none` (external DNS dead, self-dial
+  502) — the provable SSRF class is selector-injection (T8b).
+- Evidence: run `validation/task-703-c7c-report.json` (receipt pre=0/post=1,
+  patch sha `8bdab469…`), `validation/task-704-c7-vault.txt`.
+- Taxonomy: new T8 class (a=true-SSRF unprovable-here, b=selector provable).
+  Vault: red `256ab8c3e090`, blue `95a4d221b4c2`.
+- Gate-3: replay PASS (renamed variant; both links blocked).

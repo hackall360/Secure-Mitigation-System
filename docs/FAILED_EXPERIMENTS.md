@@ -39,3 +39,13 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - 10-shape `safe_join` battery + 6-path end-to-end WSGI battery: all escapes
   404 at `2adaad1a`. Backslash/symlink edges are documented behavior.
   Reusable battery kept; next scout goes smaller (single-maintainer class).
+
+## F6 — Cycle 7 attempts 1-2: true-SSRF fixtures unprovable in sandbox (2026-10-31)
+
+- a1 (subdomain interpolation, external upstream): Red exit 2 — all SSRF
+  shapes 502/timeout, Link B vuln confirmed but chain unprovable.
+- a2 (self-fetch via own alias): normal check itself 502 — the target
+  cannot dial its own `target-service` alias (no hairpin in isolated net).
+- Lesson: in `network_mode=none`, provable SSRF = selector-injection over
+  LOCAL resources (T8b). True egress-SSRF needs a cooperating in-net
+  upstream, which the harness does not provide. Evidence: `task-701/702-c7*`.
