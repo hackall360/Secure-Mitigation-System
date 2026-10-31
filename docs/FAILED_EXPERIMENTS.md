@@ -216,3 +216,14 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - Standing rule: fixtures must not exec inside the target service.
   Gate-0 (local, root) proves the write primitive; the keyed loop
   proves the split. Split the proof across the trust boundary.
+
+## F17 — C54v2: benign-executability failure (2026-10-31, 1 attempt)
+
+- v2 drew a clean `no_findings` (success=True, zero cycles): Red found
+  nothing because the benign `import("chart")` cannot execute in any
+  browser (bare specifier without import maps). A fixture whose benign
+  path is broken reads as a broken feature, not a vuln.
+- v3 fixed it with a real served `/static/chart.js` + default to the
+  full path: VERIFIED first-try. Standing rule: Gate-0 must prove the
+  BENIGN path end-to-end in its real consumer, not just assert on
+  response strings. (The string assert passed; executability failed.)

@@ -1,5 +1,5 @@
 {
-  "version": "37",
+  "version": "38",
   "classes": [
     {
       "id": "T1",
@@ -209,7 +209,8 @@
         "T6a": "stdlib SSTI-analog (Wild Crucible #3, Wave 30)",
         "T6b": "PHP /hi?name= raw reflection (forge Cycle 10)",
         "T6c": "PHP guestbook stored XSS sign+wall, render-time escape (forge Cycle 16)",
-        "T6f": "Python response-splitting via Content-Disposition filename (forge Cycle 49, raw-socket proof; first-line+printable fix)"
+        "T6f": "Python response-splitting via Content-Disposition filename (forge Cycle 49, raw-socket proof; first-line+printable fix)",
+        "T6g": "Python dynamic-import specifier hijack (forge Cycle 54 v3; prefix+suffix+metachar allowlist)"
       },
       "priors": {
         "red": "b5753bddae95",
@@ -221,6 +222,10 @@
         "T6f": {
           "red": "bfaf17580b2e",
           "blue": "d641d25b8956"
+        },
+        "T6g": {
+          "red": "92f4fc36d931",
+          "blue": "7e83df77e34f"
         }
       }
     },
@@ -369,6 +374,11 @@
       "version": "37",
       "date": "2026-10-31",
       "change": "Cycle 53: +T3h (CWE-88 arg injection, no shell); attempt-4 after 3 baseline fails (contract bug, exec-bit, sandbox-subprocess); avatar-only-sink lesson; vault; Gate-3 5/5"
+    },
+    {
+      "version": "38",
+      "date": "2026-10-31",
+      "change": "Cycle 54: +T6g (import-specifier hijack); v1 JSONP hallucination x2 captured, v2 no-finding (weak benign), v3 VERIFIED (resolvable benign); vault; Gate-3 8/8"
     }
   ]
 }

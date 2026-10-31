@@ -351,3 +351,10 @@ and taxonomy link.
 - Blue: strict [A-Za-z0-9]+ allowlist on fmt.
 - Gate-3: 5/5. Taxonomy v37. Vault: red `16e319585da8`, blue
   `c7d063cc33e7`. NOVEL_SURFACE.
+
+## D33 — T6g import-hijack prior (Cycle 54, 2026-10-31)
+
+- Red: chart page recorded, crafted name yields off-site specifier.
+- Blue: prefix+suffix+traversal+metachar allowlist, safe fallback.
+- Gate-3: 8/8. Taxonomy v38. Vault: red `92f4fc36d931`, blue
+  `7e83df77e34f`. NOVEL_SURFACE. v1/v2 specimens archived.

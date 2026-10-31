@@ -330,3 +330,23 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   write primitive in Gate-0 evidence, assert the argv split over HTTP.
 - Blue: strict `[A-Za-z0-9]+` allowlist on fmt (spaces impossible).
   Gate-3 unseen 5/5. Vault: red `16e319585da8`, blue `c7d063cc33e7`.
+
+## T6g note (dynamic-import specifier hijack + benign-executability rule)
+
+- Subclass T6g (proven forge Cycle 54, Python, v3 VERIFIED): widget path
+  flows raw into `import("...")` on a loader page; an attacker URL
+  hijacks the script source. Stateless.
+- Episode ledger: v1 (JSONP callback) provoked the `_CALLBACK_RE`
+  hallucination twice (captured, archived task-5401/5402-redtruefault);
+  v2 (bare-scheme import) drew a clean `no_findings` — the benign path
+  was NOT browser-executable (bare specifier, no import map), so Red
+  dismissed the fixture as broken, not vulnerable. v3 (benign
+  `/static/chart.js` is a REAL served module): VERIFIED first-try.
+- NEW RULE — benign-executability: the benign path must be genuinely
+  functional in its real consumer (browser, CLI, DB), or Red reads a
+  broken feature instead of a vuln. Gate-0 must check the BENIGN path
+  end-to-end, not just string-shapes.
+- Blue: prefix + suffix + traversal + metachar allowlist with safe
+  fallback (`/static/chart.js`). Gate-3 unseen 8/8 (off-site,
+  traversal, double-slash, backslash, quote-break, query/hash
+  smuggle, parens). Vault: red `92f4fc36d931`, blue `7e83df77e34f`.

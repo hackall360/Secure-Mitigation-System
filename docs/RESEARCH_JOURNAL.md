@@ -1378,3 +1378,14 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Blue: allowlist (textbook for CWE-88). Gate-3 5/5. Vault NOVEL.
   Taxonomy v37. Conclusion: Δ(C.53) → 0. New standing rule: never
   exec inside the target; split proof across the trust boundary.
+
+## E54 — Cycle 54: T6g VERIFIED v3 (hallucination + executability lessons)
+
+- v1: `_CALLBACK_RE` hallucination x2 (captured). v2: starved the word
+  but benign unexecutable -> clean no-finding. v3: starved + genuinely
+  functional benign -> VERIFIED first-try, pre 0 post 1. Total 4 runs.
+  Cost att4 $0.17.
+- Two rules for the price of one episode: (1) hallucination-starvation
+  (remove the confabulated fix's vocabulary), (2) benign-executability
+  (benign must WORK in its real consumer). Gate-3 8/8 (widest replay
+  of the night). Vault NOVEL. Taxonomy v38. Conclusion: Δ(C.54) → 0.
