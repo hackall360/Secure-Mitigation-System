@@ -320,3 +320,11 @@ and taxonomy link.
 - Blue: alg=none -> None fail-closed.
 - Gate-3: 4/4. Taxonomy v32. Vault: red `bcff6f456366`, blue
   `b862da4e1750`. NOVEL_SURFACE. Pairs with C3 PyJWT scout.
+
+## D29 — T6f response-splitting prior (Cycle 49, 2026-10-31)
+
+- Red: benign disposition recorded, raw-socket CRLF proof, forged
+  Set-Cookie observed in raw bytes.
+- Blue: first-line + printable-ASCII strip + safe fallback.
+- Gate-3: 5/5. Taxonomy v34. Vault: red `bfaf17580b2e`, blue
+  `d641d25b8956`. NOVEL_SURFACE. F15 prescription validated.

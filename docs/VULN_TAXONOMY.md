@@ -266,3 +266,18 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   inject returns []. Gate-3 unseen 5/5.
 - Vault: red `103e13616096`, blue `cdb6bb47452f`; NOVEL_SURFACE. Closes
   the C46 OPEN record (hotspot resolved, not merely parked).
+
+## T6f note (response-splitting via Content-Disposition, CWE-113/93 family)
+
+- Subclass T6f (proven forge Cycle 49, Python, FIRST-TRY): raw `name`
+  flows into the `Content-Disposition` header; py3.14 stdlib
+  `send_header` emits embedded CRLF unsplit-checked, so
+  `x\r\nSet-Cookie: hacked=1` becomes a live forged header (proven at
+  the byte level over a raw socket). Distinctive shape (download
+  filename), deliberately non-canonical per F15.
+- Blue: first line only + strip non-printable/DEL + empty-safe
+  fallback (`report.txt`). Legit names (spaces) preserved; CRLF,
+  lone-CR, DEL, ctrl all dead; empty attack falls back safely.
+- Gate-3 unseen 5/5. Vault: red `bfaf17580b2e`, blue `d641d25b8956`;
+  NOVEL_SURFACE. First-try clear on a fresh rare shape SUPPORTS the
+  F15 mechanism (no training-dominant secure variant to hallucinate).

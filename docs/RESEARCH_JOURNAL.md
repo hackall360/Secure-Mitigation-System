@@ -1309,3 +1309,16 @@ Run: `overnight_1793434523077_12855248373640259943`.
   NOVEL. Taxonomy v33. Conclusion: Δ(C.47) → 0 (T1i closed, C46 OPEN
   resolved). Episode ROI is poor but the RULE it bought applies to all
   future T1-family fixtures.
+
+## E49 — Cycle 49: T6f response-splitting VERIFIED first-try (F15 applied)
+
+- Green: filename->Content-Disposition, stdlib emits raw CRLF (proven
+  byte-level locally before spend). Distinctive shape per F15.
+- First-try VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.23.
+  No faults, no debug dumps. The F15 prescription (shape-distinctive
+  fixtures) produces an immediate clear after C48's 6-attempt burn on
+  a canonical shape. This is the strongest evidence yet for the
+  hallucination mechanism: same models, same night, same recipe —
+  only the fixture shape changed.
+- Blue: first-line+printable (usable fix, preserves spaces). Gate-3
+  5/5. Vault NOVEL. Taxonomy v34. Conclusion: Δ(C.49) → 0.

@@ -1,5 +1,5 @@
 {
-  "version": "33",
+  "version": "34",
   "classes": [
     {
       "id": "T1",
@@ -193,7 +193,8 @@
       "subclasses": {
         "T6a": "stdlib SSTI-analog (Wild Crucible #3, Wave 30)",
         "T6b": "PHP /hi?name= raw reflection (forge Cycle 10)",
-        "T6c": "PHP guestbook stored XSS sign+wall, render-time escape (forge Cycle 16)"
+        "T6c": "PHP guestbook stored XSS sign+wall, render-time escape (forge Cycle 16)",
+        "T6f": "Python response-splitting via Content-Disposition filename (forge Cycle 49, raw-socket proof; first-line+printable fix)"
       },
       "priors": {
         "red": "b5753bddae95",
@@ -201,6 +202,10 @@
         "T6c": {
           "red": "e82ce135d029",
           "blue": "8d071b865442"
+        },
+        "T6f": {
+          "red": "bfaf17580b2e",
+          "blue": "d641d25b8956"
         }
       }
     },
@@ -329,6 +334,11 @@
       "version": "33",
       "date": "2026-10-31",
       "change": "Cycle 47: +T1i (LIKE-wildcard, closes C46 OPEN); F14 hypothesis CONFIRMED (nested-quote model-payload fragility); vault recall; Gate-3 5/5; ESCAPE-clause doctrine"
+    },
+    {
+      "version": "34",
+      "date": "2026-10-31",
+      "change": "Cycle 49: +T6f (response splitting, CWE-113/93); first-try VERIFIED supports F15 shape-distinctiveness; vault recall; Gate-3 5/5"
     }
   ]
 }
