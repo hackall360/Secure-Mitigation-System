@@ -99,3 +99,26 @@ rule applies: destroy container, log here, begin next cycle immediately.
   Simplifying the contract to dodge a BLUE-side flake degrades the RED
   side. Revert, don't thrash. Worst flake cluster yet (4 dead attempts)
   but bounded spend (~$1.2 total) and no fixture rewrite needed.
+
+## F12 — C41 parked OPEN: T5c object-injection hotspot (2026-10-31, 9 attempts)
+
+- Fixture: PHP unsigned serialized-Profile token (/issue oracle) + unserialize
+  in /hello + __destruct echo gadget. Gate-0 Docker PASS (benign + forged
+  HACKED both demonstrated).
+- Attempt ledger: a1 inconclusive / a2 RED-EXIT-0 bottled (Blue fault after) /
+  a3 RED-EXIT-0 + Blue-schema / a4 post-probe exit 2 ROLLBACK / a5 RED-EXIT-0
+  + Blue-schema / a6 post-probe exit 2 ROLLBACK / a7 inconclusive (fixture v2:
+  200-always /hello) / a8 over-budget ROLLBACK (HMAC rewrite) / a9 inconclusive.
+- Root causes (fixture-design, GREEN side): (1) /hello returned HTTP 400 for
+  bad tokens; naive probes using file_get_contents get FALSE on non-2xx and
+  the probe errors to exit 2 -> rollback. Fixed in v2 (200-always, body-only
+  discrimination). (2) Gadget echo fires on EVERY response incl. benign
+  /issue, muddying probe discrimination. (3) Syntax slip in Blue-hint edit
+  cost one attempt (quote escaping; always ast.parse driver edits).
+- Parked OPEN (hotspot, not failure): Red signal is STRONG (4x exit-0 bottled,
+  correct finding both links). Blue side needs either a coordinator-side
+  probe-status fix or a fixture where blocked-vs-broken is a clean body
+  token. REVISIT with: gadget gated behind a verify flag, or /hello returning
+  distinct bodies for forged-vs-unsigned, or waiter probe template.
+- Traps added: snapshot per-attempt report.json (attempt 5's rolled-back
+  context was overwritten by attempt 6); ast-parse driver edits before spend.
