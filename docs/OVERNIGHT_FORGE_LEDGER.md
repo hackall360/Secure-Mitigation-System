@@ -22,6 +22,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T09:41Z | 13 | spark-1.3 + wonder-1.0 (slim) | p10236/c17206 ≈$0.21 | T3c tar-sink + T4, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: allowlist+escape; T4 co-hardened; vault T3c; Gate-3 PASS |
 | 2026-10-31T09:43Z | 15r | none (ledger analysis) | 0 | self-review: 3/3/3 balance | n/a | n/a | n/a | direction: Cycles 14-16 = T5-novel + Node scout/pause |
 | 2026-10-31T09:46Z | 14 | spark-1.3 + wonder-1.0 (slim) | p11942/c22781 ≈$0.19 | T5b promo-gate + eval, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: dual-decimal, eval eliminated; cheapest chain; vault T5b; Gate-3 PASS |
+| 2026-10-31T09:48Z | 15 (scout) | none (local reading + static only) | 0 | @hapi/shot inject helper, Node | n/a | n/a | n/a | INCONCLUSIVE (first): no sinks; __proto__ static-only, deps absent; HYPOTHESIS-open |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

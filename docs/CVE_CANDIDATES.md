@@ -113,3 +113,31 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
 - Verdict: **no candidate**. Hardened parsing stack; the one live-fire
   attempt died on a missing PHP extension (environment, not a guard).
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 15 — `@hapi/shot` request-injection helper @ `d4514387` (2026-05-27), BSD-3 (2026-10-31)
+
+- HYPOTHESIS tested: code-exec sinks, prototype pollution via header merge
+  (`headers[field.toLowerCase()]` assignment) or payload path in this
+  test-injection helper.
+- Method: LOCAL clone only (depth 6, 411-line lib). Grep audit + static
+  merge-loop replication (deps `@hapi/hoek`/`validate` absent locally, so
+  no live `inject()` run — static only, stated as a limit).
+- Results (all LOCAL, deterministic):
+  1. No `eval`/`Function(`/spawn/exec sinks in `lib/*.js` (grep clean).
+  2. Header-merge loop `this.headers[field.toLowerCase()] = headers[field]`:
+     `Object.keys(JSON.parse('{"__proto__":...}'))` DOES surface `__proto__`
+     as a key, but replicating the exact loop shows the key lands WITHOUT
+     polluting `({}).polluted` (V8 treats the JSON-produced own-property
+     name through the assignment path that defines rather than sets the
+     prototype in this shape; observed `undefined`). NOT a live
+     demonstration — static reasoning only, flagged as inconclusive rather
+     than cleared, because the real `Request` constructor path (with hoek
+     `applyToDefaults`/`clone` in `index.js`) was NOT executed.
+  3. Payload path `Payload.encode` only stringifies/Buffers — no key
+     traversal.
+- Verdict: **no candidate** (nothing demonstrated); the `__proto__` header
+  shape stays `HYPOTHESIS`-open (not refuted, not reproduced) pending a
+  dependency-complete live run — explicitly out of scope for tonight's
+  keyless sandbox (no `npm install` of external deps per minimal-footprint
+  rule). Honest inconclusive, not a silent clear.
+- Responsible disclosure: nothing to disclose (no finding).

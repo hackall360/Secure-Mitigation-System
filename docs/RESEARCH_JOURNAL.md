@@ -503,3 +503,21 @@ Run: `overnight_1793434523077_12855248373640259943`.
   bundled node_chain_link — every bundled family (T1-T6) has a forge-novel
   proof except none. Taxonomy: new T5b subclass.
 - Reusable prior created: T5b dual-decimal template-eval replacement.
+
+## E15 — Cycle 15 scout: @hapi/shot audit (INCONCLUSIVE-valuable, first tonight)
+
+- Hypothesis: prototype pollution via header merge in a 411-line Node
+  test-injection helper.
+- Method: LOCAL clone + grep + static loop replication. LIMIT: deps absent,
+  so no live `inject()` execution — the one scout tonight that could not
+  close its own loop locally.
+- Result: no sinks; static `__proto__` replication shows no pollution in
+  the isolated loop shape, but the REAL constructor path (hoek helpers)
+  was not executed. Recorded as HYPOTHESIS-open, NOT cleared — the
+  first honest inconclusive scout of the night. Lesson: small/exotic does
+  not mean testable without its dependency closure; next exotic scout
+  must be ZERO-dependency single-file (or budgeted with an install step
+  inside the sandbox, never on the host).
+- Reusable prior created: micro-helper audit battery (sink grep, header
+  merge `__proto__` static replication, payload key traversal, dep-closure
+  check FIRST).
