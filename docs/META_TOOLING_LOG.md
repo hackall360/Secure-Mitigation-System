@@ -12,6 +12,8 @@ Run: `overnight_1793434523077_12855248373640259943`.
 | 2026-10-31T08:30Z | muse-spark-1.3 + muse-wonder-1.0 | C2b (4 calls, p6735/c15943) | Red+Blue | minimal patch but test-contract mismatch rollback |
 | 2026-10-31T08:33Z | muse-spark-1.3 | C2c evidence+report (4 calls) | Red | eval probe exit 0 pre-patch |
 | 2026-10-31T08:33Z | muse-wonder-1.0 | C2c proposal+report (2 calls, 7-line allowlist) | Blue | allowlist, re-probe exit 1 |
+| 2026-10-31T08:41Z | muse-spark-1.3 | C4 evidence+report (4 calls) | Red | unified A→B chain probe exit 0 pre-patch |
+| 2026-10-31T08:41Z | muse-wonder-1.0 | C4 proposal+report (2 calls, 1-line parameterize) | Blue | parameterize, re-probe exit 1 |
 
 Rules: Red = `muse-spark-1.3`, Blue = `muse-wonder-1.0` (config defaults).
 Every keyed call is logged here with token counts from the response usage.

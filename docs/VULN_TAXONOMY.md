@@ -49,3 +49,16 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Subclass T6a: stdlib SSTI-analog proven in Wild Crucible #3 (Wave 30).
 - Red shape: marker reflection unescaped in response body.
 - Blue pattern: contextual escaping + allowlist; verify marker neutralized.
+
+## T7 Client-claimed role gate → SQLi sink chain (CWE-639 + CWE-89)
+
+- Subclass T7a (proven forge Cycle 4, 2026-10-31): `/grant?role=` Link A sets
+  a client-controlled role cookie; cookie-gated `/order?id=` Link B runs
+  string-concat SQL. ONE unified Red script (grant admin, reuse cookie,
+  tautology) exits 0 pre-patch; Blue parameterizes Link B (`?` placeholder)
+  → Red exit 1, regressions 0.
+- Taint: query param → cookie → string-concat `db.execute`.
+- Red shape: `role=admin` grant + `id=1 OR 1=1` tautology → all rows leak.
+- Blue pattern: parameterize Link B sink (tautology neutralizes to empty);
+  server-side Link A authorization is follow-up hardening.
+- Priors: red `4a9146b18ac3`, blue `b09cb5a8f3ee` (vault, forge-c4).

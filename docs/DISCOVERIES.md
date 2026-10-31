@@ -30,3 +30,15 @@ and taxonomy link.
 - Taxonomy: T2/T2b (+T6 co-present). Vault: red `de34c8111ebd`,
   blue `cc18b84b9ff8`.
 - Gate-3: replay PASS on unseen renamed Node variant (4/4 evil blocked).
+
+## D3 — T7+T1 unified-chain prior (Cycle 4, 2026-10-31)
+
+- Novel fixture: client-claimed role cookie (T7) gating string-concat SQLi
+  (T1). Red ONE unified script (grant admin → reuse cookie → tautology)
+  exit 0; Blue 1-line parameterization → Red exit 1, regressions 0/0.
+  First-try verify, no rollbacks — the chain-explicit contract worked.
+- Evidence: run `validation/task-401-c4-report.json` (receipt pre=0/post=1,
+  patch sha `ae8d12c9…`), `validation/task-402-c4-vault.txt`.
+- Taxonomy: new T7 class + T1. Vault: red `4a9146b18ac3`, blue `b09cb5a8f3ee`.
+- Gate-3: replay PASS (renamed variant; tautology → empty per bundled
+  semantics; first replay script's exception-expectation was my error).

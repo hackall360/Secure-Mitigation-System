@@ -120,3 +120,27 @@ Run: `overnight_1793434523077_12855248373640259943`.
   picks a less-audited target class (small single-maintainer auth helper).
 - Reusable prior created: JWT/JWKS audit checklist (4 guards + 5 local
   experiment shapes).
+
+## E4 — Cycle 4: T7+T1 unified chain, first-try VERIFIED
+
+- Hypothesis: a contract that names Link A/Link B and demands ONE unified
+  script yields a genuine chained Red proof and a minimal Blue patch.
+- Method: new Green tree (`/grant?role=` → cookie; cookie-gated
+  string-concat `/order?id=`); keyed cycles=1 with chain-explicit contract.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY (no rollbacks).
+  Blue patch is 1 line (parameterize). 6 calls p14157/c27695 ≈$0.28.
+  Unified-chain assertion holds: script hits /grant + role=admin + cookie
+  reuse + /order + tautology + exit0/exit1. Evidence: run
+  `validation/task-401-c4-live.txt`, `task-401-c4-report.json`.
+- Gate-3 replay PASS with corrected expectation: parameterization
+  neutralizes tautology to EMPTY (bundled semantics, proven against
+  sqlite3 directly), not to an exception — my first replay script was wrong,
+  the patch was right. Lesson recorded.
+- Vault: red `4a9146b18ac3`, blue `b09cb5a8f3ee`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-402-c4-vault.txt`.
+- Conclusion: Δ(C.4,D.4,E.4) → 0. True single-payload chaining proven on a
+  novel fixture — closes the 2b-3/4-style gap class for this chain shape.
+  Taxonomy extended: new T7 class (client-claimed role gate).
+- Reusable prior created: T7+T1 unified-probe strategy + parameterize
+  template with neutralization semantics (vault records above).
