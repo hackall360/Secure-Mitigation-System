@@ -1171,3 +1171,44 @@ Run: `overnight_1793434523077_12855248373640259943`.
   new T3g subclass.
 - Reusable prior created: T3g execFile+allowlist template (prefer
   shell-elimination over shell-escaping).
+
+## E38a — Cycle 38 Gate-0: double-decode layering CONFIRMED (two fixture surgeries)
+
+- First draft had the layers inverted (decode-then-check = SAFE) and my
+  direct-call battery skipped the parse_str layer entirely — both wrong
+  in opposite directions. Real HTTP end-to-end settled it: the VULN order
+  is CHECK(parse_str-output) then USE(urldecode(output)): single-encoded
+  `%2e` is blocked at the check (already decoded once by parse_str);
+  DOUBLE-encoded `%252e` passes the check (no literal `..`) then decodes
+  to `../` at read time → TOP-SECRET-FORGE38 leaks. Benign/single/double
+  triple confirmed over real HTTP.
+- Lesson (TRAPS-grade): Gate-0 batteries MUST run over the REAL stack
+  (real HTTP through parse_str), never direct function calls that skip
+  framework decoding layers. Two wrong batteries preceded the right one.
+
+## E38b — Cycle 38 retry: T8d double-decode VERIFIED (layering lesson)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.12); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Red vuln: "Double URL-decode path traversal ...
+  `..` check runs on singly-decoded value but file read applies
+  urldecode() again". Blue: decode-FIRST, reject `..` + NUL on the
+  decoded value, realpath-under-assets containment. 6 calls p9140/c19510
+  ≈$0.26. Evidence: run `validation/task-3802-c38b-*`.
+  (Note: repo copies are forge-c38/forge-c38-report.json = the RETRY —
+  the driver wrote the same filename; task-3801-* holds the attempt-1
+  logs+error report, task-3602/3802/3803 hold the success artifacts. The
+  validation/ copies were overwritten by the retry; the run log preserves
+  both attempts' tails.)
+- Gate-3 replay PASS — but only after fixing a LAYERING bug in my own
+  replay (raw `%252e` via CLI skips parse_str's decode; must emulate
+  `parse_str('name='.raw)` first). Second layering lesson tonight (C36
+  twin-depth was layout, this is decode-layer). Rule upgraded: Gate-3
+  replays MUST reproduce the framework decoding stack, not call the sink
+  directly. Recorded in TRAPS.
+- Vault: red `8bcef832a528`, blue `67a40f9e7de4` (with replay note);
+  recall KNOWN_ARCHETYPE.
+- Conclusion: Δ(C.38) → 0. T8d (check-then-decode, the DUAL of T4e's
+  check-then-resolve) proven — the family now spans store (T8b), manifest
+  (T8c), and codec-layer (T8d) selectors. Taxonomy: new T8d subclass.
+- Reusable prior created: T8d decode-first + layer-correct replay rule.

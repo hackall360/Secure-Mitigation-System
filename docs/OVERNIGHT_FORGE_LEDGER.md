@@ -51,6 +51,8 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T11:38Z | 36a | none (docker battery) | 0 | T8c theme-pack selector | n/a | n/a | n/a | Gate-0 PASS: twin-planted escape leaks pre-patch |
 | 2026-10-31T11:43Z | 36 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.27 total | T8c theme selector, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): allowlist+containment; twin-plant rule 3rd confirm; vault T8c; Gate-3 PASS |
 | 2026-10-31T11:47Z | 37 | spark-1.3 + wonder-1.0 (slim, short) | p9376/c12188 ≈$0.15 | T3g exec-string, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: execFile ELIMINATES shell (strongest T3 fix); vault T3g; Gate-3 PASS |
+| 2026-10-31T11:54Z | 38a | none (docker battery) | 0 | T8d check-then-decode | n/a | n/a | n/a | Gate-0 PASS over real HTTP (2 fixture surgeries: layer inversion + twin depth) |
+| 2026-10-31T11:55Z | 38 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.38 total | T8d double-decode, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): decode-FIRST + NUL reject; layer-correct replay; vault T8d; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

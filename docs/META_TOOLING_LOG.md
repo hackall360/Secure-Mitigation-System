@@ -81,3 +81,6 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T11:43Z | muse-wonder-1.0 | C36b (2 calls) | Blue | allowlist+containment, re-probe exit 1 |
 | 2026-10-31T11:46Z | muse-spark-1.3 | C37 (4 calls) | Red | T3g exec-string probe exit 0 pre-patch |
 | 2026-10-31T11:46Z | muse-wonder-1.0 | C37 (2 calls) | Blue | execFile+allowlist (shell eliminated), re-probe exit 1 |
+| 2026-10-31T11:53Z | muse-spark-1.3 | C38a (5 calls ≈$0.12; closing-report fault) | Red | exit-0 proof stood; malformed close |
+| 2026-10-31T11:55Z | muse-spark-1.3 | C38b retry (4 calls) | Red | T8d double-decode probe exit 0 pre-patch |
+| 2026-10-31T11:55Z | muse-wonder-1.0 | C38b (2 calls) | Blue | decode-first + NUL reject, re-probe exit 1 |

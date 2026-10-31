@@ -276,3 +276,15 @@ and taxonomy link.
 - Taxonomy: new T3g subclass (shell ELIMINATION doctrine). Vault:
   red `a7fe96cb1c35`, blue `a16b36b9ab0c`.
 - Gate-3: replay PASS (renamed variant; shell dead, benign kept).
+
+## D24 — T8d double-decode prior (Cycle 38, 2026-10-31)
+
+- Novel fixture: PHP asset selector with check-then-decode split.
+  Red exit 0 (`%252e` bypasses the `..` check, decodes at read);
+  Blue decode-FIRST + NUL-reject + containment → exit 1, regressions 0/0.
+  Attempt-2 retry (transient fault).
+- Evidence: run `validation/task-3802-c38b-report.json` (receipt pre=0/post=1,
+  patch sha `a158455d…`), `validation/task-3803-c38-vault.txt`.
+- Taxonomy: new T8d subclass (dual of T4e). Vault: red `8bcef832a528`,
+  blue `67a40f9e7de4`.
+- Gate-3: replay PASS (layer-correct; all encodings 400).
