@@ -773,7 +773,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             sweep_raw = socket.query_params.get("sweep_passes")
             if sweep_raw in (None, "", "1"):
                 sweep_depth: int | None = None
-            elif sweep_raw in ("2", "3"):
+            elif sweep_raw in ("2", "3", "4"):
                 sweep_depth = int(sweep_raw)
             else:
                 await socket.close(code=1008)
@@ -1093,7 +1093,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
     @application.websocket("/ws/binary")
     async def binary_combat(socket: WebSocket):
-        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 3-pass loop."""
+        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 4-pass loop."""
         await run_socket(socket, target_key="__binary__")
 
     @application.post("/mcp")
@@ -1704,7 +1704,7 @@ async def binary_sweep_runner(
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
-    """CLI form of the binary 3-pass sweep: validate, sweep, print report JSON."""
+    """CLI form of the binary 4-pass sweep: validate, sweep, print report JSON."""
     from modules.core.config import load_config as _load
     from modules.services.binary_intake import BinaryRejected, validate_binary_file
     from modules.workflows.binary_sweep import (
@@ -1727,7 +1727,7 @@ async def binary_sweep_runner(
         lines.append(f"[{team}] {message}")
 
     result = await execute_binary_sweep(
-        spec, _emit, config=settings, max_passes=max(1, min(3, max_passes))
+        spec, _emit, config=settings, max_passes=max(1, min(4, max_passes))
     )
     for line in lines:
         print(line)
@@ -1963,7 +1963,7 @@ async def cli_runner(
                     target_key,
                     emit,
                     config=settings,
-                    max_passes=max(1, min(3, sweep_passes)),
+                    max_passes=max(1, min(4, sweep_passes)),
                 )
                 user_report = redact_sweep_result_for_user(result)
             else:
@@ -2438,7 +2438,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_argument(
         "--binary-target",
         type=Path,
-        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
+        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 4-pass Docker loop; prints the mitigation report JSON",
     )
     commands.add_argument(
         "--ingest-repo",
@@ -2455,7 +2455,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor; default 1, single finding loop)",
+        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor, 4=+chain; default 1, single finding loop)",
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(

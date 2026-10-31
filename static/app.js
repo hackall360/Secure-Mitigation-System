@@ -482,7 +482,7 @@ function setSourceMode(mode) {
       : mode === 'mcp'
         ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
         : mode === 'binary'
-          ? 'Upload a compiled binary — static reversing profiles it, then the same 3-pass loop probes it through the trusted harness (also at /ws/binary).'
+          ? 'Upload a compiled binary — static reversing profiles it, then the same 4-pass loop probes it through the trusted harness (also at /ws/binary).'
           : mode === 'ingest'
             ? 'Enter a repo URL + pinned commit — it is cloned at that commit inside Docker, then the same project loop verifies it (also via --ingest-repo).'
             : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
@@ -1435,7 +1435,7 @@ async function submitMcpSnippet() {
 
 function submitBinary() {
   // Binary sweep path: file bytes -> base64 first WS frame on /ws/binary,
-  // same 3-pass Docker loop as every other surface over the shared socket flow.
+  // same 4-pass Docker loop as every other surface over the shared socket flow.
   const errors = el('binary-errors');
   errors.hidden = true;
   const files = el('binary-file').files;

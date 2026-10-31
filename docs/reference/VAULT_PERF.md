@@ -24,6 +24,33 @@ Budget pinned in `tests/test_w8_vault_perf_red.py`: round-trip p50 < 50 ms,
 p95 < 250 ms. Measured p50 is ~1000x inside budget (AES-GCM on small JSON
 payloads is sub-millisecond; the budget leaves headroom for loaded CI disks).
 
+## Scale story (post-sprint close-the-gap, G3)
+
+Found at scale: `query_vault` → `record_fingerprints` decrypted EVERY blob
+per namespace per query — O(records), 23.81 ms/op at 2,000 records, linear
+to seconds at 100k+. Every sweep cycle pays it (workflow, project,
+sweep, binary_sweep all query once per cycle).
+
+Fix shipped (`modules/intel/sms_vault.py`): per-namespace
+`_fingerprints.json` index (fingerprint → count, 0600, 1 MiB cap),
+bumped on commit (best-effort, never breaks the write), read on query
+with full-scan fallback on missing/corrupt (fail open to correctness,
+never wrong answers). Pinned in `tests/test_vault_index_red.py`:
+index file exists after commit, query does ≤2 decrypts at 10 records,
+corrupt index still answers correctly.
+
+| op | n | before (ms/op) | after (ms/op) | speedup |
+| --- | --- | --- | --- | --- |
+| commit | 2000 | 0.033 | 0.033 | same path + one small JSON write |
+| fetch single | 1000 | 0.014 | 0.014 | untouched |
+| query_vault | 2000 records | 23.81 | 0.50 | **48x** (O(records) → O(1)) |
+
+Multi-repo: namespaces are per-vault-dir directories; each repo gets its
+own vault dir (or its own namespace), so the index stays per-corpus
+bounded. The 1 MiB index cap bounds memory even for pathological
+fingerprint cardinality; past the cap the index stops updating and
+queries degrade to full scans (correct, slower — never wrong).
+
 ## Isolation + fail-closed pins (same file)
 
 - Namespace isolation: RED record raises `KeyError` on BLUE/GREEN fetch, all

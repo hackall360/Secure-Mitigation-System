@@ -51,7 +51,7 @@ CAPABILITIES_LINES = (
     "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
     "binary: /ws/binary sweep or CLI --binary-target FILE (ELF/Mach-O/PE)",
     "mode:fixture scan one bundled fixture end to end",
-    "mode:sweep re-run the check up to 3 passes (+/- depth)",
+    "mode:sweep re-run the check up to 4 passes (+/- depth)",
     "mode:mcp submit a code snippet for review (key m)",
     "mode:binary sweep one compiled binary file (key b)",
     "mode:project two-cycle project workout (key p)",
@@ -1155,7 +1155,7 @@ def run_plain(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--binary-target",
         default=None,
-        help="Sweep one compiled binary file through the trusted harness 3-pass loop",
+        help="Sweep one compiled binary file through the trusted harness 4-pass loop",
     )
     parser.add_argument(
         "--stats",

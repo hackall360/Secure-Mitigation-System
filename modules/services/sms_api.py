@@ -53,7 +53,7 @@ async def scan_source(
 
     if max_passes > 1:
         return await execute_sweep_scan(
-            target, _emit, config=config, max_passes=max(1, min(3, max_passes))
+            target, _emit, config=config, max_passes=max(1, min(4, max_passes))
         )
     return await execute_purple_workflow(target, _emit, config=config)
 
@@ -83,7 +83,7 @@ async def scan_binary(
             await outcome
 
     return await execute_binary_sweep(
-        spec, _emit, config=config, max_passes=max(1, min(3, max_passes))
+        spec, _emit, config=config, max_passes=max(1, min(4, max_passes))
     )
 
 

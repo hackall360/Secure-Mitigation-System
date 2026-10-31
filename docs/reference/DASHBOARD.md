@@ -65,7 +65,7 @@ shared summary shape (`N/M passes hold`, per-pass reachable/blocked counts).
 
 `/ws/binary` takes the validated binary as a base64 first frame (`blob_b64`,
 bare `filename`, `contract`; 8 MiB cap, magic-checked server-side) and runs
-the binary 3-pass sweep over the shared socket flow; `summaryEvidence`
+the binary 4-pass sweep over the shared socket flow; `summaryEvidence`
 renders `pass_results` the same way as source sweeps.
 
 | Fact / panel | DOM ids | Render fn | Source fields |
