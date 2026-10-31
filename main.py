@@ -146,6 +146,124 @@ async def execute_mcp_snippet_scan(arguments, emit, *, config=None):
         _registry.TARGETS_REGISTRY.update(original)
 
 
+async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, contract=""):
+    """Run a staged repo-intake snapshot through the evidence-gated project loop.
+
+    The snapshot (produced by ``intake_repo_to_snapshot`` from a validated
+    first frame) is staging-container bytes only — no host paths. Its shape
+    is a staging manifest (repo URL / commit / runtime argv), not a
+    ``ProjectWorkflowInput``, so this helper maps it explicitly: the manifest
+    record always rides as context files, frame ``file_list`` ``{name:
+    content}`` entries overlay (names-only entries only feed detection), and
+    the snapshot's staged runtime argv becomes the regression command.
+    Delegation goes through ``execute_project_workflow`` with that input. No
+    network runs on the host: any clone lives inside the Docker staging
+    container.
+    """
+    from modules.workflows.project_workflow import ProjectWorkflowInput
+    from modules.workflows.project_workflow import validate_safe_path as _validate_path
+
+    files: dict[str, str] = {}
+    raw_files = snapshot.files or {}
+    for path, content in dict(raw_files).items():
+        if isinstance(content, bytes):
+            try:
+                text = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "Invalid ingest settings (staged snapshot holds non-UTF-8 "
+                    f"bytes at {path!r}; pass an explicit runtime_command)."
+                ) from exc
+        else:
+            text = str(content)
+        files[str(path)] = text
+    if file_list is not None:
+        # Same entry shapes detect_runtime accepts; names-only entries
+        # already served detection and carry no content to overlay. Raw
+        # entries validate here — _normalise_file_entries would silently
+        # strip ".." segments, so traversal must fail closed on the raw
+        # name first.
+        if isinstance(file_list, dict):
+            content_items = list(file_list.items())
+        elif isinstance(file_list, (list, tuple)):
+            content_items = []
+            bare_names = []
+            for entry in file_list:
+                if isinstance(entry, str):
+                    bare_names.append(entry)
+                    continue
+                elif isinstance(entry, dict) and len(entry) == 1:
+                    content_items.append(next(iter(entry.items())))
+                elif (
+                    isinstance(entry, (list, tuple))
+                    and len(entry) == 2
+                    and isinstance(entry[0], str)
+                ):
+                    content_items.append((entry[0], entry[1]))
+                else:
+                    raise ValueError(
+                        "Invalid ingest settings (file_list entries must be "
+                        "names, {name: content} dicts, or (name, content) pairs)."
+                    )
+            # Bare names carry no content but still name repo paths: reject
+            # traversal/absolute entries here, same as content entries below.
+            for bare in bare_names:
+                raw_parts = bare.strip().replace("\\", "/").split("/")
+                if (
+                    not isinstance(bare, str)
+                    or not bare
+                    or any(part in ("", ".", "..") for part in raw_parts)
+                ):
+                    raise ValueError(f"Invalid ingest settings (Unsafe project path: {bare!r}).")
+                try:
+                    _validate_path(bare)
+                except ValueError as exc:
+                    raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+        else:
+            raise ValueError(
+                "Invalid ingest settings (file_list must be a list or a name->content mapping)."
+            )
+        for name, content in content_items:
+            if not isinstance(name, str) or not name:
+                raise ValueError(
+                    "Invalid ingest settings (file_list names must be non-empty strings)."
+                )
+            raw_parts = name.strip().replace("\\", "/").split("/")
+            if any(part in ("", ".", "..") for part in raw_parts):
+                raise ValueError(f"Invalid ingest settings (Unsafe project path: {name!r}).")
+            try:
+                _validate_path(name)
+            except ValueError as exc:
+                raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+            if content is None:
+                continue
+            if isinstance(content, bytes):
+                try:
+                    overlay_text = content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid ingest settings (file_list holds non-UTF-8 bytes at {name!r})."
+                    ) from exc
+            elif isinstance(content, str):
+                overlay_text = content
+            else:
+                raise ValueError(
+                    "Invalid ingest settings (file_list contents must be text, bytes, or omitted)."
+                )
+            files[name] = overlay_text
+    contract_text = contract if isinstance(contract, str) else ""
+    repo_name = str(getattr(snapshot, "url", "") or "").rstrip("/").rsplit("/", 1)[-1]
+    project_input = ProjectWorkflowInput.model_validate(
+        {
+            "name": f"ingest:{repo_name or 'repo'}"[:256],
+            "files": files,
+            "regression_command": list(snapshot.runtime_command),
+            "contract": contract_text[:32_768],
+        }
+    )
+    return await execute_project_workflow(project_input, emit, config=config)
+
+
 async def run_demo_build(
     emit,
     settings,
@@ -535,18 +653,84 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
                     if len(raw.encode("utf-8")) > 32_768:
                         raise ValueError("Project request is too large.")
-                    spec = ProjectSpec.model_validate(json.loads(raw))
-                except (ValueError, TimeoutError, WebSocketDisconnect):
+                    frame = json.loads(raw)
+                    # Repo-ingest path (W22 wire; dashboard submitIngest): the
+                    # first frame carries ingest_repo/commit_hash instead of a
+                    # ProjectSpec. Peek for the ingest keys — the client
+                    # already sends them — and route through the same
+                    # RepoIntakeSpec rules the CLI enforces. Host paths are
+                    # never honored here: only the two intake keys plus the
+                    # optional runtime/file_list and scan knobs are read.
+                    if isinstance(frame, dict) and (
+                        "ingest_repo" in frame or "commit_hash" in frame
+                    ):
+                        import modules.services.repo_intake as _intake_mod
+
+                        _RepoIntakeSpec = _intake_mod.RepoIntakeSpec
+                        _intake_to_snapshot = _intake_mod.intake_repo_to_snapshot
+
+                        try:
+                            intake_spec = _RepoIntakeSpec(
+                                url=frame.get("ingest_repo"),
+                                commit_hash=frame.get("commit_hash"),
+                            )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(
+                                f"Invalid ingest settings ({exc}). Send an https:// "
+                                "repository URL and the full 40-hex pinned commit."
+                            ) from exc
+                        explicit_command = frame.get("runtime_command")
+                        if explicit_command is not None:
+                            if not isinstance(explicit_command, (list, tuple)) or not all(
+                                isinstance(item, str) for item in explicit_command
+                            ):
+                                raise ValueError(
+                                    "Invalid ingest settings (runtime_command must be "
+                                    "an argv list of strings)."
+                                )
+                            intake_command: list | tuple | None = list(explicit_command)
+                            frame_files = None
+                            intake_files = None
+                        else:
+                            intake_command = None
+                            frame_files = frame.get("file_list")
+                            intake_files = frame_files
+                        try:
+                            if intake_files is None:
+                                snapshot = _intake_to_snapshot(intake_spec, intake_command)
+                            else:
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec, intake_command, file_list=intake_files
+                                )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+                        frame_contract = frame.get("contract", "")
+                        coroutine = _run_ingest_workflow(
+                            snapshot,
+                            emit,
+                            config=scan_config,
+                            file_list=frame_files,
+                            contract=frame_contract,
+                        )
+                    else:
+                        spec = ProjectSpec.model_validate(frame)
+                        coroutine = execute_project_workflow(spec, emit, config=scan_config)
+                except (ValueError, TimeoutError, WebSocketDisconnect) as exc:
+                    ingest_msg = None
+                    if isinstance(exc, ValueError) and str(exc).startswith(
+                        "Invalid ingest settings"
+                    ):
+                        ingest_msg = str(exc)
                     await socket.send_json(
                         {
                             "type": "invalid",
                             "team": "system",
-                            "msg": "Invalid project settings. Check the path, argv commands, cycle count, and context budget.",
+                            "msg": ingest_msg
+                            or "Invalid project settings. Check the path, argv commands, cycle count, and context budget.",
                         }
                     )
                     await socket.close(code=1008)
                     return
-                coroutine = execute_project_workflow(spec, emit, config=scan_config)
             elif target_key == "__demo__":
                 try:
                     # Theme comes from the browser, bounded and sanitized here.
