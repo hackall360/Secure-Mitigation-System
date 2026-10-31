@@ -205,3 +205,23 @@ Run: `overnight_1793434523077_12855248373640259943`.
   AND more schema-reliable; default 5-agent fan-out is for large surfaces.
 - Reusable prior created: T3a red probe + blue escapeshellarg template
   (vault records above).
+
+## E6 — Offline regression sweep + stale-resource finding (2026-10-31)
+
+- Hypothesis: the forge branch (docs-only + reports/) keeps all 3 bundled
+  fixtures verified.
+- Method: `.venv/bin/python .jcode/tools/offline_scan.py` (deterministic
+  KnownMuse, real Docker).
+- Result: 3/3 verified (node pre=0/post=1, chain pre=0/post=1, php
+  pre=0/post=1), baseline+regression True, cleanup True per-card.
+  Evidence: run `validation/task-601-offline.txt`.
+- Incidental finding: post-sweep, 1 running `target` container + 1 exited
+  verifier (`affectionate_liskov` exit 0) + 5 session networks + 4 snapshot
+  images lingered. `remove_stale_resources` reaped all
+  ({containers: 4, networks: 5, snapshots: 4}). Root cause: my `timeout 120`
+  wrapper SIGTERMed the sweep mid-run (exit 124) AFTER all 3 cards printed
+  but BEFORE/AROUND session close — the cards prove the loop finished, the
+  kill landed during teardown. Lesson: give offline_scan a generous timeout
+  (≥300s) and never SIGTERM it; verify `cleanup=True` per card AND zero
+  session resources after. No code change needed (harness behaved; operator
+  killed it).

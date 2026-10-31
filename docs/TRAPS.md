@@ -112,3 +112,7 @@ here, not in scattered notes.
 - **Trap: Blue verbosity breaks the 60-line surgical guard.**
   Wrong assumption: a full arithmetic parser is a better eval-sink patch than an allowlist.
   Evidence: Cycle-2 attempt 1 — Blue wrote a 96-line recursive-descent parser, 36 lines over budget, guard rejected despite Red exit 0. A 7-line decimal allowlist verified on retry. Steer Blue with "minimal allowlist suffices; do NOT write a parser".
+
+- **Trap: `timeout 120` on `offline_scan.py` SIGTERMs it mid-teardown, leaving session containers/networks/snapshots.**
+  Wrong assumption: 3 printed "verified" cards mean the sweep (including cleanup) finished.
+  Evidence: exit 124 with all 3 cards green, but 1 running target + 1 exited verifier + 5 networks + 4 snapshot images lingered; `remove_stale_resources` reaped `{containers: 4, networks: 5, snapshots: 4}`. The `finally: sandbox.close()` never ran because SIGTERM landed during/after the last card. Fix: run offline scans with `timeout ≥ 300` (a full sweep takes ~2min), assert per-card `cleanup=True` AND `docker ps -a --filter label=purplebox.session` empty afterwards. Never manually `rm -f` session containers that a live sweep may still track — prefer `remove_stale_resources` after the sweep exits on its own.
