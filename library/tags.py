@@ -35,6 +35,8 @@ from pathlib import Path
 
 ENTRY_KEYS = ("surfaces", "backend", "ui", "cli", "tui")
 
+__version__ = "0.1.0"
+
 FEATURE_TAGS: dict[str, dict[str, object]] = {
     # --- CLI lifecycle / server ops (GAP_CLI 1-5) ---
     "init-images": {
@@ -960,19 +962,19 @@ WEB_DELEGATED_NEEDLES: dict[str, tuple[str, ...]] = {
 }
 
 MODULE_VERSIONS: dict[str, str] = {
-    "sms_async": "0.1.0",
-    "sms_http": "0.1.0",
-    "sms_redact": "0.1.0",
-    "sms_records": "0.1.0",
-    "sms_text": "0.1.0",
-    "sms_budget": "0.1.0",
-    "sms_scan_parse": "0.1.0",
-    "research": "0.1.0",
-    "demo_gen": "0.1.0",
-    "workflow": "0.1.0",
-    "project_workflow": "0.1.0",
-    "tags": "0.1.0",
-    "version": "0.11.0",
+    "library.shared.sms_async": "0.1.0",
+    "library.shared.sms_http": "0.1.0",
+    "library.shared.sms_redact": "0.1.0",
+    "library.shared.sms_records": "0.1.0",
+    "library.shared.sms_text": "0.1.0",
+    "library.shared.sms_budget": "0.1.0",
+    "library.shared.sms_scan_parse": "0.1.0",
+    "library.intel.research": "0.1.0",
+    "library.services.demo_gen": "0.1.0",
+    "library.workflows.workflow": "0.1.0",
+    "library.workflows.project_workflow": "0.1.0",
+    "library.tags": "0.1.0",
+    "library.core.version": "0.11.0",
 }
 
 
