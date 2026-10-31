@@ -347,5 +347,6 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA19. Wave 19 banner operate-proof (LAW 11): trigger error path live both browsers.
 - [x] AA19. Wave 19 outcome: BANNER PROVEN LIVE (Chrome): overlapping scans → second client got `type:busy` + close 1013 at protocol level; dashboard STATUS went red "Another scan is already running", #scan-banner rendered lock text, timeline carried refusal, first scan unaffected. Screenshot captured. Server torn down, zero leftovers. (Busy path needs no LAW-12 bump — render-only of Wave-17 work.)
 - [ ] AA20. Wave 20 HARD GATE + WILD CRUCIBLE #2 (keyed wildcard sweep).
+- [x] AA20. Wave 20 outcome: GATE GREEN (dev.py check exit 0) + CRUCIBLE #2 FULL PASS — keyed wildcard sweep: staged in Docker, RED CWE-78 at exact sink line, PRE-PROBE 0, BLUE allowlist patch, cleanup ok, zero leftovers. Shim note (input() blocks readiness → HTTP shim, sink verbatim) logged. Files: `docs/WILD_INGESTION_LOG.md`.
 - [ ] AA21. Wave 21 TRIBUNAL (mod-3).
 

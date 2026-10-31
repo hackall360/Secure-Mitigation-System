@@ -27,3 +27,10 @@
 ## Verdict
 
 CONDITIONAL PASS: ingest path (clone-in-container → spec validation → fail-closed detect → cleanup) proven end to end; Docker oracle green; vault adapting through the sprint corpus. Two follow-ups for Wave 11+: (a) `docker exec tar` streaming for staging extraction (tmpfs + `docker cp` trap), (b) keyed 3-pass sweep of staged wildcard bytes when credentials are available.
+
+## Crucible #2 — keyed wildcard sweep (Wave 20, 2026-10-31)
+
+- Same wildcard (`1109HARSH/command-injection-demo-`, bytes staged Wave 10). This time with credentials: real Muse + real Docker.
+- Shim note: the raw `vuln_ping.py` blocks on `input()`, so `start_cloneable_target` readiness correctly refused it (`SandboxError: Target did not become ready` — fail-closed working). Wrapped the verbatim sink line (`subprocess.run(f"ping -c1 {host}", shell=True...)`) in a minimal HTTP server shim (scratch only, never repo) so the harness could stage it. Sink semantics unchanged.
+- Result: staged ok → RED `CWE-78 OS Command Injection` at `wild_server_shim.py:10` (exact sink line) → PRE-PROBE exit 0 (boundary reachable, Docker evidence) → BLUE `Exact allowlist validation of host as hostname/IPv4` patch → cleanup ok.
+- Verdict: FULL PASS. Real-repo keyed sweep proven end to end: clone-in-container (Wave 10) + detect/spec (Waves 4/8) + live red/blue on wildcard bytes (Wave 20). Closes tribunal 2a-2 evidence gap subject to Wave-21 re-score.
