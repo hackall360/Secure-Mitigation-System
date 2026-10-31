@@ -38,6 +38,7 @@ curses modes:
 | Flag | Help |
 |---|---|
 | `--mode {fixture,sweep,mcp,binary,project,ingest,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
+| `--stats` | TUI plain mode: print the `CompressionStats` summary + `vault_stats()` (global novel/historical + `tokens_saved_estimate`) as structured stdout; exit 0, no Docker, no key |
 | `--snippet PATH` (`--snippet-language`, `--contract`) | MCP snippet file through the red/blue Docker loop (mcp mode) |
 | `--binary-path PATH` (alias: `--binary-target`) | Binary sweep in binary mode |
 | `--project-path/--project-command/--project-test-command/--project-contract/--project-cycles/...` | Project two-cycle workout (project/cve modes) |
@@ -136,6 +137,7 @@ redacts the URL to host + short sha (no `@`, no credentials, no paths).
 | TUI suffix | `tui.py` `describe_wave2` via `format_facts` | Telemetry tokens auto-flow: `[compress ...]` + `[vault ...]` append to the result line from the same `compression`/`vault_recall` fields `fact_table` shows. |
 | TUI ingest mode | `tui.py` `mode:ingest` (`i` key), `--ingest-repo` + `--commit-hash` (+ `--ingest-branch` label) | Validates through `RepoIntakeSpec` (fail closed), emits the redacted ingest event, runs the fixture loop, then emits the telemetry event. |
 | Demo MCP client | `scripts/mcp_client_demo.py` (stdlib `urllib` only) | `run_demo(base_url, filename, language, source)` returns `{status, pre_probe_exit, post_probe_exit, receipt_sha}`; `--help` exits 0; dead localhost port fails closed non-zero; oversize sources rejected client-side; localhost-only + short timeout per LAW 10I. |
+| TUI `--stats` + telemetry keys (Wave 8) | `tui.py` `_print_global_stats`, `sms_cli.py` `format_facts` | `--stats` prints the `CompressionStats` summary + `vault_stats()` (per-namespace records, `known_archetypes`, `tokens_saved_estimate`); `format_facts` carries `savings_pct` + `novel_vs_historical` keys from the same `compression`/`vault_recall` fields `fact_table` shows. |
 
 ## CVE scan notes
 
