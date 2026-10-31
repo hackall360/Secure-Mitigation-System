@@ -42,3 +42,16 @@ and taxonomy link.
 - Taxonomy: new T7 class + T1. Vault: red `4a9146b18ac3`, blue `b09cb5a8f3ee`.
 - Gate-3: replay PASS (renamed variant; tautology → empty per bundled
   semantics; first replay script's exception-expectation was my error).
+
+## D4 — T3a escapeshellarg prior (Cycle 5, 2026-10-31)
+
+- Novel fixture: PHP `/ping?host=` → `shell_exec("printf '%s' " . $host)`.
+  Red exit 0 (`a;echo PWNED` → `aPWNED`); Blue `is_string` + `escapeshellarg`
+  → Red exit 1, regressions 0/0. Attempts 1-2 died on `RedReport` schema
+  validation (infra fault, not verdict); slim agents=1 cleared it AND was
+  cheapest cycle yet (≈$0.14).
+- Evidence: run `validation/task-503-c5c-report.json` (receipt pre=0/post=1,
+  patch sha `81b2fba0…`), `validation/task-504-c5-vault.txt`.
+- Taxonomy: T3/T3a (first forge proof of the T3 family). Vault:
+  red `bc06d91cdbed`, blue `e63fc6e43cea`.
+- Gate-3: replay PASS in Docker PHP (renamed variant; injection inert).

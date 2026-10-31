@@ -24,3 +24,12 @@ rule applies: destroy container, log here, begin next cycle immediately.
   JWKS scheme SSRF, redirect-to-metadata) already guarded at `16231abf`.
   Not a failure of method — the checklist is the reusable output. Next
   scout targets a less-audited class.
+
+## F4 — Cycle 5 attempts 1-2: RedReport schema faults on PHP tree (2026-10-31)
+
+- Two keyed runs died with "invalid JSON or unexpected response schema" —
+  a1 in `verification_report`, a2 (verbatim retry) faster in
+  `initial_report`. Systematic for the PHP-tree + 5-agent shape, not
+  transient. Slimming agents 5→1 fixed it. Lesson: small trees get slim
+  fan-out (cheaper + schema-reliable); 5-agent default is for large
+  surfaces. Evidence: `task-501/502-c5*-error.json`.

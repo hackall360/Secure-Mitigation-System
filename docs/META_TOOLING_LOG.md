@@ -14,6 +14,10 @@ Run: `overnight_1793434523077_12855248373640259943`.
 | 2026-10-31T08:33Z | muse-wonder-1.0 | C2c proposal+report (2 calls, 7-line allowlist) | Blue | allowlist, re-probe exit 1 |
 | 2026-10-31T08:41Z | muse-spark-1.3 | C4 evidence+report (4 calls) | Red | unified A→B chain probe exit 0 pre-patch |
 | 2026-10-31T08:41Z | muse-wonder-1.0 | C4 proposal+report (2 calls, 1-line parameterize) | Blue | parameterize, re-probe exit 1 |
+| 2026-10-31T08:49Z | muse-spark-1.3 | C5a (5 calls ≈$0.13; schema fault) | Red | initial evidence ok, verification report schema-invalid |
+| 2026-10-31T08:50Z | muse-spark-1.3 | C5a2 retry (2 calls ≈$0.03; schema fault) | Red | initial report schema-invalid (systematic) |
+| 2026-10-31T08:53Z | muse-spark-1.3 | C5b slim agents=1 (4 calls) | Red | T3a shell_exec probe exit 0 pre-patch |
+| 2026-10-31T08:53Z | muse-wonder-1.0 | C5b slim (2 calls) | Blue | escapeshellarg, re-probe exit 1 |
 
 Rules: Red = `muse-spark-1.3`, Blue = `muse-wonder-1.0` (config defaults).
 Every keyed call is logged here with token counts from the response usage.

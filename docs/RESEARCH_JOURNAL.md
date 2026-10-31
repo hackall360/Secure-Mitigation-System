@@ -144,3 +144,64 @@ Run: `overnight_1793434523077_12855248373640259943`.
   Taxonomy extended: new T7 class (client-claimed role gate).
 - Reusable prior created: T7+T1 unified-probe strategy + parameterize
   template with neutralization semantics (vault records above).
+
+## E5r — Cycle 5 self-review: diversity check (per directive, every 5 cycles)
+
+- Classes used: T4 (C1), T2+T6 (C2), T7+T1 (C4). Counts over 3 forge cycles:
+  T1×1, T2×1, T4×1, T6×1(co), T7×1. No class >40% (max 1/3 each as primary).
+  Languages: Python×2 (C1, C4), Node×1 (C2). Python = 67% — OVER the 40%
+  diversity bar by language.
+- Forced new direction: Cycle 5 MUST NOT be Python. Target: PHP (bundled
+  fixture family php_command_sink exists, so the Docker image runs PHP 8.4;
+  T3 command-argument sink is taxonomy-listed but has NO forge proof yet).
+- Cycle 5 plan: PHP T3a command-argument service (hostname passed to local
+  diagnostic command) + PHP-native benign test contract; keyed loop;
+  Gate-3 replay on renamed variant; vault T3a priors. C++ deferred: target
+  image has no compiler toolchain (python/node/php only) — recorded, not
+  attempted (would burn keyed spend on a doomed build).
+
+## E5a — Cycle 5 attempt 1: PHP T3a, model schema failure (INFRA, retry)
+
+- Hypothesis: PHP T3a verifies like the Python/Node cycles.
+- Method: keyed cycles=1, PHP built-in server + PHP HTTP contract; baseline
+  regression exit 0 in Docker (normal-input checks passed).
+- Result: 0 cycles completed — `verification_report` stage raised
+  "invalid JSON or unexpected response schema" (agents.py:323/334 path: the
+  model returned text that failed `model_validate_json` after fence-strip).
+  5 calls ≈$0.13 spent, no finding state changed, no source touched.
+  Evidence: run `validation/task-501-c5-live.txt`,
+  `validation/task-501-c5-report-error.json`.
+- Conclusion: infra-level model output fault, NOT a Red/Blue verdict and NOT
+  a fixture fault (attempt 1 of 3). Corrective vector: retry once verbatim
+  (transient shape faults often clear); if it recurs, shrink context (fewer
+  red agents) or re-phrase the contract before the 3rd attempt.
+
+## E5a2 — Cycle 5 attempt 2: same schema fault, earlier (INFRA)
+
+- Verbatim retry of attempt 1: failed FASTER (2 calls ≈$0.03, died in
+  `initial_report` instead of `verification_report`). Proves the fault is
+  systematic for this tree shape, not a one-off truncation: something about
+  the PHP tree + 5-agent prompt bulk makes the report model emit
+  schema-invalid text (likely over-long `analysis_summary`/probe or a
+  `no_finding` with finding fields, per the strict `RedReport` validator).
+- Corrective vector for attempt 3: slim the synthesis (red/blue agents 5→1,
+  shorter contract). Evidence: run `validation/task-502-c5b-*`.
+
+## E5b — Cycle 5 attempt 3 (slim agents=1): VERIFIED (closes Cycle 5)
+
+- Hypothesis: slimmer agent fan-out yields schema-valid reports on the PHP tree.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST slim run. Blue patch:
+  `is_string` guard + `escapeshellarg` (canonical T3a fix). Red vuln:
+  "OS command injection (T3a) in /ping?host= via unsanitized shell_exec
+  interpolation". 6 calls p8390/c13028 ≈$0.14 — CHEAPEST keyed cycle yet.
+  Evidence: run `validation/task-503-c5c-live.txt`, `task-503-c5c-report.json`.
+- Gate-3 replay PASS in Docker PHP: renamed-variant `escapeshellarg` prior —
+  `a;echo PWNED` inert (single-quoted, no execution), benign `web01` ok.
+- Vault: red `bc06d91cdbed`, blue `e63fc6e43cea`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-504-c5-vault.txt`.
+- Conclusion: Δ(C.5,D.5,E.5) → 0. Language diversity restored (PHP joins
+  Python+Node). New reusable tactic: slim agents=1 for small trees — cheaper
+  AND more schema-reliable; default 5-agent fan-out is for large surfaces.
+- Reusable prior created: T3a red probe + blue escapeshellarg template
+  (vault records above).
