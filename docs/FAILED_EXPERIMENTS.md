@@ -68,3 +68,9 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - Identical failure twice (closing `verification_report` schema-invalid)
   on the long-steering contract; 3-sentence contract verified. 3rd
   confirmation of the short-contract rule (C5, C17, C19). ≈$0.26 tuition.
+
+## F10 — Cycle 23 attempt 1: transient closing-report fault (2026-10-31)
+
+- Short contract did NOT immunize (already 2 sentences). Verbatim retry
+  verified — transient, not systematic. Short contracts reduce frequency;
+  only retries clear transients. ≈$0.12 tuition. Evidence: `task-2301-*`.

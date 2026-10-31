@@ -760,3 +760,33 @@ Run: `overnight_1793434523077_12855248373640259943`.
   has an ORDER-BY/LIMIT forge proof. Taxonomy: new T1c subclass.
 - Reusable prior created: T1c boolean-flip probe + allowlist+parameterize
   template (identifiers can NEVER be `?`-bound — allowlist is the only fix).
+
+## E23a — Cycle 23 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5/C17/C19: Red exit-0 + Blue proposal accepted, final
+  report malformed (5 calls ≈$0.21). Short contract did NOT prevent it this
+  time (contract is already 2 sentences) — the short-contract rule reduces
+  frequency (3/3 wins) but is not immunity. Retry verbatim.
+
+## E23b — Cycle 23 attempts 2 (verbatim retry VERIFIED)
+
+- Verbatim retry cleared the transient fault: success=True, retained,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. Blue: `is_string`
+  guard + `escapeshellarg` moved OUTSIDE the double quotes (the subtle
+  correct shape: quoted outside, unquoted inside backticks). 6 calls
+  p9526/c19572 ≈$0.18.
+  Evidence: run `validation/task-2302-c23b-live.txt`,
+  `validation/task-2302-c23b-report.json`.
+- My first Gate-3 script was WRONG (asserted payload absence; escaped
+  payloads echo literally — correct behavior). Corrected to inertness
+  semantics: literal echo + side-effect sentinel (`touch`) proves NO
+  execution. REPLAY PASS. (Second self-caught replay error tonight after
+  C4 — the replay, not the patch, is the usual suspect.)
+- Vault: red `67a3c0ac01e4`, blue `f0435a01ca62` (with replay note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2303-c23-vault.txt`.
+- Conclusion: Δ(C.23) → 0. T3d (backtick-subshell operator family) proven
+  — the T3 family now spans `;`/`&&` (T3a), tar (T3c), backtick/`$()`
+  (T3d). Taxonomy: new T3d subclass.
+- Reusable prior created: T3d backtick escapeshellarg-outside-quotes
+  template + inertness-semantics replay rule.

@@ -135,3 +135,12 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   signals. Fix doctrine: identifiers can NEVER be `?`-bound — allowlist
   `sort_by`/`direction` against tuples + `int(limit)` + `LIMIT ?`.
 - Priors: red `08f8e7c97a65`, blue `a6598cd153a6` (vault, forge-c22).
+
+## T3d note (backtick-subshell operator family)
+
+- Subclass T3d (proven forge Cycle 23, PHP): `` `printf "%s" "$host"` ``
+  executes `$(...)`/backtick payloads. Gate-0: `x$(echo PWNED23)` →
+  `xPWNED23`. Fix shape: `escapeshellarg` OUTSIDE the double quotes
+  (`` `printf "%s" $safeHost` ``) — the quoting inversion is the whole fix.
+  Replay semantics: INERTNESS (literal echo + no side effects), not absence.
+- Priors: red `67a3c0ac01e4`, blue `f0435a01ca62` (vault, forge-c23).

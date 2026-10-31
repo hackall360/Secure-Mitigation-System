@@ -33,6 +33,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T10:20Z | 21 (scout) | none (local reading + node ESM) | 0 | he entity codec, JS zero-dep | n/a | n/a | n/a | NEGATIVE (valuable): encode neutralizes all T6; strict throws closed; cross-validates htmlspecialchars; no candidate |
 | 2026-10-31T10:22Z | 22 | none (local battery) | 0 | T1c Gate-0 | n/a | n/a | n/a | PASS: CASE-flip + limit-arithmetic signals confirmed; proceed |
 | 2026-10-31T10:24Z | 22 | spark-1.3 + wonder-1.0 (slim, short) | p12958/c23376 ≈$0.21 | T1c ORDER-BY/LIMIT, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: boolean-flip signal; allowlist+LIMIT-?; vault T1c; Gate-3 PASS |
+| 2026-10-31T10:32Z | 23 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.30 total | T3d backtick, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): escape-outside-quotes; inertness replay; vault T3d; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
