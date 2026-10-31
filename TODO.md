@@ -353,5 +353,11 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA22. Wave 22 ingest submit wiring (form → project workflow → sweep, RED-first + live proof).
 - [x] AA22. Wave 22 outcome: writer routing merged (32aee83) + spawner completion (78874b9: real clone=True staging, sandbox adapter, file_list forwarding; 21 RED green). Live proof: validation → staging → compress → vault NOVEL → baseline passed → red review (real Muse) → cleanup; full green needs server-shaped staged tree (recorded). Gate 752 green. Worktree removed.
 - [ ] AA23. Wave 23 Tailwind decision (migrate or document + pin).
+- [x] AA23. Wave 23 outcome: DOCUMENT (no migrate) — shipped system is token-CSS v2, no Tailwind anywhere; SPEC 7.7 corrected with historical note; `tests/test_w23_styling_red.py` pins the decision (3 green). Rationale: offline quickstart forbids build step/CDN. Commit `7d89f81`.
 - [ ] AA24. Wave 24 TRIBUNAL (mod-3).
+- [x] AA24. Wave 24 outcome: tribunal weighted **8.75** (was 8.70, +0.05 ingest completion). Movers: 2a-1 → 8.5 (live loop fires), 2d-1/6 → 8.5 (styling decided + ingest submits). Proof: matrix.
+- [ ] AA25. Wave 25 HARD GATE (mod-5): full gate + Docker loop + browser cards.
+- [ ] AA26. Wave 26 full-green ingest cycle (server-shaped staged tree + terminating target).
+- [ ] AA27. Wave 27 TRIBUNAL (mod-3).
+
 
