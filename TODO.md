@@ -331,3 +331,13 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] AA9. Wave 9 tribunal: weighted **8.34** (was 8.17, +0.17 evidence depth). Proof: matrix + commit.
 - [x] AA10. Wave 10 outcome (HARD GATE PASS + WILD CRUCIBLE CONDITIONAL PASS): dev.py check exit 0, 708 passed; Docker 3/3 verified; Chrome + Firefox cards green. Crucible: command-injection demo repo cloned in-container only, spec/detect/cleanup proven, oracle green; keyed sweep deferred (no creds). Files: `docs/WILD_INGESTION_LOG.md`, `docs/TRAPS.md` (tmpfs/cp trap). No Wave-11-regression-only needed.
 - [x] AA11. Wave 11 outcome (KEYED LIVE PROOF 3/3): all fixtures boundary-passed vs real Muse — node live 365→363 tokens, php 135→135, mysql 84→84; vault KNOWN_ARCHETYPE (red) on every card; chain broken (genesis) badges; Resources removed. Key + Docker both live. Closes tribunal 2b-3/2b-10/2d-10 live-evidence gaps.
+- [x] AA12. Wave 12 tribunal: weighted **8.50** (was 8.34, +0.16 live depth). Vectors: fault drills (13), chain fixture (14), tribunal+gate (15). Proof: matrix + commit `45af1b7`.
+- [ ] AA13. Wave 13 fault drills: RED-first tests pinning daemon-kill fail-closed + 429-throttle UI-alive; fault-injection harness (no prod behavior change).
+- [x] AA13. Wave 13 outcome: 2 worktrees merged (cca96d6 daemon-fail-closed wrappers, 121af03 exhausted-429 named as rate limit; 9 RED green). Gate 717 passed, lint clean. Worktrees removed.
+- [ ] AA14. Wave 14 chain fixture: two-link sink (single-step probe exits 1, chained exits 0) + live keyed chain-verdict proof.
+- [x] AA14. Wave 14 outcome: writer drifted to 10 files, spawner narrowed to 5 (686d304) + spawner count fix (dcbe6c3). Chain single→chained flip proven in-worktree; offline 4/4 verified incl. new fixture. Merged f916592; gate 725 green. Worktree removed. Note: reverted TUI/web/smoke widening is follow-up ONLY if a future fixture touches those surfaces — nothing fails today.
+- [ ] AA15. Wave 15 TRIBUNAL + HARD GATE (mod-3 and mod-5; gate takes precedence).
+- [x] AA15. Wave 15 outcome: GATE GREEN (725, exit 0) then tribunal weighted **8.54** (was 8.50, +0.04 fault evidence). Movers: S3 daemon-fault + throttle bounds (6/7 → 8.0), 2b chain-verdict Docker proof (3 → 8.5). No Wave-16-regression-only needed. Proof: matrix.
+- [ ] AA16. Wave 16 keyed chain sweep: live Muse red→blue→verify flip on node_chain_link.
+- [ ] AA17. Wave 17 throttle/daemon UI banners: WS error event → visible dashboard banner (LAW 11 proof).
+- [ ] AA18. Wave 18 TRIBUNAL (mod-3).
