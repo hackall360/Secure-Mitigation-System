@@ -1,5 +1,5 @@
 {
-  "version": "39",
+  "version": "40",
   "classes": [
     {
       "id": "T1",
@@ -185,7 +185,8 @@
         "T5a": "role-grant endpoint (Link A) gates dynamic query (Link B)",
         "T5b": "Node promo-code gate + template-string eval projection (forge Cycle 14)",
         "T5d": "Python config section-name injection (forge Cycle 51 v2, no-$ reshape; section allowlist fix)",
-        "T5e": "PHP bare-extract() variable overwrite (forge Cycle 52; explicit-read + deny-admin fix)"
+        "T5e": "PHP bare-extract() variable overwrite (forge Cycle 52; explicit-read + deny-admin fix)",
+        "T5f": "Python unsigned-pickle role token (forge Cycle 56; sign-before-load fix; C41 done right)"
       },
       "proven_by": "targets/node_chain_link (Wave 14, gate 725)",
       "priors": {
@@ -198,6 +199,10 @@
         "T5e": {
           "red": "68b8699c2fa5",
           "blue": "7a284ccbc042"
+        },
+        "T5f": {
+          "red": "5f7e3716924a",
+          "blue": "f5490b20f270"
         }
       }
     },
@@ -389,6 +394,11 @@
       "version": "39",
       "date": "2026-10-31",
       "change": "Cycle 55: +T2h (theater-check eval); secure-mirror hallucination x1 + timeout x1, then grounding-quote VERIFIED; vault; Gate-3 8/8"
+    },
+    {
+      "version": "40",
+      "date": "2026-10-31",
+      "change": "Cycle 56: +T5f (CWE-502 pickle token); attempt-2 VERIFIED (inconclusive then clear); sign-before-load doctrine; vault; Gate-3 4/4"
     }
   ]
 }

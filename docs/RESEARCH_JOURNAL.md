@@ -1404,3 +1404,16 @@ Run: `overnight_1793434523077_12855248373640259943`.
   A/B it: same fixture, grounding on/off. Until then: grounding is
   standard in all contracts (cheap, possibly decisive).
 - Gate-3 8/8. Vault NOVEL. Taxonomy v39. Conclusion: Δ(C.55) → 0.
+
+## E56 — Cycle 56: T5f VERIFIED attempt 2 (proof-burden lesson)
+
+- Green: unsigned-pickle role token with C41 lessons applied. Gate-0:
+  benign role:guest; opcode-forged ADMIN-EFFECT (module path matched).
+- a1 inconclusive (opcode-crafting over HTTP near capability ceiling);
+  a2 VERIFIED — pre 0, post 1. Cost att2 $0.32. No hallucination, no
+  schema fault (grounding quote present both runs).
+- Blue: sign-before-load (correct CWE-502 doctrine). Gate-3 4/4.
+  Vault NOVEL. Taxonomy v40. Conclusion: Δ(C.56) → 0.
+- Reusable: proof-burden calibration — match the proof to Red's
+  demonstrated opcode-crafting ceiling; high-burden proofs need the
+  oracle-smuggle fallback designed in.

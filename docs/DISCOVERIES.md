@@ -365,3 +365,10 @@ and taxonomy link.
 - Blue: arithmetic allowlist + const-type gate + dead builtins.
 - Gate-3: 8/8 (benign preserved incl pow/floordiv). Taxonomy v39.
   Vault: red `8ca3386beb14`, blue `fea3d121833f`. NOVEL_SURFACE.
+
+## D35 — T5f pickle-token prior (Cycle 56, 2026-10-31)
+
+- Red: guest token recorded, opcode-forged admin, effect observed.
+- Blue: HMAC sign-then-verify before loads.
+- Gate-3: 4/4. Taxonomy v40. Vault: red `5f7e3716924a`, blue
+  `f5490b20f270`. NOVEL_SURFACE. C41's concept, done right.

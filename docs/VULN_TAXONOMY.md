@@ -369,3 +369,22 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   (bools excluded — `True` is int subclass) + emptied builtins +
   length cap. Gate-3 8/8, benign arithmetic fully preserved.
 - Vault: red `8ca3386beb14`, blue `fea3d121833f`; NOVEL_SURFACE.
+
+## T5f note (unsigned-pickle role token, CWE-502 — C41 done right)
+
+- Subclass T5f (proven forge Cycle 56, Python, 2 attempts: 1x
+  inconclusive probe, then VERIFIED): unsigned pickled `Role` token;
+  hand-built opcodes instantiate `Role('admin')` with zero server
+  knowledge (true CWE-502, no local class needed on attacker side).
+  This is the C41 concept (T5c) executed with C41's lessons: 200-always
+  bodies, gadget silent on the benign path, stateless, grounding quote.
+- Attempt 1 inconclusive: opcode-level proof burden is HIGH (server
+  module path must be matched). Attempt 2 cleared — capability, not
+  contradiction. Lesson: forging SERIALIZED OBJECT GRAPHS over HTTP
+  is near the probe-capability ceiling; keep an easier variant ready
+  (e.g. attacker pickles via the /token oracle with a smuggled name).
+- Blue: HMAC-sign payload (per-process secret), verify-before-load;
+  pickle only touches authenticated bytes. Doctrine: sign-before-load
+  (pickle is safe iff bytes are authenticated first). Gate-3 4/4:
+  unsigned, truncated, re-signed-impossible role-swap, malformed.
+- Vault: red `5f7e3716924a`, blue `f5490b20f270`; NOVEL_SURFACE.
