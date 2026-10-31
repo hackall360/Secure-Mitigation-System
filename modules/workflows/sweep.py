@@ -78,8 +78,20 @@ class SweepPassResult(BaseModel):
 
     @property
     def holds(self) -> bool:
-        """A pass holds when it cleared outright or its patch blocked the probe."""
+        """A pass holds when it cleared outright or its patch blocked the probe.
+
+        Chain passes record three links (unified verdict, pre-patch
+        link pair, post-patch link pair); the verdict holds when the unified
+        probe and both post-patch links are cleanly blocked.
+        """
         if self.chain_links is not None:
+            if self.pass_id == "chain":
+                return (
+                    self.receipt is not None
+                    and len(self.chain_links) == 3
+                    and all(link.holds for link in self.chain_links)
+                    and self.regression_passed
+                )
             return (
                 self.receipt is not None
                 and len(self.chain_links) == 2
@@ -146,6 +158,29 @@ def sweep_compression_summary(
 
 _KNOWN_ARCHETYPE = "KNOWN_ARCHETYPE"
 _NOVEL_SURFACE = "NOVEL_SURFACE"
+
+
+def _chain_link_probes(unified_script: str) -> tuple[str, str]:
+    """Split a unified chain script into link-A (primitive) + link-B (sink) probes.
+
+    The chain prompt demands ONE single unified payload fusing two disparate
+    weakness classes: a Link A section (primitive with benign values, falling
+    through into Link B on success, exiting 1/2 only on block/inconclusive)
+    then a ``# --- link B ---`` marker line, then the Link B section
+    (malicious value leveraging the primitive, with the final verdict exit).
+    The runner executes the unified script as the full probe; link verdicts
+    record the unified pre/post pair plus the per-section outputs for
+    evidence. A script without the marker records the unified pair twice
+    (back-compat duplicate-script chains).
+    """
+    marker = "# --- link b ---"
+    idx = unified_script.lower().find(marker)
+    if idx == -1:
+        return unified_script, unified_script
+    head, tail = unified_script[:idx], unified_script[idx:]
+    link_a = (head.strip() or unified_script).rstrip() + "\nsys.exit(0)\n"
+    link_b = tail.strip() or unified_script
+    return link_a, link_b
 
 
 def _classify_vault_statuses(
@@ -424,10 +459,66 @@ async def execute_sweep_scan(
                 sandbox.run_isolated_verifier, network, finding.verification_script_python
             )
             passed.post_exit_code = post.exit_code
-            passed.chain_links = [
-                ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-            ]
+            if pass_id == "chain":
+                link_scripts = _chain_link_probes(finding.verification_script_python)
+                link_a_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[0])
+                result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}. "
+                    f"{link_a_pre.output}",
+                )
+                if link_a_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
+                link_b_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[1])
+                result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}. "
+                    f"{link_b_pre.output}",
+                )
+                if link_b_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
+                ]
+                link_a_post = await blocking(
+                    sandbox.run_isolated_verifier, network, link_scripts[0]
+                )
+                result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}. "
+                    f"{link_a_post.output}",
+                )
+                if link_a_post.inconclusive:
+                    raise SandboxError(
+                        f"Sweep pass {pass_id} link-A post-patch probe was inconclusive."
+                    )
+                link_b_post = await blocking(
+                    sandbox.run_isolated_verifier, network, link_scripts[1]
+                )
+                result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}. "
+                    f"{link_b_post.output}",
+                )
+                if link_b_post.inconclusive:
+                    raise SandboxError(
+                        f"Sweep pass {pass_id} link-B post-patch probe was inconclusive."
+                    )
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
+                    ChainLink(pre_exit=link_a_post.exit_code, post_exit=link_b_post.exit_code),
+                ]
+            else:
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                ]
             result.traces[f"{pass_id}:after"] = post.output
             await log(
                 "blue",

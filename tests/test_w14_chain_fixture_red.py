@@ -222,9 +222,10 @@ def test_chain_verdict_flips_what_single_step_misses():
         chain_links=[
             ChainLink(pre_exit=0, post_exit=0),
             ChainLink(pre_exit=0, post_exit=0),
+            ChainLink(pre_exit=0, post_exit=0),
         ],
         regression_passed=True,
-        receipt={"chain": [(0, 0), (0, 0)]},
+        receipt={"chain": [(0, 0), (0, 0), (0, 0)]},
     )
     assert chained_pre.holds is False
     chained_post = SweepPassResult(
@@ -232,9 +233,10 @@ def test_chain_verdict_flips_what_single_step_misses():
         chain_links=[
             ChainLink(pre_exit=0, post_exit=1),
             ChainLink(pre_exit=0, post_exit=1),
+            ChainLink(pre_exit=0, post_exit=1),
         ],
         regression_passed=True,
-        receipt={"chain": [(0, 1), (0, 1)]},
+        receipt={"chain": [(0, 1), (0, 1), (0, 1)]},
     )
     assert chained_post.holds is True
 

@@ -18,6 +18,11 @@ First establish that a normal request works. The script must exit with exactly o
 cleanly rejected or neutralized; 2 for network failures, unexpected responses, syntax
 errors, and any inconclusive result. Print a short evidence explanation. A crash or
 empty response is not a fix.
+Write resilient environment-aware probes: retry transient network failures with a
+bounded retry loop (at most 3 attempts with a short sleep; never an unbounded
+loop), wait for target readiness before verdicting, and try
+alternate request paths or response shapes before concluding path variance.
+Reserve exit 2 for genuinely exhausted retries, never for the first error.
 For MySQL configuration, read /my.cnf and check the three specified hardening directives.
 Do not claim this fixture is a running MySQL server.
 """
@@ -93,6 +98,11 @@ First establish that a normal request works. The script must exit with exactly o
 cleanly rejected or neutralized; 2 for network failures, unexpected responses, syntax
 errors, and any inconclusive result. Print a short evidence explanation. A crash or
 empty response is not a fix.
+Write resilient environment-aware probes: retry transient network failures with a
+bounded retry loop (at most 3 attempts with a short sleep; never an unbounded
+loop), wait for target readiness before verdicting, and try
+alternate request paths or response shapes before concluding path variance.
+Reserve exit 2 for genuinely exhausted retries, never for the first error.
 For MySQL configuration, read /my.cnf and check the three specified hardening directives.
 Do not claim this fixture is a running MySQL server.
 """
@@ -119,6 +129,11 @@ First establish that a normal request works. The script must exit with exactly o
 cleanly rejected or neutralized; 2 for network failures, unexpected responses, syntax
 errors, and any inconclusive result. Print a short evidence explanation. A crash or
 empty response is not a fix.
+Write resilient environment-aware probes: retry transient network failures with a
+bounded retry loop (at most 3 attempts with a short sleep; never an unbounded
+loop), wait for target readiness before verdicting, and try
+alternate request paths or response shapes before concluding path variance.
+Reserve exit 2 for genuinely exhausted retries, never for the first error.
 For MySQL configuration, read /my.cnf and check the three specified hardening directives.
 Do not claim this fixture is a running MySQL server.
 """
@@ -137,12 +152,30 @@ Return exactly one JSON object as the entire response: no markdown, no code fenc
 and no prose before or after it. The object has exactly these four nonempty string
 fields, in this exact order:
 vulnerability_class, sink_location, analysis_summary, verification_script_python.
-The complete Python verification script demonstrates both chain steps in one run
-(step A establishes the primitive, step B leverages it) inside a separate
-resource-limited container.
+The complete Python verification script delivers ONE single unified payload that
+combines two disparate weakness classes in a single run: step A establishes the
+primitive through one weakness class (implicit trust, workflow gaps, confused
+roles, auth bypass, state carried across requests) and step B leverages it through
+a distinct second class (injection sink, dynamic-expression evaluation, command
+construction, path traversal) into a novel boundary violation neither step
+reaches alone. Sequential same-class probes are not a chain: the two links must
+be disparate vulnerability classes fused into one payload. Structure the script as
+a Link A section (primitive with benign values; fall through to Link B on success,
+exit 1/2 only on block/inconclusive), then a literal `# --- Link B ---` marker
+line, then the Link B section (malicious value leveraging the primitive, carrying
+the final verdict exit). Each section must be self-contained: repeat the imports
+and re-establish any shared values (grants, tokens, session state) inside Link B
+instead of inheriting variables from Link A, because the runner replays each
+section standalone as evidence alongside the unified run. Demonstrate both
+chain links inside a single script in a separate resource-limited container.
 Use only Python's standard library and http://target-service:8080. Config files are
 served over HTTP, not mounted in the verifier. Set HTTP timeouts to at most 3 seconds.
-First establish that a normal request works. The script must exit with exactly one of:
+First establish that a normal request works. Write resilient environment-aware probes:
+retry transient network failures with a bounded retry loop (at most 3 attempts with a
+short sleep; never an unbounded loop), wait for target readiness
+before verdicting, and try alternate request paths or response shapes before
+concluding path variance. Reserve exit 2 for genuinely exhausted retries, never
+for the first error. The script must exit with exactly one of:
 0 only if the full multi-step chain reaches the boundary; 1 only if that chain is
 cleanly rejected or neutralized at any link; 2 for network failures, unexpected
 responses, syntax errors, and any inconclusive result. Print a short evidence
