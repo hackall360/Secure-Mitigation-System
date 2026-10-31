@@ -328,3 +328,5 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA8. Wave 8 implementation: runtime auto-detect (fixes 2a-3); vault perf micro-benchmark + docs (2c-4); TUI ingest live proof + CLI --stats (2d-6/7).
 - [x] AA8. Wave 8 outcome: 3 worktrees merged (849b658 runtime detect, 05a7178 vault perf, bc3f9a5 TUI stats). Gate 708 passed, format fixed whitespace-only. Worktrees removed. Commit `8455d1c`.
 - [ ] AA9. Wave 9 TRIBUNAL (mod-3): re-score 60-point matrix on 708-green tree, compute Δ, set Wave 10 crucible + gate plan.
+- [x] AA9. Wave 9 tribunal: weighted **8.34** (was 8.17, +0.17 evidence depth). Proof: matrix + commit.
+- [x] AA10. Wave 10 outcome (HARD GATE PASS + WILD CRUCIBLE CONDITIONAL PASS): dev.py check exit 0, 708 passed; Docker 3/3 verified; Chrome + Firefox cards green. Crucible: command-injection demo repo cloned in-container only, spec/detect/cleanup proven, oracle green; keyed sweep deferred (no creds). Files: `docs/WILD_INGESTION_LOG.md`, `docs/TRAPS.md` (tmpfs/cp trap). No Wave-11-regression-only needed.

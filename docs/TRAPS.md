@@ -12,6 +12,14 @@ here, not in scattered notes.
   Lesson: RED tests for missing modules must import defensively and fail as `AssertionError` inside a test body; a collection ERROR is not a LAW 9 red (it proves nothing about behavior and hides sibling results).
   Also: `TypeError: 'NoneType' object is not callable` on follow-on tests is the correct downstream shape — it traces to the same absence, not a second defect.
 
+## Ascendancy Wave 10 wild crucible (2026-10-31, branch feature/30-wave-ascendancy)
+
+- **Trap: `docker cp` cannot see tmpfs-mounted content on this daemon — three "Could not find the file" failures on files `docker exec ls` proves exist.**
+  Wrong assumption: clone into a tmpfs staging dir, then `docker cp` the tree out — standard two-step extraction.
+  Evidence: `docker exec ls /tmp/wild` listed all 3 wildcard files, but `docker cp` (whole-dir and per-file) failed every time; per-file `docker exec cat` through stdout worked (~100B files). The tmpfs mount that makes the container disposable also hides its contents from the daemon-side copy path.
+  Lesson for the intake implementation (`repo_intake.py` staging): extract with `docker exec tar -C <dir> -cf - .` streamed to stdout, or stage into a non-tmpfs container path (still no host mount — a writable container layer dir), never tmpfs + `docker cp`. Recorded in `docs/WILD_INGESTION_LOG.md`.
+  Also: README-manifest mismatch — the wildcard README claims a `requirements.txt` the tree does not contain, so `detect_runtime` correctly fails closed. Never trust manifest claims from intel; list the actual tree.
+
 ## TUI parity merge (2026-10-30, shipped as 0.6.0)
 
 - **Trap: `TuiState.sweep_depth` vs `sweep_passes` are two different names
