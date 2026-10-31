@@ -175,3 +175,15 @@ and taxonomy link.
 - Taxonomy: new T1c subclass (identifier-position injection). Vault:
   red `08f8e7c97a65`, blue `a6598cd153a6`.
 - Gate-3: replay PASS (renamed variant; flip dead).
+
+## D15 — T4f greeter-containment prior (Cycle 24, 2026-10-31, PARTIAL)
+
+- Fixture: Python greeter with stored-nickname second-order SQLi (Gate-0
+  proven) + avatar traversal. Red chose the T4 link (exit 0); Blue closed
+  it → exit 1, regressions 0/0. The T1d second-order stays OPEN by record
+  (solo fixture queued) — second C17-pattern partial.
+- Evidence: run `validation/task-2401-c24-report.json` (receipt pre=0/post=1,
+  patch sha `dc1f0708…`), `validation/task-2402-c24-vault.txt`.
+- Taxonomy: new T4f subclass. Vault: red `f7332fd6e860`,
+  blue `25afac938546`.
+- Gate-3: replay PASS (renamed variant; traversal blocked).

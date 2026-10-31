@@ -790,3 +790,47 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (T3d). Taxonomy: new T3d subclass.
 - Reusable prior created: T3d backtick escapeshellarg-outside-quotes
   template + inertness-semantics replay rule.
+
+## E24a — Cycle 24 design REJECTED at Gate 0 (second $0 win)
+
+- Hypothesis for T2f (`string.Template.substitute` as an injection sink):
+  REFUTED LOCALLY. The battery shows Template does NOT evaluate
+  `${...}` — unknown `$`-patterns pass through LITERALLY (`${7*6}` →
+  `${7*6}`, `$title` → `$title`). There is no code execution, no data
+  leak, no error signal: the "sink" is inert by design. A keyed run would
+  burn ~$0.20 for a guaranteed Red exit-1.
+- Decision: REJECT at Gate 0, $0 spent. Second Gate-0 rejection (after
+  T4d/basename). Emerging rule CONFIRMED: $-style/shaping-only "sinks"
+  without evaluation are NOT vulns — evaluation (eval/Function/shell/SQL)
+  is the necessary ingredient. The Gate-0 battery habit has now saved two
+  full keyed runs tonight.
+- Redirect: Cycle 24 becomes Python T1d — second-order SQLi via a stored
+  nickname (STORE-then-query shape, distinct from direct WHERE/ORDER-BY):
+  `/nick?name=` stores, `/hello` renders `SELECT ... WHERE nick='<stored>'`
+  — the stored value is the injection carrier. Gate-0 battery first.
+
+## E24b — Cycle 24 keyed run: T4 retained+CLOSED, T1d second-order MISSED (PARTIAL, C17 pattern)
+
+- Hypothesis: the Gate-0-proven second-order signal verifies.
+- Result: PARTIAL — success=True on the RETAINED link (T4 traversal:
+  Red exit 0 → Blue realpath+commonpath → exit 1, regressions 0/0,
+  receipt pre=0/post=1, cleanup ok; 6 calls p12526/c19587 ≈$0.18).
+  But Red did NOT choose the T1d second-order link (no `/nick` in the
+  probe at all) — despite Gate-0 proving it locally (hey,yo vs hey).
+  The headline T1d stays OPEN by record; queued as a SOLO T1d fixture
+  (no T4 competition) per the C17 lesson. Same honest-partial handling:
+  vault records the MISS explicitly.
+  Evidence: run `validation/task-2401-c24-live.txt`,
+  `validation/task-2401-c24-report.json`.
+- Why the miss matters: multi-sink fixtures let Red pick the EASIEST
+  link (traversal > second-order). New Green rule: ONE sink per fixture
+  for headline proofs; co-present sinks only when the CHAIN demands them
+  (C4/C7/C11 pattern). Recorded in TRAPS.
+- Gate-3 replay PASS on renamed variant (T4 containment; layout-depth
+  script error corrected — my script, not the patch).
+- Vault: red `f7332fd6e860`, blue `25afac938546` (with missed-T1d + C17
+  partial notes). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2402-c24-vault.txt`.
+- Conclusion: Δ(C.24-retained) → 0; Δ(C.24-T1d) stays OPEN by record.
+  Taxonomy: new T4f subclass (greeter containment). T1d queued solo.
+- Reusable prior created: T4f containment + the ONE-sink Green rule.

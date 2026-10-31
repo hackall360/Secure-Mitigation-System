@@ -74,3 +74,9 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - Short contract did NOT immunize (already 2 sentences). Verbatim retry
   verified — transient, not systematic. Short contracts reduce frequency;
   only retries clear transients. ≈$0.12 tuition. Evidence: `task-2301-*`.
+
+## F11 — Cycle 24 T2f Template design rejected at Gate 0 (2026-10-31)
+
+- `string.Template.substitute` does not evaluate `${...}` — inert by
+  design, no signal, no vuln. Rule: no evaluation = no injection sink.
+  $0 spent. Gate-0 battery habit: 2 runs saved.

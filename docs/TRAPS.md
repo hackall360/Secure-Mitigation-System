@@ -128,3 +128,7 @@ here, not in scattered notes.
 - **Trap: stateful Green fixtures MUST persist under `/tmp`, never `__DIR__`.**
   Wrong assumption: the target runtime filesystem is writable because the snapshot staged files there.
   Evidence: Cycle-16 attempt 1 — `/sign` wrote `notes.json` next to `server.php` with `@file_put_contents` (silent fail); the runtime is `read_only: True` (tmpfs only `/tmp`), so the wall rendered empty and the BASELINE regression failed (`FAIL Ada`) before Red even ran. Fix: `sys_get_temp_dir()` / `/tmp/...` for all fixture state (the Cycle-16b store is `/tmp/forge16-notes.json`). Never `@`-suppress persistence writes in fixtures — fail loudly in smoke tests.
+
+- **Trap: multi-sink fixtures let Red pick the EASIEST link, orphaning the headline sink.**
+  Wrong assumption: Green co-presenting two sinks gets two proofs (or the harder one).
+  Evidence: Cycle 24 — Gate-0 PROVED the T1d second-order signal locally (hey,yo vs hey), but the keyed Red probe never touched `/nick` (0 mentions); it proved the T4 traversal instead and Blue closed only that. Same shape as C17 (Function sink orphaned). The receipt is per-FINDING, not per-fixture — orphans must be re-queued solo, never assumed covered. Fix: ONE sink per fixture for headline proofs; co-present sinks ONLY when the chain contract demands both links (C4/C7/C11 unified-script pattern). The T1d solo fixture is queued.
