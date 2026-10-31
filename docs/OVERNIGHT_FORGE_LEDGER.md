@@ -45,6 +45,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T11:14Z | 31 | spark-1.3 + wonder-1.0 (slim, short) | p13991/c21632 ≈$0.18 | T9b HTTP-cookie chain, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: CLOSES C30 OPEN; cookie round-trip enforced+honored; HTTP-proof rule validated; vault T9b-closed; Gate-3 PASS |
 | 2026-10-31T11:19Z | 32 | spark-1.3 + wonder-1.0 (slim, short) | p11994/c24285 ≈$0.33 | T3f triple-stash, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: normalize + remove-raw-branch; 3rd CWE-74 member; vault T3f; Gate-3 PASS |
 | 2026-10-31T11:22Z | 33 (scout) | none (local reading only) | 0 | validator.js isURL/escape | n/a | n/a | n/a | INCONCLUSIVE (build-blocked): static leans guarded; zero-build rule refined |
+| 2026-10-31T11:29Z | 34 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.35 total | T9c+T1f chain, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): HTTP round-trip honored; exact-match lookup; HTTP-proof 2/2; vault T9c; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

@@ -155,3 +155,13 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Gate-0: Template-substitution (`string.Template`, C24) is INERT — no
   evaluation, no vuln. Evaluation is the necessary ingredient.
 - Priors: red `9e21d63fd849`, blue `53bd3cb3bd28` (vault, forge-c29).
+
+## T9c note (locker-combo gate + emulated concat lookup, Node)
+
+- Subclass T9c (proven forge Cycle 34, Node): locker combination
+  (`2468`→member badge cookie) gates a concat-shaped lookup. Gate-0:
+  hostile label leaks all tiers. Blue: exact-match lookup + typeof
+  guards (no predicate building at all).
+- HTTP-proof rule 2/2 (C31, C34): chain contracts demand the cookie
+  round-trip; scribe asserts the gate-link shape in the probe.
+- Priors: red `b90493849e92`, blue `47932423850a` (vault, forge-c34).

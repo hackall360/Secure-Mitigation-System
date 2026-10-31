@@ -1051,3 +1051,41 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Reusable prior created: validator audit checklist (escape-table
   coverage, protocol/auth/port disambiguation, encoded-payload check) +
   the refined zero-build exotic rule.
+
+## E40r — Cycle 40 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C26, C29, C30, C31 (10) +
+  Node C2, C8, C11, C14, C17, C18, C27, C32 (8) + PHP C5, C10, C13, C16,
+  C19, C23, C28 (7). Total 25. Node = 8/25 = 32% ✓ (restored under 40%).
+- Scouts: 7 (5 neg + 2 inconclusive). Zero-build rule stands.
+- Class coverage: every bundled family has forge-novel proofs; T3 family
+  spans a/c/d/dd/e/f; T4 spans a/b/c/e/f/g; T6 spans b/c; T9 spans a/b.
+  Thinnest: T7 (×1), T8 (×1) — next chains should revisit gate+selector
+  shapes.
+- Forced direction: Cycles 34-36 = Node HTTP-cookie CHAIN lineage
+  (C4/C11/C31 pattern on the least-used language) + Cycle 36 scout
+  cadence (zero-build single-file ONLY).
+
+## E34a — Cycle 34 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5/C17/C19/C23: Red exit-0 + Blue proposal accepted,
+  final verification report malformed (5 calls ≈$0.30-ish). Retry verbatim.
+
+## E34b — Cycle 34 retry: T9c+T1f chain VERIFIED (HTTP-proof rule holds twice)
+
+- Attempt 1 died on the closing-report schema fault (5 calls ≈$0.14);
+  verbatim retry VERIFIED first-try of the retry: success=True, retained,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. Cookie-flow assertion
+  holds (/claim + Set-Cookie + Cookie + tier). Blue: exact-match lookup
+  (killed the OR-emulation branch too). 6 calls p11886/c17416 ≈$0.21.
+  Evidence: run `validation/task-3402-c34b-live.txt`,
+  `validation/task-3402-c34b-report.json`.
+- Gate-3 replay PASS on renamed schema (injection → none, array tier →
+  none via typeof guard, benign kept).
+- Vault: red `b90493849e92`, blue `47932423850a`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3403-c34-vault.txt`.
+- Conclusion: Δ(C.34) → 0. The HTTP-proof rule now holds 2/2 (C31, C34) —
+  promoted from rule to LAW-CANDIDATE for the next TRAPS/arch pass:
+  chain contracts MUST demand the HTTP round-trip AND the scribe MUST
+  assert the gate-link shape in the probe. Taxonomy: new T9c class.
+- Reusable prior created: T9c HTTP-cookie combo-gate template.
