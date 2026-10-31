@@ -306,6 +306,13 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
             else {k: v for k, v in base_files.items() if not k.startswith("repo.")}
         )
         runtime = list(getattr(snapshot, "runtime_command", []) or ["python3", "app.py"])
+        # Pairing vs regression split: verifiers probe a live HTTP target,
+        # but the regression command must terminate. When the staged tree
+        # contains a server-shaped entry (server.py), pair THAT for verify
+        # while the frame's runtime stays the terminating regression check.
+        pair_runtime = list(runtime)
+        if "server.py" in code_files:
+            pair_runtime = ["python3", "server.py"]
         spec = _ProjectSpec(
             path=".",
             command=runtime,
@@ -319,6 +326,7 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
                 self._manager = manager
                 self._network = None
                 self._snapshot = None
+                self._target = None
 
             def require_base_images(self):
                 self._manager.require_base_images()
@@ -333,11 +341,62 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
                     self._snapshot = _projects._make_snapshot(code_files, metadata)
                 return self._snapshot
 
+            def _ensure_target(self):
+                """Start the staged snapshot as a paired target-service.
+
+                Verifiers probe http://target-service:8080 per the probe
+                contract; without this pairing scripts probe nothing.
+                Bounded readiness (fail closed), paired teardown in close().
+                """
+                from modules.core.docker_manager import SandboxError
+
+                if self._network is None:
+                    raise SandboxError("Project network was not initialized.")
+                if self._target is not None:
+                    return self._target
+                image = self._manager._snapshot_project_image(
+                    settings.target_base_image, self._ensure_snapshot(), "target"
+                )
+                container = self._manager._runtime(
+                    image,
+                    self._network,
+                    "target",
+                    list(pair_runtime),
+                    aliases=["target-service"],
+                    clear_entrypoint=True,
+                    working_dir="/workspace",
+                )
+                import time as _time
+
+                from modules.core.docker_manager import READY_SCRIPT
+
+                deadline = _time.monotonic() + 10.0
+                ready = False
+                while _time.monotonic() < deadline:
+                    try:
+                        probe = container.exec_run(["python3", "-c", READY_SCRIPT])
+                        if getattr(probe, "exit_code", 1) == 0:
+                            ready = True
+                            break
+                    except Exception:
+                        pass
+                    _time.sleep(0.5)
+                if not ready:
+                    try:
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+                    raise SandboxError("Ingested target did not become ready; no verifier ran.")
+                self._target = container
+                return container
+
             def _evidence(self, command=None, script=None):
                 from modules.core.docker_manager import SandboxError
 
                 if self._network is None:
                     raise SandboxError("Project network was not initialized.")
+                if script:
+                    self._ensure_target()
                 result = self._manager.run_project_check(
                     self._network,
                     spec,
@@ -384,9 +443,15 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
 
             def close(self):
                 try:
+                    if self._target is not None:
+                        try:
+                            self._target.remove(force=True)
+                        except Exception:
+                            pass
                     if self._network is not None:
                         self._manager.close()
                 finally:
+                    self._target = None
                     self._network = None
 
         return _IngestSandbox()

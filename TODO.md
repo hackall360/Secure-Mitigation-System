@@ -363,6 +363,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA27. Wave 27 TRIBUNAL (mod-3).
 - [x] AA27. Wave 27 outcome: tribunal weighted **8.80** (was 8.75, +0.05 ingest live-fire). Movers: 2a-3 → 8.0 (runtime proven on real frames). Proof: matrix.
 - [ ] AA28. Wave 28 cooperating probe shape (verifier contract for one-shot targets).
+- [x] AA28. Wave 28 outcome: target-service pairing implemented (`_ensure_target` + alias + bounded readiness + teardown; 3 RED green). Live: sanitized tree → correct no_findings; vulnerable tree → red exit-0 proof + blue exit-0 re-probe (status partial on verdict threshold, wiring complete). Ingest→verify loop fully fires with real Muse+Docker on ingested bytes. Server torn down, zero leftovers.
 - [ ] AA29. Wave 29 sustained-load + 429 drill (bounded fault-injection).
 - [ ] AA30. Wave 30 FINAL TRIBUNAL + HARD GATE + WILD CRUCIBLE #3 (gate takes precedence).
 
