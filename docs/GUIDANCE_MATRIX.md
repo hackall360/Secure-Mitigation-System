@@ -58,3 +58,33 @@ Empirical re-verification, not ledger claims. Evidence:
 | Branch integrity | 69 commits, 5 own cleanly separated | merge decision (human) | [/] IN_PROGRESS |
 | Docker hygiene | 0 running containers (own stray `loving_goldwasser` stopped+removed 16:27Z; /tmp fixture debris swept, fixture sources retained) | none | [x] VERIFIED_ZERO_DELTA |
 | Vault integrity | stats clean, 8 new RED tests green | none | [x] VERIFIED_ZERO_DELTA |
+
+## Frontier-Delta Phase 0 spot-check — measured $S_{current}$ (2026-10-31T18:14Z, directive close-frontier-delta)
+
+Empirical re-verification, not ledger claims. Full report:
+`~/.jcode/overnight/runs/overnight_1793434579887_18328835991007113135/phase0/spotcheck-report.md`;
+replay trees in `phase0/work/<variant>/`.
+
+- 10 priors sampled (seed 20261031, all receipt-PASS): each replayed in REAL Docker
+  (`internal=True`, pinned base) on identifier-renamed variants + archived Red probe.
+  Vuln-side 10/10 exit 0, patched-side 10/10 exit 1, benign 10/10 exit 0.
+  3 variants labeled ORIENTED (C31/C40: archived tree missed `end_headers` on one 200
+  branch — urllib-tolerant then, http.client-strict now; C14/C44: archived
+  `compressed_text` truncations reconstructed from archived Blue patch). Vuln shapes
+  unchanged in all cases; labels are in the report, nothing hidden.
+- 5 chains sampled (C4/C7c/C11/C31/C34b): archived receipts all show Red 0 → Red 1 →
+  Benign 0/0. 5/5.
+- 76 dated meta rows: schema pass 76/76 (timestamp, known model ID, purpose, role,
+  outcome); 10 sampled all cross-check against receipts (7 verified with per-call
+  usage, 3 error receipts honestly logged as schema faults). 0 INVALID. Note: file
+  holds 76 dated + 1 undated recon row; "78 entries" in JUDGING_EVIDENCE counts header
+  frame — no material correction needed.
+- Spot-check score 100% ≥ 80% threshold → Phase 1 PROCEEDS.
+- Gate 0: full suite **798 passed**, UI diff empty, no orphaned containers/networks
+  (only pre-existing scbx-*/katzu remain).
+
+| Subsystem | Measured $S_{current}$ | $\Delta$ remaining | Gate |
+|---|---|---|---|
+| Prior replay (unseen variants) | 10/10 exit-0 + 10/10 exit-1 + 10/10 benign-0, live Docker | none | [x] VERIFIED_ZERO_DELTA |
+| Chain re-verification | 5/5 Red 0 → Red 1 → Benign 0 | none | [x] VERIFIED_ZERO_DELTA |
+| Meta-call provenance | 76/76 schema-valid, 10/10 receipt-cross-checked, 0 INVALID | none | [x] VERIFIED_ZERO_DELTA |
