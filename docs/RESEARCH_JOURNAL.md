@@ -401,3 +401,27 @@ Run: `overnight_1793434523077_12855248373640259943`.
   PHP×2 — within the 40% diversity bar at last (max 3/7 ≈ 43% Python...
   still marginally over; next Green stays non-Python).
 - Reusable prior created: T6b red marker probe + htmlspecialchars template.
+
+## E11 — Cycle 11: Node T9+T4 invite-gate chain, first-try VERIFIED
+
+- Hypothesis: the T7 cookie-gate chain shape replays in Node with an
+  invite-code gate (new T9 subclass) + traversal store.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Chained
+  member-gated path traversal: badge from /redeem ... enables unsanitized
+  readNote". Unified script hits /redeem + badge + Cookie + ../ + secret +
+  exit0/exit1. Blue patched Link B (strict containment, EINVAL→400) and left
+  Link A semantics intact. 6 calls p13896/c31458 ≈$0.27.
+  Evidence: run `validation/task-1101-c11-live.txt`,
+  `validation/task-1101-c11-report.json`.
+- Gate-3 replay PASS on renamed variant (4/4 evil blocked incl. `..` and
+  empty; benign ok).
+- Vault: red `26245a5fb2af`, blue `8af210c7fd86`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1102-c11-vault.txt`.
+- Conclusion: Δ(C.11) → 0. Second unified A→B chain on a novel fixture
+  (C4 was Python role-cookie+SQLi; C11 is Node invite-badge+traversal) —
+  the chain-contract pattern (name Link A/Link B, demand ONE script)
+  reproduces across languages and sink families. Taxonomy: new T9 class
+  (invite/badge gate).
+- Reusable prior created: T9+T4 Node unified probe + strict-containment
+  template.

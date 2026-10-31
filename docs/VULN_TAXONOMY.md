@@ -79,3 +79,17 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Blue pattern: allowlist-regex fullmatch + realpath/commonpath containment
   (Link A); decimal-regex allowlist (Link B).
 - Priors (T8b): red `256ab8c3e090`, blue `95a4d221b4c2` (vault, forge-c7).
+
+## T9 Invite/badge gate → store-traversal chain (CWE-639 + CWE-22)
+
+- Subclass T9a (proven forge Cycle 11, 2026-10-31, Node): `/redeem?code=`
+  Link A mints a member badge cookie from a static invite set; cookie-gated
+  note store Link B joins unsanitized names. ONE unified Red script
+  (redeem badge, reuse cookie, `../../secret.txt`) exits 0; Blue strict
+  containment (`resolve` + `target!==base && !startsWith(base+sep)` →
+  EINVAL→400) → exit 1, regressions 0.
+- Taint: query param → badge cookie → `path.join` read.
+- Red shape: `code=WELCOME-123` redeem + `note=../../secret.txt`.
+- Blue pattern: non-empty check + resolve + strict containment; Link A
+  hardening is follow-up.
+- Priors: red `26245a5fb2af`, blue `8af210c7fd86` (vault, forge-c11).

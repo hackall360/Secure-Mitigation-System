@@ -26,6 +26,8 @@ Run: `overnight_1793434523077_12855248373640259943`.
 | 2026-10-31T09:18Z | muse-wonder-1.0 | C8 (2 calls) | Blue | dual resolve+regex guard, re-probe exit 1 |
 | 2026-10-31T09:25Z | muse-spark-1.3 | C10 (4 calls) | Red | T6b raw-reflection probe exit 0 pre-patch |
 | 2026-10-31T09:25Z | muse-wonder-1.0 | C10 (2 calls) | Blue | htmlspecialchars, re-probe exit 1 |
+| 2026-10-31T09:31Z | muse-spark-1.3 | C11 (4 calls) | Red | unified redeem→traverse probe exit 0 pre-patch |
+| 2026-10-31T09:31Z | muse-wonder-1.0 | C11 (2 calls) | Blue | strict containment, re-probe exit 1 |
 
 Rules: Red = `muse-spark-1.3`, Blue = `muse-wonder-1.0` (config defaults).
 Every keyed call is logged here with token counts from the response usage.

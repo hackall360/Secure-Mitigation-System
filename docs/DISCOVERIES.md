@@ -92,3 +92,15 @@ and taxonomy link.
 - Taxonomy: new T6b (PHP) subclass (T6 was co-present-only before). Vault:
   red `b5753bddae95`, blue `517a43a5ddea`.
 - Gate-3: replay PASS in Docker PHP (script neutralized, quotes escaped).
+
+## D8 — T9+T4 invite-gate chain prior (Cycle 11, 2026-10-31)
+
+- Novel fixture: Node invite redeem (`WELCOME-123`→member badge) gating a
+  traversal-sensitive note store. Red ONE unified script (redeem badge →
+  reuse cookie → `../../secret.txt`) exit 0; Blue strict containment →
+  Red exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-1101-c11-report.json` (receipt pre=0/post=1,
+  patch sha `80210f96…`), `validation/task-1102-c11-vault.txt`.
+- Taxonomy: new T9 class (invite/badge gate) + T4. Vault:
+  red `26245a5fb2af`, blue `8af210c7fd86`.
+- Gate-3: replay PASS (renamed variant; 4/4 evil blocked).
