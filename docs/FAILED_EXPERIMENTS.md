@@ -145,3 +145,22 @@ rule applies: destroy container, log here, begin next cycle immediately.
   restart between probe and regression. REVISIT only with harness support.
 - Cost: 2 attempts (~$0.3). Stopped early per stop-line discipline (C41
   lesson: cap R&D on resistant fixtures).
+
+## F14 — C46 parked OPEN: T1i LIKE-wildcard 5x Blue-schema cluster (2026-10-31, 5 attempts)
+
+- Fixture: Python LIKE-pattern interpolation + cross-user search, stateless.
+  Gate-0 local PASS (benign ali; hostile % leaks all rows).
+- All 5 attempts: Red bottled exit-0 proofs on search.py; Blue phase died
+  with "invalid JSON or unexpected response schema" at the identical point.
+  Worst Blue-flake cluster of the night (C40: 3x; C45: 1x; C46: 5x).
+- Hypothesis (UNPROVEN, needs controlled test): the `%` wildcard + nested
+  quote juggling (`'" + prefix + "%'"`) in the fixture context makes Blue's
+  JSON payload unparseable — either via model-side escaping failure or via
+  a `%`-format collision in the prompt chain. Controlled test for later:
+  same fixture but pattern built as `prefix + chr(37)` (no literal % in
+  source) vs literal %; if chr(37) clears, the hypothesis confirms and the
+  fix is a fixture-authorship rule (no raw % in T1i fixtures).
+- Parked OPEN (hotspot, stop-line at 5 per C41 discipline): Red signal 5/5
+  exit-0, zero Blue outputs. Revisit with the chr(37) variant.
+- Traps honored: per-attempt report snapshots saved (c46a-e); ast-parse
+  drivers; no fixture thrash mid-cluster (contract kept byte-identical).
