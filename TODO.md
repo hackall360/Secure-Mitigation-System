@@ -30,7 +30,7 @@ Every item names its files and its proof.
 
 - [x] DD1. RED test first (LAW 9): `tests/test_feature_tags.py` ported (library.tags import, double-quote hook pattern, invisibility pins). RED proven: collection ERROR `No module named 'library.tags'` (functional absence, not syntax). Registry-writer agent fanned out (isolated worktree /tmp/wt-tags-reg).
 - [x] DD2. Implement DONE: registry 127/127 + hooks + `dev.py tags` + `docs/TAGS.md` + root-cause fixes (research binds canonical sms_http; single-copy modules alias finder). Full gate 803 passed + All checks + tags 127/127. Proof: gate output.
-- [.] DD3. Live proof: keyed path needs creds (offline_scan covers Docker sandbox live); browser matrix for attribute-only DOM change next. Then version decision + ship.
+- [x] DD3. Live proof DONE: Firefox + Chrome offline cards "Boundary check passed" (attribute-only DOM, no visual change); offline_scan 4/4 verified on tags tree. LAW 12: MINOR (audit tooling, no user-visible capability; version stays 0.11.0, modules start at 0.1.0 per TAGS.md bump rule). Proof: cards + scan lines.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
