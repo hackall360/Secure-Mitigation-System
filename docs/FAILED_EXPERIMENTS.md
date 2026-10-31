@@ -122,3 +122,26 @@ rule applies: destroy container, log here, begin next cycle immediately.
   distinct bodies for forged-vs-unsigned, or waiter probe template.
 - Traps added: snapshot per-attempt report.json (attempt 5's rolled-back
   context was overwritten by attempt 6); ast-parse driver edits before spend.
+
+## F13 — C42 parked OPEN: T6d proto-pollution harness-incompatible (2026-10-31, 2 attempts)
+
+- Fixture: Node unguarded recursive merge (Link A) + `isAdmin` reading
+  `{}.elevated` (Link B, prototype read). Gate-0 local PASS: hostile merge
+  sets `({}).polluted === "YES"`; fresh-session `isAdmin` returns true.
+- Attempt 1: baseline regression failed — `test_contract.js` hardcoded
+  127.0.0.1; sandbox serves at `target-service:8080`. Trap: Node HTTP
+  fixtures MUST use target-service-first/fallback hosts in contracts
+  (Red probes already know; the FIXTURE contract must too).
+- Attempt 2 (contract fixed, regression exit 0 via target-service):
+  "cumulative snapshot failed the original regression". Root cause:
+  PROTOTYPE POLLUTION IS PROCESS-GLOBAL. Any hostile probe permanently
+  elevates the server process, so benign-after-hostile ordering breaks
+  differential gates by design. Not a model failure — a FIXTURE-PHYSICS
+  failure: global-state vulns are harness-incompatible with pre/post
+  differential verification in one long-lived server process.
+- Parked OPEN (hotspot): mechanism REAL (Gate-0 proven), needs either a
+  per-request-fresh server (spawn per connection — unrealistic), a
+  pollution-scoped read (kills the vuln), or a harness mode with server
+  restart between probe and regression. REVISIT only with harness support.
+- Cost: 2 attempts (~$0.3). Stopped early per stop-line discipline (C41
+  lesson: cap R&D on resistant fixtures).

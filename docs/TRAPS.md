@@ -140,3 +140,20 @@ here, not in scattered notes.
 - **Trap: Gate-3 replays MUST reproduce the framework decoding stack, not call the sink directly.**
   Wrong assumption: passing the raw attack string to the patched function replays the Docker proof.
   Evidence: Cycle-38 replay #1 fed literal `%252e...` to `fetch_asset()` via CLI and asserted 400 — FAILED, because CLI strings skip PHP's `parse_str` layer (which decodes `%25→%` once before the app runs). The real probe sends `%252e` over HTTP; the app receives `%2e`. Fix: emulate with `parse_str('name='.raw)` inside the replay, then call the function (replay #2 PASS). Same lesson class as the C36 twin-depth fix: the replay must mirror the PRODUCTION PATH (depth + decoding layers), or a correct patch "fails" a wrong test.
+
+## Node HTTP fixture contract host rule (forge Cycle 42, 2026-10-31)
+
+- The sandbox serves the target at DNS name `target-service:8080`, NOT
+  127.0.0.1:8080. A `test_contract.js` hardcoding 127.0.0.1 passes locally
+  and FAILS baseline in-sandbox. Fixture contracts MUST try
+  `target-service` first with 127.0.0.1 fallback (works both places).
+  Red probes already know this; GREEN must write it into the contract.
+## Global-state vulns break differential gates (forge Cycle 42, 2026-10-31)
+
+- Prototype pollution (and any process-global-state vuln: caches, singletons,
+  module-level flags) permanently alters the server after one hostile probe.
+  Pre/post differential verification in a single long-lived server process
+  then fails benign-after-hostile BY PHYSICS, not by model error. Do not
+  burn attempts: park as hotspot unless the harness restarts the server
+  between probe and regression. Prefer stateless fixtures (fresh DB per
+  request like sqlite :memory:, pure functions of request input).
