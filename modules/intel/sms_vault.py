@@ -38,6 +38,7 @@ import json
 import os
 import re
 import secrets
+import tempfile
 from enum import Enum
 from pathlib import Path
 
@@ -257,18 +258,39 @@ class VaultStore:
             pass
 
     def commit(self, payload: dict, *, fingerprint: str = "") -> str:
-        """Encrypt + persist one payload; returns its deterministic record id."""
+        """Encrypt + persist one payload; returns its deterministic record id.
+
+        Atomic: bytes land in a sibling temp file and are renamed over the
+        final path, so a crash can never leave a truncated .vault blob
+        that count() would count but nothing could decrypt.
+        """
         if not isinstance(payload, dict):
             raise VaultError("Vault payload must be a mapping.")
         record_id = _record_id(self.namespace, fingerprint, payload)
         stored = {"fingerprint": fingerprint, "payload": payload}
         blob = encrypt_blob(stored, key=self._key)
         path = self._blob_path(record_id)
+        tmp_fd = None
         try:
-            path.write_bytes(blob)
-            path.chmod(0o600)
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                dir=str(path.parent), prefix=record_id + ".", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(tmp_fd, "wb") as handle:
+                    tmp_fd = None
+                    handle.write(blob)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(tmp_name, 0o600)
+                os.replace(tmp_name, path)
+            finally:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
         except OSError as exc:
             raise VaultError(f"Vault write failed ({type(exc).__name__}).") from exc
+        finally:
+            if tmp_fd is not None:
+                os.close(tmp_fd)
         self._bump_index(fingerprint)
         return record_id
 
