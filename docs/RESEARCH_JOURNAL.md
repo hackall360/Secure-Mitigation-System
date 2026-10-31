@@ -1508,3 +1508,35 @@ Run: `overnight_1793434523077_12855248373640259943`.
   redirect-allowlist). Gate-3 8/8. Vault NOVEL. Taxonomy v43.
   Conclusion: Δ(C.63) → 0. The forge closes its final cycle with the
   full stall protocol validated end to end.
+
+## E-Phase1 — Candidate selection: validator.js TOP 1 (2026-10-31T18:17Z)
+
+- Hypothesis: among the 11 scouts, exactly one shapes a deterministic local repro of
+  a live third-party weakness with a minimal patch and a clear impact story —
+  validator.js `isURL` host allow/block lists compare case-sensitively while DNS
+  hostnames are case-insensitive (and sibling `isEmail` in the SAME repo already
+  lowercases before `checkHost` — in-repo precedent for the fix).
+- Why this candidate:
+  - Deterministic local repro: YES — babel-free spliced harness
+    (`phase1/splice_harness.mjs`: strips ESM, inlines the 6-file dep closure, no
+    install) reproduces on pinned `9ff34247` (v13.15.35, MIT): `isURL('http://EVIL.COM/',
+    {host_blacklist:['evil.com']})` → `true` (want `false`); 3/3 matrix cells fail
+    with string lists while `/evil\.com/i` blocks (proves string-compare-specific).
+  - Chained-class novelty: host-allowlist bypass is a NEW class for the night (T1–T9
+    cover traversal/eval/cmd/XSS/gate/selector, never validator-case); the bypass
+    defeats the exact `host_whitelist`/`host_blacklist` options the API sells for
+    SSRF/redirect-guard use.
+  - Patchability: one-line-class fix (`host.toLowerCase()` before `checkHost`, mirroring
+    `isEmail`'s `lower_domain`), verifiable by re-running the same battery (exit 1).
+  - License clarity: MIT (`package.json` license field), pinned commit, local clone.
+  - Impact clarity: any app gating fetch/redirect on `isURL(url, {host_blacklist})`
+    with lowercase string entries is bypassed by uppercasing the URL host — DNS
+    resolves identically (WHATWG lowercases; confirmed `new URL` host `evil.com`).
+- Why NOT the others: 9/11 scouts are refuted negatives (correct code, nothing to
+  reproduce); @hapi/shot (C15) is the only other OPEN shape but its dep closure
+  (`@hapi/hoek`) is absent and its static replication leans no-pollution — lower
+  repro score (0) vs validator.js live battery (already running).
+- Expected novelty: LOW-MODERATE — case-sensitivity in blocklists is a known bug
+  CLASS, but whether validator.js `isURL` specifically is affected at this commit
+  is unsearched. Phase 2 novelty step must check NVD/OSV/GHSA + repo issues BEFORE
+  claiming anything beyond `REPRODUCED_LOCALLY`.
