@@ -472,7 +472,7 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 },
                 "serverInfo": {
                     "name": "secure-mitigation-system",
-                    "version": "0.9.0",
+                    "version": "0.10.0",
                 },
             },
         )
