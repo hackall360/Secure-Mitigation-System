@@ -12,8 +12,6 @@ Fail closed everywhere: no readiness → SandboxError, never a pass.
 
 from unittest.mock import MagicMock
 
-import pytest
-
 import main
 
 
