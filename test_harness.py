@@ -20,6 +20,30 @@ def check(condition: bool, message: str) -> None:
 
 
 def known_patch(key: str, source: str) -> str:
+    if key == "node_chain_link":
+        return source.replace(
+            "        const rawRole =",
+            "        const allowedGrant = parsedUrl.query.grant || '';\n"
+            "        if (!/^(viewer|editor|reviewer)$/.test(String(parsedUrl.query.role || 'viewer'))) {\n"
+            "            res.writeHead(400, { 'Content-Type': 'application/json' });\n"
+            "            res.end(JSON.stringify({ status: 'error', detail: 'Invalid role' }));\n"
+            "            return;\n"
+            "        }\n"
+            "        if (allowedGrant !== '' && allowedGrant !== 'grant:reviewer') {\n"
+            "            res.writeHead(400, { 'Content-Type': 'application/json' });\n"
+            "            res.end(JSON.stringify({ status: 'error', detail: 'Invalid grant' }));\n"
+            "            return;\n"
+            "        }\n"
+            "        const rawRole =",
+        ).replace(
+            "        const queryExpression =",
+            "        if (typeof rawUserId !== 'string' || !/^[0-9]+$/.test(rawUserId)) {\n"
+            "            res.writeHead(400, { 'Content-Type': 'application/json' });\n"
+            "            res.end(JSON.stringify({ status: 'error', detail: 'Invalid ID' }));\n"
+            "            return;\n"
+            "        }\n"
+            "        const queryExpression =",
+        )
     if key == "node_query_sink":
         return source.replace(
             "        const queryExpression =",
@@ -48,6 +72,32 @@ def known_patch(key: str, source: str) -> str:
 
 
 def diagnostic_script(key: str) -> str:
+    if key == "node_chain_link":
+        return r"""
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+target = TARGET_VALUE
+grant = urllib.parse.quote('grant:reviewer', safe='')
+probe = ('http://target-service:8080/lookup?role=viewer&grant=' + grant
+         + '&id=%27')
+try:
+    with urllib.request.urlopen(probe, timeout=3) as response:
+        status, body = response.status, response.read(65537).decode()
+except urllib.error.HTTPError as error:
+    status, body = error.code, error.read(65537).decode()
+if target == 'node_chain_link':
+    if status == 400:
+        print('Chained boundary blocked at the role or expression guard')
+        sys.exit(1)
+    if status == 500 and 'error' in body:
+        print('Benign chained marker reached the dynamic expression via the granted role')
+        sys.exit(0)
+print('Unexpected response; inconclusive')
+sys.exit(2)
+""".replace("TARGET_VALUE", json.dumps(key))
     return r"""
 import configparser
 import json

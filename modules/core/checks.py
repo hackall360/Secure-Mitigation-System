@@ -35,6 +35,29 @@ if target == 'node_query_sink':
     except urllib.error.HTTPError as error:
         assert error.code == 404
         assert json.loads(error.read()) == {'status': 'not_found'}
+elif target == 'node_chain_link':
+    import urllib.parse
+    grant = urllib.parse.quote('grant:reviewer', safe='')
+    for account_id, records in [
+        (101, [{'id': 101, 'username': 'alice', 'role': 'user'}]),
+        (102, [{'id': 102, 'username': 'bob', 'role': 'admin'}]),
+        (999, []),
+    ]:
+        response = json.loads(
+            get('/lookup?role=reviewer&grant=' + grant + '&id=' + str(account_id))
+        )
+        assert response == {'status': 'ok', 'count': len(records), 'results': records}
+    try:
+        get('/lookup?role=viewer&id=101')
+        raise AssertionError('Unprivileged lookup was allowed (FAIL: role gate missing; evidence: role=viewer&id=101 returned 200 instead of 400 insufficient-role)')
+    except urllib.error.HTTPError as error:
+        assert error.code == 400
+    try:
+        get('/unknown')
+        raise AssertionError('404 route was removed (FAIL: GET /unknown must return HTTP 404 not_found; evidence: request succeeded instead of raising HTTPError 404)')
+    except urllib.error.HTTPError as error:
+        assert error.code == 404
+        assert json.loads(error.read()) == {'status': 'not_found'}
 elif target == 'php_command_sink':
     for host in ('localhost', '127.0.0.1'):
         assert json.loads(get('/?host=' + host)) == {
@@ -51,7 +74,7 @@ elif target == 'binary_argv_echo':
     response = json.loads(get('/?' + params))
     assert response.get('status') in ('ok', 'exec_error', 'timeout'), response
 else:
-    raise AssertionError('Unknown fixture (FAIL: no normal-behavior contract for this target; evidence: target matched none of node_query_sink/php_command_sink/mysql_insecure_conf)')
+    raise AssertionError('Unknown fixture (FAIL: no normal-behavior contract for this target; evidence: target matched none of node_query_sink/node_chain_link/php_command_sink/mysql_insecure_conf)')
 print('Trusted normal-input checks passed for ' + target + ' (PASS: every expected lookup, 404-route, and config value matched; boundary verifier not involved)')
 sys.exit(0)
 """.replace("TARGET_VALUE", json.dumps(target_key))
