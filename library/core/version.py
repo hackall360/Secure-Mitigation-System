@@ -7,3 +7,5 @@ serverInfo, dashboard footer, README badge. Bump in this file only.
 """
 
 APP_VERSION = "0.11.0"
+
+__version__ = "0.11.0"
