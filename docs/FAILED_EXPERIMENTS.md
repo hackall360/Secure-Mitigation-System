@@ -164,3 +164,12 @@ rule applies: destroy container, log here, begin next cycle immediately.
   exit-0, zero Blue outputs. Revisit with the chr(37) variant.
 - Traps honored: per-attempt report snapshots saved (c46a-e); ast-parse
   drivers; no fixture thrash mid-cluster (contract kept byte-identical).
+
+## F14b — C46 hypothesis test result (2026-10-31): CONFIRMED
+
+- See E47. Refine F14: the trigger is nested-quote SHAPES in sink lines
+  the model must reproduce (`'" + ... + "%'"`), not `%` per se (C47
+  contains literal % and cleared). Token-exhaustion (C47a) is a second,
+  rarer failure mode on the same shape — budget pressure, not schema.
+- Standing rule: least-nested quoting in fixtures; snapshot per-attempt
+  reports; stop-line 5.

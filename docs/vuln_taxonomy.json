@@ -1,5 +1,5 @@
 {
-  "version": "32",
+  "version": "33",
   "classes": [
     {
       "id": "T1",
@@ -15,7 +15,8 @@
         "T1c": "Python ORDER BY/LIMIT identifier interpolation, boolean-flip signal (forge Cycle 22)",
         "T1d-closed": "Python stored-nickname second-order, solo fixture re-read parameterize (forge Cycle 25, closes C24 OPEN)",
         "T1e-closed": "Python two-slot concat WHERE, solo direct-import probe (forge Cycle 30; gate link open)",
-        "T1h": "Python price-keyed order lookup WHERE concat (forge Cycle 40, Link B; parametrized)"
+        "T1h": "Python price-keyed order lookup WHERE concat (forge Cycle 40, Link B; parametrized)",
+        "T1i": "Python LIKE-wildcard injection (forge Cycle 47, quote-clean after C46 nested-quote cluster; ESCAPE+parametrize fix)"
       },
       "priors": {
         "T1c": {
@@ -33,6 +34,10 @@
         "T1h": {
           "red": "15edd883f29a",
           "blue": "d887aa3dee3"
+        },
+        "T1i": {
+          "red": "103e13616096",
+          "blue": "cdb6bb47452f"
         }
       }
     },
@@ -319,6 +324,11 @@
       "version": "32",
       "date": "2026-10-31",
       "change": "Cycle 45: +T7f (alg-none bypass); vault recall check; Gate-3 4/4; C3-scout mirror doctrine"
+    },
+    {
+      "version": "33",
+      "date": "2026-10-31",
+      "change": "Cycle 47: +T1i (LIKE-wildcard, closes C46 OPEN); F14 hypothesis CONFIRMED (nested-quote model-payload fragility); vault recall; Gate-3 5/5; ESCAPE-clause doctrine"
     }
   ]
 }

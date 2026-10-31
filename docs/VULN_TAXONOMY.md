@@ -248,3 +248,21 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   fix would add HMAC mint+verify together (out of surgical scope).
 - Gate-3 unseen 4/4: forged admin, HS256-empty-sig, case-smuggled algs,
   missing alg. Vault: red `bcff6f456366`, blue `b862da4e1750`; NOVEL.
+
+## T1i note (LIKE-wildcard injection + F14 nested-quote lesson, CWE-89 family)
+
+- Subclass T1i (proven forge Cycle 47, Python, 2 attempts: 1x token-budget
+  transient, then VERIFIED): LIKE pattern interpolates raw input; `%`
+  returns all rows, `_ob` reaches bob. Stateless (:memory: per call).
+- F14 hypothesis CONFIRMED: C46 (nested-quote sink
+  `'" + prefix + "%'"`) died 5x with Blue-schema faults; C47 (identical
+  vuln, double-quoted sink, no nested-quote shapes in the model payload)
+  cleared on attempt 2. The fragility is NESTED QUOTES in the sink line,
+  not `%` itself. Fixture-authorship rule: sinks Blue must reproduce go
+  in the LEAST-nested quoting available (double-quoted SQL, params
+  outside the string).
+- Blue: `ESCAPE '!'` neutralization (`!!`, `!%`, `!_`) + parametrized
+  `LIKE ? ESCAPE '!'`. Exact-match preserved; wildcards dead; classic
+  inject returns []. Gate-3 unseen 5/5.
+- Vault: red `103e13616096`, blue `cdb6bb47452f`; NOVEL_SURFACE. Closes
+  the C46 OPEN record (hotspot resolved, not merely parked).

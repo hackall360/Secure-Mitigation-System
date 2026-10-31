@@ -157,3 +157,12 @@ here, not in scattered notes.
   burn attempts: park as hotspot unless the harness restarts the server
   between probe and regression. Prefer stateless fixtures (fresh DB per
   request like sqlite :memory:, pure functions of request input).
+
+## Fixture-authorship quoting rule (forge Cycles 46-47, 2026-10-31)
+
+- Sinks the model must reproduce in JSON payloads go in the LEAST-NESTED
+  quoting available. `'" + prefix + "%'"` killed Blue 5x (schema faults);
+  the identical vuln with `'... LIKE "' + pattern + '"'` cleared
+  immediately. Suspected mechanism: nested quotes inside JSON strings
+  break model-side escaping. Prefer double-quoted SQL strings and bind
+  parameters outside the string literal entirely.

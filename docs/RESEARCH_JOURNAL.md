@@ -1292,3 +1292,20 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Scout-mirror doctrine: C3 (PyJWT NEGATIVE) + C45 (hand-rolled POSITIVE)
   belong together — ecosystem-got-it-right vs bespoke-got-it-wrong.
   Conclusion: Δ(C.45) → 0.
+
+## E47 — Cycle 47: T1i VERIFIED attempt 2, F14 CONFIRMED (controlled test)
+
+- Green: identical vuln to C46, quote-clean sink (double-quoted SQL, no
+  nested-quote shapes). Gate-0: benign ali; hostile % leaks all.
+- Attempt 1: NEW fault signature — "Muse ran out of output tokens"
+  (reasoning counts toward limit). Model laboring over the LIKE shape
+  even quote-clean. Attempt 2: VERIFIED — pre 0, post 1, regressions
+  0/0. Cost $0.15. Total C46+C47 episode: ~$1.3 for one T1i prior.
+- Controlled-test verdict: nested-quote hypothesis CONFIRMED (5x death
+  vs immediate clear, identical vuln). New fixture-authorship rule
+  recorded in taxonomy + traps: least-nested quoting for model-
+  reproduced sinks.
+- Blue: ESCAPE-clause + parametrize (textbook). Gate-3 5/5. Vault
+  NOVEL. Taxonomy v33. Conclusion: Δ(C.47) → 0 (T1i closed, C46 OPEN
+  resolved). Episode ROI is poor but the RULE it bought applies to all
+  future T1-family fixtures.
