@@ -442,3 +442,26 @@ Run: `overnight_1793434523077_12855248373640259943`.
   zero-dependency single-file helper, or scouting pauses while Green runs.
 - Reusable prior created: parser-stack audit battery (sink grep, entity
   flags, ReDoS timing, extension availability).
+
+## E13 — Cycle 13: PHP T3-variant archive sink, first-try VERIFIED
+
+- Hypothesis: the escapeshellarg prior replays in a NEW sink shape (tar
+  listing of a user-named archive) with an allowlist upgrade.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "OS command
+  injection (T3) in /extract via unsanitized archive parameter" — marker
+  `backup.tgz; echo MARKER` reflected in the listing JSON pre-patch.
+  Blue: allowlist-regex (`[A-Za-z0-9._-]*\.tgz`, no `..`) + escapeshellarg
+  full path AND realpath+is_file containment for the co-present T4 read.
+  6 calls p10236/c17206 ≈$0.21.
+  Evidence: run `validation/task-1301-c13-live.txt`,
+  `validation/task-1301-c13-report.json`.
+- Gate-3 replay PASS in Docker PHP on renamed variant (`.tar.gz` suffix,
+  different layout; injection + traversal-name + metachar all inert).
+- Vault: red `d6387a003a23`, blue `bf98fd13ec7b`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1302-c13-vault.txt`.
+- Conclusion: Δ(C.13) → 0. T3 second variant proven (T3c): the allowlist
+  discipline transfers across sink shapes, and Blue independently hardened
+  the co-present T4 (defense in depth without being asked). Taxonomy: new
+  T3c subclass.
+- Reusable prior created: T3c tar-sink allowlist+escape template.

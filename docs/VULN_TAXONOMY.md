@@ -27,6 +27,11 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Red shape: `;`/`&&`/backtick metacharacter reflection in command output.
 - Blue pattern: exact allowlist of hosts / `escapeshellarg`; reject metachars.
 - Priors: none yet.
+- Subclass T3c (proven forge Cycle 13, 2026-10-31, PHP): archive name into
+  `tar tzf` shell listing. Red `backup.tgz; echo MARKER` marker in listing
+  JSON; Blue archive allowlist-regex + `escapeshellarg` full path (plus
+  co-present T4 containment).
+- Priors (T3c): red `d6387a003a23`, blue `bf98fd13ec7b` (vault, forge-c13).
 
 ## T4 Path traversal read (CWE-22)
 

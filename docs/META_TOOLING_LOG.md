@@ -31,3 +31,5 @@ Run: `overnight_1793434523077_12855248373640259943`.
 
 Rules: Red = `muse-spark-1.3`, Blue = `muse-wonder-1.0` (config defaults).
 Every keyed call is logged here with token counts from the response usage.
+| 2026-10-31T09:41Z | muse-spark-1.3 | C13 (4 calls) | Red | T3c tar marker probe exit 0 pre-patch |
+| 2026-10-31T09:41Z | muse-wonder-1.0 | C13 (2 calls) | Blue | allowlist+escape (+T4 containment), re-probe exit 1 |

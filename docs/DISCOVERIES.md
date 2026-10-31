@@ -104,3 +104,14 @@ and taxonomy link.
 - Taxonomy: new T9 class (invite/badge gate) + T4. Vault:
   red `26245a5fb2af`, blue `8af210c7fd86`.
 - Gate-3: replay PASS (renamed variant; 4/4 evil blocked).
+
+## D9 — T3c tar-sink prior (Cycle 13, 2026-10-31)
+
+- Novel fixture: PHP `/extract?archive=` → `tar tzf` shell concat + T4
+  store read. Red exit 0 (`; echo MARKER` in listing); Blue allowlist +
+  escapeshellarg (+T4 containment) → Red exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-1301-c13-report.json` (receipt pre=0/post=1,
+  patch sha `cd8ce205…`), `validation/task-1302-c13-vault.txt`.
+- Taxonomy: new T3c subclass. Vault: red `d6387a003a23`,
+  blue `bf98fd13ec7b`.
+- Gate-3: replay PASS (renamed variant; injection inert).
