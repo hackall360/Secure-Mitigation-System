@@ -99,3 +99,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
   break the 60-line surgical guard; decimal allowlists verify.
 - Reusable prior created: T2b red probe strategy + blue decimal-allowlist
   template (vault records above).
+
+## E3 — Cycle 3 external scout: PyJWT JWKS/alg audit (NEGATIVE, valuable)
+
+- Hypothesis: a permissively-licensed widely-used JWT library contains an
+  unguarded JWKS-fetch SSRF or `alg=none`/confusion acceptance at the
+  audited commit.
+- Method: LOCAL `git clone` (pyjwt @ `16231abf` 2026-10-14, MIT/BSD) +
+  LOCAL loopback experiments only; werkzeug debugger + click + itsdangerous
+  triaged and set aside (debugger sink is trust-gated, click has no sink,
+  itsdangerous uses constant-time compare).
+- Control: signed round-trip verifies; tampered/forged tokens rejected.
+- Result: 5/5 defensive shapes hold — unsigned decode is documented opt-in;
+  wrong-key forgery rejected; RS256→HS256 confusion rejected; non-http(s)
+  JWKS schemes rejected at constructor; 302-to-metadata not followed
+  (`_NoRedirectHandler`, fix ref `4adcd02`). NO candidate; no disclosure.
+- Conclusion: negative result with lasting value — the audit checklist
+  (scheme allowlist, no-redirect, alg allowlist, key-type binding) becomes a
+  reusable scout prior for the next external target. Next scout (Cycle 6)
+  picks a less-audited target class (small single-maintainer auth helper).
+- Reusable prior created: JWT/JWKS audit checklist (4 guards + 5 local
+  experiment shapes).

@@ -17,3 +17,10 @@ rule applies: destroy container, log here, begin next cycle immediately.
   (`calc('40+2')` asserted while contract said decimal-only) → rolled back.
   Lesson: Green contract and test must agree before keyed spend. Evidence:
   `task-202-c2b-*`.
+
+## F3 — Scout Cycle 3: PyJWT audit finds no hole (2026-10-31)
+
+- All five attack shapes (unsigned opt-in, wrong-key forgery, alg confusion,
+  JWKS scheme SSRF, redirect-to-metadata) already guarded at `16231abf`.
+  Not a failure of method — the checklist is the reusable output. Next
+  scout targets a less-audited class.
