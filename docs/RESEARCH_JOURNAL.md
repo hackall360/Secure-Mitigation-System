@@ -1037,3 +1037,17 @@ Run: `overnight_1793434523077_12855248373640259943`.
   triple-stash) alongside the deliberate `he`-negative (C21). The forge
   now both breaks AND vindicates encoders.
 - Reusable prior created: T3f normalize+remove-raw-branch template.
+
+## E33 — Cycle 33 scout: validator.js (INCONCLUSIVE-valuable, build-blocked)
+
+- Hypothesis: scheme confusion or escape gaps in `validator.js`.
+- Method: LOCAL clone + static read. Live battery blocked: unbuilt ESM +
+  no babel + no-install rule.
+- Result: static evidence leans guarded (escape table covers T6 set;
+  isURL names the confusion attacks in comments), but no live proof —
+  HYPOTHESIS-open. Second inconclusive; both share the cause
+  (dependency/build closure). Rule refined: exotic = runnable with ZERO
+  build (single-file like `he`).
+- Reusable prior created: validator audit checklist (escape-table
+  coverage, protocol/auth/port disambiguation, encoded-payload check) +
+  the refined zero-build exotic rule.

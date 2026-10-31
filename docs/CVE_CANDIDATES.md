@@ -170,3 +170,31 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
   (strict vs legacy, encodeEverything cost) as the reference for any
   future encoder audit.
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 33 — `validator.js` @ `9ff34247` (2026-09-11), MIT (2026-10-31)
+
+- HYPOTHESIS tested: `isURL` scheme confusion (`javascript:`/`data:` /
+  mixed-case / encoded-payload-before-`@`) and `escape()` coverage gaps
+  in a widely-used validation library.
+- Method: LOCAL clone only (depth 3). Static read of `escape.js` (8-char
+  replacement table) + `isURL.js` scheme/auth/port disambiguation logic
+  (explicit `javascript:`-with-auth comment block). Live battery BLOCKED:
+  the repo ships unbuilt ESM (`src/`, no `index.js`); the build needs
+  babel, which is absent, and installing deps violates the scout
+  minimal-footprint rule (same constraint as Cycle 15).
+- Results (LOCAL, deterministic-but-static):
+  1. `escape()` covers `&"'<>/\`` — the T6 payload set is neutralized by
+     inspection (matches the forge's htmlspecialchars + `he` behavior).
+  2. `isURL` has DEDICATED scheme-confusion handling: protocol regex +
+     auth-vs-protocol disambiguation + encoded-content check
+     (`%61...` before `@` treated as malicious protocol) + port-vs-protocol
+     check + case-insensitive compare. The exact attack shapes probed are
+     named in the code comments.
+  3. No live verdict possible without a build — recorded as
+     HYPOTHESIS-open on the confusion shapes (not refuted, not reproduced).
+- Verdict: **INCONCLUSIVE-valuable** (second of the night). The static
+  evidence leans guarded (the guards are written for THESE attacks), but
+  honesty requires the live battery. Zero-dep rule REFINED: the next
+  exotic target must be runnable with ZERO build (single-file, no babel/
+  bundler), like `he` (C21) was.
+- Responsible disclosure: nothing to disclose (no finding).
