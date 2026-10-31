@@ -30,6 +30,8 @@ Docker evidence still decides every verdict.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import re
 from dataclasses import dataclass, field
 from typing import Sequence

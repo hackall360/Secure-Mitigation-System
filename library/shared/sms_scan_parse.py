@@ -9,6 +9,8 @@ depend on sms_records (never the reverse). Leaf-ish.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 from typing import Any
 
 CWE_LIMIT = 16

@@ -29,8 +29,8 @@ Every item names its files and its proof.
 ## DD. Post-refactor work-tags re-implementation (brief 2026-10-31-worktags-reimplement; branch feature/work-tags-remodel)
 
 - [x] DD1. RED test first (LAW 9): `tests/test_feature_tags.py` ported (library.tags import, double-quote hook pattern, invisibility pins). RED proven: collection ERROR `No module named 'library.tags'` (functional absence, not syntax). Registry-writer agent fanned out (isolated worktree /tmp/wt-tags-reg).
-- [ ] DD2. Implement: `library/tags.py` (registry rooted at repo, backend `library/*` paths, delegated needles verified against current static/*.js incl. graph.js, MODULE_VERSIONS over versioned leaves) + `__version__` stamps on leaves + `data-feature` hooks in `static/index.html` (attribute-only) + `dev.py tags` reporting wired to current dev.py + TAGS_NOTES-equivalent doc pointer (no LAWS.md edit — proposal only). Proof: `dev.py tags` covered/total + gate green.
-- [ ] DD3. Live proof (LAW 5/11): Firefox + Chrome offline ui_scan cards green with pixel-parity reasoning (attribute-only DOM change); version consistency check. Proof: cards + diff stat.
+- [x] DD2. Implement DONE: registry 127/127 + hooks attribute-only + version keys + `dev.py tags` + `docs/TAGS.md`; all 5 tag tests GREEN. Proof: `dev.py tags` 127/127 output + pytest 5 passed.
+- [.] DD3. Live proof + full gate: `dev.py check` green (incl. ruff/isort on stamped leaves), Firefox + Chrome offline ui_scan cards + version consistency. Then commit, merge, ship per LAW 1.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 

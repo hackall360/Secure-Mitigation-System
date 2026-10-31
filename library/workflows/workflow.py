@@ -2,6 +2,8 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0
 """One baseline -> probe -> patch -> regression workflow for both entry points."""
 
+__version__ = "0.1.0"
+
 from typing import Literal
 
 from docker.errors import DockerException

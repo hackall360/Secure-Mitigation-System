@@ -9,6 +9,8 @@ these so truncation and casing stay consistent. Leaf module.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import re
 from typing import Any
 
