@@ -39,6 +39,23 @@ TARGETS_REGISTRY = {
         "'const rawUserId =' or 'const queryExpression =' may be replaced. Insert strict "
         "decimal integer validation before building the expression. Keep other lines verbatim.",
     ),
+    "node_chain_link": Target(
+        "node_chain_link",
+        "app.js",
+        "Node.js chain boundary",
+        "Prove the chain sweep flips what single-step misses: a logic-abuse "
+        "role grant (Link A) gates a dynamic query expression (Link B).",
+        ("node", "/workspace/app.js"),
+        ("const rawRole =", "const queryExpression ="),
+        "GET /lookup?role=reviewer&grant=<privileged>&id=101 returns Alice; "
+        "id=102 returns Bob; id=999 returns no matches. Unprivileged "
+        "role=viewer&id=101 returns HTTP 400. "
+        "Keep status/count/results and the 404 route. Only existing lines "
+        "starting with 'const rawRole =' or 'const queryExpression =' may "
+        "be replaced. Guard the role grant (Link A) and add strict decimal "
+        "integer validation (Link B) before building the expression. Keep "
+        "other lines verbatim.",
+    ),
     "php_command_sink": Target(
         "php_command_sink",
         "index.php",
