@@ -99,6 +99,40 @@ function toast(text) {
   toastTimer = setTimeout(() => { node.hidden = true; }, 2200);
 }
 
+/* ---------- scan error banner: throttle / daemon events stay visible ---------- */
+// Tribunal S3-7 render half: WS error/busy text (rate limit, Docker trouble)
+// must surface above the pipeline, not just in the log stream. chip-key goes
+// amber while the banner is visible — a live WS-state readout, not a control.
+function showBanner(text) {
+  const node = el('scan-banner');
+  if (!node) return;
+  node.textContent = String(text);
+  node.hidden = false;
+  chip('chip-key', 'warn');
+}
+
+function clearBanner() {
+  const node = el('scan-banner');
+  if (!node) return;
+  node.textContent = '';
+  node.hidden = true;
+  const key = el('chip-key');
+  if (key && key.dataset.state === 'warn') chip('chip-key', configured ? 'ok' : 'pending');
+}
+
+// Error-surface routing: only throttle/daemon wording triggers the banner;
+// ordinary staged log lines pass through untouched. Wave-13 backend wording
+// for the rate-limit path (agents.py) and the daemon-unreachable path
+// (docker_manager.py) both match the filters below: "Muse API rate limit
+// reached (HTTP 429) ..." and "Docker daemon is unreachable while ...".
+function maybeShowBanner(text) {
+  const t = String(text || '');
+  const lowered = t.toLowerCase().replace(/-/g, ' ');
+  // Throttle + daemon wording only: busy-refusal text is shown explicitly by
+  // the caller, transport hiccups stay log-only via writeLine.
+  if (lowered.includes('rate limit') || lowered.includes('429') || /docker/i.test(t)) showBanner(t);
+}
+
 async function copyText(text, label) {
   if (!text) { toast('Nothing to copy yet'); return; }
   try {
@@ -137,7 +171,7 @@ function clearEmpty(area) {
 }
 
 function buildEntry(team, text, withTag) {
-  const normalized = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const normalized = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
   const line = document.createElement('div');
   line.className = 'entry';
   line.dataset.team = normalized;
@@ -250,12 +284,14 @@ function writeComms(team, text) {
   const m = CHATTER_RE.exec(String(text));
   if (!m) return;
   lightAgent(m[1]);
-  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
   const line = buildEntry(known, text, true);
   append(comms, line);
 }
 function writeLine(team, text) {
-  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' ? team : 'system';
+  const known = team === 'red' || team === 'blue' || team === 'research' || team === 'green' || team === 'telemetry' || team === 'ingest' ? team : 'system';
+  if (known === 'telemetry') fact('fact-tokens', String(text).slice(0, 200));
+  if (known === 'ingest') fact('fact-vault-indicator', String(text).slice(0, 200));
   updatePassChip(String(text));
   try { if (window.Panels && typeof window.Panels.renderTimeline === 'function') window.Panels.renderTimeline(known, text); } catch { /* timeline is decorative */ }
   if (known === 'red' || known === 'blue') {
@@ -289,6 +325,9 @@ function setStage(name, state = 'active') {
   const index = STAGES.indexOf(name);
   if (index < 0) return;
   if (state === 'active' && index < currentStage) return;
+  // A stage advancing means the scan is making progress again: a stale
+  // throttle/daemon banner no longer describes live state, so dismiss it.
+  if (state === 'active') clearBanner();
   if (window.SMSFx) window.SMSFx.onStage(name, state);
   document.querySelectorAll('#pipeline li').forEach((item, i) => {
     if (state === 'active') {
@@ -421,7 +460,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary', 'ingest'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -434,7 +473,8 @@ function setSourceMode(mode) {
   el('project-form').hidden = mode !== 'project';
   el('mcp-form').hidden = mode !== 'mcp';
   el('binary-form').hidden = mode !== 'binary';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : 'Run demo verification';
+  el('ingest-form').hidden = mode !== 'ingest';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : mode === 'ingest' ? 'Ingest repo in Docker' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
@@ -442,8 +482,10 @@ function setSourceMode(mode) {
       : mode === 'mcp'
         ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
         : mode === 'binary'
-          ? 'Upload a compiled binary — static reversing profiles it, then the same 3-pass loop probes it through the trusted harness (also at /ws/binary).'
-          : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+          ? 'Upload a compiled binary — static reversing profiles it, then the same 4-pass loop probes it through the trusted harness (also at /ws/binary).'
+          : mode === 'ingest'
+            ? 'Enter a repo URL + pinned commit — it is cloned at that commit inside Docker, then the same project loop verifies it (also via --ingest-repo).'
+            : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
   // Build-brief affordance: landing on Green build puts the cursor in the
   // brief field so the Wonder-built flow starts with one keystroke.
@@ -640,6 +682,20 @@ function renderUsage(payload) {
     const namespaces = (payload.vault_namespaces || []).join(',');
     vaultBadge.textContent = recall && recall !== 'VAULT_UNAVAILABLE' ? `${recall}${namespaces ? ` (${namespaces})` : ''}` : '—';
   }
+  const hudTokens = payload.hud_tokens || {};
+  const liveTokens = el('fact-tokens');
+  if (liveTokens) {
+    const hRaw = Number(hudTokens.raw || 0);
+    const hSent = Number(hudTokens.sent || 0);
+    liveTokens.textContent = hRaw ? `live ${hRaw.toLocaleString()} → ${hSent.toLocaleString()} tokens` : (raw ? `live ${raw.toLocaleString()} → ${sent.toLocaleString()} tokens` : '—');
+  }
+  const hudVault = payload.hud_vault || {};
+  const vaultIndicator = el('fact-vault-indicator');
+  if (vaultIndicator) {
+    const novel = hudVault.novel !== undefined ? Number(hudVault.novel) : NaN;
+    const knownHits = hudVault.known !== undefined ? Number(hudVault.known) : NaN;
+    vaultIndicator.textContent = Number.isFinite(novel) ? `${novel} novel vs ${Number.isFinite(knownHits) ? knownHits : 0} historical` : (vaultBadge ? vaultBadge.textContent : '—');
+  }
   const list = el('usage-calls');
   list.replaceChildren();
   calls.forEach((call) => {
@@ -724,7 +780,7 @@ function w2v2AsRecord(value) {
   return null;
 }
 
-function w2v2Receipt(payload) {
+function w2v2ReceiptRecord(payload) {
   try {
     // REAL first: result.receipt (VerdictReceipt) or any cycle.receipt
     // (CycleReceipt); legacy verdict_receipt fallback.
@@ -736,6 +792,30 @@ function w2v2Receipt(payload) {
       }
     }
     if (!receipt) receipt = w2v2AsRecord(payload && payload.verdict_receipt);
+    return receipt;
+  } catch { return null; }
+}
+
+function w2v2Chain(receipt) {
+  try {
+    // W7 receipt-chain badge (render only): chain_ok asserts positive
+    // membership in an intact chain, so an unlinked/genesis receipt or one
+    // without chain fields reads broken — never upgrades a verdict.
+    if (!w2v2AsRecord(receipt)) return null;
+    if (typeof receipt.chain_ok === 'boolean') {
+      return receipt.chain_ok ? { ok: true, text: 'chain ok' } : { ok: false, text: 'chain broken' };
+    }
+    const prev = receipt.prev_receipt_sha;
+    const digest = receipt.patch_sha256 || receipt.patch_hash || receipt.patch_sha;
+    const linked = typeof prev === 'string' && prev.length > 0 && prev !== '0'.repeat(64);
+    const ok = !!(linked && prev === digest);
+    return { ok, text: ok ? 'chain ok' : 'chain broken' };
+  } catch { return null; }
+}
+
+function w2v2Receipt(payload) {
+  try {
+    const receipt = w2v2ReceiptRecord(payload);
     if (!receipt) return null;
     const parts = [];
     const fixture = receipt.fixture || receipt.target;
@@ -752,7 +832,9 @@ function w2v2Receipt(payload) {
     if (receipt.differential_passed === true) parts.push('differential passed');
     if (receipt.property_passed === true) parts.push('properties passed');
     const hash = receipt.patch_sha256 || receipt.patch_hash || receipt.patch_sha;
-    if (hash) parts.push(`sha ${String(hash).slice(0, 16)}`);
+    if (hash) parts.push(`sha ${String(hash).slice(0, 12)}`);
+    const chain = w2v2Chain(receipt);
+    if (chain) parts.push(chain.text);
     return parts.length ? parts.join(' · ').slice(0, 200) : null;
   } catch { return null; }
 }
@@ -861,6 +943,13 @@ function renderW2v2(payload) {
   try {
     const receipt = w2v2Receipt(payload);
     fact('fact-receipt', receipt || 'Not reported', receipt ? true : undefined);
+    const chain = w2v2Chain(w2v2ReceiptRecord(payload));
+    fact('fact-receipt-chain', chain ? chain.text : 'Not reported', chain ? chain.ok : undefined);
+    const badge = el('receipt-chain-badge');
+    if (badge) {
+      badge.textContent = chain ? (chain.ok ? 'chain verified' : 'chain broken') : 'chain unknown';
+      badge.dataset.state = chain ? (chain.ok ? 'verified' : 'failed') : 'idle';
+    }
     const guards = w2v2Guards(payload);
     fact('fact-guards', guards.length ? guards.map((g) => g.text || `${g.guard}${g.line ? `: ${g.line}` : ''}`).join('; ').slice(0, 200) : 'Not reported', guards.length ? true : undefined);
     const list = el('guard-list');
@@ -1106,8 +1195,8 @@ function bootRoutes() {
     const rs = el('research-scanners-toggle');
     if (rs && rs.closest('label')) rs.closest('label').style.display = on ? '' : 'none';
   });
-  hud('hud-toggle-compression', (on) => { const n = el('fact-compression'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
-  hud('hud-toggle-vault', (on) => { const n = el('fact-vault'); if (n) n.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-compression', (on) => { const n = el('fact-compression'); if (n) n.closest('div').style.display = on ? '' : 'none'; const t = el('fact-tokens'); if (t) t.closest('div').style.display = on ? '' : 'none'; });
+  hud('hud-toggle-vault', (on) => { const n = el('fact-vault'); if (n) n.closest('div').style.display = on ? '' : 'none'; const v = el('fact-vault-indicator'); if (v) v.closest('div').style.display = on ? '' : 'none'; });
   hud('hud-toggle-differential', (on) => { document.querySelectorAll('#cycle-reports, #mutation-evidence').forEach((n) => { n.style.display = on ? '' : 'none'; }); });
   hud('hud-toggle-binary', (on) => { const b = document.querySelector('[data-mode="binary"]'); if (b) b.style.display = on ? '' : 'none'; });
   applyRoute();
@@ -1169,6 +1258,7 @@ function startScan() {
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
   if (sourceMode === 'binary') { submitBinary(); return; }
+  if (sourceMode === 'ingest') { submitIngest(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) {
     status('Fix the highlighted project fields below, then run again', 'warn');
@@ -1229,14 +1319,17 @@ function handleSocketMessage(event) {
       if (payload.type === 'busy') {
         status('Another scan is already running — wait for it to finish, then run again', 'error');
         writeLine(payload.team || 'system', 'Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
+        showBanner('Scan refused: another scan holds the server lock. Wait for it to finish, then run again.');
         toast('Server is busy — try again when the current scan finishes');
       } else {
         status(payload.msg || 'Server rejected the request — fix the highlighted fields, then run again', 'error');
         writeLine(payload.team || 'system', `${payload.msg || 'Invalid request.'} Fix the highlighted fields, then run again.`);
+        maybeShowBanner(payload.msg || 'Invalid request.');
         toast('Request rejected — check the highlighted fields');
       }
     } else {
       writeLine(payload.team, payload.msg);
+      maybeShowBanner(payload.msg);
     }
   } catch {
     writeLine('system', 'Received an unreadable server event — the scan continues; check the server terminal if this repeats.');
@@ -1342,7 +1435,7 @@ async function submitMcpSnippet() {
 
 function submitBinary() {
   // Binary sweep path: file bytes -> base64 first WS frame on /ws/binary,
-  // same 3-pass Docker loop as every other surface over the shared socket flow.
+  // same 4-pass Docker loop as every other surface over the shared socket flow.
   const errors = el('binary-errors');
   errors.hidden = true;
   const files = el('binary-file').files;
@@ -1407,6 +1500,53 @@ function submitBinary() {
     };
   };
   reader.readAsArrayBuffer(files[0]);
+}
+
+function submitIngest() {
+  // Repo-ingest path: URL + pinned commit -> first WS frame on /ws/project.
+  // The ingest rides the project flow per W4 dispatch (repo_intake stages
+  // the clone inside Docker); research flags ride free via socketQuery().
+  const errors = el('ingest-errors');
+  errors.hidden = true;
+  const repoUrl = el('ingest-repo-url').value.trim();
+  const commit = el('ingest-commit').value.trim();
+  const problems = [];
+  if (!/^https:\/\/[^ ]+$/.test(repoUrl)) problems.push('Enter an https:// repository URL.');
+  if (!/^[0-9a-fA-F]{40}$/.test(commit)) problems.push('Enter the full 40-hex pinned commit.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Repo ingest running', 'running');
+  setStage('sandbox');
+  writeLine('system', `Repo ingest → ${repoUrl} @ ${commit.slice(0, 12)}`);
+  latestResult = null;
+  eventCount = 0;
+  el('event-count').textContent = '0';
+  el('result-panel').hidden = true;
+  delete el('progress').dataset.state;
+  Object.values(logs).forEach((area) => area.replaceChildren());
+  resetPipeline();
+  document.body.classList.add('scanning');
+  el('run-btn').disabled = true;
+  lockTargets(true);
+  lockProfiles(true);
+  lockProjectForm(true);
+  el('stop-btn').hidden = false;
+  el('stop-btn').disabled = false;
+  startedAt = Date.now();
+  const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  socket = new WebSocket(`${base}/ws/project${socketQuery()}`);
+  socket.onmessage = handleSocketMessage;
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
+  socket.onclose = handleScanClose;
+  socket.onopen = () => {
+    try {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ ingest_repo: repoUrl, commit_hash: commit }));
+    } catch { /* socket already gone */ }
+    writeLine('system', 'Repo specification accepted · staging the pinned clone.');
+  };
 }
 
 function startDemoBuild() {

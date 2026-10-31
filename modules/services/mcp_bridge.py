@@ -14,6 +14,7 @@ read-only roots) is untouched.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -54,6 +55,103 @@ _MCP_LANGUAGE_COMMAND: dict[str, tuple[str, ...]] = {
     "php": ("php", "-S", "0.0.0.0:8080", "-t", "/workspace"),
 }
 SNIPPET_TOOL_NAME = "submit_code_snippet"
+SCAN_STATUS_TOOL_NAME = "sms_scan_status"
+
+#: Scan phases the status tool may report. Live scans advance
+#: red -> blue -> verify; the sink reports whichever marker arrived last.
+SCAN_PHASES: tuple[str, ...] = ("red", "blue", "verify")
+
+#: Emit teams that mark each scan phase. Live emit callables post team
+#: strings like "red", "blue", "green", "system", "research"; the tracking
+#: sink maps them onto the pollable red|blue|verify phase contract.
+TEAM_TO_SCAN_PHASE: dict[str, str] = {
+    "red": "red",
+    "research": "red",
+    "blue": "blue",
+    "green": "blue",
+    "verify": "verify",
+    "system": "verify",
+}
+
+#: Idle envelope when no scan has started in this process yet.
+SCAN_STATUS_IDLE_SCAN_ID = "none"
+
+#: Server-side scan registry: scan_id -> {"scan_id", "phase", "done"}.
+#: Populated by the live /mcp route when scans start/finish; the status
+#: tool only reads it (no Docker, no I/O, never raises).
+_SCAN_REGISTRY: dict[str, dict[str, Any]] = {}
+
+
+def scan_status_register(scan_id: str, phase: str = "red", done: bool = False) -> dict[str, Any]:
+    """Record (or refresh) a scan entry; returns the stored envelope."""
+    entry = {"scan_id": scan_id, "phase": phase, "done": bool(done)}
+    _SCAN_REGISTRY[scan_id] = entry
+    return dict(entry)
+
+
+def scan_status_mark_phase(scan_id: str, phase: str) -> dict[str, Any]:
+    """Advance a scan entry to a new phase (still running)."""
+    return scan_status_register(scan_id, phase=phase, done=False)
+
+
+def scan_status_mark_done(scan_id: str, phase: str = "verify") -> dict[str, Any]:
+    """Mark a scan entry finished; unknown ids fail closed as a done idle entry."""
+    return scan_status_register(scan_id, phase=phase, done=True)
+
+
+def scan_status_latest() -> dict[str, Any]:
+    """Newest registry entry, or the idle envelope when no scan has started."""
+    if not _SCAN_REGISTRY:
+        return {
+            "scan_id": SCAN_STATUS_IDLE_SCAN_ID,
+            "phase": "verify",
+            "done": True,
+        }
+    return dict(next(reversed(_SCAN_REGISTRY.values())))
+
+
+def scan_status_for(scan_id: str | None = None) -> dict[str, Any]:
+    """Envelope for one scan id (or the latest); unknown ids fail closed."""
+    if not scan_id:
+        return scan_status_latest()
+    entry = _SCAN_REGISTRY.get(scan_id)
+    if entry is None:
+        return {"scan_id": scan_id, "phase": "verify", "done": True}
+    return dict(entry)
+
+
+def new_scan_id() -> str:
+    """Fresh hex scan id for a live scan about to start."""
+    return uuid.uuid4().hex
+
+
+def scan_status_sink(scan_id: str):
+    """Bare tracking emit: marks the registry phase per team, stores nothing.
+
+    Unknown teams leave the phase untouched. Never raises, performs no
+    I/O, so status stays pollable mid-scan.
+    """
+
+    async def _emit(team: str, message: str) -> None:
+        phase = TEAM_TO_SCAN_PHASE.get(str(team).strip().lower())
+        if phase in SCAN_PHASES:
+            scan_status_mark_phase(scan_id, phase)
+
+    return _emit
+
+
+def scan_status_phase_sink(scan_id: str, emit):
+    """Wrap an existing emit callable with phase tracking (never raises)."""
+
+    async def _emit(team: str, message: str) -> None:
+        try:
+            await emit(team, message)
+        finally:
+            phase = TEAM_TO_SCAN_PHASE.get(str(team).strip().lower())
+            if phase in SCAN_PHASES:
+                scan_status_mark_phase(scan_id, phase)
+
+    return _emit
 
 
 class McpSnippetArguments(BaseModel):
@@ -229,12 +327,43 @@ def sms_verify_receipt_tool_definition() -> dict[str, Any]:
     }
 
 
+def sms_scan_status_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_scan_status (pollable scan status)."""
+    return {
+        "name": SCAN_STATUS_TOOL_NAME,
+        "title": "Poll the running scan's phase",
+        "description": (
+            "Pollable status for the single-flight live scan: returns "
+            "{scan_id, phase, done} with phase one of red|blue|verify. "
+            "Starts no Docker; unknown scan ids fail closed as done."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "scan_id": {"type": "string", "maxLength": 64},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "scan_id": {"type": "string"},
+                "phase": {"type": "string", "enum": list(SCAN_PHASES)},
+                "done": {"type": "boolean"},
+            },
+            "required": ["scan_id", "phase", "done"],
+            "additionalProperties": False,
+        },
+    }
+
+
 MCP_TOOLS: list[dict[str, Any]] = [
     snippet_tool_definition(),
     sms_scan_source_tool_definition(),
     sms_scan_binary_tool_definition(),
     sms_query_vault_stats_tool_definition(),
     sms_verify_receipt_tool_definition(),
+    sms_scan_status_tool_definition(),
 ]
 
 
@@ -343,7 +472,7 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 },
                 "serverInfo": {
                     "name": "secure-mitigation-system",
-                    "version": "0.8.0",
+                    "version": "0.10.0",
                 },
             },
         )
@@ -374,6 +503,15 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 return jsonrpc_error(
                     rpc_id, -32603, f"Receipt check failed ({type(exc).__name__})."
                 )
+        if name == "sms_scan_status":
+            # Pollable status: registry read only. No Docker, no lock, no
+            # config: answers even while a live scan holds the scan lock.
+            try:
+                raw_id = arguments.get("scan_id")
+                scan_id = str(raw_id)[:64] if raw_id is not None else None
+                return _wrap_tool_result(rpc_id, scan_status_for(scan_id))
+            except Exception as exc:
+                return jsonrpc_error(rpc_id, -32603, f"Scan status failed ({type(exc).__name__}).")
         if name in ("sms_scan_source", "sms_scan_binary"):
             return jsonrpc_error(
                 rpc_id,
@@ -391,4 +529,5 @@ McpToolKind = Literal[
     "sms_scan_binary",
     "sms_query_vault_stats",
     "sms_verify_receipt",
+    "sms_scan_status",
 ]

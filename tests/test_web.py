@@ -45,8 +45,9 @@ def test_ui_and_registry_work_without_key_or_docker():
         response = client.get("/")
         assert response.status_code == 200 and "Boundary auditor" in response.text
         assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
-        assert len(client.get("/api/targets").json()) == 4
+        assert len(client.get("/api/targets").json()) == 5
         assert "binary_argv_echo" in client.get("/api/targets").json()
+        assert "node_chain_link" in client.get("/api/targets").json()
         assert client.get("/api/health").json()["api_key_configured"] is False
         assert client.get("/static/app.js").status_code == 200
         assert client.get("/static/app.css").status_code == 200

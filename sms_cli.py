@@ -425,7 +425,22 @@ def format_wave2_facts(result: object, use_color: bool | None = None) -> dict:
                 receipt.get("patch_sha256") or receipt.get("patch_hash") or receipt.get("patch_sha")
             )
             if patch_hash:
-                parts.append(f"sha {str(patch_hash)[:16]}")
+                parts.append(f"sha {str(patch_hash)[:12]}")
+            # W7 receipt-chain token (render only): an explicit chain_ok flag
+            # wins; otherwise mirror verify_receipt semantics locally (linked
+            # prev_receipt_sha must re-attest the SAME digest, the all-zero
+            # digest is the genesis sentinel = unlinked). Unlinked receipts
+            # read "chain broken"; records never upgrade a verdict.
+            chain_flag = receipt.get("chain_ok")
+            if isinstance(chain_flag, bool):
+                parts.append("chain ok" if chain_flag else "chain broken")
+            else:
+                prev = receipt.get("prev_receipt_sha")
+                linked = isinstance(prev, str) and len(prev) > 0 and prev != "0" * 64
+                if linked and prev == patch_hash:
+                    parts.append("chain ok")
+                else:
+                    parts.append("chain broken")
             for key in ("regression", "differential", "properties"):
                 val = receipt.get(key)
                 if val and f"{key} " not in " ".join(parts):
@@ -636,7 +651,24 @@ def format_facts(result: object, use_color: bool | None = None) -> dict:
         )
     except (TypeError, ValueError):
         facts["compression"] = "Not reported"
+        facts["savings_pct"] = 0.0
+    else:
+        try:
+            ratio = float(getattr(compression, "compression_ratio", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            ratio = 0.0
+        facts["savings_pct"] = round(ratio * 100.0, 1) if raw else 0.0
     vault_recall = get("vault_recall", "") or ""
+    vault_statuses = get("vault_statuses", None) or []
+    try:
+        statuses = list(vault_statuses)
+    except TypeError:
+        statuses = []
+    if vault_recall and vault_recall != "VAULT_UNAVAILABLE":
+        statuses = [*statuses, vault_recall]
+    novel = sum(1 for status in statuses if status == "NOVEL_SURFACE")
+    historical = len(statuses) - novel
+    facts["novel_vs_historical"] = f"{novel} novel vs {historical} historical"
     vault_namespaces = get("vault_namespaces", None) or []
     try:
         namespaces = ", ".join(str(n) for n in list(vault_namespaces)) or "—"
