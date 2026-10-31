@@ -47,3 +47,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T10:14Z | muse-spark-1.3 | C19b retry (5 calls ≈$0.14; same fault) | Red | systematic, not transient |
 | 2026-10-31T10:17Z | muse-spark-1.3 | C19c short contract (4 calls) | Red | T4e probe exit 0 pre-patch |
 | 2026-10-31T10:17Z | muse-wonder-1.0 | C19c (2 calls) | Blue | resolve-FIRST, re-probe exit 1 |
+| 2026-10-31T10:24Z | muse-spark-1.3 | C22 (4 calls) | Red | T1c boolean-flip probe exit 0 pre-patch |
+| 2026-10-31T10:24Z | muse-wonder-1.0 | C22 (2 calls) | Blue | allowlist+LIMIT-?, re-probe exit 1 |

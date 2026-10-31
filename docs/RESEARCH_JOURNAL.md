@@ -732,3 +732,31 @@ Run: `overnight_1793434523077_12855248373640259943`.
   depth continues; scouts only on zero-dep single-file from here.
 - Reusable prior created: encoder-audit battery (payload suite, double-encode
   direction, strict-vs-legacy, numeric/astral, perf cliff) + `he` option table.
+
+## E22a — Cycle 22 Gate-0: ORDER BY/LIMIT injection CONFIRMED exfiltrative (proceed)
+
+- Battery: `CASE WHEN 1=1/1=2` in `sort_by` flips row ORDER deterministically
+  (`cy,amy,bo` vs `cy,bo,amy`) — boolean-based blind signal. `LIMIT 1-1`
+  returns empty vs `LIMIT 1` returns `cy` — arithmetic-evaluation signal.
+  Traversal co-present (`../../secret.txt` → TOP-SECRET-FORGE22).
+- All three links Green-provable locally. Proceed to keyed run with a
+  boolean-flip Red contract.
+
+## E22b — Cycle 22 keyed run: T1c ORDER-BY/LIMIT VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven boolean-flip signal verifies under the
+  shortest contract shape (2 sentences + benign line).
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "SQL Injection in leaderboard()
+  via unsanitized sort/dir/limit". Blue: column/direction allowlists +
+  `int(limit)` + `LIMIT ?` parameterize. 6 calls p12958/c23376 ≈$0.21.
+  Evidence: run `validation/task-2201-c22-live.txt`,
+  `validation/task-2201-c22-report.json`.
+- Gate-3 replay PASS on renamed variant (boolean-flip dead, benign ok).
+- Vault: red `08f8e7c97a65`, blue `a6598cd153a6`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2202-c22-vault.txt`.
+- Conclusion: Δ(C.22) → 0. T1c (identifier-position injection) proven —
+  the family the bundled fixtures only exercise in WHERE-clause form now
+  has an ORDER-BY/LIMIT forge proof. Taxonomy: new T1c subclass.
+- Reusable prior created: T1c boolean-flip probe + allowlist+parameterize
+  template (identifiers can NEVER be `?`-bound — allowlist is the only fix).

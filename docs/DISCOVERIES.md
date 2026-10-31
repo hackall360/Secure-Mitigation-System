@@ -164,3 +164,14 @@ and taxonomy link.
 - Taxonomy: new T4e subclass. Vault: red `3de754d6ef13`,
   blue `f2d0692014af`.
 - Gate-3: replay PASS (renamed variant; split closed).
+
+## D14 — T1c ORDER-BY/LIMIT prior (Cycle 22, 2026-10-31)
+
+- Novel fixture: Python leaderboard with sort/dir/limit interpolation.
+  Red exit 0 (boolean CASE flip changes row order); Blue allowlists +
+  `LIMIT ?` → exit 1, regressions 0/0. First-try (short contract held).
+- Evidence: run `validation/task-2201-c22-report.json` (receipt pre=0/post=1,
+  patch sha `b6845f5f…`), `validation/task-2202-c22-vault.txt`.
+- Taxonomy: new T1c subclass (identifier-position injection). Vault:
+  red `08f8e7c97a65`, blue `a6598cd153a6`.
+- Gate-3: replay PASS (renamed variant; flip dead).

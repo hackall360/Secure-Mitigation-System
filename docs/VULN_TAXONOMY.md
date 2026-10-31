@@ -126,3 +126,12 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   + expr)` computes attacker expressions (`process.version` leaks). The
   C17 Blue patch closed only the T4 link; the T2e-only follow-up fixture
   (no traversal competition) is queued. Do NOT mark T2e closed.
+
+## T1c note (identifier-position injection)
+
+- Subclass T1c (proven forge Cycle 22, Python): `ORDER BY <sort> <dir>
+  LIMIT <limit>` string-concat. Boolean CASE-flip (`1=1` vs `1=2` changes
+  row order) + LIMIT arithmetic (`1-1` empties) are the deterministic
+  signals. Fix doctrine: identifiers can NEVER be `?`-bound — allowlist
+  `sort_by`/`direction` against tuples + `int(limit)` + `LIMIT ?`.
+- Priors: red `08f8e7c97a65`, blue `a6598cd153a6` (vault, forge-c22).
