@@ -465,3 +465,41 @@ Run: `overnight_1793434523077_12855248373640259943`.
   the co-present T4 (defense in depth without being asked). Taxonomy: new
   T3c subclass.
 - Reusable prior created: T3c tar-sink allowlist+escape template.
+
+## E15r — Cycle 15 self-review: diversity check (every 5 cycles)
+
+- Keyed cycles since E10r: C10 PHP T6b ✓, C11 Node T9+T4 ✓, C13 PHP T3c ✓.
+  Full keyed tally: Python×3 (C1, C4, C7), Node×3 (C2, C8, C11), PHP×3
+  (C5, C10, C13). PERFECT 3/3/3 balance — first time tonight.
+- Scouts 3/6/9/12: PyJWT, werkzeug, FFU, sabre — all negative-valuable,
+  3 Python + 1 PHP. Pattern confirmed for the 4th time: maintained parsing
+  stacks are hardened; synthesis beats discovery here.
+- Class coverage: T1×1, T2×5(co-occurring), T3×2(a,c), T4×4(a,b,co,co),
+  T5×0(bundled-only), T6×2(a-co,C2; b,C10), T7×1, T8×1, T9×1. Gaps: T5
+  (logic-abuse gate→query chain) has NO forge proof outside the bundled
+  node_chain_link fixture; T6 only PHP (no Node XSS end-to-end).
+- Forced direction for Cycles 14-16: (a) T5-style logic-abuse chain on a
+  NOVEL Node fixture (closes the last unproven bundled family); (b) next
+  scout (Cycle 15) goes Node-micro-helper or PAUSES scouting in favor of
+  Green depth, per E12 conclusion.
+
+## E14 — Cycle 14: Node T5b promo-gate eval chain, first-try VERIFIED
+
+- Hypothesis: the last unproven bundled family (T5 logic-abuse gate→query)
+  verifies on a novel Node fixture with a promo-code gate + template eval.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Chained
+  unauthenticated RCE: PRO-2026 badge (Link A) enabling projection eval
+  (Link B)". Unified-script assertion holds (/grant + tier + Cookie +
+  exit0/exit1). Blue: dual decimal allowlist + Number arithmetic, eval
+  eliminated. 6 calls p11942/c22781 ≈$0.19 — cheapest chain yet.
+  Evidence: run `validation/task-1401-c14-live.txt`,
+  `validation/task-1401-c14-report.json`.
+- Gate-3 replay PASS (paren-breaker `5) + (7*6`, attr access, `;` all
+  blocked; `100/5=105`, `42/0=42` preserved).
+- Vault: red `1f9cdccfa4b4`, blue `3f2a9723607d`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1402-c14-vault.txt`.
+- Conclusion: Δ(C.14) → 0. T5 now proven on a NOVEL fixture (T5b) beyond the
+  bundled node_chain_link — every bundled family (T1-T6) has a forge-novel
+  proof except none. Taxonomy: new T5b subclass.
+- Reusable prior created: T5b dual-decimal template-eval replacement.

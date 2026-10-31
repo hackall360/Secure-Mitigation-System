@@ -115,3 +115,14 @@ and taxonomy link.
 - Taxonomy: new T3c subclass. Vault: red `d6387a003a23`,
   blue `bf98fd13ec7b`.
 - Gate-3: replay PASS (renamed variant; injection inert).
+
+## D10 — T5b promo-gate eval-chain prior (Cycle 14, 2026-10-31)
+
+- Novel fixture: Node promo redeem (PRO-2026→pro badge) gating template
+  eval projection. Red ONE unified script exit 0; Blue dual-decimal
+  allowlist (eval eliminated) → Red exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-1401-c14-report.json` (receipt pre=0/post=1,
+  patch sha `73373247…`), `validation/task-1402-c14-vault.txt`.
+- Taxonomy: new T5b subclass (T5 novel beyond the bundled fixture). Vault:
+  red `1f9cdccfa4b4`, blue `3f2a9723607d`.
+- Gate-3: replay PASS (3/3 evil blocked, benign preserved).

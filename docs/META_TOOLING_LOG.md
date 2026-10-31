@@ -33,3 +33,5 @@ Rules: Red = `muse-spark-1.3`, Blue = `muse-wonder-1.0` (config defaults).
 Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T09:41Z | muse-spark-1.3 | C13 (4 calls) | Red | T3c tar marker probe exit 0 pre-patch |
 | 2026-10-31T09:41Z | muse-wonder-1.0 | C13 (2 calls) | Blue | allowlist+escape (+T4 containment), re-probe exit 1 |
+| 2026-10-31T09:46Z | muse-spark-1.3 | C14 (4 calls) | Red | unified promo→eval probe exit 0 pre-patch |
+| 2026-10-31T09:46Z | muse-wonder-1.0 | C14 (2 calls) | Blue | dual-decimal, eval eliminated, re-probe exit 1 |

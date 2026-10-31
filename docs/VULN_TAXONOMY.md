@@ -46,6 +46,12 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Subclass T5a: role-grant endpoint (Link A) gates dynamic query (Link B);
   single-step probe exits 1, chained single-payload probe exits 0.
 - Proven by: `targets/node_chain_link` (Wave 14, gate 725).
+- Subclass T5b (proven forge Cycle 14, 2026-10-31, Node): promo-code gate
+  (`PRO-2026`→pro badge cookie) + template-string eval projection
+  (`(${base}) * (1 + ${growth} / 100)`). ONE unified Red script exits 0;
+  Blue dual decimal allowlist + `Number` arithmetic (eval eliminated) →
+  exit 1, regressions 0.
+- Priors (T5b): red `1f9cdccfa4b4`, blue `3f2a9723607d` (vault, forge-c14).
 - Red shape: unified payload fusing both weaknesses in ONE script (Wave-28 rule).
 - Blue pattern: server-side authorization on Link B independent of client role claim.
 

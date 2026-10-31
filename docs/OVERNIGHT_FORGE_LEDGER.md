@@ -20,6 +20,8 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T09:31Z | 11 | spark-1.3 + wonder-1.0 (slim) | p13896/c31458 ≈$0.27 | T9 invite-gate + T4, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: unified redeem→traverse script; strict containment; vault T9+T4; Gate-3 PASS |
 | 2026-10-31T09:34Z | 12 (scout) | none (local reading + Docker-PHP PCRE) | 0 | sabre/vobject+xml audit, PHP | n/a | n/a | n/a | NEGATIVE (valuable): no sinks, entity-loader gated, no ReDoS; no candidate |
 | 2026-10-31T09:41Z | 13 | spark-1.3 + wonder-1.0 (slim) | p10236/c17206 ≈$0.21 | T3c tar-sink + T4, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: allowlist+escape; T4 co-hardened; vault T3c; Gate-3 PASS |
+| 2026-10-31T09:43Z | 15r | none (ledger analysis) | 0 | self-review: 3/3/3 balance | n/a | n/a | n/a | direction: Cycles 14-16 = T5-novel + Node scout/pause |
+| 2026-10-31T09:46Z | 14 | spark-1.3 + wonder-1.0 (slim) | p11942/c22781 ≈$0.19 | T5b promo-gate + eval, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: dual-decimal, eval eliminated; cheapest chain; vault T5b; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
