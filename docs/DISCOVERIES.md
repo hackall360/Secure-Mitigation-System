@@ -392,3 +392,10 @@ and taxonomy link.
 - Blue: CRLF-to-space neutralization on write.
 - Gate-3: 4/4. Taxonomy v42. Vault: red `e65512d91b90`, blue
   `040f91247baa`. NOVEL_SURFACE. Misattribution specimen #5.
+
+## D39 — T4i require-path prior (Cycle 63, 2026-10-31)
+
+- Red: en greeting recorded, crafted lang discloses package.json.
+- Blue: strict [A-Za-z0-9_-]+ locale allowlist.
+- Gate-3: 8/8. Taxonomy v43. Vault: red `8f836e5a76a1`, blue
+  `ac45e0ab52d2`. NOVEL_SURFACE. Backfire specimen archived.

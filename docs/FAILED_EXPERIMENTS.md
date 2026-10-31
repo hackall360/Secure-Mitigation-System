@@ -239,3 +239,15 @@ rule applies: destroy container, log here, begin next cycle immediately.
   Standing practice: keep grounding (cheap), keep the debug var armed
   (proven 5x), retry stalls once before reshaping, reshape on
   identical-repeat, stop-line 5.
+
+## F19 — Grounding backfire hypothesis (2026-10-31, Cycle 63 capture #6)
+
+- The model explicitly referenced the grounding quote and dismissed it
+  ("disregarding contract ground-truth note claiming no allowlist"),
+  then affirmed an allowlist. The quote's vocabulary ("no allowlist,
+  no containment") may PRIME the fix-concept it tries to negate —
+  ironic process theory in miniature. Unproven (n=1 explicit case),
+  but grounding is now NEUTRAL: keep for contract uniformity, expect
+  nothing, never reshape around it. The standing stall protocol
+  (retry → identical-repeat reshape → stop-line 5) is unchanged and
+  keeps working (C63 cleared on retry).

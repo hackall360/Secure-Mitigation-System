@@ -1,5 +1,5 @@
 {
-  "version": "42",
+  "version": "43",
   "classes": [
     {
       "id": "T1",
@@ -149,7 +149,8 @@
         "T4e": "PHP check-then-read split (containment on unresolved, read resolves) (forge Cycle 19)",
         "T4f": "Python greeter avatar read, realpath+commonpath (forge Cycle 24; headline T1d missed->solo queued)",
         "T4g": "Python single safe/-prefix strip then join, realpath+commonpath after strip (forge Cycle 26)",
-        "T4h": "Python join-discard/escape traversal (forge Cycle 58, canonical+grounded; realpath+commonpath fix)"
+        "T4h": "Python join-discard/escape traversal (forge Cycle 58, canonical+grounded; realpath+commonpath fix)",
+        "T4i": "Node require()-path locale injection (forge Cycle 63; exact-quotation misattribution; allowlist fix)"
       },
       "priors": {
         "red": "6ad9156807d4",
@@ -173,6 +174,10 @@
         "T4h": {
           "red": "8ebc974c1a72",
           "blue": "aa63d31e68ff"
+        },
+        "T4i": {
+          "red": "8f836e5a76a1",
+          "blue": "ac45e0ab52d2"
         }
       }
     },
@@ -419,6 +424,11 @@
       "version": "42",
       "date": "2026-10-31",
       "change": "Cycle 59: +T6h (log forging); 5th hallucination capture (fix-misattribution, not invention); retry cleared; grounding demoted to weak-signal; vault; Gate-3 4/4"
+    },
+    {
+      "version": "43",
+      "date": "2026-10-31",
+      "change": "Cycle 63: +T4i (require-path injection); capture #6 (model EXPLICITLY disregarded grounding, quoted fix verbatim); retry cleared; vault; Gate-3 8/8"
     }
   ]
 }

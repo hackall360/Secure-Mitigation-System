@@ -424,3 +424,24 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   cannot be doing the decisive work here; retry/streak-break carries
   the clear. Grounding stays as cheap boilerplate, not a rule.
 - Blue: CRLF-to-space on write. Gate-3 4/4. Vault NOVEL.
+
+## T4i note (require-path locale injection + grounding backfire)
+
+- Subclass T4i (proven forge Cycle 63, Node, 2 attempts: 1x captured
+  hallucination, then VERIFIED): raw `lang` into
+  `require("../locales/" + lang + ".json")`; `../package` discloses
+  project files via the code-loading primitive. Benign executable
+  (real en.json served). F13-safe (path-keyed require cache never
+  alters benign results).
+- Capture #6 (strongest specimen): the model wrote "Judged ONLY
+  supplied source text per instructions, DISREGARDING contract
+  ground-truth note" — then reviewed code containing
+  `if(typeof lang!=="string" || !/^[A-Za-z0-9_-]+$/.test(lang)) throw`,
+  BYTE-IDENTICAL to Blue's later fix. Meta-instruction followed,
+  object-level confabulation regardless. Grounding may BACKFIRE: the
+  quote names the fix vocabulary ("no allowlist"), priming the model
+  to affirm it. Grounding downgraded to NEUTRAL-BOILERPLATE (keep for
+  uniformity, expect nothing).
+- Retry (identical contract) cleared. Blue: strict locale allowlist.
+  Gate-3 8/8 (7 blocked + unicode-en correctly resolves to benign).
+- Vault: red `8f836e5a76a1`, blue `ac45e0ab52d2`; NOVEL_SURFACE.

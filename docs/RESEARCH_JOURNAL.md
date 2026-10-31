@@ -1495,3 +1495,16 @@ Run: `overnight_1793434523077_12855248373640259943`.
   the 2-arg array (+read explicitly, best) or EXTR_SKIP and the hole
   dies. Documents the exact minimal delta between vulnerable and safe.
   No CVE, no disclosure.
+
+## E63 — Cycle 63: T4i VERIFIED attempt 2 (final forge cycle)
+
+- Green: require-path locale injection, executable benign, F13-safe
+  cache reasoning. Gate-0: benign world, hostile package.json leak.
+- a1: capture #6 (grounding explicitly disregarded; exact-quotation
+  misattribution). a2 identical: VERIFIED, pre 0 post 1. Cost $0.12 —
+  cheapest keyed clear of the late night.
+- Blue: locale allowlist (byte-identical to hallucinated lines, 3rd
+  instance of the model pre-writing the fix: C59, C63, and C48's
+  redirect-allowlist). Gate-3 8/8. Vault NOVEL. Taxonomy v43.
+  Conclusion: Δ(C.63) → 0. The forge closes its final cycle with the
+  full stall protocol validated end to end.
