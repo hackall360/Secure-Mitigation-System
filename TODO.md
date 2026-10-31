@@ -339,5 +339,6 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA15. Wave 15 TRIBUNAL + HARD GATE (mod-3 and mod-5; gate takes precedence).
 - [x] AA15. Wave 15 outcome: GATE GREEN (725, exit 0) then tribunal weighted **8.54** (was 8.50, +0.04 fault evidence). Movers: S3 daemon-fault + throttle bounds (6/7 → 8.0), 2b chain-verdict Docker proof (3 → 8.5). No Wave-16-regression-only needed. Proof: matrix.
 - [ ] AA16. Wave 16 keyed chain sweep: live Muse red→blue→verify flip on node_chain_link.
+- [x] AA16. Wave 16 outcome: KEYED CHAIN PROOF — node_chain_link boundary-passed vs live Muse (633→629 tokens), vault KNOWN_ARCHETYPE recall, chain row rendered, cleanup. Closes 2b-3 live gap: chained verdict fires with real synthesis.
 - [ ] AA17. Wave 17 throttle/daemon UI banners: WS error event → visible dashboard banner (LAW 11 proof).
 - [ ] AA18. Wave 18 TRIBUNAL (mod-3).

@@ -60,13 +60,13 @@ def test_rate_limit_error_text_routes_to_banner():
     """WS error/busy text naming the rate limit reaches showBanner."""
     source = _js()
     assert "handleSocketMessage" in source
-    error_branch = source[source.index("handleSocketMessage"):]
+    error_branch = source[source.index("handleSocketMessage") :]
     # The branch routes payload text to the banner path ...
     assert "showBanner" in error_branch, "error/busy branch must show the banner"
     assert "maybeShowBanner(payload.msg" in error_branch
     # ... and the banner filter triggers on rate-limit wording (not a passing
     # mention: it is the condition that calls showBanner).
-    filt = source[source.index("function maybeShowBanner"):]
+    filt = source[source.index("function maybeShowBanner") :]
     filt = filt[: filt.index("\n}\n") + 3]
     assert "rate limit" in filt.lower().replace("-", " ")
     assert "showBanner(t)" in filt
@@ -75,10 +75,10 @@ def test_rate_limit_error_text_routes_to_banner():
 def test_docker_error_text_routes_to_banner():
     """WS text naming Docker trouble reaches showBanner."""
     source = _js()
-    error_branch = source[source.index("handleSocketMessage"):]
+    error_branch = source[source.index("handleSocketMessage") :]
     assert "showBanner" in error_branch
     assert "maybeShowBanner(payload.msg" in error_branch
-    filt = source[source.index("function maybeShowBanner"):]
+    filt = source[source.index("function maybeShowBanner") :]
     filt = filt[: filt.index("\n}\n") + 3]
     assert "docker" in filt.lower()
     assert "showBanner(t)" in filt
@@ -91,7 +91,7 @@ def test_banner_clears_on_next_successful_staged_event():
     # advanceStage is the staged-event path (sandbox/baseline/probe/...);
     # the banner must hook into it so success dismisses the error surface.
     assert "advanceStage" in source
-    staged = source[source.index("function advanceStage"):]
+    staged = source[source.index("function advanceStage") :]
     staged = staged[: staged.index("\n}\n") + 3] if "\n}\n" in staged else staged
     assert "clearBanner" in staged or "showBanner" in source
 
@@ -105,5 +105,5 @@ def test_chip_key_turns_amber_while_banner_visible():
     # The chip state change must be coupled to the banner show/clear calls,
     # not an independent control — find both near each other.
     show_at = source.index("showBanner")
-    window = source[max(0, show_at - 2000): show_at + 2000]
+    window = source[max(0, show_at - 2000) : show_at + 2000]
     assert "chip" in window.lower() and "warn" in window.lower()
