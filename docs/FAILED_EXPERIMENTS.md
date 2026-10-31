@@ -88,3 +88,14 @@ rule applies: destroy container, log here, begin next cycle immediately.
   MUST be HTTP-level (Set-Cookie→Cookie round-trip) or gates are
   untestable. C4/C11 did HTTP; C30 is the counterexample. T1e closed,
   T9b-link open by record.
+
+## F11 — C40 attempts 1-4: transient cluster + contract-detail lesson (2026-10-31)
+
+- Attempts 1-3: Red exit-0 bottled each time; Blue-phase schema faults
+  killed the cycle (strict extra=forbid sampling flake). Attempt 4:
+  simplified contract → Red degraded (`not_confirmed`, no changes).
+  Attempt 5 with the ORIGINAL contract → VERIFIED.
+- Lesson (valuable): contract detail guides RED's proof structure.
+  Simplifying the contract to dodge a BLUE-side flake degrades the RED
+  side. Revert, don't thrash. Worst flake cluster yet (4 dead attempts)
+  but bounded spend (~$1.2 total) and no fixture rewrite needed.

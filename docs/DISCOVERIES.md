@@ -288,3 +288,13 @@ and taxonomy link.
 - Taxonomy: new T8d subclass (dual of T4e). Vault: red `8bcef832a528`,
   blue `67a40f9e7de4`.
 - Gate-3: replay PASS (layer-correct; all encodings 400).
+
+## D25 — T7c price-tamper + T1h lookup chain prior (Cycle 40, 2026-10-31)
+
+- Red (HTTP cookie round-trip, enforced): GET /tag?item=book&price=20 →
+  capture Set-Cookie → replay hostile price on /checkout → 0 on cross-row leak.
+- Blue (both links hardened): server-side gate (unknown-item reject +
+  mismatch ValueError, return expected) + parametrized `WHERE price = ?`.
+- Gate-3: unseen comment-inject / tamper-down / direct-cookie all blocked.
+- Taxonomy: new T7c + T1h subclasses (v29). Vault: red `15edd883f29a`,
+  blue `d887aa3dee3`. recall NOVEL_SURFACE (fingerprint-exact).

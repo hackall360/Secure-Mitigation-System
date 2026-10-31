@@ -1227,3 +1227,29 @@ Run: `overnight_1793434523077_12855248373640259943`.
   only on demand.
 - Reusable prior created: escaper-audit battery (metas, u-flag, astral,
   NUL, literal-roundtrip) + the escaper as reference for forge allowlists.
+
+## E40 — Cycle 40: T7c price-tamper + T1h lookup chain VERIFIED attempt 5 (contract-detail lesson)
+
+- Green: `/tag?item=&price=` sets raw price cookie (Link A); `/checkout`
+  reads cookie into concat order lookup (Link B). Gate-0 local: benign
+  book/20 works; inject `20' OR '1'='1` leaks both rows.
+- Attempts 1-3: Red bottled exit-0 proofs (app.py, shop.py, shop.py) but
+  Blue-phase schema faults (`extra="forbid", strict=True` sampling flake,
+  same signature as C5/C23/C35). Attempt 4 (simplified contract): Red
+  degraded — probe did not confirm (`not_confirmed`, no changes). Lesson:
+  contract detail guides RED's proof structure; the short version lost
+  the claim→replay shape. Attempt 5 (original contract restored):
+  VERIFIED — pre 0, post 1, regressions 0/0, diff-pass.
+- Blue diff (968B): server-side gate in price_tag + parametrized
+  checkout — BOTH links hardened (defense in depth, strongest T7 fix yet).
+- Gate-3 unseen 3/3 (true-diff replay): comment-inject lamp blocked at
+  gate; tamper-to-1 blocked; direct hostile cookie bypassing /tag →
+  `no such order` via parametrization.
+- Vault: red `15edd883f29a`, blue `d887aa3dee3`; recall NOVEL_SURFACE
+  (fingerprint-exact; T7c+T1h pair distinct from T1d solo). Taxonomy v29.
+- Cost: attempt-5 usage ≈$0.41 (6 calls); 5-attempt total ≈$1.2. Flake
+  clustering (3+1) is the worst yet — transient budget discipline held
+  (no contract thrash beyond one simplification + revert).
+- Conclusion: Δ(C.40) → 0 (T7c gate + T1h lookup closed, both links).
+  Reusable: contract-detail-guides-Red rule; both-links-hardened fix
+  doctrine. See ledger Cycle 40; discoveries D25.

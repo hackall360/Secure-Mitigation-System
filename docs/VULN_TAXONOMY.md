@@ -181,3 +181,24 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   eliminate the shell, don't escape it. Preferred T3 pattern (stronger
   than C5/C13/C23 escaping).
 - Priors: red `a7fe96cb1c35`, blue `a16b36b9ab0c` (vault, forge-c37).
+
+## T7c+T1h note (price-tamper cookie gate + price-keyed lookup chain)
+
+- Subclasses T7c+T1h (proven forge Cycle 40, Python, 5 attempts):
+  client price cookie (Link A, `price_tag` returns raw client_price,
+  no check vs PRICES) chained to price-keyed order lookup (Link B,
+  string-concat `WHERE price`, CWE-89). HTTP-cookie proof (claim /tag
+  → Set-Cookie → replay hostile price → cross-row leak) exits 0.
+- Blue: BOTH links hardened (defense in depth) — server-side gate
+  (unknown-item reject + mismatch ValueError, return expected) AND
+  parametrized `WHERE price = ?`. Gate-3 unseen 3/3: comment-inject
+  lamp blocked at gate; tamper-to-1 blocked; direct hostile cookie
+  (bypass /tag) → no such order via parametrization.
+- Flake record: 3x transient Blue-schema faults (extra=forbid
+  strict) + 1x degraded-Red (probe not confirmed) after contract
+  simplification; original detailed contract won on attempt 5. Lesson:
+  contract detail guides Red's proof structure; simplify only the
+  Blue-facing half, or not at all.
+- Vault recall NOVEL_SURFACE (fingerprint-exact: T7c+T1h pair new;
+  distinct from T1d stored-nickname solo). Priors: red `15edd883f29a`,
+  blue `d887aa3dee3` (vault, forge-c40).
