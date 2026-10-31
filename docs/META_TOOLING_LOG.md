@@ -58,3 +58,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T10:41Z | muse-wonder-1.0 | C25 (2 calls) | Blue | re-read parameterize, re-probe exit 1 |
 | 2026-10-31T10:46Z | muse-spark-1.3 | C26 (4 calls) | Red | T4g strip-bypass probe exit 0 pre-patch |
 | 2026-10-31T10:46Z | muse-wonder-1.0 | C26 (2 calls) | Blue | normalize-after-strip, re-probe exit 1 |
+| 2026-10-31T10:53Z | muse-spark-1.3 | C27 (4 calls) | Red | T2f2 vm-escape probe exit 0 pre-patch |
+| 2026-10-31T10:53Z | muse-wonder-1.0 | C27 (2 calls) | Blue | de-leak + digit-requirement, re-probe exit 1 |

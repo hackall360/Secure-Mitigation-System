@@ -876,3 +876,36 @@ Run: `overnight_1793434523077_12855248373640259943`.
   strip (T4g). Taxonomy: new T4g subclass.
 - Reusable prior created: T4g strip-then-normalize template + replay-depth
   mirroring rule (mirror fixture depth exactly).
+
+## E27a — Cycle 27 Gate-0: setTimeout-string is DEAD, vm-leaky-sandbox is LIVE
+
+- First design (T2f `setTimeout(string)`): Node 22 REJECTS string-arg
+  timers (`ERR_INVALID_ARG_TYPE`) — the sink does not exist in the
+  target runtime. Gate-0 killed it pre-spend (third $0 rejection class:
+  dead-runtime-sink, alongside basename-inert and Template-inert).
+- Pivot design (T2f2 `vm.runInNewContext` with leaky sandbox): Gate-0
+  PROVES it — benign `40+2`→`42`, evil `process.version`→`v22.22.1`.
+  A vm sandbox that shares `process`/`require` is no sandbox (the classic
+  escape). Proceed with the vm shape.
+
+## E27b — Cycle 27 keyed run: T2f2 vm-leaky-sandbox VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven vm-leaky shape verifies with a de-leak patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "RCE via unsanitized HTTP expr passed
+  to vm.runInNewContext with process/require in sandbox". Blue went
+  FURTHER than minimal: digit-requirement char-class + de-leaked sandbox
+  at BOTH layers (widget + route — defense in depth). 6 calls p10525/c16768
+  ≈$0.17.
+  Evidence: run `validation/task-2701-c27-live.txt`,
+  `validation/task-2701-c27-report.json`.
+- Gate-3/audit: `Math.constructor.constructor(...)` unspellable (letters
+  rejected); arithmetic fully preserved (`(40+2)*3`, `2**10`). The de-leak
+  is the fix; the char-class is the belt. REPLAY PASS.
+- Vault: red `6d02651d7752`, blue `36304c7ab5ed`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2702-c27-vault.txt`.
+- Conclusion: Δ(C.27) → 0. T2 family now: eval (T2a), decimal-allowlist
+  (T2b/d), Function-ctor (T2e-closed), vm-leaky (T2f2). The night's THIRD
+  Gate-0 redirect (setTimeout-dead → vm-live) paid off. Taxonomy: new
+  T2f2 subclass.
+- Reusable prior created: T2f2 de-leak + digit-requirement template.
