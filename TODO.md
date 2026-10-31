@@ -24,7 +24,7 @@ Every item names its files and its proof.
 
 - [x] CC1. Pre-merge: working tree clean; gate green pre-change (21:44: 798); inventory done (dry-run proved work-tags conflict; absorbed branches identified). Proof: this section + dry-run log.
 - [x] CC2. LAW 12 version: 0.10.0 -> 0.11.0 MAJOR (new capabilities judges notice: library/ rename + shims, web/tui/mcp maps, HOW_IT_WORKS, plain README, split AGENTS, sub-agent roster, MCP version single-source). Files: `library/core/version.py` (new source), `main.py` (imports it), `library/services/mcp_bridge.py` (serverInfo from source), `static/index.html` footer, `README.md` badge. Proof: `main.py --version` = 0.11.0, README badge regex test green, ruff clean.
-- [.] CC3. Ship: FINAL gate green (798 + All checks) + offline_scan 4/4 verified on 0.11.0 tree. Next: LAW 1 flow (develop merge -> push develop -> merge main -> push main -> back develop). No pushes yet.
+- [x] CC3. SHIPPED 0.11.0: final gate 798 + All checks on merged develop; offline_scan 4/4; LAW 1 flow done: forge -> develop (24e0bd8) -> pushed develop -> main (0fae2ec) -> pushed main -> back on develop. Stale/duplicate branches (work-tags + 60 already-merged + absorbed writer branches) deliberately NOT bulk-merged; listed in ship report. Proof: push logs + gate output.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
