@@ -49,3 +49,9 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - Lesson: in `network_mode=none`, provable SSRF = selector-injection over
   LOCAL resources (T8b). True egress-SSRF needs a cooperating in-net
   upstream, which the harness does not provide. Evidence: `task-701/702-c7*`.
+
+## F7 — Scout Cycle 9: Flask-File-Upload audit finds no hole (2026-10-31)
+
+- Double-closed traversal (secure_filename + safe_join); ext mismatch
+  unconsumed; MIME unused; crash unreachable. Stale ≠ vulnerable.
+  Battery kept for future upload targets.

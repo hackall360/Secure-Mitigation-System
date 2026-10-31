@@ -340,3 +340,23 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (path.resolve) under keyed synthesis — the taxonomy prior class now spans
   languages. Taxonomy: new T4b (Node) + T2d (Node decimal) subclasses.
 - Reusable prior created: T4b+T2d Node red probe + dual guard template.
+
+## E9 — Cycle 9 scout: Flask-File-Upload audit (NEGATIVE, valuable)
+
+- Hypothesis: a stale single-maintainer upload helper (last commit 2023)
+  contains a traversal or allowlist bypass the flagships fixed long ago.
+- Method: LOCAL clone (`joegasewicz/flask-file-upload` @ `d914b3a`, MIT) +
+  LOCAL string-level batteries replicating the exact save/stream shapes.
+- Control: benign `x.mp4` survives both gates; hostile names neutralize.
+- Result: save-time `secure_filename` + stream-time `safe_join` both hold;
+  stored-ext mismatch (`split` vs `rsplit`) is real but UNCONSUMED (tests
+  only); client MIME stored but unused in decisions; extensionless crash
+  unreachable via the guarded entry. NO candidate; no disclosure.
+- Conclusion: the "smaller target" heuristic did not pay off this time —
+  small does not mean sloppy here. The ext-mismatch wart is worth one
+  upstream note IF we ever engage (not tonight: no contact, no publish).
+  Next scout direction (Cycle 12+): MIME-sniffing/serving behavior or a
+  non-Python target (PHP/Node micro-helper).
+- Reusable prior created: upload-helper audit battery (sanitize-at-save,
+  safe_join-at-stream, ext-split consistency, MIME trust, crash
+  reachability) reusable against any upload target.
