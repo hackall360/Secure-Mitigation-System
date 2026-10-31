@@ -345,6 +345,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA18. Wave 18 TRIBUNAL (mod-3).
 - [x] AA18. Wave 18 outcome: tribunal weighted **8.58** (was 8.54, +0.04 keyed chain + banner). Movers: 2b-3 → 9.0 (real synthesis flip), S3-6/7 → 8.5 (banner render). Proof: matrix.
 - [ ] AA19. Wave 19 banner operate-proof (LAW 11): trigger error path live both browsers.
+- [x] AA19. Wave 19 outcome: BANNER PROVEN LIVE (Chrome): overlapping scans → second client got `type:busy` + close 1013 at protocol level; dashboard STATUS went red "Another scan is already running", #scan-banner rendered lock text, timeline carried refusal, first scan unaffected. Screenshot captured. Server torn down, zero leftovers. (Busy path needs no LAW-12 bump — render-only of Wave-17 work.)
 - [ ] AA20. Wave 20 HARD GATE + WILD CRUCIBLE #2 (keyed wildcard sweep).
 - [ ] AA21. Wave 21 TRIBUNAL (mod-3).
 
