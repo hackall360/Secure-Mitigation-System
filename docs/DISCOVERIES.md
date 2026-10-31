@@ -219,3 +219,16 @@ and taxonomy link.
 - Taxonomy: new T3e subclass (CWE-74, new family). Vault:
   red `9e21d63fd849`, blue `53bd3cb3bd28`.
 - Gate-3: replay PASS (renamed variant; attribute walk dead).
+
+## D19 — T1e solo prior, T9b-link open (Cycle 30, 2026-10-31, PARTIAL)
+
+- Fixture: PIN-gated vault with two-slot concat lookup. Red proved the
+  T1e sink via DIRECT IMPORT (no HTTP, no cookie) → exit 0; Blue
+  parameterized both slots → exit 1. The T9b PIN-gate link was never
+  exercised — OPEN by record (HTTP cookie round-trip required for gate
+  proofs; new rule).
+- Evidence: run `validation/task-3001-c30-report.json` (receipt pre=0/post=1,
+  patch sha `d8207378…`), `validation/task-3002-c30-vault.txt`.
+- Taxonomy: T1e-closed + T9b-open. Vault: red `375fc78c80f1`,
+  blue `5818718a7d63`.
+- Gate-3: replay PASS (renamed schema; injection → none).

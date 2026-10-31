@@ -952,3 +952,44 @@ Run: `overnight_1793434523077_12855248373640259943`.
   chapter now spans a-g. Taxonomy: new T3e subclass.
 - Reusable prior created: T3e parse-then-format gate + the fixed-single-arg
   reduction (remove the rich object from scope entirely where possible).
+
+## E35r — Cycle 35 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C29 (7) + Node C2, C8,
+  C11, C14, C17, C18, C27 (7) + PHP C5, C10, C13, C16, C19, C23, C26,
+  C28 (8). Total 22. Max 8/22 = 36% < 40% ✓ — balanced for the first
+  time since E25r (Node was 46% then; the PHP/Python depth directive worked).
+- Scouts: 6 (5 neg + 1 inconclusive). Zero-dep rule stands.
+- Class coverage: T1×4 (T1, T1c, T1d×2), T2×8, T3×7 (a, c×2, d, dd, e×2),
+  T4×8, T5×2, T6×3, T7×1, T8×1, T9×1. T7/T8/T9 single-proof classes are
+  the thinnest — next chains should revisit gate+chain shapes (new links).
+- Forced direction: Cycles 31-33 = gate→sink CHAIN on a novel link pair
+  (T7/T8/T9 family depth) + Cycle 33 scout cadence (zero-dep single-file).
+
+## E30 — Cycle 30: T9b PIN-gate CHAIN intended, T1e SOLO proven (PARTIAL by Red choice)
+
+- Hypothesis: the chain-explicit contract yields a unified A→B script.
+- Result: PARTIAL by Red choice — Red imported `read_secret` DIRECTLY
+  (source-level probe, no HTTP, no `/claim`, no cookie) and proved the T1e
+  label SQLi (`' OR '1'='1' -- ` → admin secret leaks for tier=member).
+  Blue parameterized BOTH slots (`tier = ? AND label = ?`) → exit 1,
+  regressions 0/0. Receipt pre=0/post=1, cleanup ok, success=True.
+  6 calls p11577/c22277 ≈$0.23.
+  Evidence: run `validation/task-3001-c30-live.txt`,
+  `validation/task-3001-c30-report.json`.
+- The CHAIN (claim→cookie→inject) was NOT exercised: Red bypassed Link A
+  entirely with a direct import. The T9b gate link is therefore UNPROVEN
+  (neither bypassed nor honored — simply unused), while the T1e sink is
+  proven+CLOSED. Per the C17/C24 precedent: record honestly — T1e CLOSED,
+  T9b-link OPEN by record (its own solo needs a FORCED-cookie test, since
+  a direct import can always dodge any gate).
+- Lesson (new, TRAPS): source-import probes DODGE gate links by
+  construction — chain contracts MUST demand HTTP-level proof (cookie
+  Set-Cookie→Cookie round-trip) or the gate link is untestable. The C4/C11
+  successes used HTTP cookie flows; C30's import-shape probe is the
+  counterexample that proves the rule.
+- Gate-3 replay PASS on renamed schema (injected label → all-rows vs
+  stranger/benign preserved).
+- Vault: red/blue T1e (CLOSES the sink); T9b-link OPEN by record.
+- Reusable prior created: chain-proof MUST be HTTP-level (cookie
+  round-trip) — source-import probes cannot prove gate links.

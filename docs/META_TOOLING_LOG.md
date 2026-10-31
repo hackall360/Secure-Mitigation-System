@@ -64,3 +64,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T10:58Z | muse-wonder-1.0 | C28 (2 calls) | Blue | allowlist-or-404, re-probe exit 1 |
 | 2026-10-31T11:03Z | muse-spark-1.3 | C29 (4 calls) | Red | T3e attribute-walk probe exit 0 pre-patch |
 | 2026-10-31T11:03Z | muse-wonder-1.0 | C29 (2 calls) | Blue | parse-gate + single-arg format, re-probe exit 1 |
+| 2026-10-31T11:08Z | muse-spark-1.3 | C30 (4 calls) | Red | T1e direct-import probe exit 0 (gate link dodged) |
+| 2026-10-31T11:08Z | muse-wonder-1.0 | C30 (2 calls) | Blue | dual-slot parameterize, re-probe exit 1 |

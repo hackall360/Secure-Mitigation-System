@@ -80,3 +80,11 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - `string.Template.substitute` does not evaluate `${...}` — inert by
   design, no signal, no vuln. Rule: no evaluation = no injection sink.
   $0 spent. Gate-0 battery habit: 2 runs saved.
+
+## F12 — Cycle 30: source-import probe dodges the gate link (PARTIAL, lesson)
+
+- Red proved the T1e SINK via direct import, never touching `/claim` —
+  the T9b PIN-gate link is unproven (not bypassed: unused). Chain proofs
+  MUST be HTTP-level (Set-Cookie→Cookie round-trip) or gates are
+  untestable. C4/C11 did HTTP; C30 is the counterexample. T1e closed,
+  T9b-link open by record.
