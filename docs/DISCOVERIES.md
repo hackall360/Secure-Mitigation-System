@@ -81,3 +81,14 @@ and taxonomy link.
 - Taxonomy: new T4b (Node) + T2d (Node decimal) subclasses. Vault:
   red `20734eb19022`, blue `11d9759e7414`.
 - Gate-3: replay PASS (renamed variant; traversal blocked, benign ok).
+
+## D7 — T6b htmlspecialchars prior (Cycle 10, 2026-10-31)
+
+- Novel fixture: PHP `/hi?name=` raw reflection. Red exit 0
+  (`<script>alert(1)</script>` reflected raw); Blue `is_string` +
+  `htmlspecialchars(ENT_QUOTES)` → Red exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-1001-c10-report.json` (receipt pre=0/post=1,
+  patch sha `195e17c6…`), `validation/task-1002-c10-vault.txt`.
+- Taxonomy: new T6b (PHP) subclass (T6 was co-present-only before). Vault:
+  red `b5753bddae95`, blue `517a43a5ddea`.
+- Gate-3: replay PASS in Docker PHP (script neutralized, quotes escaped).

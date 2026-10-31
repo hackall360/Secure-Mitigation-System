@@ -360,3 +360,44 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Reusable prior created: upload-helper audit battery (sanitize-at-save,
   safe_join-at-stream, ext-split consistency, MIME trust, crash
   reachability) reusable against any upload target.
+
+## E10r — Cycle 10 self-review: diversity check (every 5 cycles)
+
+- Forge cycles 1-9: classes T4×3 (a, b, co), T2×5 (a-co, b, c, d), T1×1,
+  T3×1, T6×1(co), T7×1, T8×1. No class primary >40% as the RETAINED finding
+  family (T2 co-occurs but leads only C2/C8 — 2/6 = 33% < 40% ✓).
+  Languages (keyed cycles): Python×3 (C1, C4, C7), Node×2 (C2, C8),
+  PHP×1 (C5). Python = 50% — OVER the 40% bar by letter, but the last two
+  keyed runs were Node (C8) and the scouts covered Python libs; the
+  trajectory is diversifying.
+- Scouts 3/6/9: PyJWT (guards hold), werkzeug (guards hold), FFU
+  (double-closed). Three consecutive well-guarded negatives: pattern says
+  flagship + maintained code is hardened; next scout should go EXOTIC
+  (PHP/Node micro-helper, MIME/serving behavior) or PAUSE scouting in favor
+  of Green depth.
+- Forced direction for Cycle 10: PHP (least-used keyed language, 1/6) +
+  a FAMILY with no forge proof yet. Unproven: T5-style logic-abuse gate on
+  a NEW shape, or T6 XSS end-to-end (only co-present so far), or T3 second
+  variant (PHP escapeshellarg replay in a new sink shape). Choice: T6
+  reflected-XSS end-to-end in PHP — closes the "XSS only co-present"
+  gap and replays the Cycle-5 PHP harness knowledge.
+
+## E10 — Cycle 10: PHP T6b reflected XSS end-to-end, first-try VERIFIED
+
+- Hypothesis: the self-review-forced T6 end-to-end (PHP, least-used keyed
+  language) verifies with the canonical `htmlspecialchars` patch.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Reflected
+  XSS in GET /hi?name=". Blue: `is_string` guard + `htmlspecialchars(...,
+  ENT_QUOTES, 'UTF-8')`. 6 calls p8232/c12191 ≈$0.16 — cheap (slim agents).
+  Evidence: run `validation/task-1001-c10-live.txt`,
+  `validation/task-1001-c10-report.json`.
+- Gate-3 replay PASS in Docker PHP on renamed variant (script tag
+  neutralized to entities, `O'Brien` quote escaped, benign ok).
+- Vault: red `b5753bddae95`, blue `517a43a5ddea`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1002-c10-vault.txt`.
+- Conclusion: Δ(C.10) → 0. T6 now proven END-TO-END (was co-present only in
+  C2). Taxonomy: new T6b (PHP) subclass. Keyed tally: Python×3, Node×2,
+  PHP×2 — within the 40% diversity bar at last (max 3/7 ≈ 43% Python...
+  still marginally over; next Green stays non-Python).
+- Reusable prior created: T6b red marker probe + htmlspecialchars template.
