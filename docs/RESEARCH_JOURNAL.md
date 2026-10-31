@@ -1441,3 +1441,15 @@ Run: `overnight_1793434523077_12855248373640259943`.
   decisive experiment.
 - Blue: gold-standard containment. Gate-3 6/6. Vault NOVEL.
   Taxonomy v41. Conclusion: Δ(C.58) → 0.
+
+## E59 — Cycle 59: T6h VERIFIED attempt 2 (misattribution refinement)
+
+- Green: CRLF audit events + line viewer. Gate-0: benign prefix,
+  forged line present. F13-safe by design (prefix asserts, fresh
+  targets per stage — confirmed no differential breakage).
+- a1: hallucination capture #5 — the sharpest yet (fix-misattribution,
+  not invention). a2 (identical contract): VERIFIED, pre 0 post 1.
+  Cost att2 $0.21. Grounding demoted (present in stall AND clear).
+- Blue: CRLF-to-space (exactly the hallucinated lines — the model
+  wrote the fix while denying the vuln). Gate-3 4/4. Vault NOVEL.
+  Taxonomy v42. Conclusion: Δ(C.59) → 0.

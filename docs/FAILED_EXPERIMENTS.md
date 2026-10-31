@@ -227,3 +227,15 @@ rule applies: destroy container, log here, begin next cycle immediately.
   full path: VERIFIED first-try. Standing rule: Gate-0 must prove the
   BENIGN path end-to-end in its real consumer, not just assert on
   response strings. (The string assert passed; executability failed.)
+
+## F18 — Grounding demotion (2026-10-31, Cycle 59)
+
+- C59 ran WITH the grounding quote and stalled identically (captured);
+  the retry (same grounding) cleared. Combined with C55 (grounded
+  stall then grounded clear): grounding is PRESENT in 2 stalls and 3
+  clears. It is at best a weak signal, not the decisive factor.
+- Demoted from RULE back to boilerplate. The decisive factor remains
+  unidentified (streak-break is a description, not a mechanism).
+  Standing practice: keep grounding (cheap), keep the debug var armed
+  (proven 5x), retry stalls once before reshaping, reshape on
+  identical-repeat, stop-line 5.

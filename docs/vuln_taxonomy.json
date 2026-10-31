@@ -1,5 +1,5 @@
 {
-  "version": "41",
+  "version": "42",
   "classes": [
     {
       "id": "T1",
@@ -225,7 +225,8 @@
         "T6b": "PHP /hi?name= raw reflection (forge Cycle 10)",
         "T6c": "PHP guestbook stored XSS sign+wall, render-time escape (forge Cycle 16)",
         "T6f": "Python response-splitting via Content-Disposition filename (forge Cycle 49, raw-socket proof; first-line+printable fix)",
-        "T6g": "Python dynamic-import specifier hijack (forge Cycle 54 v3; prefix+suffix+metachar allowlist)"
+        "T6g": "Python dynamic-import specifier hijack (forge Cycle 54 v3; prefix+suffix+metachar allowlist)",
+        "T6h": "Python log-forging via CRLF audit events (forge Cycle 59; CRLF-to-space fix)"
       },
       "priors": {
         "red": "b5753bddae95",
@@ -241,6 +242,10 @@
         "T6g": {
           "red": "92f4fc36d931",
           "blue": "7e83df77e34f"
+        },
+        "T6h": {
+          "red": "e65512d91b90",
+          "blue": "040f91247baa"
         }
       }
     },
@@ -409,6 +414,11 @@
       "version": "41",
       "date": "2026-10-31",
       "change": "Cycle 58: +T4h (canonical traversal); grounding A/B first-try clear (promote grounding toward rule); vault NOVEL (fingerprint-exact limitation noted); Gate-3 6/6"
+    },
+    {
+      "version": "42",
+      "date": "2026-10-31",
+      "change": "Cycle 59: +T6h (log forging); 5th hallucination capture (fix-misattribution, not invention); retry cleared; grounding demoted to weak-signal; vault; Gate-3 4/4"
     }
   ]
 }

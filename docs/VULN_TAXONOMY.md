@@ -406,3 +406,21 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   does not recall — near-duplicate blindness is a known vault
   limitation, recorded for future recall work).
 - Vault: red `8ebc974c1a72`, blue `aa63d31e68ff`.
+
+## T6h note (log forging + fix-misattribution refinement)
+
+- Subclass T6h (proven forge Cycle 59, Python, 2 attempts: 1x captured
+  hallucination, then VERIFIED): raw CRLF-bearing events reach the
+  audit log; the line-based viewer renders forged entries as real.
+  Stateless-ish (append-only global; F13-safe via prefix asserts +
+  fresh targets per stage).
+- 5th capture refines the mechanism: this time Red did NOT invent a
+  fiction — it described the ACTUAL fix
+  (`event.replace("\r"," ").replace("\n"," ")`, byte-identical to
+  Blue's later diff) but MISATTRIBUTED it as already present.
+  Fix-misattribution, not confabulation. The model knows the fix
+  cold; the failure is provenance (present-vs-absent), not knowledge.
+- Grounding demoted: present in BOTH the stall and the clear. It
+  cannot be doing the decisive work here; retry/streak-break carries
+  the clear. Grounding stays as cheap boilerplate, not a rule.
+- Blue: CRLF-to-space on write. Gate-3 4/4. Vault NOVEL.

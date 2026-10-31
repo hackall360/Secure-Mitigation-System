@@ -385,3 +385,10 @@ and taxonomy link.
 - Blue: realpath + commonpath containment.
 - Gate-3: 6/6. Taxonomy v41. Vault: red `8ebc974c1a72`, blue
   `aa63d31e68ff`. NOVEL_SURFACE. Grounding-rule evidence.
+
+## D38 — T6h log-forging prior (Cycle 59, 2026-10-31)
+
+- Red: bob login recorded, CRLF user forges admin entry line.
+- Blue: CRLF-to-space neutralization on write.
+- Gate-3: 4/4. Taxonomy v42. Vault: red `e65512d91b90`, blue
+  `040f91247baa`. NOVEL_SURFACE. Misattribution specimen #5.
