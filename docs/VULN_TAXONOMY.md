@@ -314,3 +314,19 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   extinct; `extract()` is its living heir. Recorded so future Green
   never wastes Gate-0 on it.
 - Vault: red `68b8699c2fa5`, blue `7a284ccbc042`; NOVEL_SURFACE.
+
+## T3h note (CWE-88 argument injection without shell)
+
+- Subclass T3h (proven forge Cycle 53, Python, 4 attempts: 3x BASELINE
+  fails, then VERIFIED): command STRING built with raw `fmt`, then
+  `shlex.split` — a space becomes a new argv element, so
+  `png --output=/tmp/evil` hijacks the destination. No shell anywhere
+  (distinct from T3a/c/d/dd/f/g shell family). Signal: the `wrote`
+  path / split argv observable over HTTP.
+- Attempt ledger: a1 contract IndexError (my assert bug), a2 exec-bit
+  (snapshot strips it; chmod-after-copy fix), a3 `convert failed`
+  STILL — root cause: exec-ing inside the target sandbox is
+  unreliable. Fix: drop the subprocess from the TARGET; keep the
+  write primitive in Gate-0 evidence, assert the argv split over HTTP.
+- Blue: strict `[A-Za-z0-9]+` allowlist on fmt (spaces impossible).
+  Gate-3 unseen 5/5. Vault: red `16e319585da8`, blue `c7d063cc33e7`.

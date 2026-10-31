@@ -344,3 +344,10 @@ and taxonomy link.
 - Gate-3: 6/6 (gate composition). Taxonomy v36. Vault: red
   `68b8699c2fa5`, blue `7a284ccbc042`. NOVEL_SURFACE.
 - Negative: PHP8 single-arg parse_str extinct; EXTR_SKIP safe.
+
+## D32 — T3h argument-injection prior (Cycle 53, 2026-10-31)
+
+- Red: benign argv recorded, crafted fmt splits an injected flag.
+- Blue: strict [A-Za-z0-9]+ allowlist on fmt.
+- Gate-3: 5/5. Taxonomy v37. Vault: red `16e319585da8`, blue
+  `c7d063cc33e7`. NOVEL_SURFACE.

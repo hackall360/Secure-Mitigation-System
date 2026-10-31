@@ -1,5 +1,5 @@
 {
-  "version": "36",
+  "version": "37",
   "classes": [
     {
       "id": "T1",
@@ -92,7 +92,8 @@
         "T3dd": "PHP dynamic include with fixed .php suffix, allowlist-or-404 fix, twin-plant provability (forge Cycle 28)",
         "T3e": "Python user-controlled str.format template, parse-gate + single-arg fix (forge Cycle 29)",
         "T3f": "Node mini-mustache {{{ }}} raw override via tpl param, normalize + branch-removal fix (forge Cycle 32)",
-        "T3g": "Node child_process.exec shell-string, execFile+allowlist fix (forge Cycle 37)"
+        "T3g": "Node child_process.exec shell-string, execFile+allowlist fix (forge Cycle 37)",
+        "T3h": "Python string-built shlex-split arg injection (forge Cycle 53; allowlist fix; no-subprocess-in-target trap)"
       },
       "priors": {
         "red": "bc06d91cdbed",
@@ -120,6 +121,10 @@
         "T3g": {
           "red": "a7fe96cb1c35",
           "blue": "a16b36b9ab0c"
+        },
+        "T3h": {
+          "red": "16e319585da8",
+          "blue": "c7d063cc33e7"
         }
       }
     },
@@ -359,6 +364,11 @@
       "version": "36",
       "date": "2026-10-31",
       "change": "Cycle 52: +T5e (extract-overwrite); PHP8 1-arg parse_str extinct (negative); first-try VERIFIED; vault; Gate-3 6/6 incl gate-composition"
+    },
+    {
+      "version": "37",
+      "date": "2026-10-31",
+      "change": "Cycle 53: +T3h (CWE-88 arg injection, no shell); attempt-4 after 3 baseline fails (contract bug, exec-bit, sandbox-subprocess); avatar-only-sink lesson; vault; Gate-3 5/5"
     }
   ]
 }

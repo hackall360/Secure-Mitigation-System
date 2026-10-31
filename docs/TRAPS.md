@@ -179,3 +179,13 @@ here, not in scattered notes.
   hallucination of the training-dominant secure variant. Prefer
   shape-distinctive fixtures; F14 nested-quote rule demoted to
   coincidence pending its own capture.
+
+## No subprocess execution inside the target service (forge Cycle 53, 2026-10-31)
+
+- The target sandbox unreliably executes child processes (a3 failed
+  even with correct exec bits; cause unidentified). Fixtures must NOT
+  exec inside the target: keep write primitives in Gate-0 evidence
+  (local, root) and assert the SPLIT/mutation over HTTP in the keyed
+  loop. Split the proof across the trust boundary. Related: never
+  rely on snapshot exec bits (chmod after copy); keep contract
+  asserts total (no indexing).

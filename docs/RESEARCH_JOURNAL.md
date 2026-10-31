@@ -1366,3 +1366,15 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Blue: extract-removal + deny-admin (stronger than minimal escape).
   Gate-3 6/6 with gate-composition proof. Vault NOVEL. Taxonomy v36.
   Conclusion: Δ(C.52) → 0.
+
+## E53 — Cycle 53: T3h VERIFIED attempt 4 (split-proof doctrine)
+
+- Green: string-built + shlex-split arg injection, argv-only sink.
+  Gate-0 local: benign out.txt; hostile pwned written (first-wins
+  stub). Rare shape + rare fix vocabulary; no hallucination, no
+  schema faults once past baseline.
+- Attempts 1-3 all died at BASELINE (F16 trap series, all Green-side).
+  Attempt 4: VERIFIED — pre 0, post 1. Cost $0.15.
+- Blue: allowlist (textbook for CWE-88). Gate-3 5/5. Vault NOVEL.
+  Taxonomy v37. Conclusion: Δ(C.53) → 0. New standing rule: never
+  exec inside the target; split proof across the trust boundary.

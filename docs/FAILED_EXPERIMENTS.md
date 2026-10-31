@@ -201,3 +201,18 @@ rule applies: destroy container, log here, begin next cycle immediately.
   were NEVER proven Blue-side; at least C48 is proven RED-side. All
   "transient Blue flake" attributions before this capture are
   SUSPECT — reclassify as unattributed model flake unless captured.
+
+## F16 — C53 attempts 1-3: no-subprocess-in-target trap (2026-10-31)
+
+- a1: contract assert bug (`split()[1]` IndexError on unexpected body).
+  Trap: keep contract asserts total (startswith/endswith, never index).
+- a2: `convert failed` — imgconv lost exec bit in snapshot. Fixed with
+  chmod-after-copy in app.py. Trap: never rely on snapshot exec bits.
+- a3: `convert failed` STILL with chmod fix — exec inside the target
+  sandbox is unreliable (unidentified; possibly noexec mount or user
+  policy). STOPPED debugging the sandbox; reshaped the sink to
+  argv-only (no subprocess in target), write primitive kept in Gate-0
+  evidence only. Attempt 4: VERIFIED.
+- Standing rule: fixtures must not exec inside the target service.
+  Gate-0 (local, root) proves the write primitive; the keyed loop
+  proves the split. Split the proof across the trust boundary.
