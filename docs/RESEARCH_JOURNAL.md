@@ -909,3 +909,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
   Gate-0 redirect (setTimeout-dead → vm-live) paid off. Taxonomy: new
   T2f2 subclass.
 - Reusable prior created: T2f2 de-leak + digit-requirement template.
+
+## E28 — Cycle 28: PHP T3dd include-suffix LFI, first-try VERIFIED
+
+- Hypothesis: the Gate-0 twin-proven include-suffix shape verifies with an
+  allowlist-or-404 Blue patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "LFI via unsanitized /page?name ...
+  fixed .php suffix (e.g., ../secret -> secret.php executes)". Blue:
+  `^[A-Za-z0-9_-]+$` else 404 (wrappers die on the colon: no `:`, no
+  `php://`). 6 calls p9193/c11628 ≈$0.12 — cheapest yet.
+  Evidence: run `validation/task-2801-c28-live.txt`,
+  `validation/task-2801-c28-report.json`.
+- Gate-3 replay PASS on renamed variant (traversal + `php://filter` +
+  empty all 404, benign ok; include prints HOME then asserts — cosmetic).
+- Vault: red `e09f7913158c`, blue `2c822b49d2e9`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2802-c28-vault.txt`.
+- Conclusion: Δ(C.28) → 0. T3dd (include-suffix LFI, CWE-98) proven —
+  the T3 family now spans shell-arg (T3a), tar (T3c), backtick (T3d),
+  include (T3dd). Taxonomy: new T3dd subclass.
+- Reusable prior created: T3dd allowlist-or-404 include template +
+  twin-planting provability pattern (suffix sinks need a planted twin).
