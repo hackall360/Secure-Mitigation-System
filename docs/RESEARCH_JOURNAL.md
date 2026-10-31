@@ -1322,3 +1322,20 @@ Run: `overnight_1793434523077_12855248373640259943`.
   only the fixture shape changed.
 - Blue: first-line+printable (usable fix, preserves spaces). Gate-3
   5/5. Vault NOVEL. Taxonomy v34. Conclusion: Δ(C.49) → 0.
+
+## E50 — Cycle 50 self-review: 50 commits, 35 VERIFIED, 3 OPEN (2026-10-31T13:41Z)
+
+- Score: 35 VERIFIED cycles + 8 scouts (6 negative, 2 inconclusive) + 10
+  self-reviews; taxonomy v34 (T1-T9 all populated); 105 vault priors
+  (53 red + 52 blue); gates 781 green x40+; UI untouched every commit.
+  Open: C41 T5c (fixture-design flaws, gated-gadget revisit), C42 T6d
+  (global-state physics, needs harness restart support), C48 T9f
+  (Red hallucination; response-splitting sibling C49 cleared instead).
+- F15 correction applied to the record: C46's quoted "chr(37) test" is
+  SUPERSEDED — C47's clear is attributed to shape-distinctiveness, and
+  the C48 capture proves at least one cluster was Red-side. Standing
+  rules: (1) shape-distinctive fixtures, (2) stateless-first (F13),
+  (3) target-service-first contracts, (4) Blue-budget hints, (5) stop-
+  line 5, (6) fault attribution only via capture (debug var armed).
+- Thinnest families: T5 (2 members), T6 (4). Next: T5/T6 breadth with
+  distinctive shapes. ~2.5h to 16:15Z wake. No pushes (all local).
