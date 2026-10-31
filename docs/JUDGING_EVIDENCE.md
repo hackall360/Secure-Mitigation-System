@@ -4,8 +4,11 @@ Run: `overnight_1793434523077_12855248373640259943`.
 
 ## Impact (30%)
 
-- Pending Cycle 1: novel 2-class chained fixture proven in Docker (Red 0 →
-  Blue 1 → regression 0) + reusable vault prior.
+- Cycles 1+2+4 VERIFIED: three novel chained fixtures proven in Docker
+  (Red 0 → Blue 1 → regressions 0) + 6 vault priors with 3 Gate-3 replays.
+  Cycle 3 scout: PyJWT audit, no hole, reusable checklist.
+- Per-cycle keyed spend ≈$0.19-0.28; two fail-closed rollbacks + one
+  contract fix demonstrate the guard rails working, not failing.
 
 ## Use of Meta AI Tooling (25%)
 
@@ -22,8 +25,13 @@ Run: `overnight_1793434523077_12855248373640259943`.
 
 ## Demo (25%)
 
-- No video tonight (user-gated). Demo-ready shortlist maintained here:
-  Top-3 chains / Top-3 priors / Top CVE candidates — filled from Cycle 1 on.
+- No video tonight (user-gated). Demo-ready shortlist:
+  - Top chains: (1) C4 T7+T1 unified A→B single-script SQLi-behind-cookie-gate;
+    (2) C2 T6+T2 Node eval sink with decimal-allowlist fix; (3) C1 T4a
+    traversal-to-secret with realpath containment.
+  - Top priors: T7+T1 parameterize+neutralization semantics; T2b decimal
+    allowlist; T4a realpath containment. All Gate-3 replayed.
+  - Top CVE candidates: none (PyJWT scout refuted; checklist kept).
 
 ## Push The Frontier + Agentic bonus
 

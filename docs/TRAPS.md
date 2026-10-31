@@ -97,3 +97,18 @@ here, not in scattered notes.
 - **Trap: `sms_compress.py` budget pass used `id(line)` to restore order — shared refs today, value-equal copies tomorrow.**
   Wrong assumption: `position = {id(line): idx for idx, line in enumerate(pruned)}` + `sorted(..., key=lambda line: position.get(id(line), 0))` is stable because `head`/`tail` are slices of `pruned` (same objects) — so identity ordering is correct.
   Evidence: a future refactor that copies strings (e.g., `str(line)` / `.strip()` / buffer rebuild) would produce value-equal lines with different identities; those would miss the `id()` map, fall back to `0`, and lose original order silently while still passing the 10 existing green tests. Fix shipped in `modules/shared/sms_compress.py:285-311`: keep `id()` fast-path for shared refs but add a value+occurrence fallback (`value_positions: dict[str, list[int]]` + `seen_counts` + `_pos(line)`) so any value-equal line still maps to its first pruned occurrence. Red test `tests/test_compression.py:test_compress_budget_preserves_order_under_value_equality` (600 filler + critical sink, `max_tokens=80`, monotonic filler-index check) pins the invariant; `dev.py check` 627 passed.
+
+## Overnight forge traps (2026-10-31, branch feature/overnight-forge)
+
+- **Trap: hand-written docs JSON shipped invalid for 3 commits.**
+  Wrong assumption: a small JSON file written by hand is fine because the gate is green.
+  Evidence: `docs/vuln_taxonomy.json` contained a raw `"` inside `"taint":"... db.execute("...") ..."`; `json.load` fails at char 345, and `dev.py check` never parses docs JSON so 3 commits stayed green-but-invalid. Fix: generate docs JSON with `json.dump`, never by hand; run `python3 -c "json.load(open(...))"` before commit. Found during Cycle-4 T7 sync; rewritten as v1 with priors linked.
+- **Trap: Green contract/test/default-param mismatch burns keyed spend.**
+  Wrong assumption: "decimal arithmetic" in the contract covers `calc('40+2')`.
+  Evidence: Cycle-2 attempt 2 — Blue's minimal allowlist was guard-accepted but broke the Green's own `calc('40+2')=='42'` regression while the contract said decimal-only and the default route expr was `'1+1'`. Fail-closed rollback, ≈$0.22 spent. Contract, test, and default params must agree BEFORE keyed runs.
+- **Trap: Gate-3 replay must assert neutralization, not exceptions, for SQL parameterization.**
+  Wrong assumption: a fixed SQLi sink raises on tautology input.
+  Evidence: my first Cycle-4 replay script asserted `raises`; sqlite3 parameterization returns EMPTY rows instead (verified directly). The Blue patch was right, my script was wrong. Assert `== ""` per bundled semantics (project_scan PATCH_ONE).
+- **Trap: Blue verbosity breaks the 60-line surgical guard.**
+  Wrong assumption: a full arithmetic parser is a better eval-sink patch than an allowlist.
+  Evidence: Cycle-2 attempt 1 — Blue wrote a 96-line recursive-descent parser, 36 lines over budget, guard rejected despite Red exit 0. A 7-line decimal allowlist verified on retry. Steer Blue with "minimal allowlist suffices; do NOT write a parser".
