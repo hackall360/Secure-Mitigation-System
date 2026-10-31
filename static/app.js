@@ -423,7 +423,7 @@ function lockTargets(locked) {
 }
 
 function setSourceMode(mode) {
-  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary'].includes(mode)) return;
+  if (socket || !['demo', 'demo-build', 'project', 'mcp', 'binary', 'ingest'].includes(mode)) return;
   sourceMode = mode;
   document.querySelectorAll('.mode').forEach((button) => {
     const active = button.dataset.mode === mode;
@@ -436,7 +436,8 @@ function setSourceMode(mode) {
   el('project-form').hidden = mode !== 'project';
   el('mcp-form').hidden = mode !== 'mcp';
   el('binary-form').hidden = mode !== 'binary';
-  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : 'Run demo verification';
+  el('ingest-form').hidden = mode !== 'ingest';
+  el('run-label').textContent = mode === 'project' ? 'Run project verification' : mode === 'demo-build' ? 'Grow and verify demo' : mode === 'mcp' ? 'Verify snippet in Docker' : mode === 'binary' ? 'Sweep binary in Docker' : mode === 'ingest' ? 'Ingest repo in Docker' : 'Run demo verification';
   el('target-description').textContent = mode === 'project'
     ? 'The repository is copied into an isolated sandbox. Source may be sent to the configured Muse endpoint only after consent.'
     : mode === 'demo-build'
@@ -445,7 +446,9 @@ function setSourceMode(mode) {
         ? 'Paste a snippet below — the same red/blue Docker loop verifies it and returns the VerdictReceipt plus exit codes (also at POST /mcp).'
         : mode === 'binary'
           ? 'Upload a compiled binary — static reversing profiles it, then the same 3-pass loop probes it through the trusted harness (also at /ws/binary).'
-          : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
+          : mode === 'ingest'
+            ? 'Enter a repo URL + pinned commit — it is cloned at that commit inside Docker, then the same project loop verifies it (also via --ingest-repo).'
+            : (targets[el('target-select').value] ? `Selected ${targets[el('target-select').value].title} · ${targets[el('target-select').value].filename}. The original fixture is never modified.` : 'Choose a bundled fixture.');
   el('project-errors').hidden = true;
   // Build-brief affordance: landing on Green build puts the cursor in the
   // brief field so the Wonder-built flow starts with one keystroke.
@@ -1185,6 +1188,7 @@ function startScan() {
   if (sourceMode === 'demo-build') { startDemoBuild(); return; }
   if (sourceMode === 'mcp') { submitMcpSnippet(); return; }
   if (sourceMode === 'binary') { submitBinary(); return; }
+  if (sourceMode === 'ingest') { submitIngest(); return; }
   const spec = sourceMode === 'project' ? projectSpec() : null;
   if (sourceMode === 'project' && !spec) {
     status('Fix the highlighted project fields below, then run again', 'warn');
@@ -1423,6 +1427,53 @@ function submitBinary() {
     };
   };
   reader.readAsArrayBuffer(files[0]);
+}
+
+function submitIngest() {
+  // Repo-ingest path: URL + pinned commit -> first WS frame on /ws/project.
+  // The ingest rides the project flow per W4 dispatch (repo_intake stages
+  // the clone inside Docker); research flags ride free via socketQuery().
+  const errors = el('ingest-errors');
+  errors.hidden = true;
+  const repoUrl = el('ingest-repo-url').value.trim();
+  const commit = el('ingest-commit').value.trim();
+  const problems = [];
+  if (!/^https:\/\/[^ ]+$/.test(repoUrl)) problems.push('Enter an https:// repository URL.');
+  if (!/^[0-9a-fA-F]{40}$/.test(commit)) problems.push('Enter the full 40-hex pinned commit.');
+  if (problems.length) {
+    errors.textContent = problems.join(' ');
+    errors.hidden = false;
+    return;
+  }
+  status('Repo ingest running', 'running');
+  setStage('sandbox');
+  writeLine('system', `Repo ingest → ${repoUrl} @ ${commit.slice(0, 12)}`);
+  latestResult = null;
+  eventCount = 0;
+  el('event-count').textContent = '0';
+  el('result-panel').hidden = true;
+  delete el('progress').dataset.state;
+  Object.values(logs).forEach((area) => area.replaceChildren());
+  resetPipeline();
+  document.body.classList.add('scanning');
+  el('run-btn').disabled = true;
+  lockTargets(true);
+  lockProfiles(true);
+  lockProjectForm(true);
+  el('stop-btn').hidden = false;
+  el('stop-btn').disabled = false;
+  startedAt = Date.now();
+  const base = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  socket = new WebSocket(`${base}/ws/project${socketQuery()}`);
+  socket.onmessage = handleSocketMessage;
+  socket.onerror = () => { writeLine('system', 'Connection hiccup during verification — the scan keeps running on the server. If it stalls, stop and run again.'); };
+  socket.onclose = handleScanClose;
+  socket.onopen = () => {
+    try {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ ingest_repo: repoUrl, commit_hash: commit }));
+    } catch { /* socket already gone */ }
+    writeLine('system', 'Repo specification accepted · staging the pinned clone.');
+  };
 }
 
 function startDemoBuild() {
