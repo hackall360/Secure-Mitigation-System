@@ -73,3 +73,6 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T11:28Z | muse-spark-1.3 | C34a (5 calls ≈$0.14; closing-report fault) | Red | exit-0 proof stood; malformed close |
 | 2026-10-31T11:28Z | muse-spark-1.3 | C34b retry (4 calls) | Red | HTTP cookie-roundtrip probe exit 0 pre-patch |
 | 2026-10-31T11:28Z | muse-wonder-1.0 | C34b (2 calls) | Blue | exact-match lookup, re-probe exit 1 |
+| 2026-10-31T11:33Z | muse-spark-1.3 | C35a (5 calls ≈$0.12; closing-report fault) | Red | exit-0 proof stood; malformed close |
+| 2026-10-31T11:36Z | muse-spark-1.3 | C35b retry (4 calls) | Red | HTTP cookie-roundtrip probe exit 0 pre-patch |
+| 2026-10-31T11:36Z | muse-wonder-1.0 | C35b (2 calls) | Blue | dual-slot parameterize, re-probe exit 1 |

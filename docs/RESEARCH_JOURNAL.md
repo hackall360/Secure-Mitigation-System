@@ -1089,3 +1089,37 @@ Run: `overnight_1793434523077_12855248373640259943`.
   chain contracts MUST demand the HTTP round-trip AND the scribe MUST
   assert the gate-link shape in the probe. Taxonomy: new T9c class.
 - Reusable prior created: T9c HTTP-cookie combo-gate template.
+
+## E45r — Cycle 45 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C29, C30, C31 (9) + Node
+  C2, C8, C11, C14, C17, C18, C27, C32, C34 (9) + PHP C5, C10, C13, C16,
+  C19, C23, C26, C28 (8). Total 26. Max 9/26 = 35% < 40% ✓ — balanced
+  three ways for the first time (was Node 46% at E25r).
+- Scouts: 7 (5 neg + 2 inconclusive). Zero-dep + zero-build rules stand.
+- Class coverage: T9 family now spans a (C11), b (C30/31), c (C34) —
+  the gate chapter is deep. Thinnest: T7 ×1, T8 ×1, T5 ×2.
+- Forced direction: Cycles 36-38 = T7/T8-family gate+selector chains
+  (close the thin-chapter gap) + Cycle 39 scout cadence (zero-dep).
+
+## E35a — Cycle 35 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature (Red exit-0 + Blue proposal accepted, final report
+  malformed; 5 calls ≈$0.30). Retry verbatim per the transient rule
+  (C23/C34 precedent: verbatim retries clear it).
+
+## E35b — Cycle 35 retry: T7b hardware-key chain VERIFIED (HTTP-proof 3/3)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.12); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Cookie-flow assertion holds (claim + Set-Cookie +
+  Cookie). Blue: both slots parameterized. 6 calls p13166/c19656 ≈$0.17.
+  Evidence: run `validation/task-3502-c35b-live.txt`,
+  `validation/task-3502-c35b-report.json`.
+- Gate-3 replay PASS on renamed schema (gate-honored injection dead).
+- Vault: red `5695f826a247`, blue `bdc3912b9d28`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3503-c35-vault.txt`.
+- Conclusion: Δ(C.35) → 0. T7 family now spans role-cookie (T7a, C4) +
+  hardware-key cookie (T7b, C35) — the "thinnest chapter" directive is
+  answered. HTTP-proof rule now 3/3 (C31, C34, C35).
+- Reusable prior created: T7b hardware-key chain template.

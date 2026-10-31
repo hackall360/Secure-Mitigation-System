@@ -165,3 +165,11 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - HTTP-proof rule 2/2 (C31, C34): chain contracts demand the cookie
   round-trip; scribe asserts the gate-link shape in the probe.
 - Priors: red `b90493849e92`, blue `47932423850a` (vault, forge-c34).
+
+## T7b note (hardware-key gate + lookup chain)
+
+- Subclass T7b (proven forge Cycle 35, Python): hardware-key serial
+  (`1337-2600`→member badge cookie) gates a concat lookup. HTTP-cookie
+  proof (claim → Set-Cookie → replay → cross-tier leak) exits 0;
+  both-slot parameterization → exit 1. HTTP-proof rule 3/3.
+- Priors: red `5695f826a247`, blue `bdc3912b9d28` (vault, forge-c35).
