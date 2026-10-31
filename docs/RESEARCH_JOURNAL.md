@@ -425,3 +425,20 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (invite/badge gate).
 - Reusable prior created: T9+T4 Node unified probe + strict-containment
   template.
+
+## E12 — Cycle 12 scout: sabre/vobject + sabre/xml audit (NEGATIVE, valuable)
+
+- Hypothesis: an exotic PHP calendar/vCard stack contains XXE, code-exec
+  sinks, or ReDoS-able parser regexes.
+- Method: LOCAL clones + grep audit + Docker-PHP PCRE timing battery.
+- Control: benign shapes parse; regex batteries return in ~0.00s.
+- Result: no sinks; entity loader disabled (version-gated, correct);
+  XXE live-fire impossible here (no XMLReader class in target PHP);
+  no ReDoS on tested shapes. NO candidate; no disclosure.
+- Conclusion: 4th consecutive guarded negative across 3 languages. Pattern
+  confirmed: maintained open-source parsing stacks are hardened. The
+  forge's comparative advantage is SYNTHESIS (novel chained fixtures),
+  not discovery in mature code. Next scout (if any) should be a
+  zero-dependency single-file helper, or scouting pauses while Green runs.
+- Reusable prior created: parser-stack audit battery (sink grep, entity
+  flags, ReDoS timing, extension availability).

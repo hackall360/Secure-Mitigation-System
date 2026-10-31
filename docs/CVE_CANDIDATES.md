@@ -87,3 +87,29 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
   ext mismatch is unconsumed; MIME is untrusted-data-correctly-unused.
   Stale single-maintainer surface, but no hole at this commit.
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 12 — `sabre/vobject` + `sabre/xml` (2026-10, BSD) (2026-10-31)
+
+- HYPOTHESIS tested: code-exec sinks, XXE in xCal/xCard parsing, ReDoS in
+  MimeDir parser regexes.
+- Method: LOCAL clones only (vobject @ `5e2f3388` 2026-10-05, BSD; sabre/xml
+  shallow). Code-shape audit + bounded PCRE timing battery in Docker PHP.
+- Results (all LOCAL, deterministic):
+  1. No `eval`/`system`/`exec`/dynamic-include/`unserialize` sinks in vobject
+     `lib/` (grep clean).
+  2. No `LIBXML_NOENT`/entity-expansion flags in the audited tree; the
+     sabre/xml `Reader::parse()` disables the entity loader on
+     libxml < 2.9 (`libxml_disable_entity_loader(true)`, version-gated
+     because ≥2.9 disables network entity loading by default) and converts
+     libxml errors to exceptions. XXE live-fire BLOCKED: target image PHP
+     lacks the `XMLReader` class entirely (`Class "XMLReader" not found`),
+     so the backend cannot even instantiate there — no expansion surface in
+     this runtime.
+  3. MimeDir parser regexes: 100KB hostile line + 50K-repeat line both parse
+     in ~0.00s — no catastrophic backtracking on the tested shapes.
+  4. Reader accepts string-or-stream; no size cap found in the audited
+     surface — a resource-exhaustion note (large-input CPU/RAM), NOT a
+     finding at the audited commit without a live threshold measurement.
+- Verdict: **no candidate**. Hardened parsing stack; the one live-fire
+  attempt died on a missing PHP extension (environment, not a guard).
+- Responsible disclosure: nothing to disclose (no finding).
