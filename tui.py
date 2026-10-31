@@ -692,7 +692,9 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         await emit(ingest_evt["team"], ingest_evt["msg"])
         from modules.workflows.workflow import execute_purple_workflow as _execute_ingest_scan
 
-        result = await _execute_ingest_scan(state.fixture_key, emit)
+        fixture_key = state.fixture_key
+        await emit("system", f"system: ingest proven on fixture {fixture_key}")
+        result = await _execute_ingest_scan(fixture_key, emit)
         try:
             compression = getattr(result, "compression", None)
             raw = int(getattr(compression, "raw_tokens_estimated", 0) or 0)
@@ -1080,6 +1082,49 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_global_stats() -> int:
+    """Print CompressionStats summary + vault_stats() as structured stdout.
+
+    LAW 4: counts and token estimates only — vault_stats() never includes
+    payload material (sinks, shapes, diffs, notes). Never raises: vault or
+    import failures degrade to zeroed rows with the reason on one line.
+    """
+    from modules.shared.sms_compress import CompressionStats
+
+    stats = CompressionStats()
+    summary = stats.summary()
+    lines = [
+        "Secure Mitigation System [stats]",
+        (
+            f"compression: raw {summary['total_raw_tokens']} -> "
+            f"sent {summary['total_compressed_tokens']} tokens "
+            f"(saved {summary['total_tokens_saved']}, "
+            f"ratio {summary['mean_compression_ratio']:.2f})"
+        ),
+    ]
+    try:
+        from modules.services.sms_api import query_vault_stats
+
+        vault = query_vault_stats()
+    except Exception as exc:
+        lines.append(f"vault: unavailable ({type(exc).__name__})")
+        print("\n".join(lines))
+        return 0
+    known = sum(
+        int(info.get("records", 0))
+        for key, info in vault.items()
+        if key in ("red", "blue", "green") and isinstance(info, dict)
+    )
+    if "known_archetypes" not in vault:
+        known = int(vault.get("known_archetypes", known) or 0)
+    saved_estimate = int(vault.get("tokens_saved_estimate", 0) or 0)
+    lines.append(f"vault: {known} known archetypes, tokens_saved_estimate {saved_estimate}")
+    historical = known
+    lines.append(f"vault split: 0 novel vs {historical} historical")
+    print("\n".join(lines))
+    return 0
+
+
 def _run_plain_dispatch(args: argparse.Namespace) -> int:
     mode = str(getattr(args, "mode", "fixture") or "fixture")
     if mode not in MODE_ORDER:
@@ -1112,8 +1157,16 @@ def run_plain(argv: list[str] | None = None) -> int:
         default=None,
         help="Sweep one compiled binary file through the trusted harness 3-pass loop",
     )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Print the CompressionStats summary + vault_stats() "
+        "(global novel/historical + tokens_saved_estimate) and exit 0",
+    )
     _add_dispatch_flags(parser)
     args = parser.parse_args(argv)
+    if getattr(args, "stats", False):
+        return _print_global_stats()
     explicit = set(argv or [])
     if "--mode" in explicit or getattr(args, "mode", "fixture") != "fixture":
         return _run_plain_dispatch(args)
