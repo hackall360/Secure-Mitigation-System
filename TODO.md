@@ -8,17 +8,17 @@ Every item names its files and its proof.
 
 - [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
 - [x] BB1+L. Lead sweep A: DONE + committed. `library/` rename (git-mv, shim), web/tui/mcp maps, law mirror, harness AGENTS, agents INDEX, plan doc. Proof: gate 798 passed + All checks passed.
-- [.] BBS. Lead sweep B: docs stash (session/prompt-history out of readable tree, git-ignored) + MVP pages + fan out 3 content writers (README/AGENTS/agents) in isolated worktrees. Next: sweep C integration + gate + live proof.
-- [ ] BB1. Web sweep: web/ categorization (static + server routes/WS), per-file what/where/why index, minimal rewiring, behavior preserved.
-- [ ] BB2. TUI sweep: tui/ categorization (tui.py + CLI surface as decided), index, rewiring, behavior preserved.
-- [ ] BB3. Library sweep: library/ with core/ + shared/ (central core module direction), index, rewiring, behavior preserved.
-- [ ] BB4. MCP sweep: mcp/ categorization (bridge + tools + STDIO/HTTP surfaces), index, rewiring, behavior preserved.
-- [ ] BB5. Laws mirror: `.jcode/laws/` numbered 00-<Name> files (canonical LAWS.md stays at root per LAW 0; .jcode is git-ignored).
-- [ ] BB6. AGENTS split: root AGENTS.md project-specific; `.jcode/AGENTS.md` harness-specific.
-- [ ] BB7. Sub-agents: `.jcode/agents/<Name>.md` + INDEX.md with when-to-use (heavy focus #1).
-- [ ] BB8. Docs rework + technical deep-dive doc (heavy focus #2); prompt-history stashed out of readable tree, canonical content preserved.
-- [ ] BB9. README rewrite: 3-5 min simple read, 3-5 metaphors max, GitHub-rendered mermaid, truthful Muse red/blue/green story.
-- [ ] BB10. Integration: full `dev.py check` green + live proof where surfaces changed, docs updated, merged per LAW 1 on go-ahead.
+- [x] BBS. Lead sweep B: DONE + merged. Stash (11 session docs -> `.jcode/session/`, ignored), HOW_IT_WORKS.md, MVP index; 3 writer worktrees merged (README 20/20 pins, AGENTS split, 5 agent files), worktrees removed.
+- [x] BB10. Integration: gate 798 passed + All checks passed (post-merge); live Docker offline_scan 4/4 verified; LAW 11 Firefox + Chrome "Boundary check passed". Proof: this section + gate/browser logs.
+- [x] BB1. Web sweep: DONE via `docs/web/INDEX.md` (static/ + main.py server + .jcode e2e; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB2. TUI sweep: DONE via `docs/tui/INDEX.md` (tui.py + sms_cli.py + main.py flags + demo client; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB3. Library sweep: DONE via `library/` rename (core+shared+intel+services+workflows) + modules shim + pyproject isort. Proof: sweep A commit + gate green.
+- [x] BB4. MCP sweep: DONE via `docs/mcp/INDEX.md` (bridge + sms_api + STDIO/HTTP + dashboard + demo; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB5. Laws mirror: DONE `.jcode/laws/00-12` (canonical LAWS.md stays root). Proof: sweep A commit.
+- [x] BB6. AGENTS split: DONE (root harness-neutral + `.jcode/AGENTS.md`). Proof: merge `501e705`.
+- [x] BB7. Sub-agents: DONE (5 files + INDEX when-to-use). Proof: merge `fef8bee`.
+- [x] BB8. Docs rework + HOW_IT_WORKS: DONE (stash + MVP pages + deep-dive). Proof: sweep B commit.
+- [x] BB9. README rewrite: DONE (plain 4-min, 2 mermaid, markers kept). Proof: merge `4dd3fcf` + 20/20 pins.
 
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
