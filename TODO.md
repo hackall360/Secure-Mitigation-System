@@ -349,4 +349,8 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA20. Wave 20 HARD GATE + WILD CRUCIBLE #2 (keyed wildcard sweep).
 - [x] AA20. Wave 20 outcome: GATE GREEN (dev.py check exit 0) + CRUCIBLE #2 FULL PASS — keyed wildcard sweep: staged in Docker, RED CWE-78 at exact sink line, PRE-PROBE 0, BLUE allowlist patch, cleanup ok, zero leftovers. Shim note (input() blocks readiness → HTTP shim, sink verbatim) logged. Files: `docs/WILD_INGESTION_LOG.md`.
 - [ ] AA21. Wave 21 TRIBUNAL (mod-3).
+- [x] AA21. Wave 21 outcome: tribunal weighted **8.70** (was 8.58, +0.12 crucible #2 + banner live). Movers: 2a real-repo keyed sweep (1→8.0, 2→9.0), 2d busy-banner live (4→8.5), S3 render half (6→8.5). Proof: matrix.
+- [ ] AA22. Wave 22 ingest submit wiring (form → project workflow → sweep, RED-first + live proof).
+- [ ] AA23. Wave 23 Tailwind decision (migrate or document + pin).
+- [ ] AA24. Wave 24 TRIBUNAL (mod-3).
 
