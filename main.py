@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from library.core.version import APP_VERSION
 from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config
 from modules.core.docker_manager import (
     DockerSandboxManager,
@@ -54,10 +55,7 @@ from sms_cli import (
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 
-# Single source of truth for the release version (LAW 12: 0.major.minor).
-# Every surface renders this: FastAPI metadata, /api/health, --version,
-# dashboard footer. Bump per LAW 12 on every shipped change set.
-APP_VERSION = "0.10.0"
+# (APP_VERSION imported at top from library.core.version.)
 
 # Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
 # value in plain English. Rendered as the --help epilog; sms_cli and tui

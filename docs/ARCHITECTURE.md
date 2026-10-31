@@ -170,7 +170,14 @@ namespaces on disk, owner-only key + directories, sink/structure
 fingerprinting, `KNOWN_ARCHETYPE` ("done before") vs `NOVEL_SURFACE` query
 before every run, commit-after-verified, redacted stats only. Dirty default
 vaults from local runs stay in `~/.cache` (git-ignored); key material never
-enters logs, reports, or Docker.
+enters logs, reports, or Docker. Two operator env vars: `PURPLEBOX_VAULT_DIR`
+redirects the vault root (default `~/.cache/secure-mitigation-system/vault`);
+`PURPLEBOX_LOG_RAW_RESPONSES` (a pre-existing directory) captures failing
+model payloads for schema-fault diagnosis and raises loudly when the
+directory is missing instead of falling back to system temp. Fail-closed
+edges: `fingerprint_source` tags blank/comment lines so vacuous inputs
+never collide, and the index-missing full scan raises when blobs exist
+but none decrypt instead of reporting an empty (false-NOVEL) result.
 
 **Binary fixture** (`targets/binary_argv_echo/`, registry key
 `binary_argv_echo`): C source + compiled ELF proving the binary harness path

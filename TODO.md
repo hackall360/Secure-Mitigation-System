@@ -4,6 +4,28 @@ Owner: Jcode agent. This file is the work queue. Check items off as they land.
 Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
 Every item names its files and its proof.
 
+## BB. Repo remodel (brief 2026-10-31-refactor-directive)
+
+- [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
+- [x] BB1+L. Lead sweep A: DONE + committed. `library/` rename (git-mv, shim), web/tui/mcp maps, law mirror, harness AGENTS, agents INDEX, plan doc. Proof: gate 798 passed + All checks passed.
+- [x] BBS. Lead sweep B: DONE + merged. Stash (11 session docs -> `.jcode/session/`, ignored), HOW_IT_WORKS.md, MVP index; 3 writer worktrees merged (README 20/20 pins, AGENTS split, 5 agent files), worktrees removed.
+- [x] BB10. Integration: gate 798 passed + All checks passed (post-merge); live Docker offline_scan 4/4 verified; LAW 11 Firefox + Chrome "Boundary check passed". Proof: this section + gate/browser logs.
+- [x] BB1. Web sweep: DONE via `docs/web/INDEX.md` (static/ + main.py server + .jcode e2e; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB2. TUI sweep: DONE via `docs/tui/INDEX.md` (tui.py + sms_cli.py + main.py flags + demo client; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB3. Library sweep: DONE via `library/` rename (core+shared+intel+services+workflows) + modules shim + pyproject isort. Proof: sweep A commit + gate green.
+- [x] BB4. MCP sweep: DONE via `docs/mcp/INDEX.md` (bridge + sms_api + STDIO/HTTP + dashboard + demo; pinned, not moved). Proof: sweep A commit + gate green.
+- [x] BB5. Laws mirror: DONE `.jcode/laws/00-12` (canonical LAWS.md stays root). Proof: sweep A commit.
+- [x] BB6. AGENTS split: DONE (root harness-neutral + `.jcode/AGENTS.md`). Proof: merge `501e705`.
+- [x] BB7. Sub-agents: DONE (5 files + INDEX when-to-use). Proof: merge `fef8bee`.
+- [x] BB8. Docs rework + HOW_IT_WORKS: DONE (stash + MVP pages + deep-dive). Proof: sweep B commit.
+- [x] BB9. README rewrite: DONE (plain 4-min, 2 mermaid, markers kept). Proof: merge `4dd3fcf` + 20/20 pins.
+
+## CC. Ship remodel (brief 2026-10-31-ship-remodel; was feature/overnight-forge)
+
+- [x] CC1. Pre-merge: working tree clean; gate green pre-change (21:44: 798); inventory done (dry-run proved work-tags conflict; absorbed branches identified). Proof: this section + dry-run log.
+- [x] CC2. LAW 12 version: 0.10.0 -> 0.11.0 MAJOR (new capabilities judges notice: library/ rename + shims, web/tui/mcp maps, HOW_IT_WORKS, plain README, split AGENTS, sub-agent roster, MCP version single-source). Files: `library/core/version.py` (new source), `main.py` (imports it), `library/services/mcp_bridge.py` (serverInfo from source), `static/index.html` footer, `README.md` badge. Proof: `main.py --version` = 0.11.0, README badge regex test green, ruff clean.
+- [.] CC3. Ship: FINAL gate green (798 + All checks) + offline_scan 4/4 verified on 0.11.0 tree. Next: LAW 1 flow (develop merge -> push develop -> merge main -> push main -> back develop). No pushes yet.
+
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
 - [x] A1. Red research-only Muse prompt (`RED_RESEARCH_SYSTEM_PROMPT` in

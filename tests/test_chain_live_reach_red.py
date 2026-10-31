@@ -20,7 +20,7 @@ def test_ws_sweep_gate_admits_four():
 
 def test_no_min3_clamps_remain():
     bad: list[str] = []
-    for rel in ("main.py", "modules/services/sms_api.py", "modules/workflows/binary_sweep.py"):
+    for rel in ("main.py", "library/services/sms_api.py", "library/workflows/binary_sweep.py"):
         src = (ROOT / rel).read_text(encoding="utf-8")
         for i, line in enumerate(src.splitlines(), 1):
             if re.search(r"min\(\s*3\s*,", line) and "max_passes" in line:
@@ -29,5 +29,5 @@ def test_no_min3_clamps_remain():
 
 
 def test_binary_sweep_admits_four():
-    src = (ROOT / "modules/workflows/binary_sweep.py").read_text(encoding="utf-8")
+    src = (ROOT / "library/workflows/binary_sweep.py").read_text(encoding="utf-8")
     assert "min(4," in src

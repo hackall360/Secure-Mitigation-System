@@ -1,0 +1,434 @@
+{
+  "version": "43",
+  "classes": [
+    {
+      "id": "T1",
+      "name": "SQL string-concat sink",
+      "cwe": [
+        89
+      ],
+      "taint": "HTTP query param -> raw string -> db.execute",
+      "red_shape": "benign id=101 vs tautology family; expect row-count change",
+      "blue_pattern": "parameterize (? placeholder); never quote-wrap raw input",
+      "subclasses": {
+        "T1a": "Python sqlite3 f-string/+ WHERE clause",
+        "T1c": "Python ORDER BY/LIMIT identifier interpolation, boolean-flip signal (forge Cycle 22)",
+        "T1d-closed": "Python stored-nickname second-order, solo fixture re-read parameterize (forge Cycle 25, closes C24 OPEN)",
+        "T1e-closed": "Python two-slot concat WHERE, solo direct-import probe (forge Cycle 30; gate link open)",
+        "T1h": "Python price-keyed order lookup WHERE concat (forge Cycle 40, Link B; parametrized)",
+        "T1i": "Python LIKE-wildcard injection (forge Cycle 47, quote-clean after C46 nested-quote cluster; ESCAPE+parametrize fix)"
+      },
+      "priors": {
+        "T1c": {
+          "red": "08f8e7c97a65",
+          "blue": "a6598cd153a6"
+        },
+        "T1d-closed": {
+          "red": "a25a9265a074",
+          "blue": "893ae13cafc2"
+        },
+        "T1e-closed": {
+          "red": "375fc78c80f1",
+          "blue": "5818718a7d63"
+        },
+        "T1h": {
+          "red": "15edd883f29a",
+          "blue": "d887aa3dee3"
+        },
+        "T1i": {
+          "red": "103e13616096",
+          "blue": "cdb6bb47452f"
+        }
+      }
+    },
+    {
+      "id": "T2",
+      "name": "Dynamic-expression eval sink",
+      "cwe": [
+        95
+      ],
+      "taint": "HTTP query param -> eval",
+      "red_shape": "arithmetic probe (7*6 -> 42) proves code execution boundary",
+      "blue_pattern": "strict allowlist (isdecimal -> int(raw)); reject otherwise",
+      "subclasses": {
+        "T2a": "Python eval(raw) on query param",
+        "T2d": "Node direct eval with decimal-only contract (forge Cycle 8)",
+        "T2e": "Node Function-constructor sink (Gate-0 proven Cycle 17; OPEN by record, follow-up queued)",
+        "T2e-closed": "Node Function-constructor solo box, char-class containment (forge Cycle 18, closes C17 OPEN)",
+        "T2f2": "Node vm.runInNewContext with leaky sandbox (process/require shared), de-leak fix (forge Cycle 27)",
+        "T2h": "Python theater-check denylist eval (forge Cycle 55; reviewer-grounding quote; arithmetic-allowlist fix)"
+      },
+      "priors": {
+        "T2b": {
+          "red": "de34c8111ebd",
+          "blue": "cc18b84b9ff8"
+        },
+        "T2d": {
+          "red": "20734eb19022",
+          "blue": "11d9759e7414"
+        },
+        "T2e-closed": {
+          "red": "44dc77251d86",
+          "blue": "8fe325cb2fa3"
+        },
+        "T2f2": {
+          "red": "6d02651d7752",
+          "blue": "36304c7ab5ed"
+        },
+        "T2h": {
+          "red": "8ca3386beb14",
+          "blue": "fea3d121833f"
+        }
+      }
+    },
+    {
+      "id": "T3",
+      "name": "OS-command argument sink",
+      "cwe": [
+        78
+      ],
+      "taint": "CLI/request arg -> shell string -> command run",
+      "red_shape": ";/&&/backtick metacharacter reflection in command output",
+      "blue_pattern": "exact allowlist of hosts / escapeshellarg; reject metachars",
+      "subclasses": {
+        "T3a": "PHP /ping?host= into shell_exec printf (forge Cycle 5)",
+        "T3c": "PHP archive name into tar tzf shell listing (forge Cycle 13)",
+        "T3d": "PHP backtick-subshell with double-quoted interpolation, escape-outside-quotes fix (forge Cycle 23)",
+        "T3dd": "PHP dynamic include with fixed .php suffix, allowlist-or-404 fix, twin-plant provability (forge Cycle 28)",
+        "T3e": "Python user-controlled str.format template, parse-gate + single-arg fix (forge Cycle 29)",
+        "T3f": "Node mini-mustache {{{ }}} raw override via tpl param, normalize + branch-removal fix (forge Cycle 32)",
+        "T3g": "Node child_process.exec shell-string, execFile+allowlist fix (forge Cycle 37)",
+        "T3h": "Python string-built shlex-split arg injection (forge Cycle 53; allowlist fix; no-subprocess-in-target trap)"
+      },
+      "priors": {
+        "red": "bc06d91cdbed",
+        "blue": "e63fc6e43cea",
+        "T3c": {
+          "red": "d6387a003a23",
+          "blue": "bf98fd13ec7b"
+        },
+        "T3d": {
+          "red": "67a3c0ac01e4",
+          "blue": "f0435a01ca62"
+        },
+        "T3dd": {
+          "red": "e09f7913158c",
+          "blue": "2c822b49d2e9"
+        },
+        "T3e": {
+          "red": "9e21d63fd849",
+          "blue": "53bd3cb3bd28"
+        },
+        "T3f": {
+          "red": "1a97e89f1406",
+          "blue": "024cb234faeb"
+        },
+        "T3g": {
+          "red": "a7fe96cb1c35",
+          "blue": "a16b36b9ab0c"
+        },
+        "T3h": {
+          "red": "16e319585da8",
+          "blue": "c7d063cc33e7"
+        }
+      }
+    },
+    {
+      "id": "T4",
+      "name": "Path traversal read",
+      "cwe": [
+        22
+      ],
+      "taint": "query param -> os.path.join(docroot, name) -> file read",
+      "red_shape": "benign name=welcome.txt vs name=../../secret.txt",
+      "blue_pattern": "resolve + constrain under docroot (commonpath check); reject escapes",
+      "subclasses": {
+        "T4a": "Python file-serve endpoint joining unsanitized name (forge Cycle 1)",
+        "T4b": "Node readDoc join-without-check + readFileSync (forge Cycle 8)",
+        "T4c": "Node readDoc strict containment second proof (forge Cycle 17, lambda fixture)",
+        "T4e": "PHP check-then-read split (containment on unresolved, read resolves) (forge Cycle 19)",
+        "T4f": "Python greeter avatar read, realpath+commonpath (forge Cycle 24; headline T1d missed->solo queued)",
+        "T4g": "Python single safe/-prefix strip then join, realpath+commonpath after strip (forge Cycle 26)",
+        "T4h": "Python join-discard/escape traversal (forge Cycle 58, canonical+grounded; realpath+commonpath fix)",
+        "T4i": "Node require()-path locale injection (forge Cycle 63; exact-quotation misattribution; allowlist fix)"
+      },
+      "priors": {
+        "red": "6ad9156807d4",
+        "blue": "366e65412fc8",
+        "T4b": {
+          "red": "20734eb19022",
+          "blue": "11d9759e7414"
+        },
+        "T4e": {
+          "red": "3de754d6ef13",
+          "blue": "f2d0692014af"
+        },
+        "T4f": {
+          "red": "f7332fd6e860",
+          "blue": "25afac938546"
+        },
+        "T4g": {
+          "red": "4ab0b4866c07",
+          "blue": "2e16108b9cc1"
+        },
+        "T4h": {
+          "red": "8ebc974c1a72",
+          "blue": "aa63d31e68ff"
+        },
+        "T4i": {
+          "red": "8f836e5a76a1",
+          "blue": "ac45e0ab52d2"
+        }
+      }
+    },
+    {
+      "id": "T5",
+      "name": "Logic-abuse gate -> sink chain",
+      "cwe": [
+        285,
+        95
+      ],
+      "taint": "role-claim -> privileged dynamic query",
+      "red_shape": "unified payload fusing both weaknesses in ONE script (Wave-28 rule)",
+      "blue_pattern": "server-side authorization on Link B independent of client role claim",
+      "subclasses": {
+        "T5a": "role-grant endpoint (Link A) gates dynamic query (Link B)",
+        "T5b": "Node promo-code gate + template-string eval projection (forge Cycle 14)",
+        "T5d": "Python config section-name injection (forge Cycle 51 v2, no-$ reshape; section allowlist fix)",
+        "T5e": "PHP bare-extract() variable overwrite (forge Cycle 52; explicit-read + deny-admin fix)",
+        "T5f": "Python unsigned-pickle role token (forge Cycle 56; sign-before-load fix; C41 done right)"
+      },
+      "proven_by": "targets/node_chain_link (Wave 14, gate 725)",
+      "priors": {
+        "red": "1f9cdccfa4b4",
+        "blue": "3f2a9723607d",
+        "T5d": {
+          "red": "f9475d1d9c08",
+          "blue": "524f3d596eaa"
+        },
+        "T5e": {
+          "red": "68b8699c2fa5",
+          "blue": "7a284ccbc042"
+        },
+        "T5f": {
+          "red": "5f7e3716924a",
+          "blue": "f5490b20f270"
+        }
+      }
+    },
+    {
+      "id": "T6",
+      "name": "Reflected XSS sink",
+      "cwe": [
+        79
+      ],
+      "taint": "query param -> unescaped HTML reflection",
+      "red_shape": "marker reflection unescaped in response body",
+      "blue_pattern": "contextual escaping + allowlist; verify marker neutralized",
+      "subclasses": {
+        "T6a": "stdlib SSTI-analog (Wild Crucible #3, Wave 30)",
+        "T6b": "PHP /hi?name= raw reflection (forge Cycle 10)",
+        "T6c": "PHP guestbook stored XSS sign+wall, render-time escape (forge Cycle 16)",
+        "T6f": "Python response-splitting via Content-Disposition filename (forge Cycle 49, raw-socket proof; first-line+printable fix)",
+        "T6g": "Python dynamic-import specifier hijack (forge Cycle 54 v3; prefix+suffix+metachar allowlist)",
+        "T6h": "Python log-forging via CRLF audit events (forge Cycle 59; CRLF-to-space fix)"
+      },
+      "priors": {
+        "red": "b5753bddae95",
+        "blue": "517a43a5ddea",
+        "T6c": {
+          "red": "e82ce135d029",
+          "blue": "8d071b865442"
+        },
+        "T6f": {
+          "red": "bfaf17580b2e",
+          "blue": "d641d25b8956"
+        },
+        "T6g": {
+          "red": "92f4fc36d931",
+          "blue": "7e83df77e34f"
+        },
+        "T6h": {
+          "red": "e65512d91b90",
+          "blue": "040f91247baa"
+        }
+      }
+    },
+    {
+      "id": "T7",
+      "name": "Client-claimed role gate -> SQLi sink chain",
+      "cwe": [
+        639,
+        89
+      ],
+      "taint": "query param -> cookie -> string-concat db.execute",
+      "red_shape": "role=admin grant + id=1 OR 1=1 tautology -> all rows leak (ONE unified script)",
+      "blue_pattern": "parameterize Link B sink (tautology neutralizes to empty); server-side Link A auth is follow-up",
+      "subclasses": {
+        "T7a": "/grant?role= cookie gate + /order?id= concat SQL (forge Cycle 4)",
+        "T7b": "Python hardware-key serial gate + concat lookup, HTTP cookie round-trip (forge Cycle 35)",
+        "T7c": "Python price-cookie tamper, no server-side check vs PRICES (forge Cycle 40, Link A; gate returns expected)",
+        "T7e": "Python fallback-secret HMAC role token (forge Cycle 44; env-or-random fix)",
+        "T7f": "Python alg-none-honoring hand-rolled JWT verify (forge Cycle 45; fail-closed fix; mirrors C3 scout)"
+      },
+      "priors": {
+        "T7b": {
+          "red": "5695f826a247",
+          "blue": "bdc3912b9d28"
+        },
+        "T7c": {
+          "red": "15edd883f29a",
+          "blue": "d887aa3dee3"
+        },
+        "T7e": {
+          "red": "1ae5d3597970",
+          "blue": "50d963c60c86"
+        },
+        "T7f": {
+          "red": "bcff6f456366",
+          "blue": "b862da4e1750"
+        }
+      }
+    },
+    {
+      "id": "T8",
+      "name": "SSRF-shaped selector -> sink chain",
+      "cwe": [
+        918,
+        73
+      ],
+      "taint": "query param -> local-store path; query param -> eval",
+      "red_shape": "user=../../secret + spec=7*6 in ONE unified script",
+      "blue_pattern": "allowlist-regex fullmatch + realpath/commonpath (Link A); decimal-regex (Link B)",
+      "subclasses": {
+        "T8a": "true egress-SSRF (UNPROVABLE in network_mode=none)",
+        "T8b": "profile selector over local store + eval (forge Cycle 7c)",
+        "T8c": "PHP theme-pack manifest selector, allowlist + realpath-under-packs fix (forge Cycle 36)",
+        "T8d": "PHP check-then-decode selector, decode-first + NUL reject fix (forge Cycle 38, dual of T4e)"
+      },
+      "priors": {
+        "red": "256ab8c3e090",
+        "blue": "95a4d221b4c2",
+        "T8c": {
+          "red": "a4357fa1433b",
+          "blue": "538245a2bf00"
+        },
+        "T8d": {
+          "red": "8bcef832a528",
+          "blue": "67a40f9e7de4"
+        }
+      }
+    },
+    {
+      "id": "T9",
+      "name": "Invite/badge gate -> store-traversal chain",
+      "cwe": [
+        639,
+        22
+      ],
+      "taint": "query param -> badge cookie -> path.join read",
+      "red_shape": "code=WELCOME-123 redeem + note=../../secret.txt in ONE unified script",
+      "blue_pattern": "non-empty check + resolve + strict containment (target!==base && !startsWith); Link A hardening follow-up",
+      "subclasses": {
+        "T9a": "Node /redeem badge + note store traversal (forge Cycle 11)",
+        "T9b-open": "Python PIN->tier cookie gate, UNEXERCISED (import-probe dodged; HTTP round-trip required) (forge Cycle 30)",
+        "T9b-closed": "Python PIN->tier cookie gate + two-slot concat lookup, HTTP cookie-roundtrip proof (forge Cycle 31, closes C30 OPEN)",
+        "T9c": "Node locker-combo gate + emulated concat lookup, HTTP cookie round-trip (forge Cycle 34)",
+        "T9d": "Python LAST-XFF-entry client-IP trust + allowlist-gated admin path (forge Cycle 43; ignore-XFF fix)"
+      },
+      "priors": {
+        "red": "26245a5fb2af",
+        "blue": "8af210c7fd86",
+        "T9b-closed": {
+          "red": "5016cfe59e99",
+          "blue": "78cbd6661296"
+        },
+        "T9c": {
+          "red": "b90493849e92",
+          "blue": "47932423850a"
+        },
+        "T9d": {
+          "red": "05ae3215c4df",
+          "blue": "b1b79b129b3c"
+        }
+      }
+    }
+  ],
+  "changelog": [
+    {
+      "version": "29",
+      "date": "2026-10-31",
+      "change": "Cycle 40: +T7c (price-tamper cookie Link A) +T1h (price-keyed lookup Link B); vault recall NOVEL_SURFACE (fingerprint-exact new pair); both-links-hardened fix; Gate-3 3/3"
+    },
+    {
+      "version": "30",
+      "date": "2026-10-31",
+      "change": "Cycle 43: +T9d (XFF-spoof trust-management chain, CWE-291); vault recall NOVEL_SURFACE; Gate-3 4/4; ignore-XFF-without-proxy fix doctrine"
+    },
+    {
+      "version": "31",
+      "date": "2026-10-31",
+      "change": "Cycle 44: +T7e (predictable-fallback-secret token forgery, CWE-798); vault recall check; Gate-3 4/4; no-predictable-fallback doctrine"
+    },
+    {
+      "version": "32",
+      "date": "2026-10-31",
+      "change": "Cycle 45: +T7f (alg-none bypass); vault recall check; Gate-3 4/4; C3-scout mirror doctrine"
+    },
+    {
+      "version": "33",
+      "date": "2026-10-31",
+      "change": "Cycle 47: +T1i (LIKE-wildcard, closes C46 OPEN); F14 hypothesis CONFIRMED (nested-quote model-payload fragility); vault recall; Gate-3 5/5; ESCAPE-clause doctrine"
+    },
+    {
+      "version": "34",
+      "date": "2026-10-31",
+      "change": "Cycle 49: +T6f (response splitting, CWE-113/93); first-try VERIFIED supports F15 shape-distinctiveness; vault recall; Gate-3 5/5"
+    },
+    {
+      "version": "35",
+      "date": "2026-10-31",
+      "change": "Cycle 51: +T5d (section-name injection); v1 interpolation PROVOKED Red hallucination x2 (captured), v2 starved it (hallucination-starvation doctrine); vault; Gate-3 5/5"
+    },
+    {
+      "version": "36",
+      "date": "2026-10-31",
+      "change": "Cycle 52: +T5e (extract-overwrite); PHP8 1-arg parse_str extinct (negative); first-try VERIFIED; vault; Gate-3 6/6 incl gate-composition"
+    },
+    {
+      "version": "37",
+      "date": "2026-10-31",
+      "change": "Cycle 53: +T3h (CWE-88 arg injection, no shell); attempt-4 after 3 baseline fails (contract bug, exec-bit, sandbox-subprocess); avatar-only-sink lesson; vault; Gate-3 5/5"
+    },
+    {
+      "version": "38",
+      "date": "2026-10-31",
+      "change": "Cycle 54: +T6g (import-specifier hijack); v1 JSONP hallucination x2 captured, v2 no-finding (weak benign), v3 VERIFIED (resolvable benign); vault; Gate-3 8/8"
+    },
+    {
+      "version": "39",
+      "date": "2026-10-31",
+      "change": "Cycle 55: +T2h (theater-check eval); secure-mirror hallucination x1 + timeout x1, then grounding-quote VERIFIED; vault; Gate-3 8/8"
+    },
+    {
+      "version": "40",
+      "date": "2026-10-31",
+      "change": "Cycle 56: +T5f (CWE-502 pickle token); attempt-2 VERIFIED (inconclusive then clear); sign-before-load doctrine; vault; Gate-3 4/4"
+    },
+    {
+      "version": "41",
+      "date": "2026-10-31",
+      "change": "Cycle 58: +T4h (canonical traversal); grounding A/B first-try clear (promote grounding toward rule); vault NOVEL (fingerprint-exact limitation noted); Gate-3 6/6"
+    },
+    {
+      "version": "42",
+      "date": "2026-10-31",
+      "change": "Cycle 59: +T6h (log forging); 5th hallucination capture (fix-misattribution, not invention); retry cleared; grounding demoted to weak-signal; vault; Gate-3 4/4"
+    },
+    {
+      "version": "43",
+      "date": "2026-10-31",
+      "change": "Cycle 63: +T4i (require-path injection); capture #6 (model EXPLICITLY disregarded grounding, quoted fix verbatim); retry cleared; vault; Gate-3 8/8"
+    }
+  ]
+}
