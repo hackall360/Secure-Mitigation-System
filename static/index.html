@@ -101,7 +101,7 @@
           <div class="field wide"><label for="demo-build-brief">What do you want to build?</label><input id="demo-build-brief" data-feature="demo-build-brief" name="build_brief" maxlength="500" autocomplete="off" placeholder="a tiny note-taking web app with login"><small>Plain words. Greenhouse designs a small self-contained demo around it; red and blue then run it in Docker.</small></div>
           <div class="field wide"><label for="demo-vulns">Vulnerabilities to implement</label><input id="demo-vulns" data-feature="demo-vulns" name="vulns" maxlength="500" autocomplete="off" placeholder="CVE-2024-3094, SQL injection, header reflection"><small>CVEs, named types, or free text — comma separated. Green + research look each one up (CVE records, threat intel, web) and build the requested flaws.</small></div>
           <div class="field wide"><label for="demo-theme">Flaw themes for Greenhouse</label><input id="demo-theme" data-feature="demo-theme" name="theme" maxlength="200" autocomplete="off" placeholder="input validation SQL injection XSS"><small>Optional extra keywords. Combined with the brief and vulnerabilities above.</small></div>
-          <div class="field"><label for="demo-scan-profile">Scan intensity</label><select id="demo-scan-profile" name="scan_profile" data-feature="demo.scan_profile">
+          <div class="field"><label for="demo-scan-profile">Scan intensity</label><select id="demo-scan-profile" name="scan_profile">
             <option value="extra_light" selected>Extra light</option>
             <option value="light">Light</option>
             <option value="medium">Medium</option>
@@ -110,15 +110,15 @@
             <option value="ultra_heavy">Ultra heavy</option>
             <option value="custom">Custom</option>
           </select><small id="demo-scan-description">1 cycle · one cycle runs Red, Blue, Red, Blue.</small></div>
-          <div class="field compact"><label for="demo-cycles">Cycles</label><input id="demo-cycles" name="cycles" type="number" min="1" max="20" value="1" readonly required data-feature="demo.cycles"><small>Derived from intensity unless Custom is selected.</small></div>
-          <div class="field compact"><label for="demo-red-agents">Red agents <span>Ultra heavy only</span></label><input id="demo-red-agents" name="red_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.red_agents"></div>
-          <div class="field compact"><label for="demo-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="demo-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required data-feature="demo.blue_agents"></div>
-          <div class="field compact"><label for="demo-budget">Context budget</label><input id="demo-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required data-feature="demo.context_budget"></div>
-          <div class="field compact"><label for="demo-size">Demo size</label><select id="demo-size" name="demo_size" data-feature="demo.demo_size"><option value="standard" selected>Standard</option><option value="small">Small</option></select><small>Fewer routes when small.</small></div>
-          <div class="field compact"><label for="demo-flaw-count">Flaw count</label><input id="demo-flaw-count" name="flaw_count" type="number" min="1" max="8" placeholder="all" data-feature="demo.flaw_count"><small>1-8; empty keeps all.</small></div>
-          <div class="field compact"><label for="demo-seed">Demo seed</label><input id="demo-seed" name="seed" type="number" step="1" placeholder="random" data-feature="demo.seed"><small>Variation nonce.</small></div>
-          <label class="remote-consent wide"><input id="demo-offline" type="checkbox" data-feature="demo.intel_offline"><span><strong>Build offline</strong><small>Skip live threat-intel lookups; Greenhouse builds from static flaw patterns.</small></span></label>
-          <label class="remote-consent wide"><input id="demo-allow-remote" type="checkbox" data-feature="demo.allow_remote"><span><strong>Allow generated source to leave this host</strong><small>Visible in Green-build mode; mirrors the project consent above. Without it the demo builds offline.</small></span></label>
+          <div class="field compact"><label for="demo-cycles">Cycles</label><input id="demo-cycles" name="cycles" type="number" min="1" max="20" value="1" readonly required><small>Derived from intensity unless Custom is selected.</small></div>
+          <div class="field compact"><label for="demo-red-agents">Red agents <span>Ultra heavy only</span></label><input id="demo-red-agents" name="red_agents" type="number" min="1" max="12" value="5" disabled required></div>
+          <div class="field compact"><label for="demo-blue-agents">Blue agents <span>Ultra heavy only</span></label><input id="demo-blue-agents" name="blue_agents" type="number" min="1" max="12" value="5" disabled required></div>
+          <div class="field compact"><label for="demo-budget">Context budget</label><input id="demo-budget" name="context_budget" type="number" min="1024" max="131072" value="32768" required></div>
+          <div class="field compact"><label for="demo-size">Demo size</label><select id="demo-size" name="demo_size"><option value="standard" selected>Standard</option><option value="small">Small</option></select><small>Fewer routes when small.</small></div>
+          <div class="field compact"><label for="demo-flaw-count">Flaw count</label><input id="demo-flaw-count" name="flaw_count" type="number" min="1" max="8" placeholder="all"><small>1-8; empty keeps all.</small></div>
+          <div class="field compact"><label for="demo-seed">Demo seed</label><input id="demo-seed" name="seed" type="number" step="1" placeholder="random"><small>Variation nonce.</small></div>
+          <label class="remote-consent wide"><input id="demo-offline" type="checkbox"><span><strong>Build offline</strong><small>Skip live threat-intel lookups; Greenhouse builds from static flaw patterns.</small></span></label>
+          <label class="remote-consent wide"><input id="demo-allow-remote" type="checkbox"><span><strong>Allow generated source to leave this host</strong><small>Visible in Green-build mode; mirrors the project consent above. Without it the demo builds offline.</small></span></label>
         </div>
         <form id="project-form" data-feature="ws-project" class="project-form" hidden novalidate>
           <div class="field wide"><label for="project-path">Absolute repository path</label><input id="project-path" data-feature="project-path" name="path" required placeholder="/home/me/src/my-project" autocomplete="off"><small>Must be an absolute path visible to the Secure Mitigation System server.</small></div>
