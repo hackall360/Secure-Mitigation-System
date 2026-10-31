@@ -298,3 +298,11 @@ and taxonomy link.
 - Gate-3: unseen comment-inject / tamper-down / direct-cookie all blocked.
 - Taxonomy: new T7c + T1h subclasses (v29). Vault: red `15edd883f29a`,
   blue `d887aa3dee3`. recall NOVEL_SURFACE (fingerprint-exact).
+
+## D26 — T9d XFF-spoof prior (Cycle 43, 2026-10-31)
+
+- Red: unspoofed /admin forbidden recorded, then XFF-spoofed /admin
+  over HTTP, 0 on admin panel body.
+- Blue: ignore XFF without trusted proxy; direct-connection IP only.
+- Gate-3: 4/4 XFF variants blocked. Taxonomy v30. Vault: red
+  `05ae3215c4df`, blue `b1b79b129b3c`. NOVEL_SURFACE.

@@ -202,3 +202,17 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Vault recall NOVEL_SURFACE (fingerprint-exact: T7c+T1h pair new;
   distinct from T1d stored-nickname solo). Priors: red `15edd883f29a`,
   blue `d887aa3dee3` (vault, forge-c40).
+
+## T9d note (XFF-spoof trust-management gate, CWE-291)
+
+- Subclass T9d (proven forge Cycle 43, Python, 2 attempts: 1x transient
+  Blue-schema, then VERIFIED): `client_ip` trusts the LAST X-Forwarded-For
+  entry with no proxy stripping it; `admin_path` gates on IP allowlist.
+  Any remote client sending `X-Forwarded-For: 127.0.0.1` reaches admin.
+  Stateless pure functions — F13-clean by design.
+- Blue: ignore XFF entirely without a trusted proxy; use the direct
+  connection IP (`headers["remote"]`). Textbook CWE-291 fix (4 lines).
+  Gate-3 unseen 4/4: multi-hop spoof, spoof-only, ::1 spoof, padded spoof —
+  all forbidden; benign local/remote intact.
+- Vault: red `05ae3215c4df`, blue `b1b79b129b3c`; recall NOVEL_SURFACE.
+  Fix doctrine: XFF is attacker input unless YOUR proxy strips it.

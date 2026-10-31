@@ -1253,3 +1253,19 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Conclusion: Δ(C.40) → 0 (T7c gate + T1h lookup closed, both links).
   Reusable: contract-detail-guides-Red rule; both-links-hardened fix
   doctrine. See ledger Cycle 40; discoveries D25.
+
+## E43 — Cycle 43: T9d XFF-spoof VERIFIED attempt 2 (stateless recovery)
+
+- Green (F13-clean stateless): `client_ip` LAST-XFF trust + `admin_path`
+  allowlist; :memory:-grade statelessness (pure functions, no globals).
+  Gate-0 local: benign remote forbidden; spoof `X-Forwarded-For:
+  127.0.0.1` -> admin panel.
+- Attempt 1: Red exit-0 bottled; Blue-schema transient (tonight's flake
+  signature, ~6th occurrence). Attempt 2: VERIFIED — pre 0, post 1,
+  regressions 0/0, diff-pass. Cost $0.15 (6 calls).
+- Blue diff: ignore-XFF-without-trusted-proxy (textbook CWE-291 fix).
+  Gate-3 unseen 4/4 (multi-hop, spoof-only, v6, padded).
+- Vault: red `05ae3215c4df`, blue `b1b79b129b3c`; NOVEL_SURFACE.
+  Taxonomy v30. Conclusion: Δ(C.43) → 0 (XFF trust closed).
+- Reusable: stateless-first fixture selection (F13 rule) pays off —
+  first VERIFIED since C40 after two parked hotspots.

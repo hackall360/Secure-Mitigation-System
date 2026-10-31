@@ -1,5 +1,5 @@
 {
-  "version": "29",
+  "version": "30",
   "classes": [
     {
       "id": "T1",
@@ -268,7 +268,8 @@
         "T9a": "Node /redeem badge + note store traversal (forge Cycle 11)",
         "T9b-open": "Python PIN->tier cookie gate, UNEXERCISED (import-probe dodged; HTTP round-trip required) (forge Cycle 30)",
         "T9b-closed": "Python PIN->tier cookie gate + two-slot concat lookup, HTTP cookie-roundtrip proof (forge Cycle 31, closes C30 OPEN)",
-        "T9c": "Node locker-combo gate + emulated concat lookup, HTTP cookie round-trip (forge Cycle 34)"
+        "T9c": "Node locker-combo gate + emulated concat lookup, HTTP cookie round-trip (forge Cycle 34)",
+        "T9d": "Python LAST-XFF-entry client-IP trust + allowlist-gated admin path (forge Cycle 43; ignore-XFF fix)"
       },
       "priors": {
         "red": "26245a5fb2af",
@@ -280,6 +281,10 @@
         "T9c": {
           "red": "b90493849e92",
           "blue": "47932423850a"
+        },
+        "T9d": {
+          "red": "05ae3215c4df",
+          "blue": "b1b79b129b3c"
         }
       }
     }
@@ -289,6 +294,11 @@
       "version": "29",
       "date": "2026-10-31",
       "change": "Cycle 40: +T7c (price-tamper cookie Link A) +T1h (price-keyed lookup Link B); vault recall NOVEL_SURFACE (fingerprint-exact new pair); both-links-hardened fix; Gate-3 3/3"
+    },
+    {
+      "version": "30",
+      "date": "2026-10-31",
+      "change": "Cycle 43: +T9d (XFF-spoof trust-management chain, CWE-291); vault recall NOVEL_SURFACE; Gate-3 4/4; ignore-XFF-without-proxy fix doctrine"
     }
   ]
 }
