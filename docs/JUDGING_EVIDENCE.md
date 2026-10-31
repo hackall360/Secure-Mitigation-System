@@ -37,3 +37,34 @@ Run: `overnight_1793434523077_12855248373640259943`.
 
 - Cycle 3 external scout (permissive repos, local clone, sandboxed analysis,
   evidence-leveled candidates, private disclosure drafts only).
+
+## Research Delta Audit — morning consolidation (2026-10-31T16:28Z, run `...3579887`)
+
+Computed $\Delta = S_{target} - S_{current}$ against the Research Division
+mission (Push The Frontier + Agentic bonus + Meta Tooling 25%). Measured
+from repo state, not ledger claims. Evidence: taxonomy v43 JSON, ledger
+rows, vault stats, META_TOOLING_LOG.md, CVE_CANDIDATES.md.
+
+| Item | Measured count | Evidence | Verdict |
+|---|---|---|---|
+| New taxonomy subclasses (target-family breadth) | 53 subclasses across T1–T9 (T1x6 T2x6 T3x8 T4x8 T5x5 T6x6 T7x5 T8x4 T9x5) | `docs/vuln_taxonomy.json` v43 | [x] VERIFIED |
+| Chained fixtures Red 0 → Blue 1 → Regression 0 | 45 VERIFIED rows in ledger (3 partials closed by follow-ups) | `docs/OVERNIGHT_FORGE_LEDGER.md`, per-cycle receipts in run validation/ | [x] VERIFIED |
+| Priors committed to vault | 133 known_archetypes (67 red + 66 blue), `vault_stats()` live | agent run at 16:27Z | [x] VERIFIED |
+| Priors passing Reusability Replay on unseen variants | 44 Gate-3 replays logged PASS (last: C63 8/8) | ledger Gate-3 column | [x] VERIFIED |
+| External GitHub repos tested locally | 11 scout cycles (PyJWT, werkzeug, FFU, sabre, hapi/shot, he, validator.js, escape-string-regexp, shell-quote + 2 asymmetry probes) | `docs/RESEARCH_JOURNAL.md` E-sc [#]outs, CVE_CANDIDATES scout sections | [x] VERIFIED |
+| CVE Candidates HYPOTHESIS | 14 hypothesis mentions, all refuted or open-negative (PyJWT SSRF/alg-none refuted; validator confusion open; he/ent-codec negative) | `docs/CVE_CANDIDATES.md` | [x] VERIFIED (as negatives) |
+| CVE Candidates REPRODUCED_LOCALLY | 0 — no third-party vuln reproduced in sandbox | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
+| CVE Candidates PATCH_VERIFIED | 0 — no upstream patch authored or verified | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
+| CVE Candidates NOVELTY_CHECKED | 0 — no candidate reached novelty review | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
+| Responsible-disclosure drafts | 0 — `docs/disclosures/` does not exist | repo listing | [ ] UNVERIFIED |
+| Meta model calls logged | 78 entries (spark-1.3 + wonder-1.0, per-cycle costs) | `docs/META_TOOLING_LOG.md` (86 lines) | [x] VERIFIED |
+
+$\Delta$ remaining (honest): the forge loop is a closed-world machine —
+45 self-made fixtures verified against self-made patches. The Push The
+Frontier gap is exactly the four `[ ] UNVERIFIED` rows above: zero
+third-party reproductions, zero upstream patches, zero novelty-checked
+novel findings, zero disclosure drafts. Scout cadence (11 runs) proves the
+pipeline reaches outward, but every outward result was NEGATIVE by design
+(guarded libraries hold). The missing capability is a confirmed-vulnerable
+third-party target, not more self-fixtures. Hotspots C41/C42/C48 (3 OPEN)
+are fixture-side stalls, not frontier evidence.
