@@ -7,7 +7,8 @@ Every item names its files and its proof.
 ## BB. Repo remodel (brief 2026-10-31-refactor-directive; branch feature/overnight-forge)
 
 - [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
-- [.] BB1+L. Lead sweep A: `library/` rename + `web/` map + `tui/` map + `mcp/` map (no root moves; shims intact), law mirror + harness AGENTS + agents INDEX, plan doc. Next: sweep B docs stash+MVP pages, sweep C README+AGENTS+INDEX content, gate + live proof per sweep.
+- [x] BB1+L. Lead sweep A: DONE + committed. `library/` rename (git-mv, shim), web/tui/mcp maps, law mirror, harness AGENTS, agents INDEX, plan doc. Proof: gate 798 passed + All checks passed.
+- [.] BBS. Lead sweep B: docs stash (session/prompt-history out of readable tree, git-ignored) + MVP pages + fan out 3 content writers (README/AGENTS/agents) in isolated worktrees. Next: sweep C integration + gate + live proof.
 - [ ] BB1. Web sweep: web/ categorization (static + server routes/WS), per-file what/where/why index, minimal rewiring, behavior preserved.
 - [ ] BB2. TUI sweep: tui/ categorization (tui.py + CLI surface as decided), index, rewiring, behavior preserved.
 - [ ] BB3. Library sweep: library/ with core/ + shared/ (central core module direction), index, rewiring, behavior preserved.
