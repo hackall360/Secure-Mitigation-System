@@ -38,3 +38,6 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T09:51Z | (none — Green fixture bug) | C16a baseline-only | — | read-only store; regression failed before Red ran |
 | 2026-10-31T09:53Z | muse-spark-1.3 | C16b (4 calls) | Red | two-step sign→wall probe exit 0 pre-patch |
 | 2026-10-31T09:53Z | muse-wonder-1.0 | C16b (2 calls) | Blue | render-time escape, re-probe exit 1 |
+| 2026-10-31T09:59Z | muse-spark-1.3 | C17a (5 calls ≈$0.20; final-report schema fault) | Red | exit-0 proof stood; closing report malformed |
+| 2026-10-31T10:02Z | muse-spark-1.3 | C17b retry (4 calls) | Red | T4c traversal probe exit 0 pre-patch |
+| 2026-10-31T10:02Z | muse-wonder-1.0 | C17b retry (2 calls) | Blue | T4c containment only (T2e left open by record) |

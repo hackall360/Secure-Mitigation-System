@@ -559,3 +559,75 @@ Run: `overnight_1793434523077_12855248373640259943`.
   reflected — render-time escaping (not store-time mangling) is the pinned
   doctrine. Taxonomy: new T6c subclass.
 - Reusable prior created: T6c two-step probe + render-time escaping template.
+
+## E20r — Cycle 20 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python×3 (C1, C4, C7), Node×4 (C2, C8, C11, C14), PHP×4
+  (C5, C10, C13, C16). Max 4/11 = 36% < 40% ✓ — first fully-balanced
+  checkpoint of the night.
+- Scouts: 3, 6, 9, 12, 15 (4 negative-valuable, 1 inconclusive-valuable).
+  Pattern stands: synthesis beats discovery in maintained code.
+- Class coverage: T1×2 (C4 + bundled), T2×6, T3×3 (a, c + bundled PHP),
+  T4×4, T5×2 (a-bundled, b-novel), T6×3 (a-crucible, b, c), T7×1, T8×1,
+  T9×1. Every bundled family now has a forge-novel proof.
+- Forced direction: Cycle 17+ stays Green-depth (new sink shapes or
+  cross-language replays); scouts pause until Cycle 18 except a
+  zero-dependency single-file exotic. Next: PHP T4d store variant
+  (new shape, keeps PHP momentum) or Node T2 fourth-variant.
+
+## E17a — Cycle 17 design REJECTED pre-spend (Green self-review win, 2026-10-31)
+
+- Hypothesis for T4d: `basename($name)` store reads are traversal-safe —
+  tested the hypothesis with a 6-shape battery in Docker PHP BEFORE any
+  keyed spend: `basename()` ALWAYS returns the final component, so NO
+  input escapes `notes/`. A `basename()` fixture is NOT vulnerable; a keyed
+  run on it would burn ~$0.20 for a guaranteed Red exit-1 (no finding).
+- Decision: REJECT the T4d design at Gate 0 (pre-check), $0 spent. This is
+  the forge's first Gate-0 design rejection — the taxonomy question itself
+  was wrong, and the cheap local battery caught it. Lesson: every Green
+  design gets a LOCAL vuln-shape proof (like the C13/C16 smokes) before
+  keyed spend; basename/allowlist-shaped "sinks" are containment, not vulns.
+- Redirect: Cycle 17 becomes Node T2e — `Function()` constructor sink
+  (distinct from `eval()`: `new Function('return ' + expr)`), a genuinely
+  different sink shape in the SAME family. Local vuln-shape proof first.
+
+## E17b — Cycle 17 attempt 1: Red→Blue→verify green, final-report schema fault (INFRA, attempt 1 of 3)
+
+- Key point: Red exit 0 STOOD and Blue's proposal was ACCEPTED (guard
+  passed) — the pipeline reached the FINAL `verification_report` stage and
+  only the last Red report failed schema validation (same agents.py:323/334
+  path as C5a). Pre-patch proof + patch both exist; only the closing
+  report is malformed. Cost: 5 calls ≈$0.20.
+  Evidence: run `validation/task-1701-c17-live.txt`,
+  `validation/task-1701-c17-report-error.json`.
+- Corrective vector (attempt 2): the C5 lesson says slim agents already
+  (1+1 here) — so the fault is NOT fan-out bulk this time. Retry verbatim
+  once (transient shape faults happen); if it recurs, shorten the contract
+  (fewer steering sentences → smaller report surface) for attempt 3.
+
+## E17c — Cycle 17 attempt 2 (verbatim retry): VERIFIED — with a PARTIAL-patch lesson
+
+- Hypothesis: the attempt-1 schema fault was transient.
+- Result: TRUE — success=True, status retained, receipt pre=0/post=1/
+  regressions 0/0, cleanup ok. 6 calls p11393/c24599 ≈$0.28.
+  Evidence: run `validation/task-1702-c17b-live.txt`,
+  `validation/task-1702-c17b-report.json`.
+- BUT the retained finding is the T4 traversal, NOT the T2e Function sink:
+  Blue patched ONLY `readDoc` (strict containment); the Function
+  constructor is untouched and still live. The receipt proves "traversal
+  closed", NOT "fixture clean". This is a PARTIAL patch wearing a retained
+  receipt — the pipeline's contract counts per-finding closure, and Red
+  chose ONE finding. Correct handling: vault records the partial
+  explicitly (T2e left open), Gate-3 replays the CLOSED link, and the OPEN
+  T2e gets its own follow-up fixture (T2e-only tree, no traversal
+  competition) rather than pretending this cycle closed it.
+- Gate-3 replay PASS on renamed variant (traversal blocked incl. empty,
+  benign ok).
+- Vault: red `1dccdbe650ff`, blue `7ee3a5a461ec` (with partial_note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1703-c17-vault.txt`.
+- Conclusion: Δ(C.17) → 0 for the RETAINED link; T2e stays OPEN by explicit
+  record. New taxonomy: T2e (Function-constructor sink, Gate-0 proven
+  locally) + T4c (Node containment, second Node proof).
+- Reusable prior created: T4c containment template; T2e Function-sink probe
+  (Gate-0 proven, vault-anchored for the follow-up).

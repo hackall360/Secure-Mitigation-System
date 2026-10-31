@@ -138,3 +138,16 @@ and taxonomy link.
 - Taxonomy: new T6c subclass. Vault: red `e82ce135d029`,
   blue `8d071b865442`.
 - Gate-3: replay PASS (renamed variant; stored payload neutralized).
+
+## D12 — T4c+T2e lambda-fixture prior (Cycle 17, 2026-10-31)
+
+- Novel fixture: Node `readDoc` join + `Function('x','return '+expr)` ctor.
+  Gate-0 locally proved BOTH links (version string computes, secret leaks).
+  Red retained the T4 traversal (exit 0); Blue closed ONLY it → exit 1.
+  The T2e Function sink stays OPEN by explicit vault record (follow-up
+  planned) — a partial patch honestly labeled, not hidden.
+- Evidence: run `validation/task-1702-c17b-report.json` (receipt pre=0/post=1,
+  patch sha `28d3f176…`), `validation/task-1703-c17-vault.txt`.
+- Taxonomy: new T2e (Function ctor, Gate-0 proven) + T4c (Node containment).
+  Vault: red `1dccdbe650ff`, blue `7ee3a5a461ec`.
+- Gate-3: replay PASS (renamed variant; traversal blocked).

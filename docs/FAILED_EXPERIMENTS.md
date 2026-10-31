@@ -55,3 +55,10 @@ rule applies: destroy container, log here, begin next cycle immediately.
 - Double-closed traversal (secure_filename + safe_join); ext mismatch
   unconsumed; MIME unused; crash unreachable. Stale ≠ vulnerable.
   Battery kept for future upload targets.
+
+## F8 — Cycle 17 T4d design rejected at Gate 0 (2026-10-31)
+
+- `basename($name)`-gated reads cannot traverse (6-shape Docker-PHP
+  battery: always final component). NOT a vuln — keyed run would have been
+  a guaranteed no-finding. First Gate-0 rejection; $0 spent. Rule pinned:
+  LOCAL vuln-shape proof before EVERY keyed run.

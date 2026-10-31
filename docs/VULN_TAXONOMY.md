@@ -112,3 +112,10 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Blue pattern: non-empty check + resolve + strict containment; Link A
   hardening is follow-up.
 - Priors: red `26245a5fb2af`, blue `8af210c7fd86` (vault, forge-c11).
+
+## T2e supplemental note (Function-constructor sink)
+
+- T2e (Gate-0 proven Cycle 17, OPEN by record): `new Function('x', 'return '
+  + expr)` computes attacker expressions (`process.version` leaks). The
+  C17 Blue patch closed only the T4 link; the T2e-only follow-up fixture
+  (no traversal competition) is queued. Do NOT mark T2e closed.
