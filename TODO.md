@@ -351,6 +351,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA21. Wave 21 TRIBUNAL (mod-3).
 - [x] AA21. Wave 21 outcome: tribunal weighted **8.70** (was 8.58, +0.12 crucible #2 + banner live). Movers: 2a real-repo keyed sweep (1→8.0, 2→9.0), 2d busy-banner live (4→8.5), S3 render half (6→8.5). Proof: matrix.
 - [ ] AA22. Wave 22 ingest submit wiring (form → project workflow → sweep, RED-first + live proof).
+- [x] AA22. Wave 22 outcome: writer routing merged (32aee83) + spawner completion (78874b9: real clone=True staging, sandbox adapter, file_list forwarding; 21 RED green). Live proof: validation → staging → compress → vault NOVEL → baseline passed → red review (real Muse) → cleanup; full green needs server-shaped staged tree (recorded). Gate 752 green. Worktree removed.
 - [ ] AA23. Wave 23 Tailwind decision (migrate or document + pin).
 - [ ] AA24. Wave 24 TRIBUNAL (mod-3).
 
