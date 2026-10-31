@@ -126,3 +126,15 @@ and taxonomy link.
 - Taxonomy: new T5b subclass (T5 novel beyond the bundled fixture). Vault:
   red `1f9cdccfa4b4`, blue `3f2a9723607d`.
 - Gate-3: replay PASS (3/3 evil blocked, benign preserved).
+
+## D11 — T6c stored-XSS prior (Cycle 16, 2026-10-31)
+
+- Novel fixture: PHP guestbook (`/sign` stores, `/wall` renders raw).
+  Red two-step exit 0; Blue render-time escaping → Red exit 1,
+  regressions 0/0. Attempt 1 died on the read-only runtime (store in
+  `__DIR__`); /tmp fix verified attempt 2.
+- Evidence: run `validation/task-1602-c16b-report.json` (receipt pre=0/post=1,
+  patch sha `77140d1e…`), `validation/task-1603-c16-vault.txt`.
+- Taxonomy: new T6c subclass. Vault: red `e82ce135d029`,
+  blue `8d071b865442`.
+- Gate-3: replay PASS (renamed variant; stored payload neutralized).

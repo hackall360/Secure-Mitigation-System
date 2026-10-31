@@ -57,7 +57,15 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 
 ## T6 Reflected XSS sink (CWE-79)
 
-- Subclass T6a: stdlib SSTI-analog proven in Wild Crucible #3 (Wave 30).
+- Subclass T6b (proven forge Cycle 10, 2026-10-31, PHP): raw reflection.
+  Runtime: is_string + htmlspecialchars(ENT_QUOTES).
+- Subclass T6c (proven forge Cycle 16, 2026-10-31, PHP): STORED XSS —
+  `/sign?author=` persists raw to a store, `/wall` renders unescaped.
+  Two-step Red probe (sign marker → read wall) exits 0. Blue doctrine:
+  RENDER-time escaping (coerce scalar + htmlspecialchars
+  ENT_QUOTES|ENT_SUBSTITUTE), store stays raw — never mangle at rest.
+  Fixture-state rule: stores live under `/tmp` (runtime is read-only).
+- Priors (T6c): red `e82ce135d029`, blue `8d071b865442` (vault, forge-c16).
 - Red shape: marker reflection unescaped in response body.
 - Blue pattern: contextual escaping + allowlist; verify marker neutralized.
 

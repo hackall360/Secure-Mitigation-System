@@ -521,3 +521,41 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Reusable prior created: micro-helper audit battery (sink grep, header
   merge `__proto__` static replication, payload key traversal, dep-closure
   check FIRST).
+
+## E16a — Cycle 16 attempt 1: stateful fixture vs read-only runtime (NEGATIVE, attempt 1 of 3)
+
+- Hypothesis: a stored-XSS guestbook verifies like the stateless cycles.
+- Method: new Green tree (`/sign` appends to `notes.json` in `__DIR__`,
+  `/wall` renders); keyed slim agents=1.
+- Result: 0 cycles — baseline regression itself failed (`FAIL Ada`):
+  the target runtime is `read_only: True` (tmpfs only on `/tmp`), so
+  `file_put_contents(__DIR__/notes.json)` silently fails (`@` suppressor)
+  and the wall never contains Ada. Green fixture bug, not a Red/Blue
+  verdict — no model fault, no keyed verdict spend beyond baseline.
+  Cost: baseline-only calls.
+  Evidence: run `validation/task-1601-c16-live.txt`, `reports/forge-c16/`.
+- Conclusion: Green surgery (attempt 2): store at `/tmp/forge16-notes.json`
+  (the writable tmpfs). Stateful fixtures MUST write to `/tmp`.
+  New trap for TRAPS.md.
+
+## E16b — Cycle 16 attempt 2 (/tmp store): VERIFIED (closes Cycle 16)
+
+- Hypothesis: the /tmp-store guestbook verifies end-to-end (two-step
+  sign→wall probe).
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok. Red vuln: "T6c Stored XSS:
+  /sign?author= stores raw input ... /wall renders it unescaped" —
+  two-step probe (sign marker, read wall) confirmed. Blue: RENDER-time
+  escaping (coerce scalar + `htmlspecialchars(ENT_QUOTES|ENT_SUBSTITUTE)`),
+  store stays raw — the correct stored-XSS doctrine. 6 calls p9542/c13549
+  ≈$0.16.
+  Evidence: run `validation/task-1602-c16b-live.txt`,
+  `validation/task-1602-c16b-report.json`.
+- Gate-3 replay PASS (renamed variant: `<img onerror>` neutralized,
+  numeric coerced, non-scalar neutralized).
+- Vault: red `e82ce135d029`, blue `8d071b865442`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1603-c16-vault.txt`.
+- Conclusion: Δ(C.16) → 0. T6c stored-XSS proven distinct from T6b
+  reflected — render-time escaping (not store-time mangling) is the pinned
+  doctrine. Taxonomy: new T6c subclass.
+- Reusable prior created: T6c two-step probe + render-time escaping template.
