@@ -152,6 +152,9 @@ def decrypt_blob(blob: bytes, *, key: bytes) -> dict:
 _SINK_TOKENS = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
 
+_COMMENT_PREFIXES = ("#", "//", "--", "*", "<!--")
+
+
 def fingerprint_source(source: str) -> str:
     """Deterministic 64-hex fingerprint of a target's sink/flow structure.
 
@@ -159,13 +162,19 @@ def fingerprint_source(source: str) -> str:
     cosmetic rewrites fingerprint identically, while any change to the
     identifier/operator skeleton (the part attackers and patches touch)
     flips the digest.
+
+    Vacuous lines still contribute a kind tag (code vs comment vs blank)
+    so an empty source never digests identically to a comment-only one:
+    that collision would let a novel empty target recall as KNOWN.
     """
     normalized_lines: list[str] = []
     for line in source.splitlines():
         stripped = line.strip()
         if not stripped:
+            normalized_lines.append("blank|")
             continue
-        if stripped.startswith(("#", "//", "--", "*", "<!--")):
+        if stripped.startswith(_COMMENT_PREFIXES):
+            normalized_lines.append("comment|")
             continue
         no_strings = re.sub(r"'[^']*'|\"[^\"]*\"|`[^`]*`", "STR", stripped)
         no_numbers = re.sub(r"\b\d[\d._xXa-fA-F]*\b", "NUM", no_strings)
