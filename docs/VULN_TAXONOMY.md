@@ -216,3 +216,19 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   all forbidden; benign local/remote intact.
 - Vault: red `05ae3215c4df`, blue `b1b79b129b3c`; recall NOVEL_SURFACE.
   Fix doctrine: XFF is attacker input unless YOUR proxy strips it.
+
+## T7e note (fallback-secret token forgery, CWE-798)
+
+- Subclass T7e (proven forge Cycle 44, Python, FIRST-TRY): `mint`/`check`
+  use `os.environ.get("FORGE_KEY", "default-secret")` — the fallback is
+  public, so any client forges an admin token with zero server knowledge.
+  Red: user token recorded, admin forged from the predictable fallback,
+  /admin panel over HTTP. Stateless — F13-clean.
+- Blue: `os.environ.get("FORGE_KEY") or secrets.token_hex(32)` — no
+  predictable fallback; fail to per-process randomness. Documented
+  tradeoff: restart invalidates outstanding tokens (fail-closed, correct
+  for sessions; use a real secret manager for persistent tokens).
+- Gate-3 unseen 4/4: fallback forgery, role-swap on valid sig, malformed
+  tokens, cross-restart invalidation. Vault: red `1ae5d3597970`, blue
+  `50d963c60c86`; NOVEL_SURFACE. Fix doctrine: NEVER a predictable
+  fallback for a signing secret — crash or randomize, never default.

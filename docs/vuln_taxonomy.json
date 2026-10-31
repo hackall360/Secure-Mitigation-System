@@ -1,5 +1,5 @@
 {
-  "version": "30",
+  "version": "31",
   "classes": [
     {
       "id": "T1",
@@ -212,7 +212,8 @@
       "subclasses": {
         "T7a": "/grant?role= cookie gate + /order?id= concat SQL (forge Cycle 4)",
         "T7b": "Python hardware-key serial gate + concat lookup, HTTP cookie round-trip (forge Cycle 35)",
-        "T7c": "Python price-cookie tamper, no server-side check vs PRICES (forge Cycle 40, Link A; gate returns expected)"
+        "T7c": "Python price-cookie tamper, no server-side check vs PRICES (forge Cycle 40, Link A; gate returns expected)",
+        "T7e": "Python fallback-secret HMAC role token (forge Cycle 44; env-or-random fix)"
       },
       "priors": {
         "T7b": {
@@ -222,6 +223,10 @@
         "T7c": {
           "red": "15edd883f29a",
           "blue": "d887aa3dee3"
+        },
+        "T7e": {
+          "red": "1ae5d3597970",
+          "blue": "50d963c60c86"
         }
       }
     },
@@ -299,6 +304,11 @@
       "version": "30",
       "date": "2026-10-31",
       "change": "Cycle 43: +T9d (XFF-spoof trust-management chain, CWE-291); vault recall NOVEL_SURFACE; Gate-3 4/4; ignore-XFF-without-proxy fix doctrine"
+    },
+    {
+      "version": "31",
+      "date": "2026-10-31",
+      "change": "Cycle 44: +T7e (predictable-fallback-secret token forgery, CWE-798); vault recall check; Gate-3 4/4; no-predictable-fallback doctrine"
     }
   ]
 }

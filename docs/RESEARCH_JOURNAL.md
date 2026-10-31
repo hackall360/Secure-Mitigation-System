@@ -1269,3 +1269,15 @@ Run: `overnight_1793434523077_12855248373640259943`.
   Taxonomy v30. Conclusion: Δ(C.43) → 0 (XFF trust closed).
 - Reusable: stateless-first fixture selection (F13 rule) pays off —
   first VERIFIED since C40 after two parked hotspots.
+
+## E44 — Cycle 44: T7e fallback-secret VERIFIED first-try (stateless streak)
+
+- Green (stateless): HMAC role token with public fallback + role-gated
+  /admin. Gate-0: benign user forbidden; forged admin panel; tampered
+  role-swap correctly forbidden (compare_digest path intact).
+- First-try VERIFIED — pre 0, post 1, regressions 0/0, diff-pass.
+  Cost $0.21 (6 calls). Second consecutive VERIFIED after C43: the F13
+  stateless-first rule + target-service-first contract + Blue-budget hint
+  + ast-parse drivers are now a stable recipe.
+- Blue: env-or-random (1 line + import). Gate-3 4/4. Vault NOVEL.
+  Taxonomy v31. Conclusion: Δ(C.44) → 0 (fallback-secret closed).

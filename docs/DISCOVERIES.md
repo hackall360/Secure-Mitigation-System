@@ -306,3 +306,10 @@ and taxonomy link.
 - Blue: ignore XFF without trusted proxy; direct-connection IP only.
 - Gate-3: 4/4 XFF variants blocked. Taxonomy v30. Vault: red
   `05ae3215c4df`, blue `b1b79b129b3c`. NOVEL_SURFACE.
+
+## D27 — T7e fallback-secret prior (Cycle 44, 2026-10-31)
+
+- Red: user token recorded, admin forged from public fallback only.
+- Blue: no predictable fallback (env-or per-process random).
+- Gate-3: 4/4. Taxonomy v31. Vault: red `1ae5d3597970`, blue
+  `50d963c60c86`. NOVEL_SURFACE.
