@@ -350,3 +350,22 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   fallback (`/static/chart.js`). Gate-3 unseen 8/8 (off-site,
   traversal, double-slash, backslash, quote-break, query/hash
   smuggle, parens). Vault: red `92f4fc36d931`, blue `7e83df77e34f`.
+
+## T2h note (theater-check eval + reviewer-grounding quote)
+
+- Subclass T2h (proven forge Cycle 55, Python, 3 attempts: 1x request
+  timeout (infra), 1x secure-mirror hallucination captured, then
+  VERIFIED with grounding): AST check forbids Import/ImportFrom —
+  theater, since eval-mode input cannot contain statements — while
+  builtins stay live, so `__import__('os').getcwd()` discloses
+  filesystem state. Evil twin of T2b (C2's CORRECT decimal allowlist).
+- Episode: Red pass-1 bottled exit-0 thrice. Pass-2 hallucinated the
+  SECURE MIRROR ("forbids Name/Call/Attribute + empty builtins") and
+  contradicted (captured task-5502-redtruefault). Attempt-3 contract
+  added a GROUND TRUTH block quoting the fixture's actual (non-)
+  checks; the run cleared with zero faults. Status: promising,
+  needs replication — also consistent with streak-breaking.
+- Blue: strict arithmetic allowlist + int/float-only constants
+  (bools excluded — `True` is int subclass) + emptied builtins +
+  length cap. Gate-3 8/8, benign arithmetic fully preserved.
+- Vault: red `8ca3386beb14`, blue `fea3d121833f`; NOVEL_SURFACE.

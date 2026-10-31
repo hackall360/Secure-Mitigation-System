@@ -358,3 +358,10 @@ and taxonomy link.
 - Blue: prefix+suffix+traversal+metachar allowlist, safe fallback.
 - Gate-3: 8/8. Taxonomy v38. Vault: red `92f4fc36d931`, blue
   `7e83df77e34f`. NOVEL_SURFACE. v1/v2 specimens archived.
+
+## D34 — T2h theater-check prior (Cycle 55, 2026-10-31)
+
+- Red: benign 42 recorded, crafted expression discloses getcwd.
+- Blue: arithmetic allowlist + const-type gate + dead builtins.
+- Gate-3: 8/8 (benign preserved incl pow/floordiv). Taxonomy v39.
+  Vault: red `8ca3386beb14`, blue `fea3d121833f`. NOVEL_SURFACE.

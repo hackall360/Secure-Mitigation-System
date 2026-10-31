@@ -1389,3 +1389,18 @@ Run: `overnight_1793434523077_12855248373640259943`.
   (remove the confabulated fix's vocabulary), (2) benign-executability
   (benign must WORK in its real consumer). Gate-3 8/8 (widest replay
   of the night). Vault NOVEL. Taxonomy v38. Conclusion: Δ(C.54) → 0.
+
+## E55 — Cycle 55: T2h VERIFIED attempt 3 (reviewer-grounding quote)
+
+- Green: theater-check eval (denylist-the-impossible + live builtins).
+  Gate-0: benign 42, hostile getcwd. Distinctive (evil twin of T2b).
+- a1: infra timeout after Red exit-0. a2: secure-mirror hallucination
+  captured (4th capture of the night, same role/signature). a3: contract
+  + ground-truth block (no allowlist / no builtins restriction / only
+  check is Import-denylist; judge supplied source only) → VERIFIED,
+  pre 0 post 1, zero faults. Cost $0.15.
+- Honest status: grounding is CORRELATED with the clear, not proven
+  causal (streak-break confound). Next hallucination stall MUST
+  A/B it: same fixture, grounding on/off. Until then: grounding is
+  standard in all contracts (cheap, possibly decisive).
+- Gate-3 8/8. Vault NOVEL. Taxonomy v39. Conclusion: Δ(C.55) → 0.

@@ -1,5 +1,5 @@
 {
-  "version": "38",
+  "version": "39",
   "classes": [
     {
       "id": "T1",
@@ -55,7 +55,8 @@
         "T2d": "Node direct eval with decimal-only contract (forge Cycle 8)",
         "T2e": "Node Function-constructor sink (Gate-0 proven Cycle 17; OPEN by record, follow-up queued)",
         "T2e-closed": "Node Function-constructor solo box, char-class containment (forge Cycle 18, closes C17 OPEN)",
-        "T2f2": "Node vm.runInNewContext with leaky sandbox (process/require shared), de-leak fix (forge Cycle 27)"
+        "T2f2": "Node vm.runInNewContext with leaky sandbox (process/require shared), de-leak fix (forge Cycle 27)",
+        "T2h": "Python theater-check denylist eval (forge Cycle 55; reviewer-grounding quote; arithmetic-allowlist fix)"
       },
       "priors": {
         "T2b": {
@@ -73,6 +74,10 @@
         "T2f2": {
           "red": "6d02651d7752",
           "blue": "36304c7ab5ed"
+        },
+        "T2h": {
+          "red": "8ca3386beb14",
+          "blue": "fea3d121833f"
         }
       }
     },
@@ -379,6 +384,11 @@
       "version": "38",
       "date": "2026-10-31",
       "change": "Cycle 54: +T6g (import-specifier hijack); v1 JSONP hallucination x2 captured, v2 no-finding (weak benign), v3 VERIFIED (resolvable benign); vault; Gate-3 8/8"
+    },
+    {
+      "version": "39",
+      "date": "2026-10-31",
+      "change": "Cycle 55: +T2h (theater-check eval); secure-mirror hallucination x1 + timeout x1, then grounding-quote VERIFIED; vault; Gate-3 8/8"
     }
   ]
 }

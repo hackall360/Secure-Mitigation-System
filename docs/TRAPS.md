@@ -189,3 +189,13 @@ here, not in scattered notes.
   loop. Split the proof across the trust boundary. Related: never
   rely on snapshot exec bits (chmod after copy); keep contract
   asserts total (no indexing).
+
+## Reviewer-grounding quote (forge Cycle 55, 2026-10-31, UNPROVEN)
+
+- When pass-2 contradicts pass-1 by hallucinating the textbook fix, add
+  a GROUND TRUTH block to the contract quoting the fixture's actual
+  (non-)checks verbatim ("contains NO allowlist, NO builtins
+  restriction; the only check is X; judge supplied source only").
+  Correlated with C55's clear; CONFOUNDED with streak-breaking — needs
+  an A/B (same fixture, grounding on/off) before promotion to rule.
+  Until then: include by default (cheap, possibly decisive).
