@@ -231,3 +231,35 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
   forge's own regex-allowlist Blues (C2/C8/C14/C18/C27/C37 all rely on
   exact char-class discipline).
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 33+ — `validator.js` isURL string host allow/block case-sensitivity @ `9ff34247` (2026-09-11), MIT (2026-10-31)
+
+- HYPOTHESIS: `isURL(url, {host_blacklist/host_whitelist: [...]})` compares the host
+  case-SENSITIVELY against string entries while DNS hosts are case-INsensitive —
+  uppercase URL host bypasses lowercase string lists (and vice versa for whitelists).
+- Method: LOCAL clone at pinned commit (depth 3, `git ls-remote` HEAD match); LOCAL
+  babel-free spliced harness (strips ESM, inlines 6-file dep closure, no install);
+  LOCAL Docker sandbox (`internal=True`, unprivileged) for repro + patch runs.
+- Results (all LOCAL, deterministic):
+  1. `isURL('http://EVIL.COM/', {host_blacklist:['evil.com']})` → `true` (want `false`);
+     mixed-case likewise; `TRUSTED.COM` vs lowercase whitelist → `false` (want `true`).
+     3/3 bypass cells. `RegExp /evil\.com/i` control BLOCKS (string-compare-specific).
+     Benign + dangerous-scheme behavior unchanged.
+  2. Sandbox REPRO exit 0 (`VULNERABLE: 3 case-sensitivity bypass(es)`); teardown clean
+     (label-scoped reap; only pre-existing scbx-*/katzu remain). Evidence:
+     run-dir `phase0/validator-repro-log.txt`. Level: `REPRODUCED_LOCALLY`.
+  3. Blue patch (`docs/disclosures/validator-isurl-host-case/isurl-host-case.patch`):
+     `host.toLowerCase()` before both `checkHost` calls (mirrors in-repo `isEmail`
+     `lower_domain` precedent). Sandbox PATCHED exit 1 (`blocked: ... case-insensitive`)
+     + splice-level benign exit 0. Evidence: run-dir `phase0/validator-patched-log.txt`.
+     Level: `PATCH_VERIFIED`.
+  4. Novelty (read-only): NVD web, OSV API (2 records at 13.15.15 — CVE-2025-56200
+     protocol-delimiter + isLength variation selectors, both distinguished), GHSA page,
+     GitHub issue search (closest: #887, 2018 default-case regression, distinguished
+     on mechanism+site), in-tree docs. Full log:
+     `docs/disclosures/validator-isurl-host-case/novelty_search.md`. NO match.
+     Level: `NOVELTY_CHECKED` (keyless-sources scope stated).
+  5. Private draft: `docs/disclosures/validator-isurl-host-case/DISCLOSURE_DRAFT.md`
+     (summary, commit, repro, impact, patch, mitigation, timeline placeholder).
+     NOT SENT — human-only. Level: `READY_FOR_RESPONSIBLE_DISCLOSURE`.
+- Responsible disclosure: draft prepared locally; NOTHING sent, filed, or opened.
