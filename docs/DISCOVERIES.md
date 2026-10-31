@@ -232,3 +232,14 @@ and taxonomy link.
 - Taxonomy: T1e-closed + T9b-open. Vault: red `375fc78c80f1`,
   blue `5818718a7d63`.
 - Gate-3: replay PASS (renamed schema; injection → none).
+
+## D20 — T9b-closed HTTP-cookie chain prior (Cycle 31, 2026-10-31)
+
+- Follow-up fixture with the HTTP-enforced chain contract: Red ran the
+  cookie round-trip (`/claim` → Set-Cookie → Cookie replay → hostile
+  label → admin leak) exit 0; Blue parameterized both slots → exit 1.
+  First-try. CLOSES the C30 OPEN gate-link record.
+- Evidence: run `validation/task-3101-c31-report.json` (receipt pre=0/post=1,
+  patch sha `fa4bceeeb…`), `validation/task-3102-c31-vault.txt`.
+- Taxonomy: T9b-closed. Vault: red `5016cfe59e99`, blue `78cbd6661296`.
+- Gate-3: replay PASS (renamed schema; gate-honored injection dead).

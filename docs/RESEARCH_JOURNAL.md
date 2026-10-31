@@ -993,3 +993,26 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Vault: red/blue T1e (CLOSES the sink); T9b-link OPEN by record.
 - Reusable prior created: chain-proof MUST be HTTP-level (cookie
   round-trip) — source-import probes cannot prove gate links.
+
+## E31 — Cycle 31: T9b HTTP-cookie follow-up VERIFIED first-try (CLOSES C30 OPEN)
+
+- Hypothesis: the HTTP-enforced chain contract forces a genuine gate
+  proof (Set-Cookie capture → Cookie replay → cross-tier leak).
+- Result: TRUE — success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Probe shape confirmed: `/claim` + Set-Cookie
+  + Cookie + tier all present. Red vuln: "SQL injection in label/tier
+  concat allows member cookie to read admin secrets, bypassing HTTP tier
+  gate". Blue: both slots parameterized. 6 calls p13991/c21632 ≈$0.18.
+  Evidence: run `validation/task-3101-c31-live.txt`,
+  `validation/task-3101-c31-report.json`.
+- Gate-3 replay PASS on renamed schema (gate-honored injection dead).
+- Vault: red `5016cfe59e99`, blue `78cbd6661296` (closes C30 OPEN
+  `375fc78c80f1`). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3102-c31-vault.txt`.
+- Conclusion: the C30 OPEN record is now CLOSED-by-proof, and the
+  HTTP-proof rule is VALIDATED end-to-end (contract enforcement worked —
+  Red complied with the cookie round-trip). ALL open records tonight are
+  now closed: C17-T2e (C18), C24-T1d (C25), C30-T9b (C31). Taxonomy:
+  T9b-closed.
+- Reusable prior created: HTTP-cookie-chain contract template (the exact
+  wording that forces gate proofs) + T9b gate proof shape.

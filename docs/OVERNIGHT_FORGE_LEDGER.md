@@ -42,6 +42,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T10:59Z | 28 | spark-1.3 + wonder-1.0 (slim, short) | p9193/c11628 ≈$0.12 | T3dd include-LFI, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: allowlist-or-404; twin-plant provability; vault T3dd; Gate-3 PASS |
 | 2026-10-31T11:04Z | 29 | spark-1.3 + wonder-1.0 (slim, short) | p11350/c25525 ≈$0.24 | T3e format-template, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: parse-then-format gate; new sink family (CWE-74); vault T3e; Gate-3 PASS |
 | 2026-10-31T11:09Z | 30 | spark-1.3 + wonder-1.0 (slim, short) | p11577/c22277 ≈$0.23 | T1e solo + T9b-open, Python | pre 0 | post 1 | 0/0 + diff-pass | PARTIAL (import-probe dodges gate): T1e sink CLOSED; T9b-link OPEN by record; HTTP-proof rule; vault T1e+T9b; Gate-3 PASS |
+| 2026-10-31T11:14Z | 31 | spark-1.3 + wonder-1.0 (slim, short) | p13991/c21632 ≈$0.18 | T9b HTTP-cookie chain, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: CLOSES C30 OPEN; cookie round-trip enforced+honored; HTTP-proof rule validated; vault T9b-closed; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
