@@ -1453,3 +1453,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
 - Blue: CRLF-to-space (exactly the hallucinated lines — the model
   wrote the fix while denying the vuln). Gate-3 4/4. Vault NOVEL.
   Taxonomy v42. Conclusion: Δ(C.59) → 0.
+
+## E60 — Cycle 60 self-review: 60 commits, 44 VERIFIED, 3 OPEN (2026-10-31T14:47Z)
+
+- Score: 44 VERIFIED cycles + 9 scouts (7 negative, 2 inconclusive) + 11
+  self-reviews; taxonomy v42 (T1-T9: T1x7 T2x7 T3x8 T4x7 T5x6 T6x8 T7x6
+  T8x4 T9x5); 121 vault priors (61 red + 60 blue); gates 781 green x46+;
+  UI untouched every commit. Ledger fix: C46 row annotated CLOSED-by-C47.
+- Open: C41 T5c (fixture flaws; C56's T5f is its done-right heir — the
+  CONCEPT is proven, the original fixture stays parked), C42 T6d
+  (fixture-physics, needs harness restart support), C48 T9f
+  (hallucination; C49's response-splitting sibling cleared instead).
+- Science ledger: 5 hallucination captures (all same role/signature);
+  mechanism refined invention→misattribution; grounding demoted to
+  boilerplate; starvation + executability promoted; prescribed A/B
+  still open. F16 (no-subprocess) + debug-var + prefix-asserts + CWD
+  rules all holding (zero baseline fails since C53a3).
+- 3+ consecutive clean cycles (C56a2/C58/C59a2 all ≤2 attempts).
+  ~1.5h to 16:15Z wake. Direction: T8 (4 members, thinnest) if a
+  sandbox-provable shape exists, else T2/T5 depth; keep recipe.
+- Spend: keyed total is usage-logged per attempt (~$0.13-0.32/clear);
+  no budget pressure observed.
