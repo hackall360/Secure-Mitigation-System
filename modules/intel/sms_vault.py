@@ -205,6 +205,48 @@ class VaultStore:
             raise VaultError("Record id is malformed.")
         return self.namespace_dir / f"{record_id}.vault"
 
+    def _index_path(self) -> Path:
+        return self.namespace_dir / "_fingerprints.json"
+
+    def _read_index(self) -> dict[str, int] | None:
+        """Read the fingerprint index; None means missing/corrupt → full scan."""
+        try:
+            raw = self._index_path().read_bytes()
+        except OSError:
+            return None
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        counts: dict[str, int] = {}
+        for key, value in data.items():
+            if isinstance(key, str) and isinstance(value, int) and value > 0:
+                counts[key] = value
+            else:
+                return None
+        return counts
+
+    def _bump_index(self, fingerprint: str) -> None:
+        """Best-effort index update; failures never break the commit."""
+        if not fingerprint:
+            return
+        try:
+            counts = self._read_index() or {}
+            counts[fingerprint] = counts.get(fingerprint, 0) + 1
+            encoded = json.dumps(counts, sort_keys=True).encode("utf-8")
+            if len(encoded) > 1_000_000:
+                return
+            path = self._index_path()
+            path.write_bytes(encoded)
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
+        except (OSError, ValueError, TypeError):
+            pass
+
     def commit(self, payload: dict, *, fingerprint: str = "") -> str:
         """Encrypt + persist one payload; returns its deterministic record id."""
         if not isinstance(payload, dict):
@@ -218,6 +260,7 @@ class VaultStore:
             path.chmod(0o600)
         except OSError as exc:
             raise VaultError(f"Vault write failed ({type(exc).__name__}).") from exc
+        self._bump_index(fingerprint)
         return record_id
 
     def fetch(self, record_id: str) -> dict:
@@ -231,7 +274,14 @@ class VaultStore:
         return stored.get("payload", stored)
 
     def record_fingerprints(self) -> dict[str, int]:
-        """fingerprint -> count for this namespace (metadata only)."""
+        """fingerprint -> count for this namespace (metadata only).
+
+        Prefers the bounded JSON index (O(1)); falls back to a full decrypt
+        scan when the index is missing or corrupt (fail open to correctness).
+        """
+        indexed = self._read_index()
+        if indexed is not None:
+            return dict(indexed)
         counts: dict[str, int] = {}
         try:
             paths = list(self.namespace_dir.glob("*.vault"))

@@ -57,7 +57,7 @@ LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 # Single source of truth for the release version (LAW 12: 0.major.minor).
 # Every surface renders this: FastAPI metadata, /api/health, --version,
 # dashboard footer. Bump per LAW 12 on every shipped change set.
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.10.0"
 
 # Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
 # value in plain English. Rendered as the --help epilog; sms_cli and tui
@@ -144,6 +144,319 @@ async def execute_mcp_snippet_scan(arguments, emit, *, config=None):
     finally:
         _registry.TARGETS_REGISTRY.clear()
         _registry.TARGETS_REGISTRY.update(original)
+
+
+async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, contract=""):
+    """Run a staged repo-intake snapshot through the evidence-gated project loop.
+
+    The snapshot (produced by ``intake_repo_to_snapshot`` from a validated
+    first frame) is staging-container bytes only — no host paths. Its shape
+    is a staging manifest (repo URL / commit / runtime argv), not a
+    ``ProjectWorkflowInput``, so this helper maps it explicitly: the manifest
+    record always rides as context files, frame ``file_list`` ``{name:
+    content}`` entries overlay (names-only entries only feed detection), and
+    the snapshot's staged runtime argv becomes the regression command.
+    Delegation goes through ``execute_project_workflow`` with that input. No
+    network runs on the host: any clone lives inside the Docker staging
+    container.
+    """
+    from modules.workflows.project_workflow import ProjectWorkflowInput
+    from modules.workflows.project_workflow import validate_safe_path as _validate_path
+
+    files: dict[str, str] = {}
+    raw_files = snapshot.files or {}
+    for path, content in dict(raw_files).items():
+        if isinstance(content, bytes):
+            try:
+                text = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "Invalid ingest settings (staged snapshot holds non-UTF-8 "
+                    f"bytes at {path!r}; pass an explicit runtime_command)."
+                ) from exc
+        else:
+            text = str(content)
+        files[str(path)] = text
+    if file_list is not None:
+        # Same entry shapes detect_runtime accepts; names-only entries
+        # already served detection and carry no content to overlay. Raw
+        # entries validate here — _normalise_file_entries would silently
+        # strip ".." segments, so traversal must fail closed on the raw
+        # name first.
+        if isinstance(file_list, dict):
+            content_items = list(file_list.items())
+        elif isinstance(file_list, (list, tuple)):
+            content_items = []
+            bare_names = []
+            for entry in file_list:
+                if isinstance(entry, str):
+                    bare_names.append(entry)
+                    continue
+                elif isinstance(entry, dict) and len(entry) == 1:
+                    content_items.append(next(iter(entry.items())))
+                elif (
+                    isinstance(entry, (list, tuple))
+                    and len(entry) == 2
+                    and isinstance(entry[0], str)
+                ):
+                    content_items.append((entry[0], entry[1]))
+                else:
+                    raise ValueError(
+                        "Invalid ingest settings (file_list entries must be "
+                        "names, {name: content} dicts, or (name, content) pairs)."
+                    )
+            # Bare names carry no content but still name repo paths: reject
+            # traversal/absolute entries here, same as content entries below.
+            for bare in bare_names:
+                raw_parts = bare.strip().replace("\\", "/").split("/")
+                if (
+                    not isinstance(bare, str)
+                    or not bare
+                    or any(part in ("", ".", "..") for part in raw_parts)
+                ):
+                    raise ValueError(f"Invalid ingest settings (Unsafe project path: {bare!r}).")
+                try:
+                    _validate_path(bare)
+                except ValueError as exc:
+                    raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+        else:
+            raise ValueError(
+                "Invalid ingest settings (file_list must be a list or a name->content mapping)."
+            )
+        for name, content in content_items:
+            if not isinstance(name, str) or not name:
+                raise ValueError(
+                    "Invalid ingest settings (file_list names must be non-empty strings)."
+                )
+            raw_parts = name.strip().replace("\\", "/").split("/")
+            if any(part in ("", ".", "..") for part in raw_parts):
+                raise ValueError(f"Invalid ingest settings (Unsafe project path: {name!r}).")
+            try:
+                _validate_path(name)
+            except ValueError as exc:
+                raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+            if content is None:
+                continue
+            if isinstance(content, bytes):
+                try:
+                    overlay_text = content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid ingest settings (file_list holds non-UTF-8 bytes at {name!r})."
+                    ) from exc
+            elif isinstance(content, str):
+                overlay_text = content
+            else:
+                raise ValueError(
+                    "Invalid ingest settings (file_list contents must be text, bytes, or omitted)."
+                )
+            files[name] = overlay_text
+    contract_text = contract if isinstance(contract, str) else ""
+    repo_name = str(getattr(snapshot, "url", "") or "").rstrip("/").rsplit("/", 1)[-1]
+    project_input = ProjectWorkflowInput.model_validate(
+        {
+            "name": f"ingest:{repo_name or 'repo'}"[:256],
+            "files": files,
+            "regression_command": list(snapshot.runtime_command),
+            "contract": contract_text[:32_768],
+        }
+    )
+    return await execute_project_workflow(
+        project_input,
+        emit,
+        config=config,
+        sandbox_factory=_ingest_sandbox_factory(snapshot, project_input.contract, dict(files)),
+    )
+
+
+def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
+    """Build a ``ProjectSandbox`` adapter over staged intake bytes.
+
+    The project workflow needs a sandbox even for in-memory inputs: this
+    adapter snapshots the staged files with the project's own bounded
+    helpers and runs checks through ``DockerSandboxManager`` primitives.
+    No host paths: the bytes come from the staging container (or the
+    validated frame overlay).
+    """
+    from modules.services.projects import ProjectSpec as _ProjectSpec
+
+    def factory(settings):
+        from modules.core.docker_manager import DockerSandboxManager
+        from modules.services import projects as _projects
+        from modules.workflows import project_workflow as _pw
+
+        manager = DockerSandboxManager(settings)
+        if merged_files:
+            base_files = {
+                name: content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                for name, content in dict(merged_files).items()
+                if isinstance(name, str) and isinstance(content, (str, bytes, bytearray))
+            }
+        else:
+            base_files = {
+                name: content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                for name, content in dict(getattr(snapshot, "files", {}) or {}).items()
+                if isinstance(name, str) and isinstance(content, (str, bytes, bytearray))
+            }
+        # Manifest records (repo.*) ride as context, never as executable paths.
+        tree = {k[5:]: v for k, v in base_files.items() if k.startswith("tree/")}
+        code_files = (
+            dict(tree)
+            if tree
+            else {k: v for k, v in base_files.items() if not k.startswith("repo.")}
+        )
+        runtime = list(getattr(snapshot, "runtime_command", []) or ["python3", "app.py"])
+        # Pairing vs regression split: verifiers probe a live HTTP target,
+        # but the regression command must terminate. When the staged tree
+        # contains a server-shaped entry (server.py), pair THAT for verify
+        # while the frame's runtime stays the terminating regression check.
+        pair_runtime = list(runtime)
+        if "server.py" in code_files:
+            pair_runtime = ["python3", "server.py"]
+        spec = _ProjectSpec(
+            path=".",
+            command=runtime,
+            test_command=runtime,
+            contract=(contract_text or "Ingested repository boundary.")[:32_768],
+            image=settings.target_base_image,
+        )
+
+        class _IngestSandbox:
+            def __init__(self):
+                self._manager = manager
+                self._network = None
+                self._snapshot = None
+                self._target = None
+
+            def require_base_images(self):
+                self._manager.require_base_images()
+                self._network = self._manager.create_isolated_network()
+
+            def _ensure_snapshot(self):
+                if self._snapshot is None:
+                    metadata = {
+                        name: _projects.ProjectFileMetadata(size=len(content), mode=0o644)
+                        for name, content in code_files.items()
+                    }
+                    self._snapshot = _projects._make_snapshot(code_files, metadata)
+                return self._snapshot
+
+            def _ensure_target(self):
+                """Start the staged snapshot as a paired target-service.
+
+                Verifiers probe http://target-service:8080 per the probe
+                contract; without this pairing scripts probe nothing.
+                Bounded readiness (fail closed), paired teardown in close().
+                """
+                from modules.core.docker_manager import SandboxError
+
+                if self._network is None:
+                    raise SandboxError("Project network was not initialized.")
+                if self._target is not None:
+                    return self._target
+                image = self._manager._snapshot_project_image(
+                    settings.target_base_image, self._ensure_snapshot(), "target"
+                )
+                container = self._manager._runtime(
+                    image,
+                    self._network,
+                    "target",
+                    list(pair_runtime),
+                    aliases=["target-service"],
+                    clear_entrypoint=True,
+                    working_dir="/workspace",
+                )
+                import time as _time
+
+                from modules.core.docker_manager import READY_SCRIPT
+
+                deadline = _time.monotonic() + 10.0
+                ready = False
+                while _time.monotonic() < deadline:
+                    try:
+                        probe = container.exec_run(["python3", "-c", READY_SCRIPT])
+                        if getattr(probe, "exit_code", 1) == 0:
+                            ready = True
+                            break
+                    except Exception:
+                        pass
+                    _time.sleep(0.5)
+                if not ready:
+                    try:
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+                    raise SandboxError("Ingested target did not become ready; no verifier ran.")
+                self._target = container
+                return container
+
+            def _evidence(self, command=None, script=None):
+                from modules.core.docker_manager import SandboxError
+
+                if self._network is None:
+                    raise SandboxError("Project network was not initialized.")
+                if script:
+                    self._ensure_target()
+                result = self._manager.run_project_check(
+                    self._network,
+                    spec,
+                    self._ensure_snapshot(),
+                    command=command,
+                    script=script,
+                )
+                return _pw.ExecutionEvidence(
+                    exit_code=result.exit_code if result.exit_code is not None else 2,
+                    output=((result.stdout or "") + (result.stderr or ""))[:131_072],
+                )
+
+            def verify_project_snapshot(
+                self,
+                project,
+                files,
+                verification_script_python,
+                regression_command,
+                *,
+                label="",
+            ):
+                replacements = {}
+                for path, content in dict(files or {}).items():
+                    _projects._validate_relative_path(path)
+                    if path in code_files:
+                        replacements[path] = (
+                            content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                        )
+                if replacements:
+                    self._snapshot = _projects.replace_snapshot_files(
+                        self._ensure_snapshot(), replacements
+                    )
+                command = list(regression_command or runtime)
+                probe = self._evidence(
+                    script=verification_script_python or None,
+                    command=None if verification_script_python else command,
+                )
+                regression = self._evidence(command=command)
+                return _pw.SnapshotVerification(
+                    probe=probe,
+                    regression=regression,
+                    fresh_target=True,
+                )
+
+            def close(self):
+                try:
+                    if self._target is not None:
+                        try:
+                            self._target.remove(force=True)
+                        except Exception:
+                            pass
+                    if self._network is not None:
+                        self._manager.close()
+                finally:
+                    self._target = None
+                    self._network = None
+
+        return _IngestSandbox()
+
+    return factory
 
 
 async def run_demo_build(
@@ -460,7 +773,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             sweep_raw = socket.query_params.get("sweep_passes")
             if sweep_raw in (None, "", "1"):
                 sweep_depth: int | None = None
-            elif sweep_raw in ("2", "3"):
+            elif sweep_raw in ("2", "3", "4"):
                 sweep_depth = int(sweep_raw)
             else:
                 await socket.close(code=1008)
@@ -535,18 +848,84 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     raw = await asyncio.wait_for(socket.receive_text(), timeout=30)
                     if len(raw.encode("utf-8")) > 32_768:
                         raise ValueError("Project request is too large.")
-                    spec = ProjectSpec.model_validate(json.loads(raw))
-                except (ValueError, TimeoutError, WebSocketDisconnect):
+                    frame = json.loads(raw)
+                    # Repo-ingest path (W22 wire; dashboard submitIngest): the
+                    # first frame carries ingest_repo/commit_hash instead of a
+                    # ProjectSpec. Peek for the ingest keys — the client
+                    # already sends them — and route through the same
+                    # RepoIntakeSpec rules the CLI enforces. Host paths are
+                    # never honored here: only the two intake keys plus the
+                    # optional runtime/file_list and scan knobs are read.
+                    if isinstance(frame, dict) and (
+                        "ingest_repo" in frame or "commit_hash" in frame
+                    ):
+                        import modules.services.repo_intake as _intake_mod
+
+                        _RepoIntakeSpec = _intake_mod.RepoIntakeSpec
+                        _intake_to_snapshot = _intake_mod.intake_repo_to_snapshot
+
+                        try:
+                            intake_spec = _RepoIntakeSpec(
+                                url=frame.get("ingest_repo"),
+                                commit_hash=frame.get("commit_hash"),
+                            )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(
+                                f"Invalid ingest settings ({exc}). Send an https:// "
+                                "repository URL and the full 40-hex pinned commit."
+                            ) from exc
+                        explicit_command = frame.get("runtime_command")
+                        if explicit_command is not None:
+                            if not isinstance(explicit_command, (list, tuple)) or not all(
+                                isinstance(item, str) for item in explicit_command
+                            ):
+                                raise ValueError(
+                                    "Invalid ingest settings (runtime_command must be "
+                                    "an argv list of strings)."
+                                )
+                            intake_command: list | tuple | None = list(explicit_command)
+                            frame_files = frame.get("file_list")
+                            intake_files = frame_files
+                        else:
+                            intake_command = None
+                            frame_files = frame.get("file_list")
+                            intake_files = frame_files
+                        try:
+                            if intake_files is None:
+                                snapshot = _intake_to_snapshot(intake_spec, intake_command)
+                            else:
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec, intake_command, file_list=intake_files
+                                )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+                        frame_contract = frame.get("contract", "")
+                        coroutine = _run_ingest_workflow(
+                            snapshot,
+                            emit,
+                            config=scan_config,
+                            file_list=frame_files,
+                            contract=frame_contract,
+                        )
+                    else:
+                        spec = ProjectSpec.model_validate(frame)
+                        coroutine = execute_project_workflow(spec, emit, config=scan_config)
+                except (ValueError, TimeoutError, WebSocketDisconnect) as exc:
+                    ingest_msg = None
+                    if isinstance(exc, ValueError) and str(exc).startswith(
+                        "Invalid ingest settings"
+                    ):
+                        ingest_msg = str(exc)
                     await socket.send_json(
                         {
                             "type": "invalid",
                             "team": "system",
-                            "msg": "Invalid project settings. Check the path, argv commands, cycle count, and context budget.",
+                            "msg": ingest_msg
+                            or "Invalid project settings. Check the path, argv commands, cycle count, and context budget.",
                         }
                     )
                     await socket.close(code=1008)
                     return
-                coroutine = execute_project_workflow(spec, emit, config=scan_config)
             elif target_key == "__demo__":
                 try:
                     # Theme comes from the browser, bounded and sanitized here.
@@ -714,7 +1093,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
     @application.websocket("/ws/binary")
     async def binary_combat(socket: WebSocket):
-        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 3-pass loop."""
+        """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 4-pass loop."""
         await run_socket(socket, target_key="__binary__")
 
     @application.post("/mcp")
@@ -751,6 +1130,11 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         if method == "tools/call":
             params = body.get("params") or {}
             tool_name = params.get("name")
+            if tool_name in ("sms_scan_status", "sms_verify_receipt"):
+                # Pollable status + offline receipt check: registry read /
+                # structural validation only. No Docker, no lock, no
+                # config. Answered here so they stay usable mid-scan.
+                return JSONResponse(handle_mcp_request(body), status_code=200)
             if tool_name in ("sms_scan_source", "sms_scan_binary", "sms_query_vault_stats"):
                 if tool_name == "sms_query_vault_stats":
                     from modules.services.sms_api import query_vault_stats
@@ -793,6 +1177,13 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             status_code=200,
                         )
 
+                    from modules.services.mcp_bridge import (
+                        new_scan_id,
+                        scan_status_mark_done,
+                        scan_status_phase_sink,
+                        scan_status_register,
+                    )
+
                     async def _emit_source(team: str, message: str) -> None:
                         messages_live.append(f"[{team}] {message}")
 
@@ -801,9 +1192,15 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         try:
                             from modules.services.sms_api import scan_source
 
+                            source_scan_id = new_scan_id()
+                            scan_status_register(source_scan_id, phase="red")
                             live_result = await scan_source(
-                                target, _emit_source, config=settings, max_passes=max_passes
+                                target,
+                                scan_status_phase_sink(source_scan_id, _emit_source),
+                                config=settings,
+                                max_passes=max_passes,
                             )
+                            scan_status_mark_done(source_scan_id)
                         except Exception as exc:
                             return JSONResponse(
                                 jsonrpc_error(
@@ -845,16 +1242,31 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             messages_bin.append(f"[{team}] {message}")
 
                         messages_bin: list[str] = []
+                        from modules.services.mcp_bridge import (
+                            new_scan_id as _new_scan_id,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_mark_done as _scan_done,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_phase_sink as _phase_sink,
+                        )
+                        from modules.services.mcp_bridge import (
+                            scan_status_register as _scan_register,
+                        )
                         from modules.services.sms_api import scan_binary as _scan_bin
 
                         async with lock:
+                            binary_scan_id = _new_scan_id()
+                            _scan_register(binary_scan_id, phase="red")
                             live_bin = await _scan_bin(
                                 tmp_path,
-                                _emit_bin,
+                                _phase_sink(binary_scan_id, _emit_bin),
                                 config=settings,
                                 contract=str(live_arguments.get("contract") or ""),
                                 max_passes=max_passes_bin,
                             )
+                            _scan_done(binary_scan_id)
                         _Path(tmp_path).unlink(missing_ok=True)
                     except Exception as exc:
                         return JSONResponse(
@@ -898,7 +1310,27 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
 
             async with lock:
                 try:
-                    result = await execute_mcp_snippet_scan(arguments, _emit, config=settings)
+                    from modules.services.mcp_bridge import (
+                        new_scan_id as _snippet_scan_id,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_mark_done as _snippet_done,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_phase_sink as _snippet_sink,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_register as _snippet_register,
+                    )
+
+                    snippet_scan_id = _snippet_scan_id()
+                    _snippet_register(snippet_scan_id, phase="red")
+                    result = await execute_mcp_snippet_scan(
+                        arguments,
+                        _snippet_sink(snippet_scan_id, _emit),
+                        config=settings,
+                    )
+                    _snippet_done(snippet_scan_id)
                 except Exception as exc:
                     return JSONResponse(
                         jsonrpc_error(
@@ -1272,7 +1704,7 @@ async def binary_sweep_runner(
     out_format: str = "table",
     show_usage: bool = False,
 ) -> int:
-    """CLI form of the binary 3-pass sweep: validate, sweep, print report JSON."""
+    """CLI form of the binary 4-pass sweep: validate, sweep, print report JSON."""
     from modules.core.config import load_config as _load
     from modules.services.binary_intake import BinaryRejected, validate_binary_file
     from modules.workflows.binary_sweep import (
@@ -1295,7 +1727,7 @@ async def binary_sweep_runner(
         lines.append(f"[{team}] {message}")
 
     result = await execute_binary_sweep(
-        spec, _emit, config=settings, max_passes=max(1, min(3, max_passes))
+        spec, _emit, config=settings, max_passes=max(1, min(4, max_passes))
     )
     for line in lines:
         print(line)
@@ -1460,6 +1892,8 @@ async def cli_runner(
     research_scanners: str = "",
     *,
     project: ProjectSpec | None = None,
+    ingest_repo: str | None = None,
+    commit_hash: str | None = None,
     cve_scan: bool = False,
     deep_assessment: bool = False,
     offline_cve: bool = False,
@@ -1529,7 +1963,7 @@ async def cli_runner(
                     target_key,
                     emit,
                     config=settings,
-                    max_passes=max(1, min(3, sweep_passes)),
+                    max_passes=max(1, min(4, sweep_passes)),
                 )
                 user_report = redact_sweep_result_for_user(result)
             else:
@@ -1915,8 +2349,33 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser (also used by ``main()``).
+
+    Tests and tooling import this to inspect the live parser without running
+    a scan. Returns an ``_IngestPairParser``: argparse-level shape (choices,
+    mutual exclusion) plus the ``--ingest-repo``/``--commit-hash`` pair
+    check, so ``parse_args`` itself exits 2 on a half pair.
+    """
+
+    class _IngestPairParser(argparse.ArgumentParser):
+        """Argparse parser enforcing the --ingest-repo/--commit-hash pair.
+
+        Both directions error at ``parse_args`` time: ``--ingest-repo``
+        without ``--commit-hash`` and ``--commit-hash`` without
+        ``--ingest-repo`` each exit 2, mirroring the
+        ``--research-scanners requires --research`` shape.
+        """
+
+        def parse_args(self, args=None, namespace=None):  # type: ignore[override]
+            parsed = super().parse_args(args, namespace)
+            if parsed.ingest_repo and not parsed.commit_hash:
+                self.error("--ingest-repo requires --commit-hash")
+            if parsed.commit_hash and not parsed.ingest_repo:
+                self.error("--commit-hash requires --ingest-repo")
+            return parsed
+
+    parser = _IngestPairParser(
         description="Secure Mitigation System — local Muse boundary verification scaffold",
         epilog=CAPABILITIES_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1979,7 +2438,12 @@ def main() -> int:
     commands.add_argument(
         "--binary-target",
         type=Path,
-        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 3-pass Docker loop; prints the mitigation report JSON",
+        help="Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness and 4-pass Docker loop; prints the mitigation report JSON",
+    )
+    commands.add_argument(
+        "--ingest-repo",
+        default=None,
+        help="Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires --commit-hash)",
     )
     parser.add_argument(
         "--snippet-language",
@@ -1991,7 +2455,7 @@ def main() -> int:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor; default 1, single finding loop)",
+        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor, 4=+chain; default 1, single finding loop)",
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
@@ -2130,6 +2594,16 @@ def main() -> int:
         "(trivy,grype,osv-scanner,dependency-check,dependency-track). Requires "
         "--research; binaries run on the host, each absent tool is skipped.",
     )
+    parser.add_argument(
+        "--commit-hash",
+        default=None,
+        help="Pinned 40-hex commit for --ingest-repo (required with --ingest-repo)",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     # --config defaults (flag > config > env > default), unknown keys error.
     file_values: dict = {}
@@ -2176,17 +2650,28 @@ def main() -> int:
     with_config = f" (config: {args.config})" if args.config is not None else ""
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    if args.profile is not None and not (args.scan or args.project or args.ai_demo):
-        parser.error("--profile requires --scan, --project, or --ai-demo")
-    if args.output_dir is not None and not (
-        args.scan or args.project or args.ai_demo or args.binary_target
+    if args.profile is not None and not (
+        args.scan or args.project or args.ai_demo or args.ingest_repo
     ):
-        parser.error("--output-dir requires --scan, --project, --ai-demo, or --binary-target")
-    # --research/--research-scanners run on every scan surface: fixture, project, ai-demo.
-    if args.research and not (args.scan or args.project or args.ai_demo):
-        parser.error("--research requires --scan, --project, or --ai-demo")
+        parser.error("--profile requires --scan, --project, --ai-demo, or --ingest-repo")
+    if args.output_dir is not None and not (
+        args.scan or args.project or args.ai_demo or args.binary_target or args.ingest_repo
+    ):
+        parser.error(
+            "--output-dir requires --scan, --project, --ai-demo, --binary-target, or --ingest-repo"
+        )
+    # --research/--research-scanners run on every scan surface: fixture, project, ai-demo, ingest.
+    if args.research and not (args.scan or args.project or args.ai_demo or args.ingest_repo):
+        parser.error("--research requires --scan, --project, --ai-demo, or --ingest-repo")
     if args.research_scanners and not args.research:
         parser.error("--research-scanners requires --research")
+    # --ingest-repo/--commit-hash mirror the --research/--research-scanners
+    # pair shape: each requires the other (argparse exit 2). --ingest-repo
+    # itself is mutually exclusive with --scan via the command group above.
+    if args.ingest_repo and not args.commit_hash:
+        parser.error("--ingest-repo requires --commit-hash")
+    if args.commit_hash and not args.ingest_repo:
+        parser.error("--commit-hash requires --ingest-repo")
     if args.project and (not args.command or not args.test_command or not args.contract):
         parser.error("--project requires --command, --test-command, and --contract")
     if args.ai_demo and args.scan:
@@ -2427,6 +2912,32 @@ def main() -> int:
                     fast_lane=args.fast_lane,
                     out_format=out_format,
                     show_usage=args.show_usage,
+                )
+            )
+        if args.ingest_repo:
+            # Wave 4 repo intake (Phase 1): validate the URL + pinned commit
+            # through RepoIntakeSpec (ValueError -> argparse exit 2), then
+            # run the standard fixture scan surface. The Docker staging
+            # clone lands in a later wave; cli_runner carries the pair
+            # through as ingest_repo/commit_hash kwargs.
+            try:
+                from modules.services.repo_intake import RepoIntakeSpec
+
+                RepoIntakeSpec(url=args.ingest_repo, commit_hash=args.commit_hash)
+            except ValueError:
+                parser.error("Invalid ingest settings. Use an https:// URL and a 40-hex commit.")
+            return asyncio.run(
+                cli_runner(
+                    args.scan,
+                    args.output_dir,
+                    args.profile,
+                    args.research,
+                    args.research_scanners,
+                    ingest_repo=args.ingest_repo,
+                    commit_hash=args.commit_hash,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                    sweep_passes=args.sweep_passes,
                 )
             )
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).

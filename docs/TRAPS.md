@@ -4,6 +4,22 @@ One growing map per `docs/guides/WORKFLOWS.md`. Highest value first: the
 wrong assumption, then what the evidence actually showed. Link new entries
 here, not in scattered notes.
 
+## Ascendancy Wave 2 RED tests (2026-10-30, branch feature/30-wave-ascendancy)
+
+- **Trap: a module-level `import` of a not-yet-existing module makes pytest report ERROR, not FAIL — and 2 such files abort the whole session.**
+  Wrong assumption: `ModuleNotFoundError` at import = RED fail, so the wave's "44 failed / 0 passed" claim holds by counting.
+  Evidence: `pytest` on all 10 `test_*_red.py` stopped at `2 errors during collection` and never ran the other 8 files; the true count (44 failed, 0 passed) only appeared after wrapping both imports in `try/except ModuleNotFoundError` + an explicit `test_*_module_exists` gate test. Same assertions, no weakening.
+  Lesson: RED tests for missing modules must import defensively and fail as `AssertionError` inside a test body; a collection ERROR is not a LAW 9 red (it proves nothing about behavior and hides sibling results).
+  Also: `TypeError: 'NoneType' object is not callable` on follow-on tests is the correct downstream shape — it traces to the same absence, not a second defect.
+
+## Ascendancy Wave 10 wild crucible (2026-10-31, branch feature/30-wave-ascendancy)
+
+- **Trap: `docker cp` cannot see tmpfs-mounted content on this daemon — three "Could not find the file" failures on files `docker exec ls` proves exist.**
+  Wrong assumption: clone into a tmpfs staging dir, then `docker cp` the tree out — standard two-step extraction.
+  Evidence: `docker exec ls /tmp/wild` listed all 3 wildcard files, but `docker cp` (whole-dir and per-file) failed every time; per-file `docker exec cat` through stdout worked (~100B files). The tmpfs mount that makes the container disposable also hides its contents from the daemon-side copy path.
+  Lesson for the intake implementation (`repo_intake.py` staging): extract with `docker exec tar -C <dir> -cf - .` streamed to stdout, or stage into a non-tmpfs container path (still no host mount — a writable container layer dir), never tmpfs + `docker cp`. Recorded in `docs/WILD_INGESTION_LOG.md`.
+  Also: README-manifest mismatch — the wildcard README claims a `requirements.txt` the tree does not contain, so `detect_runtime` correctly fails closed. Never trust manifest claims from intel; list the actual tree.
+
 ## TUI parity merge (2026-10-30, shipped as 0.6.0)
 
 - **Trap: `TuiState.sweep_depth` vs `sweep_passes` are two different names

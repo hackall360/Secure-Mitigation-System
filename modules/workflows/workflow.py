@@ -233,6 +233,13 @@ class VerdictReceipt(BaseModel):
     property_exit_code: int | None = None
     property_passed: bool | None = None
     patch_sha256: str
+    # W1 receipt-chain links (optional; strict-compat: defaults keep
+    # extra=forbid and every old constructor call unchanged). created_at
+    # stamps builder-issued receipts; prev_receipt_sha records the previous
+    # cycle's patch digest so re-attestations of one patch form a chain.
+    # Records never upgrade a verdict; only Docker evidence does.
+    created_at: str | None = None
+    prev_receipt_sha: str | None = None
     # Dead-wire cut (SPEC 14.9 item 4, V3-Lane-A): the old ``verified`` flag
     # duplicated the ScanResult.status the caller already sets; no gate or
     # display read it. A receipt exists only on verified cycles. Do not
@@ -246,8 +253,16 @@ def build_verdict_receipt(
     post_exit_code: int,
     regression_passed: bool,
     patch_content: str,
+    prev_receipt: VerdictReceipt | None = None,
+    created_at: str | None = None,
 ) -> VerdictReceipt:
-    """Record a receipt for a verified cycle only; never upgrades a verdict."""
+    """Record a receipt for a verified cycle only; never upgrades a verdict.
+
+    ``prev_receipt`` links this receipt into a re-attestation chain by
+    recording the previous cycle's patch digest; ``created_at`` stamps the
+    builder-issued receipt. Both default to None so old call sites are
+    unchanged (strict-compat).
+    """
     import hashlib
 
     return VerdictReceipt(
@@ -259,6 +274,8 @@ def build_verdict_receipt(
         property_exit_code=None,
         property_passed=None,
         patch_sha256=hashlib.sha256(patch_content.encode("utf-8")).hexdigest(),
+        created_at=created_at,
+        prev_receipt_sha=prev_receipt.patch_sha256 if prev_receipt is not None else None,
     )
 
 

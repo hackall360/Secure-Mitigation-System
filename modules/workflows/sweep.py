@@ -1,6 +1,6 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Three-pass comprehensive security sweep: standard -> deep -> threat-actor.
+"""Four-pass comprehensive security sweep: standard -> deep -> threat-actor -> chain.
 
 Each pass runs the full evidence-gated loop (red finding -> Docker probe
 exit 0/1/2 -> blue guarded patch -> regression -> re-probe) over the same
@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Literal
 
 from docker.errors import DockerException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from modules.core.agents import (
     AgentError,
@@ -35,14 +35,29 @@ from modules.shared.sms_compress import CompressionReport, compress_context
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.workflow import build_verdict_receipt
 
-SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor")
-SweepPassId = Literal["standard", "deep", "threat_actor"]
+SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor", "chain")
+SweepPassId = Literal["standard", "deep", "threat_actor", "chain"]
 
 _PASS_LABEL: dict[str, str] = {
     "standard": "Standard sweep (common CVE patterns)",
     "deep": "Deep sweep (edge cases, input-mutation handling)",
     "threat_actor": "Threat-actor sweep (logic abuse + technical exploitation)",
+    "chain": "Chain sweep (multi-step logic-abuse chains)",
 }
+
+
+class ChainLink(BaseModel):
+    """One chain-sweep link verdict: Docker exit codes decide, fail closed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    pre_exit: int
+    post_exit: int
+
+    @property
+    def holds(self) -> bool:
+        """A link holds only when its post-patch probe is cleanly blocked."""
+        return self.post_exit == 1
 
 
 class SweepPassResult(BaseModel):
@@ -57,15 +72,128 @@ class SweepPassResult(BaseModel):
     pre_exit_code: int | None = None
     post_exit_code: int | None = None
     regression_passed: bool = False
+    chain_links: list[ChainLink] | None = None
     cleared: bool = False
     receipt: object | None = None
 
     @property
     def holds(self) -> bool:
-        """A pass holds when it cleared outright or its patch blocked the probe."""
+        """A pass holds when it cleared outright or its patch blocked the probe.
+
+        Chain passes record three links (unified verdict, pre-patch
+        link pair, post-patch link pair); the verdict holds when the unified
+        probe and both post-patch links are cleanly blocked.
+        """
+        if self.chain_links is not None:
+            if self.pass_id == "chain":
+                return (
+                    self.receipt is not None
+                    and len(self.chain_links) == 3
+                    and all(link.holds for link in self.chain_links)
+                    and self.regression_passed
+                )
+            return (
+                self.receipt is not None
+                and len(self.chain_links) == 2
+                and all(link.holds for link in self.chain_links)
+                and self.regression_passed
+            )
         return self.cleared or (
             self.receipt is not None and self.post_exit_code == 1 and self.regression_passed
         )
+
+
+class SweepCompressionTotals(BaseModel):
+    """Sweep-level token telemetry: summed per-target compression reports.
+
+    Aggregation only; never upgrades sweep verdicts (fail-closed untouched).
+    Totals clamp negatives to zero (never trust summed telemetry below 0)
+    and savings_pct is zero-division safe (0.0 when total_raw is 0).
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total_raw: int = 0
+    total_sent: int = 0
+    total_saved: int = 0
+    savings_pct: float = 0.0
+
+
+def _sweep_compression_totals(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Sum per-target CompressionReports into HUD-ready sweep totals."""
+    total_raw = max(0, sum(max(0, r.raw_tokens_estimated) for r in reports))
+    total_sent = max(0, sum(max(0, r.compressed_tokens_sent) for r in reports))
+    total_saved = max(0, sum(max(0, r.tokens_saved) for r in reports))
+    savings_pct = (total_saved / total_raw * 100) if total_raw > 0 else 0.0
+    return SweepCompressionTotals(
+        total_raw=total_raw,
+        total_sent=total_sent,
+        total_saved=total_saved,
+        savings_pct=savings_pct,
+    )
+
+
+def aggregate_sweep_compression(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Module-level sweep aggregator: sum per-target reports (HUD totals)."""
+    return _sweep_compression_totals(list(reports))
+
+
+def summarize_sweep_compression(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Alias of aggregate_sweep_compression (HUD summary entry point)."""
+    return _sweep_compression_totals(list(reports))
+
+
+def sweep_compression_summary(
+    reports: list[CompressionReport],
+) -> SweepCompressionTotals:
+    """Alias of aggregate_sweep_compression (HUD summary entry point)."""
+    return _sweep_compression_totals(list(reports))
+
+
+_KNOWN_ARCHETYPE = "KNOWN_ARCHETYPE"
+_NOVEL_SURFACE = "NOVEL_SURFACE"
+
+
+def _chain_link_probes(unified_script: str) -> tuple[str, str]:
+    """Split a unified chain script into link-A (primitive) + link-B (sink) probes.
+
+    The chain prompt demands ONE single unified payload fusing two disparate
+    weakness classes: a Link A section (primitive with benign values, falling
+    through into Link B on success, exiting 1/2 only on block/inconclusive)
+    then a ``# --- link B ---`` marker line, then the Link B section
+    (malicious value leveraging the primitive, with the final verdict exit).
+    The runner executes the unified script as the full probe; link verdicts
+    record the unified pre/post pair plus the per-section outputs for
+    evidence. A script without the marker records the unified pair twice
+    (back-compat duplicate-script chains).
+    """
+    marker = "# --- link b ---"
+    idx = unified_script.lower().find(marker)
+    if idx == -1:
+        return unified_script, unified_script
+    head, tail = unified_script[:idx], unified_script[idx:]
+    link_a = (head.strip() or unified_script).rstrip() + "\nsys.exit(0)\n"
+    link_b = tail.strip() or unified_script
+    return link_a, link_b
+
+
+def _classify_vault_statuses(
+    statuses: list[str],
+) -> tuple[int, int]:
+    """Split per-target vault statuses into (novel, known).
+
+    UNKNOWN / missing / anything-not-KNOWN_ARCHETYPE counts as novel:
+    fail-closed means unrecorded history never reads as "known".
+    """
+    known = sum(1 for status in statuses if status == _KNOWN_ARCHETYPE)
+    novel = len(statuses) - known
+    return novel, known
 
 
 class SweepScanResult(BaseModel):
@@ -85,12 +213,90 @@ class SweepScanResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float | None = None
     compression: CompressionReport = Field(default_factory=CompressionReport)
+    compression_reports: list[CompressionReport] = Field(default_factory=list)
     vault_recall: str = ""
     vault_namespaces: list[str] = []
+    vault_statuses: list[str] = Field(default_factory=list)
 
     @property
     def success(self) -> bool:
         return self.status == "verified" and self.cleanup_ok
+
+    @property
+    def verified(self) -> bool:
+        """Aggregate verdict: verified only when every selected pass holds."""
+        return (
+            self.status == "verified"
+            and self.cleanup_ok
+            and len(self.pass_results) > 0
+            and all(p.holds for p in self.pass_results)
+        )
+
+    @property
+    def sweep_compression(self) -> SweepCompressionTotals:
+        """Sweep-level token totals: per-pass reports, else the single report.
+
+        Aggregation only: read-only totals for the HUD. Never touches the
+        sweep verdict (fail-closed aggregation: no verdict upgrade path).
+        """
+        reports = list(self.compression_reports) or [self.compression]
+        return _sweep_compression_totals(reports)
+
+    @property
+    def sweep_compression_summary(self) -> SweepCompressionTotals:
+        """Alias of sweep_compression (HUD summary entry point)."""
+        return self.sweep_compression
+
+    @property
+    def compression_summary(self) -> SweepCompressionTotals:
+        """Alias of sweep_compression (HUD summary entry point)."""
+        return self.sweep_compression
+
+    def _sweep_vault_statuses(self) -> list[str]:
+        """Per-target vault statuses backing the novel/historical HUD split.
+
+        Prefers explicitly recorded per-target statuses; falls back to the
+        sweep's own vault_recall (one scanned target ⇒ one status entry);
+        an empty recall reads as unknown ⇒ novel (fail-closed: unrecorded
+        history never counts as "known").
+        """
+        if self.vault_statuses:
+            return list(self.vault_statuses)
+        if self.vault_recall:
+            return [self.vault_recall]
+        return [""]
+
+    @property
+    def novel_count(self) -> int:
+        """Per-sweep novel-surface target count (HUD split)."""
+        novel, _ = _classify_vault_statuses(self._sweep_vault_statuses())
+        return novel
+
+    @property
+    def known_count(self) -> int:
+        """Per-sweep known-archetype target count (HUD split)."""
+        _, known = _classify_vault_statuses(self._sweep_vault_statuses())
+        return known
+
+    @property
+    def vault_novel_vs_historical(self) -> dict[str, int]:
+        """HUD mapping: {"novel": confirmed-NOVEL count, "historical": rest}.
+
+        novel = per-target statuses explicitly confirmed NOVEL_SURFACE;
+        historical = every other per-target slot (known archetypes plus
+        silent/unknown recalls). Unknown history still reads as novel in
+        novel_count (fail-closed); this mapping shape is exactly what the
+        HUD consumes and the RED tests pin.
+        """
+        statuses = self._sweep_vault_statuses()
+        novel = sum(1 for status in statuses if status == _NOVEL_SURFACE)
+        return {"novel": novel, "historical": len(statuses) - novel}
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def novel_vs_historical(self) -> dict[str, int]:
+        """Alias of vault_novel_vs_historical, visible in model_dump (HUD)."""
+        return self.vault_novel_vs_historical
 
 
 async def execute_sweep_scan(
@@ -102,20 +308,20 @@ async def execute_sweep_scan(
     muse_factory=MetaMuseClient,
     max_passes: int = 3,
 ) -> SweepScanResult:
-    """Run the 3-pass sweep over one fixture target.
+    """Run the 4-pass sweep over one fixture target.
 
     Baseline once, then per selected pass: red pass analysis -> probe.
     Exit 1 clears the pass (no blue call). Exit 0 requests a blue patch
     against the CURRENT source (carrying prior passes' patches), then
     regression + re-probe + final health. Exit 2 fails the sweep closed.
-    `max_passes` 1..3 selects a prefix of SWEEP_PASSES (CLI/deep-link).
+    `max_passes` 1..4 selects a prefix of SWEEP_PASSES (CLI/deep-link).
     """
     result = SweepScanResult(target=target_key)
     sandbox = None
     muse = None
     log = make_log(emit)
     selected = [
-        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(3, max_passes))
+        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
 
     try:
@@ -133,6 +339,7 @@ async def execute_sweep_scan(
         current_source = source
         compressed = compress_context(source, filename=target.filename)
         result.compression = compressed
+        result.compression_reports = [compressed]
         await log(
             "system",
             f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
@@ -145,6 +352,7 @@ async def execute_sweep_scan(
             vault_answer = query_vault(source)
             result.vault_recall = vault_answer.status
             result.vault_namespaces = vault_answer.namespaces
+            result.vault_statuses = [vault_answer.status]
             await log(
                 "system",
                 f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
@@ -251,6 +459,66 @@ async def execute_sweep_scan(
                 sandbox.run_isolated_verifier, network, finding.verification_script_python
             )
             passed.post_exit_code = post.exit_code
+            if pass_id == "chain":
+                link_scripts = _chain_link_probes(finding.verification_script_python)
+                link_a_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[0])
+                result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}. "
+                    f"{link_a_pre.output}",
+                )
+                if link_a_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
+                link_b_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[1])
+                result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}. "
+                    f"{link_b_pre.output}",
+                )
+                if link_b_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
+                ]
+                link_a_post = await blocking(
+                    sandbox.run_isolated_verifier, network, link_scripts[0]
+                )
+                result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}. "
+                    f"{link_a_post.output}",
+                )
+                if link_a_post.inconclusive:
+                    raise SandboxError(
+                        f"Sweep pass {pass_id} link-A post-patch probe was inconclusive."
+                    )
+                link_b_post = await blocking(
+                    sandbox.run_isolated_verifier, network, link_scripts[1]
+                )
+                result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}. "
+                    f"{link_b_post.output}",
+                )
+                if link_b_post.inconclusive:
+                    raise SandboxError(
+                        f"Sweep pass {pass_id} link-B post-patch probe was inconclusive."
+                    )
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
+                    ChainLink(pre_exit=link_a_post.exit_code, post_exit=link_b_post.exit_code),
+                ]
+            else:
+                passed.chain_links = [
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                ]
             result.traces[f"{pass_id}:after"] = post.output
             await log(
                 "blue",

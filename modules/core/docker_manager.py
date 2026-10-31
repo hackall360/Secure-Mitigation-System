@@ -139,27 +139,50 @@ def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
 
 
 def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
-    """Remove only Secure Mitigation System session resources left by a crash. Base images are kept."""
+    """Remove only Secure Mitigation System session resources left by a crash. Base images are kept.
+
+    Best-effort per scope: a dead daemon mid-sweep returns partial counts
+    instead of raising, so post-fault crash recovery never crashes itself.
+    """
     client = client if client is not None else docker.from_env(timeout=60)
     removed = {"containers": 0, "networks": 0, "snapshots": 0}
     label = {"label": "purplebox.session"}
-    for container in client.containers.list(all=True, filters=label):
+    try:
+        containers = client.containers.list(all=True, filters=label)
+    except DockerException:
+        containers = []
+    for container in containers:
         try:
             container.remove(force=True)
         except NotFound:
             # Reaped between list and remove; already gone, keep sweeping.
             continue
+        except DockerException:
+            # Daemon died mid-sweep; count only what was actually removed.
+            continue
         removed["containers"] += 1
-    for network in client.networks.list(filters=label):
+    try:
+        networks = client.networks.list(filters=label)
+    except DockerException:
+        networks = []
+    for network in networks:
         try:
             network.remove()
         except NotFound:
             continue
+        except DockerException:
+            continue
         removed["networks"] += 1
-    for image in client.images.list(name=config.clone_repo_prefix):
+    try:
+        snapshots = client.images.list(name=config.clone_repo_prefix)
+    except DockerException:
+        snapshots = []
+    for image in snapshots:
         try:
             client.images.remove(image=image.id, force=True)
         except (ImageNotFound, NotFound):
+            continue
+        except DockerException:
             continue
         removed["snapshots"] += 1
     return removed
@@ -339,12 +362,17 @@ class DockerSandboxManager:
         if cache_key in self._snapshot_cache:
             return self._snapshot_cache[cache_key]
         archive = self._create_tar_bytes(filename, content)
-        stage = self.client.containers.create(
-            base,
-            command=["true"],
-            network_mode="none",
-            **self._options(role),
-        )
+        try:
+            stage = self.client.containers.create(
+                base,
+                command=["true"],
+                network_mode="none",
+                **self._options(role),
+            )
+        except DockerException as exc:
+            raise SandboxError(
+                "Docker daemon is unreachable while staging the snapshot; no verdict was produced."
+            ) from exc
         self.containers.append(stage)
         try:
             if not stage.put_archive(directory, archive):
@@ -396,12 +424,25 @@ class DockerSandboxManager:
             options["entrypoint"] = []
         if working_dir is not None:
             options["working_dir"] = working_dir
-        container = self.client.containers.create(
-            image,
-            **options,
-        )
+        container = None
+        try:
+            container = self.client.containers.create(
+                image,
+                **options,
+            )
+        except DockerException as exc:
+            raise SandboxError(
+                "Docker daemon is unreachable while starting the runtime; no verdict was produced."
+            ) from exc
         self.containers.append(container)
-        container.start()
+        try:
+            container.start()
+        except DockerException as exc:
+            # Stay tracked: close() still attempts the reaps, so a
+            # created-but-unstarted container never leaks silently.
+            raise SandboxError(
+                "Docker daemon is unreachable while starting the runtime; no verdict was produced."
+            ) from exc
         return container
 
     def start_cloneable_target(

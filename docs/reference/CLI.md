@@ -22,7 +22,8 @@ Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 | `--mcp` | MCP STDIO transport: JSON-RPC on stdin/stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt) |
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor (default: single finding loop) |
-| `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 3-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
+| `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 4-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
+| `--ingest-repo URL` | Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires `--commit-hash`; Phase 1, Wave 4) |
 
 > Engine leaves (`sms_compress`, `sms_vault`, `sms_api`) are library modules, not CLI flags.
 
@@ -36,10 +37,12 @@ curses modes:
 
 | Flag | Help |
 |---|---|
-| `--mode {fixture,sweep,mcp,binary,project,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
+| `--mode {fixture,sweep,mcp,binary,project,ingest,demo,cve}` | Scan mode (default: fixture single finding loop); unknown mode exits 2 |
+| `--stats` | TUI plain mode: print the `CompressionStats` summary + `vault_stats()` (global novel/historical + `tokens_saved_estimate`) as structured stdout; exit 0, no Docker, no key |
 | `--snippet PATH` (`--snippet-language`, `--contract`) | MCP snippet file through the red/blue Docker loop (mcp mode) |
 | `--binary-path PATH` (alias: `--binary-target`) | Binary sweep in binary mode |
 | `--project-path/--project-command/--project-test-command/--project-contract/--project-cycles/...` | Project two-cycle workout (project/cve modes) |
+| `--ingest-repo URL` (`--commit-hash HEX`, `--ingest-branch TEXT`) | Validated repo intake at a pinned commit (ingest mode; `i` key); emits redacted ingest + telemetry HUD events, then runs the fixture loop |
 | `--demo-theme/--demo-vulns` | Themed demo replay (demo mode) |
 
 `--sweep-passes N` / `--binary-target PATH` without `--mode` keep the legacy
@@ -68,6 +71,7 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--output-dir PATH` | — | Save scan JSON + candidate diff to a new run dir (includes `receipt.json`) |
 | `--research` | off | Opt-in research sidecars for `--scan` (keyless OSV/CIRCL/GHSA/EPSS) |
 | `--research-scanners LIST` | — | Comma-separated local scanners for `--research` grounding (requires `--research`) |
+| `--commit-hash HEX` | — | Pinned 40-hex commit for `--ingest-repo` (required with `--ingest-repo`) |
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
@@ -116,6 +120,24 @@ Behavior surfaces through existing rows only:
 | EUVD exclusion (`FAST_LANE_EXCLUDED_SOURCES`, `assert_fast_lane_source_allowed`) | None (fail-closed only) | Raises `AssertionError` if a future wiring consults `euvd`; no CLI row, never blocks allowed sources. |
 | Template/solver-shape guard (`is_solver_synthesized_shape`, `patches.py:27`) | `Guard rationales` row (`guard_id="solver_synthesized_shape"`) | Same `guard_rationale` `{guard_id, reason, trigger}` shape; 60-line `EDIT_BUDGET_LINES` unchanged. |
 | Frozen mutation pool (`FROZEN_MUTATION_POOL_SHA256`, `mutation_pool_snapshot`) | None (internal) | `_assert_frozen_pool` runs at both mutation-script entry points (`modules/core/checks.py:438,560`); drift raises `ValueError`, no dedicated CLI row. |
+
+## Wave 6 HUD (telemetry + ingest + demo client) — dashboard + TUI parity
+
+Wave 6 adds the live HUD surfaces with no new `main.py` flags. The helpers
+live in `modules/services/sms_api.py` (`build_telemetry_event`,
+`build_ingest_event`, `build_result_hud`); all three emit shapes are valid
+`writeLine` payloads (`{team, type: log, msg}`), and the ingest message
+redacts the URL to host + short sha (no `@`, no credentials, no paths).
+
+| Surface | Location | Rows / behavior |
+|---|---|---|
+| Dashboard fact rows | `static/index.html` `fact-tokens`, `fact-vault-indicator` | `Live token counter` + `Vault indicator` sit next to `fact-compression`/`fact-vault` in the same `.facts` grid; populated live from `telemetry`/`ingest` WS events and from result `hud_tokens`/`hud_vault` via `build_result_hud`. |
+| Dashboard timeline | `static/app.js` `buildEntry` + Telemetry/Ingest filters | `telemetry` + `ingest` teams keep their own tags (`tag-telemetry`, `tag-ingest` in `static/app.css`) and filter buttons instead of collapsing to `system`. |
+| Dashboard toggles | `static/app.js` `hud-toggle-compression`, `hud-toggle-vault` | The compression toggle hides the token row with it; the vault toggle hides the vault-indicator row with it. |
+| TUI suffix | `tui.py` `describe_wave2` via `format_facts` | Telemetry tokens auto-flow: `[compress ...]` + `[vault ...]` append to the result line from the same `compression`/`vault_recall` fields `fact_table` shows. |
+| TUI ingest mode | `tui.py` `mode:ingest` (`i` key), `--ingest-repo` + `--commit-hash` (+ `--ingest-branch` label) | Validates through `RepoIntakeSpec` (fail closed), emits the redacted ingest event, runs the fixture loop, then emits the telemetry event. |
+| Demo MCP client | `scripts/mcp_client_demo.py` (stdlib `urllib` only) | `run_demo(base_url, filename, language, source)` returns `{status, pre_probe_exit, post_probe_exit, receipt_sha}`; `--help` exits 0; dead localhost port fails closed non-zero; oversize sources rejected client-side; localhost-only + short timeout per LAW 10I. |
+| TUI `--stats` + telemetry keys (Wave 8) | `tui.py` `_print_global_stats`, `sms_cli.py` `format_facts` | `--stats` prints the `CompressionStats` summary + `vault_stats()` (per-namespace records, `known_archetypes`, `tokens_saved_estimate`); `format_facts` carries `savings_pct` + `novel_vs_historical` keys from the same `compression`/`vault_recall` fields `fact_table` shows. |
 
 ## CVE scan notes
 

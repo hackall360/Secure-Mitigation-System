@@ -95,7 +95,7 @@ async def execute_binary_sweep(
     muse = None
     log = make_log(emit)
     selected = [
-        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(3, max_passes))
+        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
 
     try:

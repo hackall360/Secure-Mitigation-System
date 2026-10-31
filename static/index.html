@@ -33,7 +33,7 @@
   </aside>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.8.0</span></a>
+      <a class="brand" href="/" aria-label="Secure Mitigation System home"><span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Secure Mitigation System<span class="version">0.10.0</span></a>
       <div class="top-status">
         <dl id="scoreboard" class="scoreboard" aria-label="Session scoreboard">
           <div><dt>Active Agents</dt><dd id="score-agents">0</dd></div>
@@ -89,6 +89,7 @@
           <button id="mode-project" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="project"><strong>Local project</strong><small>Verify a repository on this host</small></button>
           <button id="mode-mcp" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="mcp"><strong>MCP snippet</strong><small>External AI client submits code</small></button>
           <button id="mode-binary" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="binary"><strong>Binary sweep</strong><small>Reversing + 3-pass harness run</small></button>
+          <button id="mode-ingest" class="mode" type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="ingest"><strong>Repo ingest</strong><small>Clone a repo at a pinned commit</small></button>
         </div>
         <div id="demo-config">
           <div id="target-list" class="targets" role="radiogroup" aria-label="Target fixtures">
@@ -157,11 +158,16 @@
           <div class="field wide"><label for="binary-contract">Behavior contract</label><textarea id="binary-contract" name="contract" required rows="3" placeholder="Describe the behavior that must remain true and the input boundary to verify."></textarea></div>
           <div id="binary-errors" class="form-errors wide" role="alert" hidden></div>
         </form>
+        <form id="ingest-form" class="project-form" hidden novalidate>
+          <div class="field wide"><label for="ingest-repo-url">Repository URL</label><input id="ingest-repo-url" name="repo_url" required placeholder="https://github.com/org/repo" autocomplete="off" spellcheck="false"><small>HTTPS remote only. Cloned at the pinned commit inside Docker; only Docker evidence decides.</small></div>
+          <div class="field wide"><label for="ingest-commit">Pinned commit</label><input id="ingest-commit" name="commit_hash" required maxlength="40" placeholder="40-hex commit sha" autocomplete="off" spellcheck="false"><small>Full 40-hex sha — the staging clone checks out exactly this commit.</small></div>
+          <div id="ingest-errors" class="form-errors wide" role="alert" hidden></div>
+        </form>
         <div id="profile-row" class="profile-row" hidden>
           <span class="profile-label" id="profile-label">Models</span>
           <div id="profile-list" class="profiles" role="radiogroup" aria-labelledby="profile-label"></div>
         </div>
-        <div class="field compact"><label for="sweep-passes">Sweep depth</label><select id="sweep-passes" name="sweep_passes"><option value="1" selected>Single finding (legacy)</option><option value="2">2 passes (standard + deep)</option><option value="3">3 passes (+ threat-actor)</option></select><small>Multi-pass sweep runs every pass and patches each confirmed boundary.</small></div>
+        <div class="field compact"><label for="sweep-passes">Sweep depth</label><select id="sweep-passes" name="sweep_passes"><option value="1" selected>Single finding (legacy)</option><option value="2">2 passes (standard + deep)</option><option value="3">3 passes (+ threat-actor)</option><option value="4">4 passes (+ chain)</option></select><small>Multi-pass sweep runs every pass and patches each confirmed boundary.</small></div>
         <div class="run-row">
           <p id="target-description" class="target-description">Pick a bundled fixture, press Run — red proves the flaw in Docker, blue patches it.</p>
           <div class="actions">
@@ -178,6 +184,7 @@
           <div><p class="eyebrow">02 / Execute</p><h2 id="pipeline-title">Verification pipeline</h2></div>
           <div class="progress-wrap" aria-hidden="true"><div id="progress" class="progress"><span></span></div></div>
         </header>
+        <div id="scan-banner" class="form-errors" role="alert" hidden></div>
         <ol id="pipeline" class="pipeline">
           <li data-stage="sandbox"><span class="node"></span><strong>Sandbox</strong><small>Internal network · snapshot</small></li>
           <li data-stage="baseline"><span class="node"></span><strong>Baseline</strong><small>Normal-input checks</small></li>
@@ -249,11 +256,14 @@
           <div><dt>Regression</dt><dd id="fact-regression">—</dd></div>
           <div><dt>Post-patch probe</dt><dd id="fact-post">—</dd></div>
           <div><dt>Verdict receipt</dt><dd id="fact-receipt">—</dd></div>
+          <div><dt>Receipt chain</dt><dd id="fact-receipt-chain">—</dd><span id="receipt-chain-badge" class="status" role="status" data-state="idle">chain unknown</span></div>
           <div><dt>Guard rationales</dt><dd id="fact-guards">—</dd></div>
           <div><dt>Fast-lane top</dt><dd id="fact-topping">—</dd></div>
           <div><dt>Mutations</dt><dd id="fact-mutations">—</dd></div>
           <div><dt>Context compression</dt><dd id="fact-compression">—</dd></div>
           <div><dt>Vault recall</dt><dd id="fact-vault">—</dd></div>
+          <div><dt>Live token counter</dt><dd id="fact-tokens">—</dd></div>
+          <div><dt>Vault indicator</dt><dd id="fact-vault-indicator">—</dd></div>
           <div><dt>Cleanup</dt><dd id="fact-cleanup">—</dd></div>
         </dl>
         <div id="guard-rationales" class="cycle-reports" hidden><h3>Guard rationales</h3><ul id="guard-list"></ul></div>
@@ -290,6 +300,8 @@
               <button class="filter" data-filter="blue" aria-pressed="false">Blue</button>
               <button class="filter" data-filter="research" aria-pressed="false">Research</button>
               <button class="filter" data-filter="green" aria-pressed="false">Green</button>
+              <button class="filter" data-filter="telemetry" aria-pressed="false">Telemetry</button>
+              <button class="filter" data-filter="ingest" aria-pressed="false">Ingest</button>
             </div>
             <button class="icon-btn" data-copy="system" title="Copy activity" aria-label="Copy activity"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
           </div>

@@ -778,6 +778,18 @@ if __name__ == "__main__":
 ```
 
 ### 7.7 `static/index.html`
+
+> Historical note (Wave 23 correction): the sketch below was the original
+> pre-build UI concept using the Tailwind CDN. The shipped dashboard does
+> NOT use Tailwind: it uses a bespoke token-driven CSS system
+> (`static/app.css` "design system v2": `:root` tokens, 19 sections, no
+> build step, no CDN dependency — required for the offline judge
+> quickstart). Element IDs (`red-log`, `blue-log`, `sys-log`, `run-btn`)
+> and the WebSocket event shape below are still accurate; class names in
+> this sketch are aspirational, not shipped. For the real DOM, read
+> `static/index.html` + `static/app.js` (`buildEntry`/`writeLine`/
+> `handleSocketMessage`) and the `test_ui_guidance.py` / `test_w7_*` /
+> `test_w17_*` contract tests.
 ```html
 <!DOCTYPE html>
 <html lang="en">

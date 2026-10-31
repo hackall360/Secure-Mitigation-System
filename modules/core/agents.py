@@ -17,6 +17,7 @@ from modules.core.pricing import CallUsage, usage_from_response
 from modules.core.prompts import (
     BLUE_RESEARCH_SYSTEM_PROMPT,
     BLUE_TEAM_SYSTEM_PROMPT,
+    RED_CHAIN_SYSTEM_PROMPT,
     RED_DEEP_SWEEP_SYSTEM_PROMPT,
     RED_RESEARCH_SYSTEM_PROMPT,
     RED_TEAM_SYSTEM_PROMPT,
@@ -220,6 +221,7 @@ class MetaMuseClient:
     ) -> ResponseModel:
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
+        throttled = False
         for attempt in range(RETRY_MAX_ATTEMPTS):
             started = time.monotonic()
             # Meta's Chat Completions endpoint constrains decoding through response_format,
@@ -277,9 +279,16 @@ class MetaMuseClient:
                             if response.status_code == 429
                             else None
                         )
+                        if response.status_code == 429:
+                            throttled = True
                         await asyncio.sleep(_retry_delay_seconds(attempt, retry_after))
                         continue
                     if response.status_code != 200:
+                        if response.status_code == 429 or throttled:
+                            raise AgentError(
+                                "Muse API rate limit reached (HTTP 429); the provider is "
+                                "throttling requests. Wait a moment, then run the scan again."
+                            )
                         raise AgentError(
                             f"Muse API returned HTTP {response.status_code}; check endpoint, model access, and key."
                         )
@@ -329,6 +338,11 @@ class MetaMuseClient:
             raise AgentError(
                 "Muse request failed or timed out; no fallback provider was contacted."
             ) from last_error
+        if throttled:
+            raise AgentError(
+                "Muse API rate limit reached (HTTP 429); the provider is "
+                "throttling requests. Wait a moment, then run the scan again."
+            )
         raise AgentError("Muse API returned a transient error after retry.")
 
     async def run_red_team_analysis(
@@ -354,6 +368,8 @@ class MetaMuseClient:
             system = RED_DEEP_SWEEP_SYSTEM_PROMPT
         elif pass_id == "threat_actor":
             system = RED_THREAT_ACTOR_SYSTEM_PROMPT
+        elif pass_id == "chain":
+            system = RED_CHAIN_SYSTEM_PROMPT
         elif pass_id == "standard":
             system = RED_TEAM_SYSTEM_PROMPT
         else:
