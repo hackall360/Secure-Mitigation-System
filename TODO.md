@@ -341,4 +341,10 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA16. Wave 16 keyed chain sweep: live Muse red→blue→verify flip on node_chain_link.
 - [x] AA16. Wave 16 outcome: KEYED CHAIN PROOF — node_chain_link boundary-passed vs live Muse (633→629 tokens), vault KNOWN_ARCHETYPE recall, chain row rendered, cleanup. Closes 2b-3 live gap: chained verdict fires with real synthesis.
 - [ ] AA17. Wave 17 throttle/daemon UI banners: WS error event → visible dashboard banner (LAW 11 proof).
+- [x] AA17. Wave 17 outcome: merged 16a46da (banner + 6 RED green); spawner format-only fix; gate 731 green. Worktree removed. Commit `4ba4271`.
 - [ ] AA18. Wave 18 TRIBUNAL (mod-3).
+- [x] AA18. Wave 18 outcome: tribunal weighted **8.58** (was 8.54, +0.04 keyed chain + banner). Movers: 2b-3 → 9.0 (real synthesis flip), S3-6/7 → 8.5 (banner render). Proof: matrix.
+- [ ] AA19. Wave 19 banner operate-proof (LAW 11): trigger error path live both browsers.
+- [ ] AA20. Wave 20 HARD GATE + WILD CRUCIBLE #2 (keyed wildcard sweep).
+- [ ] AA21. Wave 21 TRIBUNAL (mod-3).
+
