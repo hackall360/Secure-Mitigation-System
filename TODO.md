@@ -326,3 +326,5 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [x] AA6. Wave 6 tribunal: weighted **8.17** (was 7.32, +0.85 implementation delta). Vectors set. Proof: matrix + commit `5af4f5e`.
 - [x] AA7. Wave 7 outcome: 3 worktrees merged (fc3f2e8 demo E2E, 311c543 ingest UI, a0fb77e receipt badge; 13 RED green). Gate 684 passed, lint clean. Chrome + Firefox cards show chain badge live. Worktrees removed.
 - [ ] AA8. Wave 8 implementation: runtime auto-detect (fixes 2a-3); vault perf micro-benchmark + docs (2c-4); TUI ingest live proof + CLI --stats (2d-6/7).
+- [x] AA8. Wave 8 outcome: 3 worktrees merged (849b658 runtime detect, 05a7178 vault perf, bc3f9a5 TUI stats). Gate 708 passed, format fixed whitespace-only. Worktrees removed. Commit `8455d1c`.
+- [ ] AA9. Wave 9 TRIBUNAL (mod-3): re-score 60-point matrix on 708-green tree, compute Δ, set Wave 10 crucible + gate plan.
