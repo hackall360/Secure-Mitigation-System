@@ -1474,3 +1474,14 @@ Run: `overnight_1793434523077_12855248373640259943`.
   sandbox-provable shape exists, else T2/T5 depth; keep recipe.
 - Spend: keyed total is usage-logged per attempt (~$0.13-0.32/clear);
   no budget pressure observed.
+
+## E61 — Cycle 61 scout: PHP header() NEGATIVE, Python split POSITIVE (asymmetry)
+
+- Battery (target image, Docker): PHP 8.4 `header("X: a\r\nSet-Cookie:
+  hacked=1")` → Warning "may not contain more than a single header",
+  split REFUSED at the SAPI layer. Python 3.14 `send_header` with the
+  same payload → EMITTED raw (proven byte-level, C49 Gate-0).
+- Asymmetry intel: response-splitting is a live primitive in Python's
+  stdlib but dead in PHP 8.4's SAPI. Explains why T6f (Python) verified
+  and no PHP sibling was ever queued. No CVE, no disclosure. Zero keyed
+  spend (Docker-local battery only).
