@@ -69,3 +69,15 @@ and taxonomy link.
 - Taxonomy: new T8 class (a=true-SSRF unprovable-here, b=selector provable).
   Vault: red `256ab8c3e090`, blue `95a4d221b4c2`.
 - Gate-3: replay PASS (renamed variant; both links blocked).
+
+## D6 — T4b+T2d Node cross-language prior (Cycle 8, 2026-10-31)
+
+- Novel fixture: Node `readDoc` join-without-check + eval `calc`. Red exit 0
+  (eval sink retained finding; traversal co-present); Blue dual patch
+  (resolve+startsWith + decimal-regex) → Red exit 1, regressions 0/0.
+  First-try verify — the T4a containment prior transferred languages.
+- Evidence: run `validation/task-801-c8-report.json` (receipt pre=0/post=1,
+  patch sha `8946f259…`), `validation/task-802-c8-vault.txt`.
+- Taxonomy: new T4b (Node) + T2d (Node decimal) subclasses. Vault:
+  red `20734eb19022`, blue `11d9759e7414`.
+- Gate-3: replay PASS (renamed variant; traversal blocked, benign ok).

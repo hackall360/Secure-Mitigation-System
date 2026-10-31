@@ -316,3 +316,27 @@ Run: `overnight_1793434523077_12855248373640259943`.
   subclasses (a=true-SSRF unprovable-here, b=selector provable).
 - Reusable prior created: T8b+T2c unified probe + dual allowlist+containment
   template (vault records above).
+
+## E8 — Cycle 8: Node cross-language T4a-variant, first-try VERIFIED
+
+- Hypothesis: the Python T4a realpath-guard prior replays on Node as
+  `path.resolve` + `startsWith` containment (cross-language transfer).
+- Method: new Green Node tree (`readDoc` join-without-check + eval `calc`,
+  decimal-only contract); keyed slim agents=1.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln was the eval
+  sink ("unsanitized eval in calc") with traversal co-present; Blue patched
+  BOTH (resolve+startsWith guard AND decimal-regex) inside budget.
+  6 calls p10018/c20771 ≈$0.21.
+  Evidence: run `validation/task-801-c8-live.txt`, `task-801-c8-report.json`.
+- Gate-3 replay PASS on renamed Node variant (vuln pre-patch leaks,
+  patched blocks `../../hidden.txt`, `/etc/hostname`, `..`; benign ok).
+  (My first two replay scripts had wrong `../` depth — script errors, not
+  patch errors; corrected.)
+- Vault: red `20734eb19022`, blue `11d9759e7414`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-802-c8-vault.txt`.
+- Conclusion: Δ(C.8,D.8) → 0. Cross-language transfer PROVEN: the T4a
+  containment prior (Python realpath) materialized independently in Node
+  (path.resolve) under keyed synthesis — the taxonomy prior class now spans
+  languages. Taxonomy: new T4b (Node) + T2d (Node decimal) subclasses.
+- Reusable prior created: T4b+T2d Node red probe + dual guard template.
