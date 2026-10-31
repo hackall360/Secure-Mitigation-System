@@ -53,6 +53,21 @@ def setup():
         print("Created ignored .env template. No key configured or exported.")
 
 
+def tags():
+    """Audit hook coverage: every registry tag needs a live surface binding."""
+    sys.path.insert(0, str(ROOT))
+    from library import tags as feature_tags
+
+    result = feature_tags.check_registry(root=ROOT)
+    print(f"feature tags: {result['covered_count']}/{result['total']} covered")
+    uncovered = result["uncovered"]
+    if uncovered:
+        for tag_id in sorted(uncovered):
+            print(f"UNCOVERED {tag_id}: {','.join(uncovered[tag_id])}")
+        raise RuntimeError(f"{len(uncovered)} feature tags uncovered (see UNCOVERED lines).")
+    print("PASS: every feature tag has a live binding on its claimed surfaces")
+
+
 def check():
     python("-m", "pytest", "-q")
     python("-m", "ruff", "check", ".", ".jcode/tools")
@@ -310,6 +325,7 @@ def main():
             "serve",
             "serve-up",
             "smoke",
+            "tags",
             "lock",
         ),
     )
@@ -350,6 +366,8 @@ def main():
                 stop_handle(handle)
     elif args.command == "smoke":
         smoke()
+    elif args.command == "tags":
+        tags()
     else:
         run(
             "uv",

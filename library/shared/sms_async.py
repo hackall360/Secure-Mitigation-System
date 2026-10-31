@@ -10,6 +10,8 @@ repo: leaf module, zero cycle risk.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import asyncio
 from collections.abc import Awaitable, Callable
 

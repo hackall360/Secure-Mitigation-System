@@ -16,6 +16,8 @@ a redacted report — never exploit scripts.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import re
 import tempfile
 from pathlib import Path

@@ -8,6 +8,8 @@ raise when over budget". One home with three entry points. Leaf (stdlib only).
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import json
 from typing import Any
 
