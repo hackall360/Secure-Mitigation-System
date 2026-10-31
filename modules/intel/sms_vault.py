@@ -286,12 +286,15 @@ class VaultStore:
         """fingerprint -> count for this namespace (metadata only).
 
         Prefers the bounded JSON index (O(1)); falls back to a full decrypt
-        scan when the index is missing or corrupt (fail open to correctness).
+        scan when the index is missing or corrupt.
+        Fallback scan fails closed: blobs present but none decryptable
+        raises VaultError instead of reporting an empty (NOVEL) result.
         """
         indexed = self._read_index()
         if indexed is not None:
             return dict(indexed)
         counts: dict[str, int] = {}
+        unreadable = 0
         try:
             paths = list(self.namespace_dir.glob("*.vault"))
         except OSError as exc:
@@ -300,10 +303,13 @@ class VaultStore:
             try:
                 stored = decrypt_blob(path.read_bytes(), key=self._key)
             except VaultError:
+                unreadable += 1
                 continue
             fingerprint = stored.get("fingerprint", "")
             if isinstance(fingerprint, str) and fingerprint:
                 counts[fingerprint] = counts.get(fingerprint, 0) + 1
+        if unreadable and not counts:
+            raise VaultError("Vault blobs present but none decryptable; refusing empty result.")
         return counts
 
     def count(self) -> int:
