@@ -658,3 +658,46 @@ Run: `overnight_1793434523077_12855248373640259943`.
   documented. Δ(C.18) → 0. Prior count: 59 known archetypes.
 - Reusable prior created: T2e char-class containment template + residual
   documentation pattern (prove-blocked AND state-what-remains).
+
+## E25r — Cycle 25 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7 (3) + Node C2, C8, C11, C14, C17, C18 (6)
+  + PHP C5, C10, C13, C16 (4). Total 13. Node = 6/13 = 46% — OVER the 40%
+  bar. Last three keyed runs: C16 PHP, C17 Node, C18 Node.
+- Forced direction: Cycles 19-20 MUST be PHP (least-recent non-Node run
+  was C16) or Python (tied least at 3/13). No more Node until balance
+  restores. Next: PHP T4e (symlink-aware store read — new shape, local
+  Gate-0 battery first per the T4d rule).
+- Scouts 3/6/9/12/15: 4 negative + 1 inconclusive. Next scout (Cycle 21
+  cadence): zero-dependency single-file helper ONLY (dep-closure rule).
+
+## E19a — Cycle 19 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5a/C17a: Red exit-0 proof + Blue proposal accepted,
+  then the FINAL verification report fails schema validation (5 calls
+  ≈$0.12; note the last call's odd shape p830/c3354 — long completion on a
+  short prompt, classic over-long-report truncation/validator-mismatch).
+- Corrective vector: verbatim retry (attempt 2); the C17 precedent says
+  transient faults clear on retry.
+
+## E19b — Cycle 19 attempts 2-3: systematic schema fault → short-contract VERIFIED
+
+- Attempt 2 (verbatim retry) failed IDENTICALLY at the closing report
+  (5 calls ≈$0.14) — systematic for this fixture shape, not transient.
+  Attempt 3 cut the contract to 3 short sentences ("Sanitize input
+  minimally") → VERIFIED first-try of the slim shape: success=True,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. 6 calls p11055/c19475
+  ≈$0.20.
+  Evidence: run `validation/task-1902-c19b-*` (error), `task-1903-c19c-*`.
+- Lesson (3rd confirmation after C5/C17): long steering contracts correlate
+  with closing-report schema faults; short contracts verify. The mechanism
+  is unproven (no access to the raw malformed JSON), but the correlation
+  is now 3/3 — worth a platform-level note in the judging evidence.
+  Cost of learning: 2 failed runs ≈$0.26.
+- Gate-3 replay PASS on renamed variant (nested store; traversal → 400).
+- Vault: red `3de754d6ef13`, blue `f2d0692014af`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1904-c19-vault.txt`.
+- Conclusion: Δ(C.19) → 0. T4e (check-then-read split, TOCTOU) proven and
+  closed with the resolve-FIRST doctrine. Taxonomy: new T4e subclass.
+- Reusable prior created: T4e resolve-then-check template + short-contract
+  rule (3rd confirmation).

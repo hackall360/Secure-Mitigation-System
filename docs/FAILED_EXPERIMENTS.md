@@ -62,3 +62,9 @@ rule applies: destroy container, log here, begin next cycle immediately.
   battery: always final component). NOT a vuln — keyed run would have been
   a guaranteed no-finding. First Gate-0 rejection; $0 spent. Rule pinned:
   LOCAL vuln-shape proof before EVERY keyed run.
+
+## F9 — Cycle 19 attempts 1-2: closing-report schema faults, short contract wins (2026-10-31)
+
+- Identical failure twice (closing `verification_report` schema-invalid)
+  on the long-steering contract; 3-sentence contract verified. 3rd
+  confirmation of the short-contract rule (C5, C17, C19). ≈$0.26 tuition.

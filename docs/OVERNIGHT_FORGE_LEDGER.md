@@ -28,6 +28,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T09:55Z | 17a | none (Docker-PHP battery) | 0 | T4d basename design | n/a | n/a | n/a | REJECTED at Gate 0: basename kills traversal; $0 spent; rule pinned |
 | 2026-10-31T10:02Z | 17 | spark-1.3 + wonder-1.0 (slim, 2 attempts) | ≈$0.48 total | T4c+T2e, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient fault cleared): T4 retained+CLOSED; T2e OPEN by record (follow-up); vault T4c+T2e; Gate-3 PASS |
 | 2026-10-31T10:08Z | 18 | spark-1.3 + wonder-1.0 (slim) | p9743/c28984 ≈$0.27 | T2e-only box, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: CLOSES C17 OPEN record; char-class (ctor retained, residual noted); vault T2e-closed; 5-shape battery |
+| 2026-10-31T10:17Z | 19 | spark-1.3 + wonder-1.0 (slim, 3 attempts) | ≈$0.46 total | T4e check-split, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 3 (short contract): a1+a2 closing-report faults, a3 resolve-FIRST; vault T4e; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

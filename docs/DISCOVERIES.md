@@ -151,3 +151,16 @@ and taxonomy link.
 - Taxonomy: new T2e (Function ctor, Gate-0 proven) + T4c (Node containment).
   Vault: red `1dccdbe650ff`, blue `7ee3a5a461ec`.
 - Gate-3: replay PASS (renamed variant; traversal blocked).
+
+## D13 — T4e check-split prior (Cycle 19, 2026-10-31)
+
+- Novel fixture: PHP `/note?name=` checks the UNRESOLVED join but reads the
+  RESOLVED path (TOCTOU). Red exit 0 (`../secret.txt` leaks despite the
+  prefix check passing); Blue resolve-FIRST + containment → exit 1,
+  regressions 0/0. Attempts 1-2 died on closing-report schema faults;
+  short contract verified attempt 3 (3rd confirmation of the rule).
+- Evidence: run `validation/task-1903-c19c-report.json` (receipt pre=0/post=1,
+  patch sha `35576912…`), `validation/task-1904-c19-vault.txt`.
+- Taxonomy: new T4e subclass. Vault: red `3de754d6ef13`,
+  blue `f2d0692014af`.
+- Gate-3: replay PASS (renamed variant; split closed).

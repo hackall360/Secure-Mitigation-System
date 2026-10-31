@@ -43,3 +43,7 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T10:02Z | muse-wonder-1.0 | C17b retry (2 calls) | Blue | T4c containment only (T2e left open by record) |
 | 2026-10-31T10:08Z | muse-spark-1.3 | C18 (4 calls) | Red | T2e ctor probe exit 0 pre-patch |
 | 2026-10-31T10:08Z | muse-wonder-1.0 | C18 (2 calls) | Blue | char-class allowlist (ctor retained, residual noted), re-probe exit 1 |
+| 2026-10-31T10:12Z | muse-spark-1.3 | C19a (5 calls ≈$0.12; closing-report fault) | Red | exit-0 proof stood; malformed close |
+| 2026-10-31T10:14Z | muse-spark-1.3 | C19b retry (5 calls ≈$0.14; same fault) | Red | systematic, not transient |
+| 2026-10-31T10:17Z | muse-spark-1.3 | C19c short contract (4 calls) | Red | T4e probe exit 0 pre-patch |
+| 2026-10-31T10:17Z | muse-wonder-1.0 | C19c (2 calls) | Blue | resolve-FIRST, re-probe exit 1 |

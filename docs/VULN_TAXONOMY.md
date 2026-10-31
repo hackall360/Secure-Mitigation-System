@@ -40,6 +40,13 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
 - Taint: query param → `os.path.join(docroot, name)` → file read.
 - Red shape: benign `name=welcome.txt` vs `name=../../secret.txt`.
 - Blue pattern: resolve + constrain under docroot (`commonpath` check); reject escapes.
+- Subclass T4b (proven forge Cycle 8, Node): `readDoc` join-without-check.
+- Subclass T4c (proven forge Cycle 17, Node): lambda-fixture containment.
+- Subclass T4e (proven forge Cycle 19, PHP): check-then-read SPLIT (TOCTOU)
+  — containment checked on the unresolved `$joined` string (passes for
+  `../secret.txt`), the READ resolves via `realpath` (leaks outside).
+  Fix doctrine: resolve FIRST, then containment-check, then read.
+- Priors: T4a red `6ad9156807d4`/blue `366e65412fc8`; T4e red `3de754d6ef13`/blue `f2d0692014af`.
 
 ## T5 Logic-abuse gate → sink chain (CWE-285 + CWE-95)
 
