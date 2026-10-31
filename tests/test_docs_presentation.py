@@ -55,6 +55,8 @@ def test_architecture_doc_holds_dense_specs():
         "Wave 5 (SPEC 14.9)",
         "Frozen-pool mutation inputs",
         "Verdict receipts",
+        "PURPLEBOX_VAULT_DIR",
+        "PURPLEBOX_LOG_RAW_RESPONSES",
     ):
         assert marker in text, marker
 

@@ -275,6 +275,7 @@ chromedriver.log
 # Agent scratch and local tooling state.
 .jcode/scratch/
 .jcode/briefs/
+.jcode/session/
 .jcode/tools/__pycache__/
 *.tmp
 .DS_Store

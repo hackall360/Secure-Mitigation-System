@@ -19,7 +19,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from modules.core.registry import TARGETS_REGISTRY, Target
+from library.core.registry import TARGETS_REGISTRY, Target
+from library.core.version import APP_VERSION
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 MCP_SNIPPET_MAX_BYTES = 65_536
@@ -472,7 +473,7 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 },
                 "serverInfo": {
                     "name": "secure-mitigation-system",
-                    "version": "0.10.0",
+                    "version": APP_VERSION,
                 },
             },
         )

@@ -38,6 +38,7 @@ import json
 import os
 import re
 import secrets
+import tempfile
 from enum import Enum
 from pathlib import Path
 
@@ -152,6 +153,9 @@ def decrypt_blob(blob: bytes, *, key: bytes) -> dict:
 _SINK_TOKENS = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
 
+_COMMENT_PREFIXES = ("#", "//", "--", "*", "<!--")
+
+
 def fingerprint_source(source: str) -> str:
     """Deterministic 64-hex fingerprint of a target's sink/flow structure.
 
@@ -159,13 +163,19 @@ def fingerprint_source(source: str) -> str:
     cosmetic rewrites fingerprint identically, while any change to the
     identifier/operator skeleton (the part attackers and patches touch)
     flips the digest.
+
+    Vacuous lines still contribute a kind tag (code vs comment vs blank)
+    so an empty source never digests identically to a comment-only one:
+    that collision would let a novel empty target recall as KNOWN.
     """
     normalized_lines: list[str] = []
     for line in source.splitlines():
         stripped = line.strip()
         if not stripped:
+            normalized_lines.append("blank|")
             continue
-        if stripped.startswith(("#", "//", "--", "*", "<!--")):
+        if stripped.startswith(_COMMENT_PREFIXES):
+            normalized_lines.append("comment|")
             continue
         no_strings = re.sub(r"'[^']*'|\"[^\"]*\"|`[^`]*`", "STR", stripped)
         no_numbers = re.sub(r"\b\d[\d._xXa-fA-F]*\b", "NUM", no_strings)
@@ -248,18 +258,39 @@ class VaultStore:
             pass
 
     def commit(self, payload: dict, *, fingerprint: str = "") -> str:
-        """Encrypt + persist one payload; returns its deterministic record id."""
+        """Encrypt + persist one payload; returns its deterministic record id.
+
+        Atomic: bytes land in a sibling temp file and are renamed over the
+        final path, so a crash can never leave a truncated .vault blob
+        that count() would count but nothing could decrypt.
+        """
         if not isinstance(payload, dict):
             raise VaultError("Vault payload must be a mapping.")
         record_id = _record_id(self.namespace, fingerprint, payload)
         stored = {"fingerprint": fingerprint, "payload": payload}
         blob = encrypt_blob(stored, key=self._key)
         path = self._blob_path(record_id)
+        tmp_fd = None
         try:
-            path.write_bytes(blob)
-            path.chmod(0o600)
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                dir=str(path.parent), prefix=record_id + ".", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(tmp_fd, "wb") as handle:
+                    tmp_fd = None
+                    handle.write(blob)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(tmp_name, 0o600)
+                os.replace(tmp_name, path)
+            finally:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
         except OSError as exc:
             raise VaultError(f"Vault write failed ({type(exc).__name__}).") from exc
+        finally:
+            if tmp_fd is not None:
+                os.close(tmp_fd)
         self._bump_index(fingerprint)
         return record_id
 
@@ -277,12 +308,15 @@ class VaultStore:
         """fingerprint -> count for this namespace (metadata only).
 
         Prefers the bounded JSON index (O(1)); falls back to a full decrypt
-        scan when the index is missing or corrupt (fail open to correctness).
+        scan when the index is missing or corrupt.
+        Fallback scan fails closed: blobs present but none decryptable
+        raises VaultError instead of reporting an empty (NOVEL) result.
         """
         indexed = self._read_index()
         if indexed is not None:
             return dict(indexed)
         counts: dict[str, int] = {}
+        unreadable = 0
         try:
             paths = list(self.namespace_dir.glob("*.vault"))
         except OSError as exc:
@@ -291,10 +325,13 @@ class VaultStore:
             try:
                 stored = decrypt_blob(path.read_bytes(), key=self._key)
             except VaultError:
+                unreadable += 1
                 continue
             fingerprint = stored.get("fingerprint", "")
             if isinstance(fingerprint, str) and fingerprint:
                 counts[fingerprint] = counts.get(fingerprint, 0) + 1
+        if unreadable and not counts:
+            raise VaultError("Vault blobs present but none decryptable; refusing empty result.")
         return counts
 
     def count(self) -> int:

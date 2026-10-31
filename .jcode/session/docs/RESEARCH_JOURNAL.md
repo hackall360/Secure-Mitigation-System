@@ -1,0 +1,1542 @@
+# Research Journal — scientific record per experiment
+
+Run: `overnight_1793434523077_12855248373640259943`.
+
+## E0 — Baseline recon (Phase 0)
+
+- Hypothesis: the tree is green at the claimed 770+ baseline and keyed+Docker
+  live proof is possible tonight.
+- Method: `python3 .jcode/tools/dev.py check` (full gate); check `.env` key
+  length only; `docker info`; read delta-closure brief + chain prompt state.
+- Control: no code changes; read-only recon.
+- Result: gate exit 0, **781 passed**; `.env` key length 48 present; Docker
+  29.9.2 live; delta-closure targets (resilient probes, unified chain) already
+  merged on develop (commits `e881e9b`, `60a6d17`, ship `0d53cec`).
+- Conclusion: $S_{current}$ = 781 green. Tonight's forge builds ON TOP of the
+  delta closure (novel chained fixtures + vault priors), not a re-run of it.
+- Reusable prior created: none (recon only).
+
+## E1 — Cycle 1: T4a traversal fixture, Red T4 finding, Blue guard, Gate-3 replay
+
+- Hypothesis: a novel traversal-gated file read (T4a) yields Red exit 0 →
+  Blue exit 1 with regressions green, and the abstracted guard replays on an
+  unseen variant (renamed identifiers, absolute-path attack).
+- Method: Green-authored `read_doc` join-without-check + `/read` service;
+  keyed `execute_project_workflow` cycles=1 (Red spark-1.3, Blue wonder-1.0);
+  then mechanical Gate-3 replay on renamed-variant tree; vault commit + recall.
+- Control: bundled fixtures untouched; source tree asserted byte-identical;
+  `docker ps/network` teardown check; UI lockdown holds (`static/` untouched).
+- Result: success=True, status retained, receipt pre=0/post=1/regressions 0/0,
+  differential_passed, cleanup ok, 6 model calls p11727/c25643 ≈$0.19.
+  Red found T4 (traversal to `../../secret.txt`, TOP-SECRET-FORGE) — the T2
+  eval sink was reported as candidate but NOT the retained finding; Blue
+  patched `read_doc` with realpath+startswith guard (diff in report).
+  Gate-3 replay PASS (traversal + abs-path blocked, benign ok).
+  Vault: red `6ad9156807d4`, blue `366e65412fc8`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-101-c1-live.txt`, `task-101-c1-report.json`,
+  `task-102-c1-vault.txt`.
+- Conclusion: Δ(C.1,D.1,E.1) → 0 for the T4a slice; T5-style unified chaining
+  on novel fixtures remains open (Red chose single-sink finding — see E2 plan).
+- Reusable prior created: T4a red probe strategy + blue containment template
+  (vault red/blue records above).
+
+## E2a — Cycle 2 attempt 1: Node T6+T2, Red exit 0, Blue over-budget (NEGATIVE)
+
+- Hypothesis: the Node fixture yields a retained Blue patch like Cycle 1.
+- Method: same keyed pipeline, cycles=1, Node service + node test contract.
+- Control: source asserted unmodified; teardown ran (cleanup in done line).
+- Result: ROLLED BACK — Red exit 0 (`eval executed typeof process`,
+  regression 0), but Blue's full arithmetic-parser replacement changed 96
+  lines over the 60-line surgical budget → guard rejected, no receipt, no
+  vault commit (correctly: no mathematical proof exists).
+  Cost: 4 calls p6270/c16306 ≈$0.26.
+  Evidence: run `validation/task-201-c2-live.txt`, `reports/forge-c2/`.
+- Conclusion: fail-closed guard worked as designed. This is a Blue-verbosity
+  failure, not a Red failure. Per the 3-attempt rule this is attempt 1 of 3,
+  NOT a rejection. Corrective vector: constrain the contract so Blue favors a
+  minimal allowlist (decimal-only, mirroring the bundled `isdecimal` pattern)
+  instead of a full parser — attempt 2 reuses the same tree with tightened
+  contract wording.
+- Reusable prior created: none (no proof). Negative result kept for the
+  Blue-prompt calibration record.
+
+## E2b — Cycle 2 attempt 2: minimal Blue patch, but benign contract broken (NEGATIVE)
+
+- Hypothesis: tightened contract wording yields a minimal Blue allowlist.
+- Method: same tree, contract + "decimal allowlist sufficient; do NOT write
+  a parser". Keyed cycles=1.
+- Result: ROLLED BACK — Blue complied (7-line `/^\d+(\.\d+)?$/` allowlist,
+  guard accepted). But the pre-existing `test_contract.js` asserts
+  `calc('40+2') == '42'`, and the decimal-only allowlist rejects `40+2` →
+  patched regression exit 1 ("Regression failed before probe") → fail-closed
+  rollback. The contract promised `/calc` for "decimal arithmetic" while the
+  test demands expression arithmetic (`40+2`): Green-authored contract/test
+  mismatch, attempt 2 of 3. Cost: 4 calls p6735/c15943 ≈$0.22.
+  Evidence: run `validation/task-202-c2b-live.txt`, `task-202-c2b-report.json`.
+- Conclusion: do NOT weaken the test (LAW 9B). Corrective vector for attempt 3:
+  fix the GREEN fixture so contract and test agree — change the test to assert
+  decimal-only behavior (`calc('42') == '42'`, reject `40+2` post-patch is
+  then correct-by-contract), making the decimal allowlist the right patch.
+  This is a Green fixture fix, not a test weakening: the contract already
+  said decimal arithmetic; the test overstated it.
+
+## E2c — Cycle 2 attempt 3: aligned fixture, VERIFIED (closes Cycle 2)
+
+- Hypothesis: Green-aligned decimal-only contract+test lets the minimal
+  allowlist verify.
+- Method: new Green tree (`calc('42')`/`calc('3.5')` benign, default expr
+  `'1'`, contract says single-decimal); same keyed pipeline.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok. Blue patch is 7 lines
+  (`/^\d+(\.\d+)?$/` allowlist). 6 calls p11661/c18501 ≈$0.19.
+  Evidence: run `validation/task-203-c2c-live.txt`, `task-203-c2c-report.json`.
+- Gate-3 replay PASS on renamed-variant Node tree (4/4 evil blocked:
+  `40+2`, `process.version`, `1;1`, `' 42'`; benign preserved).
+- Vault: red `de34c8111ebd`, blue `cc18b84b9ff8`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-204-c2-vault.txt`.
+- Conclusion: Δ(C.2,D.2,E.2) → 0. Cross-language transfer proven (Python T4a
+  → Node T2b). Blue-verbosity anti-pattern documented: full-parser patches
+  break the 60-line surgical guard; decimal allowlists verify.
+- Reusable prior created: T2b red probe strategy + blue decimal-allowlist
+  template (vault records above).
+
+## E3 — Cycle 3 external scout: PyJWT JWKS/alg audit (NEGATIVE, valuable)
+
+- Hypothesis: a permissively-licensed widely-used JWT library contains an
+  unguarded JWKS-fetch SSRF or `alg=none`/confusion acceptance at the
+  audited commit.
+- Method: LOCAL `git clone` (pyjwt @ `16231abf` 2026-10-14, MIT/BSD) +
+  LOCAL loopback experiments only; werkzeug debugger + click + itsdangerous
+  triaged and set aside (debugger sink is trust-gated, click has no sink,
+  itsdangerous uses constant-time compare).
+- Control: signed round-trip verifies; tampered/forged tokens rejected.
+- Result: 5/5 defensive shapes hold — unsigned decode is documented opt-in;
+  wrong-key forgery rejected; RS256→HS256 confusion rejected; non-http(s)
+  JWKS schemes rejected at constructor; 302-to-metadata not followed
+  (`_NoRedirectHandler`, fix ref `4adcd02`). NO candidate; no disclosure.
+- Conclusion: negative result with lasting value — the audit checklist
+  (scheme allowlist, no-redirect, alg allowlist, key-type binding) becomes a
+  reusable scout prior for the next external target. Next scout (Cycle 6)
+  picks a less-audited target class (small single-maintainer auth helper).
+- Reusable prior created: JWT/JWKS audit checklist (4 guards + 5 local
+  experiment shapes).
+
+## E4 — Cycle 4: T7+T1 unified chain, first-try VERIFIED
+
+- Hypothesis: a contract that names Link A/Link B and demands ONE unified
+  script yields a genuine chained Red proof and a minimal Blue patch.
+- Method: new Green tree (`/grant?role=` → cookie; cookie-gated
+  string-concat `/order?id=`); keyed cycles=1 with chain-explicit contract.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY (no rollbacks).
+  Blue patch is 1 line (parameterize). 6 calls p14157/c27695 ≈$0.28.
+  Unified-chain assertion holds: script hits /grant + role=admin + cookie
+  reuse + /order + tautology + exit0/exit1. Evidence: run
+  `validation/task-401-c4-live.txt`, `task-401-c4-report.json`.
+- Gate-3 replay PASS with corrected expectation: parameterization
+  neutralizes tautology to EMPTY (bundled semantics, proven against
+  sqlite3 directly), not to an exception — my first replay script was wrong,
+  the patch was right. Lesson recorded.
+- Vault: red `4a9146b18ac3`, blue `b09cb5a8f3ee`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-402-c4-vault.txt`.
+- Conclusion: Δ(C.4,D.4,E.4) → 0. True single-payload chaining proven on a
+  novel fixture — closes the 2b-3/4-style gap class for this chain shape.
+  Taxonomy extended: new T7 class (client-claimed role gate).
+- Reusable prior created: T7+T1 unified-probe strategy + parameterize
+  template with neutralization semantics (vault records above).
+
+## E5r — Cycle 5 self-review: diversity check (per directive, every 5 cycles)
+
+- Classes used: T4 (C1), T2+T6 (C2), T7+T1 (C4). Counts over 3 forge cycles:
+  T1×1, T2×1, T4×1, T6×1(co), T7×1. No class >40% (max 1/3 each as primary).
+  Languages: Python×2 (C1, C4), Node×1 (C2). Python = 67% — OVER the 40%
+  diversity bar by language.
+- Forced new direction: Cycle 5 MUST NOT be Python. Target: PHP (bundled
+  fixture family php_command_sink exists, so the Docker image runs PHP 8.4;
+  T3 command-argument sink is taxonomy-listed but has NO forge proof yet).
+- Cycle 5 plan: PHP T3a command-argument service (hostname passed to local
+  diagnostic command) + PHP-native benign test contract; keyed loop;
+  Gate-3 replay on renamed variant; vault T3a priors. C++ deferred: target
+  image has no compiler toolchain (python/node/php only) — recorded, not
+  attempted (would burn keyed spend on a doomed build).
+
+## E5a — Cycle 5 attempt 1: PHP T3a, model schema failure (INFRA, retry)
+
+- Hypothesis: PHP T3a verifies like the Python/Node cycles.
+- Method: keyed cycles=1, PHP built-in server + PHP HTTP contract; baseline
+  regression exit 0 in Docker (normal-input checks passed).
+- Result: 0 cycles completed — `verification_report` stage raised
+  "invalid JSON or unexpected response schema" (agents.py:323/334 path: the
+  model returned text that failed `model_validate_json` after fence-strip).
+  5 calls ≈$0.13 spent, no finding state changed, no source touched.
+  Evidence: run `validation/task-501-c5-live.txt`,
+  `validation/task-501-c5-report-error.json`.
+- Conclusion: infra-level model output fault, NOT a Red/Blue verdict and NOT
+  a fixture fault (attempt 1 of 3). Corrective vector: retry once verbatim
+  (transient shape faults often clear); if it recurs, shrink context (fewer
+  red agents) or re-phrase the contract before the 3rd attempt.
+
+## E5a2 — Cycle 5 attempt 2: same schema fault, earlier (INFRA)
+
+- Verbatim retry of attempt 1: failed FASTER (2 calls ≈$0.03, died in
+  `initial_report` instead of `verification_report`). Proves the fault is
+  systematic for this tree shape, not a one-off truncation: something about
+  the PHP tree + 5-agent prompt bulk makes the report model emit
+  schema-invalid text (likely over-long `analysis_summary`/probe or a
+  `no_finding` with finding fields, per the strict `RedReport` validator).
+- Corrective vector for attempt 3: slim the synthesis (red/blue agents 5→1,
+  shorter contract). Evidence: run `validation/task-502-c5b-*`.
+
+## E5b — Cycle 5 attempt 3 (slim agents=1): VERIFIED (closes Cycle 5)
+
+- Hypothesis: slimmer agent fan-out yields schema-valid reports on the PHP tree.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST slim run. Blue patch:
+  `is_string` guard + `escapeshellarg` (canonical T3a fix). Red vuln:
+  "OS command injection (T3a) in /ping?host= via unsanitized shell_exec
+  interpolation". 6 calls p8390/c13028 ≈$0.14 — CHEAPEST keyed cycle yet.
+  Evidence: run `validation/task-503-c5c-live.txt`, `task-503-c5c-report.json`.
+- Gate-3 replay PASS in Docker PHP: renamed-variant `escapeshellarg` prior —
+  `a;echo PWNED` inert (single-quoted, no execution), benign `web01` ok.
+- Vault: red `bc06d91cdbed`, blue `e63fc6e43cea`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-504-c5-vault.txt`.
+- Conclusion: Δ(C.5,D.5,E.5) → 0. Language diversity restored (PHP joins
+  Python+Node). New reusable tactic: slim agents=1 for small trees — cheaper
+  AND more schema-reliable; default 5-agent fan-out is for large surfaces.
+- Reusable prior created: T3a red probe + blue escapeshellarg template
+  (vault records above).
+
+## E6 — Offline regression sweep + stale-resource finding (2026-10-31)
+
+- Hypothesis: the forge branch (docs-only + reports/) keeps all 3 bundled
+  fixtures verified.
+- Method: `.venv/bin/python .jcode/tools/offline_scan.py` (deterministic
+  KnownMuse, real Docker).
+- Result: 3/3 verified (node pre=0/post=1, chain pre=0/post=1, php
+  pre=0/post=1), baseline+regression True, cleanup True per-card.
+  Evidence: run `validation/task-601-offline.txt`.
+- Incidental finding: post-sweep, 1 running `target` container + 1 exited
+  verifier (`affectionate_liskov` exit 0) + 5 session networks + 4 snapshot
+  images lingered. `remove_stale_resources` reaped all
+  ({containers: 4, networks: 5, snapshots: 4}). Root cause: my `timeout 120`
+  wrapper SIGTERMed the sweep mid-run (exit 124) AFTER all 3 cards printed
+  but BEFORE/AROUND session close — the cards prove the loop finished, the
+  kill landed during teardown. Lesson: give offline_scan a generous timeout
+  (≥300s) and never SIGTERM it; verify `cleanup=True` per card AND zero
+  session resources after. No code change needed (harness behaved; operator
+  killed it).
+
+## E6b — Cycle 6 scout: werkzeug safe_join/send_from_directory (NEGATIVE, valuable)
+
+- Hypothesis: a traversal bypass (`..`/absolute/encoded/doubledot/nested/
+  backslash) escapes `send_from_directory` at the audited commit.
+- Method: LOCAL clones (werkzeug @ `2adaad1a`, flask @ `49943b5a`); unit
+  battery on `safe_join` + end-to-end in-process WSGI `Client` battery (no
+  sockets). werkzeug-debugger triage from Cycle 3 carried over (trust-gated).
+- Control: `welcome.txt` serves 200 in every battery.
+- Result: 5/5 defensive shapes hold — all escapes → `None`/404; `%2e` forms
+  404 end-to-end; backslash is literal-filename on POSIX (documented);
+  symlinks documented out-of-scope. NO candidate; no disclosure.
+- Conclusion: second consecutive guarded-target negative. Pattern: mature
+  Pallets code is a hardened audit classroom, not a finding source. Next
+  scout (Cycle 9) MUST pick the planned smaller class: single-maintainer
+  upload/auth helper, not a flagship framework.
+- Reusable prior created: traversal-audit battery (10 safe_join shapes + 6
+  end-to-end WSGI paths) reusable against any file-serve target.
+
+## E7a — Cycle 7 attempt 1: SSRF fixture UNVERIFIABLE in sandbox (NEGATIVE, attempt 1 of 3)
+
+- Hypothesis: an SSRF-gated fetch chain verifies like the T7 cookie-gated chain.
+- Method: new Green tree (`/profile?user=` → `http://<user>.internal/`;
+  `/theme?spec=` eval, decimal-only contract); keyed slim agents=1.
+- Result: INCONCLUSIVE — Red's own probe is excellent honest work: Link B
+  confirmed vuln (`7*7` → `49`), but every Link A SSRF shape returned 502
+  (`target-service:8080#probe`, `127.0.0.1:8080`, `localhost:8080` all
+  `upstream error`), and even baseline `no-such-host` TIMED OUT inside the
+  air-gapped sandbox (`network_mode=none` — DNS/egress cannot resolve, and
+  the 2s urlopen timeout + verifier deadline collide). Red correctly exited 2
+  instead of forcing a verdict. Fail-closed held: no changes requested.
+  Cost: 3 calls ≈$0.12.
+  Evidence: run `validation/task-701-c7-live.txt`, `task-701-c7-report.json`.
+- Conclusion: the FIXTURE is at fault, not Red/Blue. An SSRF that must reach
+  a live upstream cannot prove inside `network_mode=none`. Corrective vector
+  for attempt 2: Green redesign — make Link A RESOLVE LOCALLY (point the
+  fetch at `target-service:8080` itself, i.e. a self-referential profile
+  endpoint served by the SAME app), so the chain proves without egress.
+  The vuln shape (host interpolated into fetch URL) is preserved; only the
+  target becomes loopback-reachable. This is Green fixture surgery, attempt 2.
+
+## E7b — Cycle 7 attempt 2: loopback redesign still 502 (NEGATIVE, attempt 2 of 3)
+
+- Hypothesis: pointing Link A at self-served `/profiles/` makes the chain
+  loopback-provable.
+- Method: new Green tree with `INTERNAL_HOST="target-service"`, `/profiles/`
+  static JSON served by the same app; default `user="target-service"`.
+- Result: INCONCLUSIVE again — Red's normal check
+  `/profile?user=target-service` → **502**. Why: inside the sandbox the
+  target's own hostname is `target-service` ONLY as seen by the PROBER
+  (verifier container, via network alias); the TARGET container itself
+  resolving `http://target-service:8080/...` requires hairpin through the
+  isolated network's embedded DNS — which evidently fails (the target cannot
+  dial its own alias; `fetch_profile('target-service')` → URLError in
+  isolation). The default benign path itself is broken in-sandbox, so ANY
+  probe fails the normal check first. Cost: 3 calls ≈$0.10.
+  Evidence: run `validation/task-702-c7b-live.txt`, `task-702-c7b-report.json`.
+- Conclusion: Green surgery needed again — Link A must fetch WITHOUT the
+  network: attempt 3 replaces the HTTP self-fetch with a LOCAL profile-store
+  read whose KEY is attacker-influenced (`profiles/<user>.json` file path,
+  i.e. T8-becomes-T4: SSRF-shaped selector over a local store). The vuln
+  class shifts from true-SSRF to selector-injection, but the CHAIN shape
+  (Link A selector → Link B eval, one unified script) is preserved and
+  provable. Attempt 3 of 3: if the unified chain verifies, commit T8b as a
+  selector-injection subclass with the lesson; if not, REJECT the SSRF
+  family for sandbox-provable chains and log F-reject.
+
+## E7c — Cycle 7 attempt 3 (7c selector shape): VERIFIED (closes Cycle 7)
+
+- Hypothesis: recasting Link A as a loopback-free local-store selector keeps
+  the unified-chain semantics provable in the sandbox.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok. Red vuln: "Chained local file read
+  via path traversal in fetch_profile ... and Python code injection via
+  eval in apply_theme" — ONE unified script hitting /profile + /theme +
+  secret. Blue patched BOTH links (regex allowlist + realpath/commonpath
+  for A; decimal-regex for B) and still fit the surgical budget.
+  6 calls p12834/c24207 ≈$0.25 — the richest patch of the night.
+  Evidence: run `validation/task-703-c7c-live.txt`, `task-703-c7c-report.json`.
+- Gate-3 replay PASS on renamed variant (traversal + eval both blocked,
+  benign ok).
+- Vault: red `256ab8c3e090`, blue `95a4d221b4c2`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-704-c7-vault.txt`.
+- Conclusion: Δ(C.7,D.7,E.7) → 0 with a lesson bigger than the fixture:
+  TRUE SSRF is unprovable in `network_mode=none` (DNS/egress dead, self-dial
+  fails) — the forge's provable SSRF class is selector-injection over local
+  resources (T8b), which keeps the exact chain semantics (attacker-controlled
+  resource selector + sink). Taxonomy extended: new T8 class with a/b
+  subclasses (a=true-SSRF unprovable-here, b=selector provable).
+- Reusable prior created: T8b+T2c unified probe + dual allowlist+containment
+  template (vault records above).
+
+## E8 — Cycle 8: Node cross-language T4a-variant, first-try VERIFIED
+
+- Hypothesis: the Python T4a realpath-guard prior replays on Node as
+  `path.resolve` + `startsWith` containment (cross-language transfer).
+- Method: new Green Node tree (`readDoc` join-without-check + eval `calc`,
+  decimal-only contract); keyed slim agents=1.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln was the eval
+  sink ("unsanitized eval in calc") with traversal co-present; Blue patched
+  BOTH (resolve+startsWith guard AND decimal-regex) inside budget.
+  6 calls p10018/c20771 ≈$0.21.
+  Evidence: run `validation/task-801-c8-live.txt`, `task-801-c8-report.json`.
+- Gate-3 replay PASS on renamed Node variant (vuln pre-patch leaks,
+  patched blocks `../../hidden.txt`, `/etc/hostname`, `..`; benign ok).
+  (My first two replay scripts had wrong `../` depth — script errors, not
+  patch errors; corrected.)
+- Vault: red `20734eb19022`, blue `11d9759e7414`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-802-c8-vault.txt`.
+- Conclusion: Δ(C.8,D.8) → 0. Cross-language transfer PROVEN: the T4a
+  containment prior (Python realpath) materialized independently in Node
+  (path.resolve) under keyed synthesis — the taxonomy prior class now spans
+  languages. Taxonomy: new T4b (Node) + T2d (Node decimal) subclasses.
+- Reusable prior created: T4b+T2d Node red probe + dual guard template.
+
+## E9 — Cycle 9 scout: Flask-File-Upload audit (NEGATIVE, valuable)
+
+- Hypothesis: a stale single-maintainer upload helper (last commit 2023)
+  contains a traversal or allowlist bypass the flagships fixed long ago.
+- Method: LOCAL clone (`joegasewicz/flask-file-upload` @ `d914b3a`, MIT) +
+  LOCAL string-level batteries replicating the exact save/stream shapes.
+- Control: benign `x.mp4` survives both gates; hostile names neutralize.
+- Result: save-time `secure_filename` + stream-time `safe_join` both hold;
+  stored-ext mismatch (`split` vs `rsplit`) is real but UNCONSUMED (tests
+  only); client MIME stored but unused in decisions; extensionless crash
+  unreachable via the guarded entry. NO candidate; no disclosure.
+- Conclusion: the "smaller target" heuristic did not pay off this time —
+  small does not mean sloppy here. The ext-mismatch wart is worth one
+  upstream note IF we ever engage (not tonight: no contact, no publish).
+  Next scout direction (Cycle 12+): MIME-sniffing/serving behavior or a
+  non-Python target (PHP/Node micro-helper).
+- Reusable prior created: upload-helper audit battery (sanitize-at-save,
+  safe_join-at-stream, ext-split consistency, MIME trust, crash
+  reachability) reusable against any upload target.
+
+## E10r — Cycle 10 self-review: diversity check (every 5 cycles)
+
+- Forge cycles 1-9: classes T4×3 (a, b, co), T2×5 (a-co, b, c, d), T1×1,
+  T3×1, T6×1(co), T7×1, T8×1. No class primary >40% as the RETAINED finding
+  family (T2 co-occurs but leads only C2/C8 — 2/6 = 33% < 40% ✓).
+  Languages (keyed cycles): Python×3 (C1, C4, C7), Node×2 (C2, C8),
+  PHP×1 (C5). Python = 50% — OVER the 40% bar by letter, but the last two
+  keyed runs were Node (C8) and the scouts covered Python libs; the
+  trajectory is diversifying.
+- Scouts 3/6/9: PyJWT (guards hold), werkzeug (guards hold), FFU
+  (double-closed). Three consecutive well-guarded negatives: pattern says
+  flagship + maintained code is hardened; next scout should go EXOTIC
+  (PHP/Node micro-helper, MIME/serving behavior) or PAUSE scouting in favor
+  of Green depth.
+- Forced direction for Cycle 10: PHP (least-used keyed language, 1/6) +
+  a FAMILY with no forge proof yet. Unproven: T5-style logic-abuse gate on
+  a NEW shape, or T6 XSS end-to-end (only co-present so far), or T3 second
+  variant (PHP escapeshellarg replay in a new sink shape). Choice: T6
+  reflected-XSS end-to-end in PHP — closes the "XSS only co-present"
+  gap and replays the Cycle-5 PHP harness knowledge.
+
+## E10 — Cycle 10: PHP T6b reflected XSS end-to-end, first-try VERIFIED
+
+- Hypothesis: the self-review-forced T6 end-to-end (PHP, least-used keyed
+  language) verifies with the canonical `htmlspecialchars` patch.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Reflected
+  XSS in GET /hi?name=". Blue: `is_string` guard + `htmlspecialchars(...,
+  ENT_QUOTES, 'UTF-8')`. 6 calls p8232/c12191 ≈$0.16 — cheap (slim agents).
+  Evidence: run `validation/task-1001-c10-live.txt`,
+  `validation/task-1001-c10-report.json`.
+- Gate-3 replay PASS in Docker PHP on renamed variant (script tag
+  neutralized to entities, `O'Brien` quote escaped, benign ok).
+- Vault: red `b5753bddae95`, blue `517a43a5ddea`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1002-c10-vault.txt`.
+- Conclusion: Δ(C.10) → 0. T6 now proven END-TO-END (was co-present only in
+  C2). Taxonomy: new T6b (PHP) subclass. Keyed tally: Python×3, Node×2,
+  PHP×2 — within the 40% diversity bar at last (max 3/7 ≈ 43% Python...
+  still marginally over; next Green stays non-Python).
+- Reusable prior created: T6b red marker probe + htmlspecialchars template.
+
+## E11 — Cycle 11: Node T9+T4 invite-gate chain, first-try VERIFIED
+
+- Hypothesis: the T7 cookie-gate chain shape replays in Node with an
+  invite-code gate (new T9 subclass) + traversal store.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Chained
+  member-gated path traversal: badge from /redeem ... enables unsanitized
+  readNote". Unified script hits /redeem + badge + Cookie + ../ + secret +
+  exit0/exit1. Blue patched Link B (strict containment, EINVAL→400) and left
+  Link A semantics intact. 6 calls p13896/c31458 ≈$0.27.
+  Evidence: run `validation/task-1101-c11-live.txt`,
+  `validation/task-1101-c11-report.json`.
+- Gate-3 replay PASS on renamed variant (4/4 evil blocked incl. `..` and
+  empty; benign ok).
+- Vault: red `26245a5fb2af`, blue `8af210c7fd86`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1102-c11-vault.txt`.
+- Conclusion: Δ(C.11) → 0. Second unified A→B chain on a novel fixture
+  (C4 was Python role-cookie+SQLi; C11 is Node invite-badge+traversal) —
+  the chain-contract pattern (name Link A/Link B, demand ONE script)
+  reproduces across languages and sink families. Taxonomy: new T9 class
+  (invite/badge gate).
+- Reusable prior created: T9+T4 Node unified probe + strict-containment
+  template.
+
+## E12 — Cycle 12 scout: sabre/vobject + sabre/xml audit (NEGATIVE, valuable)
+
+- Hypothesis: an exotic PHP calendar/vCard stack contains XXE, code-exec
+  sinks, or ReDoS-able parser regexes.
+- Method: LOCAL clones + grep audit + Docker-PHP PCRE timing battery.
+- Control: benign shapes parse; regex batteries return in ~0.00s.
+- Result: no sinks; entity loader disabled (version-gated, correct);
+  XXE live-fire impossible here (no XMLReader class in target PHP);
+  no ReDoS on tested shapes. NO candidate; no disclosure.
+- Conclusion: 4th consecutive guarded negative across 3 languages. Pattern
+  confirmed: maintained open-source parsing stacks are hardened. The
+  forge's comparative advantage is SYNTHESIS (novel chained fixtures),
+  not discovery in mature code. Next scout (if any) should be a
+  zero-dependency single-file helper, or scouting pauses while Green runs.
+- Reusable prior created: parser-stack audit battery (sink grep, entity
+  flags, ReDoS timing, extension availability).
+
+## E13 — Cycle 13: PHP T3-variant archive sink, first-try VERIFIED
+
+- Hypothesis: the escapeshellarg prior replays in a NEW sink shape (tar
+  listing of a user-named archive) with an allowlist upgrade.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "OS command
+  injection (T3) in /extract via unsanitized archive parameter" — marker
+  `backup.tgz; echo MARKER` reflected in the listing JSON pre-patch.
+  Blue: allowlist-regex (`[A-Za-z0-9._-]*\.tgz`, no `..`) + escapeshellarg
+  full path AND realpath+is_file containment for the co-present T4 read.
+  6 calls p10236/c17206 ≈$0.21.
+  Evidence: run `validation/task-1301-c13-live.txt`,
+  `validation/task-1301-c13-report.json`.
+- Gate-3 replay PASS in Docker PHP on renamed variant (`.tar.gz` suffix,
+  different layout; injection + traversal-name + metachar all inert).
+- Vault: red `d6387a003a23`, blue `bf98fd13ec7b`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1302-c13-vault.txt`.
+- Conclusion: Δ(C.13) → 0. T3 second variant proven (T3c): the allowlist
+  discipline transfers across sink shapes, and Blue independently hardened
+  the co-present T4 (defense in depth without being asked). Taxonomy: new
+  T3c subclass.
+- Reusable prior created: T3c tar-sink allowlist+escape template.
+
+## E15r — Cycle 15 self-review: diversity check (every 5 cycles)
+
+- Keyed cycles since E10r: C10 PHP T6b ✓, C11 Node T9+T4 ✓, C13 PHP T3c ✓.
+  Full keyed tally: Python×3 (C1, C4, C7), Node×3 (C2, C8, C11), PHP×3
+  (C5, C10, C13). PERFECT 3/3/3 balance — first time tonight.
+- Scouts 3/6/9/12: PyJWT, werkzeug, FFU, sabre — all negative-valuable,
+  3 Python + 1 PHP. Pattern confirmed for the 4th time: maintained parsing
+  stacks are hardened; synthesis beats discovery here.
+- Class coverage: T1×1, T2×5(co-occurring), T3×2(a,c), T4×4(a,b,co,co),
+  T5×0(bundled-only), T6×2(a-co,C2; b,C10), T7×1, T8×1, T9×1. Gaps: T5
+  (logic-abuse gate→query chain) has NO forge proof outside the bundled
+  node_chain_link fixture; T6 only PHP (no Node XSS end-to-end).
+- Forced direction for Cycles 14-16: (a) T5-style logic-abuse chain on a
+  NOVEL Node fixture (closes the last unproven bundled family); (b) next
+  scout (Cycle 15) goes Node-micro-helper or PAUSES scouting in favor of
+  Green depth, per E12 conclusion.
+
+## E14 — Cycle 14: Node T5b promo-gate eval chain, first-try VERIFIED
+
+- Hypothesis: the last unproven bundled family (T5 logic-abuse gate→query)
+  verifies on a novel Node fixture with a promo-code gate + template eval.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok, FIRST TRY. Red vuln: "Chained
+  unauthenticated RCE: PRO-2026 badge (Link A) enabling projection eval
+  (Link B)". Unified-script assertion holds (/grant + tier + Cookie +
+  exit0/exit1). Blue: dual decimal allowlist + Number arithmetic, eval
+  eliminated. 6 calls p11942/c22781 ≈$0.19 — cheapest chain yet.
+  Evidence: run `validation/task-1401-c14-live.txt`,
+  `validation/task-1401-c14-report.json`.
+- Gate-3 replay PASS (paren-breaker `5) + (7*6`, attr access, `;` all
+  blocked; `100/5=105`, `42/0=42` preserved).
+- Vault: red `1f9cdccfa4b4`, blue `3f2a9723607d`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1402-c14-vault.txt`.
+- Conclusion: Δ(C.14) → 0. T5 now proven on a NOVEL fixture (T5b) beyond the
+  bundled node_chain_link — every bundled family (T1-T6) has a forge-novel
+  proof except none. Taxonomy: new T5b subclass.
+- Reusable prior created: T5b dual-decimal template-eval replacement.
+
+## E15 — Cycle 15 scout: @hapi/shot audit (INCONCLUSIVE-valuable, first tonight)
+
+- Hypothesis: prototype pollution via header merge in a 411-line Node
+  test-injection helper.
+- Method: LOCAL clone + grep + static loop replication. LIMIT: deps absent,
+  so no live `inject()` execution — the one scout tonight that could not
+  close its own loop locally.
+- Result: no sinks; static `__proto__` replication shows no pollution in
+  the isolated loop shape, but the REAL constructor path (hoek helpers)
+  was not executed. Recorded as HYPOTHESIS-open, NOT cleared — the
+  first honest inconclusive scout of the night. Lesson: small/exotic does
+  not mean testable without its dependency closure; next exotic scout
+  must be ZERO-dependency single-file (or budgeted with an install step
+  inside the sandbox, never on the host).
+- Reusable prior created: micro-helper audit battery (sink grep, header
+  merge `__proto__` static replication, payload key traversal, dep-closure
+  check FIRST).
+
+## E16a — Cycle 16 attempt 1: stateful fixture vs read-only runtime (NEGATIVE, attempt 1 of 3)
+
+- Hypothesis: a stored-XSS guestbook verifies like the stateless cycles.
+- Method: new Green tree (`/sign` appends to `notes.json` in `__DIR__`,
+  `/wall` renders); keyed slim agents=1.
+- Result: 0 cycles — baseline regression itself failed (`FAIL Ada`):
+  the target runtime is `read_only: True` (tmpfs only on `/tmp`), so
+  `file_put_contents(__DIR__/notes.json)` silently fails (`@` suppressor)
+  and the wall never contains Ada. Green fixture bug, not a Red/Blue
+  verdict — no model fault, no keyed verdict spend beyond baseline.
+  Cost: baseline-only calls.
+  Evidence: run `validation/task-1601-c16-live.txt`, `reports/forge-c16/`.
+- Conclusion: Green surgery (attempt 2): store at `/tmp/forge16-notes.json`
+  (the writable tmpfs). Stateful fixtures MUST write to `/tmp`.
+  New trap for TRAPS.md.
+
+## E16b — Cycle 16 attempt 2 (/tmp store): VERIFIED (closes Cycle 16)
+
+- Hypothesis: the /tmp-store guestbook verifies end-to-end (two-step
+  sign→wall probe).
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, differential_passed, cleanup ok. Red vuln: "T6c Stored XSS:
+  /sign?author= stores raw input ... /wall renders it unescaped" —
+  two-step probe (sign marker, read wall) confirmed. Blue: RENDER-time
+  escaping (coerce scalar + `htmlspecialchars(ENT_QUOTES|ENT_SUBSTITUTE)`),
+  store stays raw — the correct stored-XSS doctrine. 6 calls p9542/c13549
+  ≈$0.16.
+  Evidence: run `validation/task-1602-c16b-live.txt`,
+  `validation/task-1602-c16b-report.json`.
+- Gate-3 replay PASS (renamed variant: `<img onerror>` neutralized,
+  numeric coerced, non-scalar neutralized).
+- Vault: red `e82ce135d029`, blue `8d071b865442`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1603-c16-vault.txt`.
+- Conclusion: Δ(C.16) → 0. T6c stored-XSS proven distinct from T6b
+  reflected — render-time escaping (not store-time mangling) is the pinned
+  doctrine. Taxonomy: new T6c subclass.
+- Reusable prior created: T6c two-step probe + render-time escaping template.
+
+## E20r — Cycle 20 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python×3 (C1, C4, C7), Node×4 (C2, C8, C11, C14), PHP×4
+  (C5, C10, C13, C16). Max 4/11 = 36% < 40% ✓ — first fully-balanced
+  checkpoint of the night.
+- Scouts: 3, 6, 9, 12, 15 (4 negative-valuable, 1 inconclusive-valuable).
+  Pattern stands: synthesis beats discovery in maintained code.
+- Class coverage: T1×2 (C4 + bundled), T2×6, T3×3 (a, c + bundled PHP),
+  T4×4, T5×2 (a-bundled, b-novel), T6×3 (a-crucible, b, c), T7×1, T8×1,
+  T9×1. Every bundled family now has a forge-novel proof.
+- Forced direction: Cycle 17+ stays Green-depth (new sink shapes or
+  cross-language replays); scouts pause until Cycle 18 except a
+  zero-dependency single-file exotic. Next: PHP T4d store variant
+  (new shape, keeps PHP momentum) or Node T2 fourth-variant.
+
+## E17a — Cycle 17 design REJECTED pre-spend (Green self-review win, 2026-10-31)
+
+- Hypothesis for T4d: `basename($name)` store reads are traversal-safe —
+  tested the hypothesis with a 6-shape battery in Docker PHP BEFORE any
+  keyed spend: `basename()` ALWAYS returns the final component, so NO
+  input escapes `notes/`. A `basename()` fixture is NOT vulnerable; a keyed
+  run on it would burn ~$0.20 for a guaranteed Red exit-1 (no finding).
+- Decision: REJECT the T4d design at Gate 0 (pre-check), $0 spent. This is
+  the forge's first Gate-0 design rejection — the taxonomy question itself
+  was wrong, and the cheap local battery caught it. Lesson: every Green
+  design gets a LOCAL vuln-shape proof (like the C13/C16 smokes) before
+  keyed spend; basename/allowlist-shaped "sinks" are containment, not vulns.
+- Redirect: Cycle 17 becomes Node T2e — `Function()` constructor sink
+  (distinct from `eval()`: `new Function('return ' + expr)`), a genuinely
+  different sink shape in the SAME family. Local vuln-shape proof first.
+
+## E17b — Cycle 17 attempt 1: Red→Blue→verify green, final-report schema fault (INFRA, attempt 1 of 3)
+
+- Key point: Red exit 0 STOOD and Blue's proposal was ACCEPTED (guard
+  passed) — the pipeline reached the FINAL `verification_report` stage and
+  only the last Red report failed schema validation (same agents.py:323/334
+  path as C5a). Pre-patch proof + patch both exist; only the closing
+  report is malformed. Cost: 5 calls ≈$0.20.
+  Evidence: run `validation/task-1701-c17-live.txt`,
+  `validation/task-1701-c17-report-error.json`.
+- Corrective vector (attempt 2): the C5 lesson says slim agents already
+  (1+1 here) — so the fault is NOT fan-out bulk this time. Retry verbatim
+  once (transient shape faults happen); if it recurs, shorten the contract
+  (fewer steering sentences → smaller report surface) for attempt 3.
+
+## E17c — Cycle 17 attempt 2 (verbatim retry): VERIFIED — with a PARTIAL-patch lesson
+
+- Hypothesis: the attempt-1 schema fault was transient.
+- Result: TRUE — success=True, status retained, receipt pre=0/post=1/
+  regressions 0/0, cleanup ok. 6 calls p11393/c24599 ≈$0.28.
+  Evidence: run `validation/task-1702-c17b-live.txt`,
+  `validation/task-1702-c17b-report.json`.
+- BUT the retained finding is the T4 traversal, NOT the T2e Function sink:
+  Blue patched ONLY `readDoc` (strict containment); the Function
+  constructor is untouched and still live. The receipt proves "traversal
+  closed", NOT "fixture clean". This is a PARTIAL patch wearing a retained
+  receipt — the pipeline's contract counts per-finding closure, and Red
+  chose ONE finding. Correct handling: vault records the partial
+  explicitly (T2e left open), Gate-3 replays the CLOSED link, and the OPEN
+  T2e gets its own follow-up fixture (T2e-only tree, no traversal
+  competition) rather than pretending this cycle closed it.
+- Gate-3 replay PASS on renamed variant (traversal blocked incl. empty,
+  benign ok).
+- Vault: red `1dccdbe650ff`, blue `7ee3a5a461ec` (with partial_note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1703-c17-vault.txt`.
+- Conclusion: Δ(C.17) → 0 for the RETAINED link; T2e stays OPEN by explicit
+  record. New taxonomy: T2e (Function-constructor sink, Gate-0 proven
+  locally) + T4c (Node containment, second Node proof).
+- Reusable prior created: T4c containment template; T2e Function-sink probe
+  (Gate-0 proven, vault-anchored for the follow-up).
+
+## E18 — Cycle 18: T2e-only follow-up, first-try VERIFIED (closes the C17 OPEN record)
+
+- Hypothesis: the solo Function-constructor box verifies with a tight
+  char-class allowlist, closing the C17 OPEN T2e record.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "Remote arbitrary JavaScript
+  execution via unsanitized Function-constructor sink". Blue: length cap +
+  char-class allowlist (`[0-9x+\-*/%(). \t\r\n]`), constructor retained.
+  6 calls p9743/c28984 ≈$0.27.
+  Evidence: run `validation/task-1801-c18-live.txt`,
+  `validation/task-1801-c18-report.json`.
+- Audit honesty: my own 5-shape battery shows `process.version`,
+  `x.constructor`, `;`, arrows all BLOCKED — but the constructor is NOT
+  eliminated and `x`/`.`/parens remain, so the patch is WEAKER than C14's
+  Number-arithmetic rewrite. Vault records the residual + the stronger
+  follow-up explicitly. The receipt proves "known probes blocked", not
+  "sink eliminated" — labeled, not oversold.
+- Gate-3: shape-verified by the same battery (benign preserved, 4/4 evil
+  blocked); no separate variant needed (the audit IS the replay).
+- Vault: red `44dc77251d86`, blue `8fe325cb2fa3` (with residual note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1802-c18-vault.txt`.
+- Conclusion: the C17 OPEN record is now CLOSED-by-proof with residual
+  documented. Δ(C.18) → 0. Prior count: 59 known archetypes.
+- Reusable prior created: T2e char-class containment template + residual
+  documentation pattern (prove-blocked AND state-what-remains).
+
+## E25r — Cycle 25 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7 (3) + Node C2, C8, C11, C14, C17, C18 (6)
+  + PHP C5, C10, C13, C16 (4). Total 13. Node = 6/13 = 46% — OVER the 40%
+  bar. Last three keyed runs: C16 PHP, C17 Node, C18 Node.
+- Forced direction: Cycles 19-20 MUST be PHP (least-recent non-Node run
+  was C16) or Python (tied least at 3/13). No more Node until balance
+  restores. Next: PHP T4e (symlink-aware store read — new shape, local
+  Gate-0 battery first per the T4d rule).
+- Scouts 3/6/9/12/15: 4 negative + 1 inconclusive. Next scout (Cycle 21
+  cadence): zero-dependency single-file helper ONLY (dep-closure rule).
+
+## E19a — Cycle 19 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5a/C17a: Red exit-0 proof + Blue proposal accepted,
+  then the FINAL verification report fails schema validation (5 calls
+  ≈$0.12; note the last call's odd shape p830/c3354 — long completion on a
+  short prompt, classic over-long-report truncation/validator-mismatch).
+- Corrective vector: verbatim retry (attempt 2); the C17 precedent says
+  transient faults clear on retry.
+
+## E19b — Cycle 19 attempts 2-3: systematic schema fault → short-contract VERIFIED
+
+- Attempt 2 (verbatim retry) failed IDENTICALLY at the closing report
+  (5 calls ≈$0.14) — systematic for this fixture shape, not transient.
+  Attempt 3 cut the contract to 3 short sentences ("Sanitize input
+  minimally") → VERIFIED first-try of the slim shape: success=True,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. 6 calls p11055/c19475
+  ≈$0.20.
+  Evidence: run `validation/task-1902-c19b-*` (error), `task-1903-c19c-*`.
+- Lesson (3rd confirmation after C5/C17): long steering contracts correlate
+  with closing-report schema faults; short contracts verify. The mechanism
+  is unproven (no access to the raw malformed JSON), but the correlation
+  is now 3/3 — worth a platform-level note in the judging evidence.
+  Cost of learning: 2 failed runs ≈$0.26.
+- Gate-3 replay PASS on renamed variant (nested store; traversal → 400).
+- Vault: red `3de754d6ef13`, blue `f2d0692014af`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1904-c19-vault.txt`.
+- Conclusion: Δ(C.19) → 0. T4e (check-then-read split, TOCTOU) proven and
+  closed with the resolve-FIRST doctrine. Taxonomy: new T4e subclass.
+- Reusable prior created: T4e resolve-then-check template + short-contract
+  rule (3rd confirmation).
+
+## E30r — Cycle 30 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7 (3) + Node C2, C8, C11, C14, C17, C18 (6)
+  + PHP C5, C10, C13, C16, C19 (5). Total 14. Node = 6/14 = 43% — STILL
+  over the 40% bar (was 46%, improving). PHP now 5/14 = 36% ✓.
+- Scouts: 3, 6, 9, 12, 15 (4 neg + 1 inconclusive). Cycle 21 cadence due:
+  per E15, ZERO-dependency single-file exotic ONLY.
+- Class coverage: T1×2, T2×7 (a-e shapes), T3×3, T4×5 (a,b,c,e + co),
+  T5×2, T6×3, T7×1, T8×1, T9×1. No family unproven.
+- Forced direction: Cycles 20-22 = PHP/Python Green depth (restore Node
+  balance); Cycle 21 scout = single-file zero-dep exotic or SKIP.
+
+## E21 — Cycle 21 scout: `he` entity codec (NEGATIVE-valuable, zero-dep rule met)
+
+- Hypothesis: the canonical zero-dependency entity codec mishandles a
+  forge payload class or its decode enables XSS.
+- Method: LOCAL clone (`mathiasbynens/he` @ `e5658ecc` v2.0.0, MIT) + LOCAL
+  ESM batteries on `src/he.mjs` (254 lines, no deps — first exotic scout
+  to satisfy the zero-dependency rule).
+- Control: roundtrip exact; 200KB perf flat.
+- Result: encode neutralizes all T6 shapes; double-encode is correct;
+  strict mode throws closed; numerics + astral per spec. NO candidate.
+  Cross-validates the forge's htmlspecialchars doctrine (PHP twin).
+- Conclusion: even the ideal exotic target (tiny, single-file, zero-dep)
+  is hardened. The night's discovery ledger is now 4 neg + 1 inconclusive
+  + 1 neg across 6 scouts — the synthesis engine (13 verified chains) is
+  the proven frontier instrument, scouting the control arm. Next: Green
+  depth continues; scouts only on zero-dep single-file from here.
+- Reusable prior created: encoder-audit battery (payload suite, double-encode
+  direction, strict-vs-legacy, numeric/astral, perf cliff) + `he` option table.
+
+## E22a — Cycle 22 Gate-0: ORDER BY/LIMIT injection CONFIRMED exfiltrative (proceed)
+
+- Battery: `CASE WHEN 1=1/1=2` in `sort_by` flips row ORDER deterministically
+  (`cy,amy,bo` vs `cy,bo,amy`) — boolean-based blind signal. `LIMIT 1-1`
+  returns empty vs `LIMIT 1` returns `cy` — arithmetic-evaluation signal.
+  Traversal co-present (`../../secret.txt` → TOP-SECRET-FORGE22).
+- All three links Green-provable locally. Proceed to keyed run with a
+  boolean-flip Red contract.
+
+## E22b — Cycle 22 keyed run: T1c ORDER-BY/LIMIT VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven boolean-flip signal verifies under the
+  shortest contract shape (2 sentences + benign line).
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "SQL Injection in leaderboard()
+  via unsanitized sort/dir/limit". Blue: column/direction allowlists +
+  `int(limit)` + `LIMIT ?` parameterize. 6 calls p12958/c23376 ≈$0.21.
+  Evidence: run `validation/task-2201-c22-live.txt`,
+  `validation/task-2201-c22-report.json`.
+- Gate-3 replay PASS on renamed variant (boolean-flip dead, benign ok).
+- Vault: red `08f8e7c97a65`, blue `a6598cd153a6`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2202-c22-vault.txt`.
+- Conclusion: Δ(C.22) → 0. T1c (identifier-position injection) proven —
+  the family the bundled fixtures only exercise in WHERE-clause form now
+  has an ORDER-BY/LIMIT forge proof. Taxonomy: new T1c subclass.
+- Reusable prior created: T1c boolean-flip probe + allowlist+parameterize
+  template (identifiers can NEVER be `?`-bound — allowlist is the only fix).
+
+## E23a — Cycle 23 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5/C17/C19: Red exit-0 + Blue proposal accepted, final
+  report malformed (5 calls ≈$0.21). Short contract did NOT prevent it this
+  time (contract is already 2 sentences) — the short-contract rule reduces
+  frequency (3/3 wins) but is not immunity. Retry verbatim.
+
+## E23b — Cycle 23 attempts 2 (verbatim retry VERIFIED)
+
+- Verbatim retry cleared the transient fault: success=True, retained,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. Blue: `is_string`
+  guard + `escapeshellarg` moved OUTSIDE the double quotes (the subtle
+  correct shape: quoted outside, unquoted inside backticks). 6 calls
+  p9526/c19572 ≈$0.18.
+  Evidence: run `validation/task-2302-c23b-live.txt`,
+  `validation/task-2302-c23b-report.json`.
+- My first Gate-3 script was WRONG (asserted payload absence; escaped
+  payloads echo literally — correct behavior). Corrected to inertness
+  semantics: literal echo + side-effect sentinel (`touch`) proves NO
+  execution. REPLAY PASS. (Second self-caught replay error tonight after
+  C4 — the replay, not the patch, is the usual suspect.)
+- Vault: red `67a3c0ac01e4`, blue `f0435a01ca62` (with replay note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2303-c23-vault.txt`.
+- Conclusion: Δ(C.23) → 0. T3d (backtick-subshell operator family) proven
+  — the T3 family now spans `;`/`&&` (T3a), tar (T3c), backtick/`$()`
+  (T3d). Taxonomy: new T3d subclass.
+- Reusable prior created: T3d backtick escapeshellarg-outside-quotes
+  template + inertness-semantics replay rule.
+
+## E24a — Cycle 24 design REJECTED at Gate 0 (second $0 win)
+
+- Hypothesis for T2f (`string.Template.substitute` as an injection sink):
+  REFUTED LOCALLY. The battery shows Template does NOT evaluate
+  `${...}` — unknown `$`-patterns pass through LITERALLY (`${7*6}` →
+  `${7*6}`, `$title` → `$title`). There is no code execution, no data
+  leak, no error signal: the "sink" is inert by design. A keyed run would
+  burn ~$0.20 for a guaranteed Red exit-1.
+- Decision: REJECT at Gate 0, $0 spent. Second Gate-0 rejection (after
+  T4d/basename). Emerging rule CONFIRMED: $-style/shaping-only "sinks"
+  without evaluation are NOT vulns — evaluation (eval/Function/shell/SQL)
+  is the necessary ingredient. The Gate-0 battery habit has now saved two
+  full keyed runs tonight.
+- Redirect: Cycle 24 becomes Python T1d — second-order SQLi via a stored
+  nickname (STORE-then-query shape, distinct from direct WHERE/ORDER-BY):
+  `/nick?name=` stores, `/hello` renders `SELECT ... WHERE nick='<stored>'`
+  — the stored value is the injection carrier. Gate-0 battery first.
+
+## E24b — Cycle 24 keyed run: T4 retained+CLOSED, T1d second-order MISSED (PARTIAL, C17 pattern)
+
+- Hypothesis: the Gate-0-proven second-order signal verifies.
+- Result: PARTIAL — success=True on the RETAINED link (T4 traversal:
+  Red exit 0 → Blue realpath+commonpath → exit 1, regressions 0/0,
+  receipt pre=0/post=1, cleanup ok; 6 calls p12526/c19587 ≈$0.18).
+  But Red did NOT choose the T1d second-order link (no `/nick` in the
+  probe at all) — despite Gate-0 proving it locally (hey,yo vs hey).
+  The headline T1d stays OPEN by record; queued as a SOLO T1d fixture
+  (no T4 competition) per the C17 lesson. Same honest-partial handling:
+  vault records the MISS explicitly.
+  Evidence: run `validation/task-2401-c24-live.txt`,
+  `validation/task-2401-c24-report.json`.
+- Why the miss matters: multi-sink fixtures let Red pick the EASIEST
+  link (traversal > second-order). New Green rule: ONE sink per fixture
+  for headline proofs; co-present sinks only when the CHAIN demands them
+  (C4/C7/C11 pattern). Recorded in TRAPS.
+- Gate-3 replay PASS on renamed variant (T4 containment; layout-depth
+  script error corrected — my script, not the patch).
+- Vault: red `f7332fd6e860`, blue `25afac938546` (with missed-T1d + C17
+  partial notes). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2402-c24-vault.txt`.
+- Conclusion: Δ(C.24-retained) → 0; Δ(C.24-T1d) stays OPEN by record.
+  Taxonomy: new T4f subclass (greeter containment). T1d queued solo.
+- Reusable prior created: T4f containment + the ONE-sink Green rule.
+
+## E25 — Cycle 25: T1d SOLO follow-up, first-try VERIFIED (closes C24 OPEN)
+
+- Hypothesis: the ONE-sink solo tree lets Red prove the Gate-0 second-order
+  signal the multi-sink tree orphaned.
+- Result: TRUE — success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "Second-order SQL injection ...
+  stored nick ... concatenated into WHERE clause". Blue: parameterized
+  the re-read. 6 calls p11290/c16122 ≈$0.14 — cheapest full cycle tied.
+  Evidence: run `validation/task-2501-c25-live.txt`,
+  `validation/task-2501-c25-report.json`.
+- Gate-3 replay PASS on renamed schema (injected stored nick →
+  `stranger`, benign `hey` preserved; first script's assert bug was mine).
+- Vault: red `a25a9265a074`, blue `893ae13cafc2` (closes C24 OPEN
+  `f7332fd6e860). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2502-c25-vault.txt`.
+- Conclusion: the C24 OPEN record is now CLOSED-by-proof. The ONE-sink
+  rule is VALIDATED end-to-end (orphan → solo → close). Δ(C.25) → 0.
+  Every OPEN record tonight is now closed: C17-T2e (C18), C24-T1d (C25).
+- Reusable prior created: T1d two-step store-then-read probe + re-read
+  parameterization template.
+
+## E26b — Cycle 26 keyed run: T4g prefix-strip VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven strip-bypass verifies under the short/slim shape.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "Path Traversal ... single safe/
+  prefix-strip + unsafe os.path.join". Blue: realpath+commonpath AFTER
+  the strip (order is the fix). 6 calls p9209/c17823 ≈$0.16.
+  Evidence: run `validation/task-2601-c26-live.txt`,
+  `validation/task-2601-c26-report.json`.
+- Gate-3 replay PASS on renamed variant (two script-depth errors were mine:
+  fixture depth is notes=root/src/notes with secret at root — evil is
+  exactly `prefix + /../../secret`; the replay must mirror that depth,
+  not my improvised layouts).
+- Vault: red `4ab0b4866c07`, blue `2e16108b9cc1`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2602-c26-vault.txt`.
+- Conclusion: Δ(C.26) → 0. T4g (prefix-strip bypass family) proven — the
+  T4 family now spans no-check (T4a), join (T4b/c), split (T4e),
+  strip (T4g). Taxonomy: new T4g subclass.
+- Reusable prior created: T4g strip-then-normalize template + replay-depth
+  mirroring rule (mirror fixture depth exactly).
+
+## E27a — Cycle 27 Gate-0: setTimeout-string is DEAD, vm-leaky-sandbox is LIVE
+
+- First design (T2f `setTimeout(string)`): Node 22 REJECTS string-arg
+  timers (`ERR_INVALID_ARG_TYPE`) — the sink does not exist in the
+  target runtime. Gate-0 killed it pre-spend (third $0 rejection class:
+  dead-runtime-sink, alongside basename-inert and Template-inert).
+- Pivot design (T2f2 `vm.runInNewContext` with leaky sandbox): Gate-0
+  PROVES it — benign `40+2`→`42`, evil `process.version`→`v22.22.1`.
+  A vm sandbox that shares `process`/`require` is no sandbox (the classic
+  escape). Proceed with the vm shape.
+
+## E27b — Cycle 27 keyed run: T2f2 vm-leaky-sandbox VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven vm-leaky shape verifies with a de-leak patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "RCE via unsanitized HTTP expr passed
+  to vm.runInNewContext with process/require in sandbox". Blue went
+  FURTHER than minimal: digit-requirement char-class + de-leaked sandbox
+  at BOTH layers (widget + route — defense in depth). 6 calls p10525/c16768
+  ≈$0.17.
+  Evidence: run `validation/task-2701-c27-live.txt`,
+  `validation/task-2701-c27-report.json`.
+- Gate-3/audit: `Math.constructor.constructor(...)` unspellable (letters
+  rejected); arithmetic fully preserved (`(40+2)*3`, `2**10`). The de-leak
+  is the fix; the char-class is the belt. REPLAY PASS.
+- Vault: red `6d02651d7752`, blue `36304c7ab5ed`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2702-c27-vault.txt`.
+- Conclusion: Δ(C.27) → 0. T2 family now: eval (T2a), decimal-allowlist
+  (T2b/d), Function-ctor (T2e-closed), vm-leaky (T2f2). The night's THIRD
+  Gate-0 redirect (setTimeout-dead → vm-live) paid off. Taxonomy: new
+  T2f2 subclass.
+- Reusable prior created: T2f2 de-leak + digit-requirement template.
+
+## E28 — Cycle 28: PHP T3dd include-suffix LFI, first-try VERIFIED
+
+- Hypothesis: the Gate-0 twin-proven include-suffix shape verifies with an
+  allowlist-or-404 Blue patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "LFI via unsanitized /page?name ...
+  fixed .php suffix (e.g., ../secret -> secret.php executes)". Blue:
+  `^[A-Za-z0-9_-]+$` else 404 (wrappers die on the colon: no `:`, no
+  `php://`). 6 calls p9193/c11628 ≈$0.12 — cheapest yet.
+  Evidence: run `validation/task-2801-c28-live.txt`,
+  `validation/task-2801-c28-report.json`.
+- Gate-3 replay PASS on renamed variant (traversal + `php://filter` +
+  empty all 404, benign ok; include prints HOME then asserts — cosmetic).
+- Vault: red `e09f7913158c`, blue `2c822b49d2e9`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2802-c28-vault.txt`.
+- Conclusion: Δ(C.28) → 0. T3dd (include-suffix LFI, CWE-98) proven —
+  the T3 family now spans shell-arg (T3a), tar (T3c), backtick (T3d),
+  include (T3dd). Taxonomy: new T3dd subclass.
+- Reusable prior created: T3dd allowlist-or-404 include template +
+  twin-planting provability pattern (suffix sinks need a planted twin).
+
+## E29 — Cycle 29: Python T3e format-template injection VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven `str.format` attribute-walk verifies with a
+  parse-then-format Blue gate.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "str.format template injection ...
+  attribute access on Author object (e.g., {1.__class__.__name__})". Blue:
+  `string.Formatter().parse()` pre-pass (fields only `''`/`'0'`, no nested
+  braces) then single-arg `format(name)`. 6 calls p11350/c25525 ≈$0.24.
+  Evidence: run `validation/task-2901-c29-live.txt`,
+  `validation/task-2901-c29-report.json`.
+- Gate-3 replay PASS on renamed shape (`{1.*}`, `{0.*}`, nested-spec all
+  blocked; `{0!r}` conversion allowed — repr of the name only, safe).
+- Vault: red `9e21d63fd849`, blue `53bd3cb3bd28`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2902-c29-vault.txt`.
+- Conclusion: Δ(C.29) → 0. T3e (format-string template injection, CWE-74)
+  proven — a genuinely NEW sink family for the forge (neither shell, SQL,
+  eval, traversal, XSS, include, nor vm). The T3 "code-ish injection"
+  chapter now spans a-g. Taxonomy: new T3e subclass.
+- Reusable prior created: T3e parse-then-format gate + the fixed-single-arg
+  reduction (remove the rich object from scope entirely where possible).
+
+## E35r — Cycle 35 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C29 (7) + Node C2, C8,
+  C11, C14, C17, C18, C27 (7) + PHP C5, C10, C13, C16, C19, C23, C26,
+  C28 (8). Total 22. Max 8/22 = 36% < 40% ✓ — balanced for the first
+  time since E25r (Node was 46% then; the PHP/Python depth directive worked).
+- Scouts: 6 (5 neg + 1 inconclusive). Zero-dep rule stands.
+- Class coverage: T1×4 (T1, T1c, T1d×2), T2×8, T3×7 (a, c×2, d, dd, e×2),
+  T4×8, T5×2, T6×3, T7×1, T8×1, T9×1. T7/T8/T9 single-proof classes are
+  the thinnest — next chains should revisit gate+chain shapes (new links).
+- Forced direction: Cycles 31-33 = gate→sink CHAIN on a novel link pair
+  (T7/T8/T9 family depth) + Cycle 33 scout cadence (zero-dep single-file).
+
+## E30 — Cycle 30: T9b PIN-gate CHAIN intended, T1e SOLO proven (PARTIAL by Red choice)
+
+- Hypothesis: the chain-explicit contract yields a unified A→B script.
+- Result: PARTIAL by Red choice — Red imported `read_secret` DIRECTLY
+  (source-level probe, no HTTP, no `/claim`, no cookie) and proved the T1e
+  label SQLi (`' OR '1'='1' -- ` → admin secret leaks for tier=member).
+  Blue parameterized BOTH slots (`tier = ? AND label = ?`) → exit 1,
+  regressions 0/0. Receipt pre=0/post=1, cleanup ok, success=True.
+  6 calls p11577/c22277 ≈$0.23.
+  Evidence: run `validation/task-3001-c30-live.txt`,
+  `validation/task-3001-c30-report.json`.
+- The CHAIN (claim→cookie→inject) was NOT exercised: Red bypassed Link A
+  entirely with a direct import. The T9b gate link is therefore UNPROVEN
+  (neither bypassed nor honored — simply unused), while the T1e sink is
+  proven+CLOSED. Per the C17/C24 precedent: record honestly — T1e CLOSED,
+  T9b-link OPEN by record (its own solo needs a FORCED-cookie test, since
+  a direct import can always dodge any gate).
+- Lesson (new, TRAPS): source-import probes DODGE gate links by
+  construction — chain contracts MUST demand HTTP-level proof (cookie
+  Set-Cookie→Cookie round-trip) or the gate link is untestable. The C4/C11
+  successes used HTTP cookie flows; C30's import-shape probe is the
+  counterexample that proves the rule.
+- Gate-3 replay PASS on renamed schema (injected label → all-rows vs
+  stranger/benign preserved).
+- Vault: red/blue T1e (CLOSES the sink); T9b-link OPEN by record.
+- Reusable prior created: chain-proof MUST be HTTP-level (cookie
+  round-trip) — source-import probes cannot prove gate links.
+
+## E31 — Cycle 31: T9b HTTP-cookie follow-up VERIFIED first-try (CLOSES C30 OPEN)
+
+- Hypothesis: the HTTP-enforced chain contract forces a genuine gate
+  proof (Set-Cookie capture → Cookie replay → cross-tier leak).
+- Result: TRUE — success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Probe shape confirmed: `/claim` + Set-Cookie
+  + Cookie + tier all present. Red vuln: "SQL injection in label/tier
+  concat allows member cookie to read admin secrets, bypassing HTTP tier
+  gate". Blue: both slots parameterized. 6 calls p13991/c21632 ≈$0.18.
+  Evidence: run `validation/task-3101-c31-live.txt`,
+  `validation/task-3101-c31-report.json`.
+- Gate-3 replay PASS on renamed schema (gate-honored injection dead).
+- Vault: red `5016cfe59e99`, blue `78cbd6661296` (closes C30 OPEN
+  `375fc78c80f1`). Recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3102-c31-vault.txt`.
+- Conclusion: the C30 OPEN record is now CLOSED-by-proof, and the
+  HTTP-proof rule is VALIDATED end-to-end (contract enforcement worked —
+  Red complied with the cookie round-trip). ALL open records tonight are
+  now closed: C17-T2e (C18), C24-T1d (C25), C30-T9b (C31). Taxonomy:
+  T9b-closed.
+- Reusable prior created: HTTP-cookie-chain contract template (the exact
+  wording that forces gate proofs) + T9b gate proof shape.
+
+## E32 — Cycle 32: Node T3f triple-stash template VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven raw-override verifies with a normalize
+  patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "User-controlled `tpl` ... selects
+  triple-stash `{{{name}}}` raw sink ... bypassing escaping". Blue went
+  defense-in-depth: route-level normalize (`{{{x}}}`→`{{x}}`) PLUS renderer
+  raw-branch removal. 6 calls p11994/c24285 ≈$0.33 (richest Node cycle —
+  the dual-layer patch explains it).
+  Evidence: run `validation/task-3201-c32-live.txt`,
+  `validation/task-3201-c32-report.json`.
+- Gate-3 replay PASS on renamed variant (raw path dead, escape kept).
+- Vault: red `1a97e89f1406`, blue `024cb234faeb`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3202-c32-vault.txt`.
+- Conclusion: Δ(C.32) → 0. T3f (mustache-style raw-override injection,
+  CWE-74) proven — the THIRD CWE-74 family member (C29 str.format, C32
+  triple-stash) alongside the deliberate `he`-negative (C21). The forge
+  now both breaks AND vindicates encoders.
+- Reusable prior created: T3f normalize+remove-raw-branch template.
+
+## E33 — Cycle 33 scout: validator.js (INCONCLUSIVE-valuable, build-blocked)
+
+- Hypothesis: scheme confusion or escape gaps in `validator.js`.
+- Method: LOCAL clone + static read. Live battery blocked: unbuilt ESM +
+  no babel + no-install rule.
+- Result: static evidence leans guarded (escape table covers T6 set;
+  isURL names the confusion attacks in comments), but no live proof —
+  HYPOTHESIS-open. Second inconclusive; both share the cause
+  (dependency/build closure). Rule refined: exotic = runnable with ZERO
+  build (single-file like `he`).
+- Reusable prior created: validator audit checklist (escape-table
+  coverage, protocol/auth/port disambiguation, encoded-payload check) +
+  the refined zero-build exotic rule.
+
+## E40r — Cycle 40 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C26, C29, C30, C31 (10) +
+  Node C2, C8, C11, C14, C17, C18, C27, C32 (8) + PHP C5, C10, C13, C16,
+  C19, C23, C28 (7). Total 25. Node = 8/25 = 32% ✓ (restored under 40%).
+- Scouts: 7 (5 neg + 2 inconclusive). Zero-build rule stands.
+- Class coverage: every bundled family has forge-novel proofs; T3 family
+  spans a/c/d/dd/e/f; T4 spans a/b/c/e/f/g; T6 spans b/c; T9 spans a/b.
+  Thinnest: T7 (×1), T8 (×1) — next chains should revisit gate+selector
+  shapes.
+- Forced direction: Cycles 34-36 = Node HTTP-cookie CHAIN lineage
+  (C4/C11/C31 pattern on the least-used language) + Cycle 36 scout
+  cadence (zero-build single-file ONLY).
+
+## E34a — Cycle 34 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature as C5/C17/C19/C23: Red exit-0 + Blue proposal accepted,
+  final verification report malformed (5 calls ≈$0.30-ish). Retry verbatim.
+
+## E34b — Cycle 34 retry: T9c+T1f chain VERIFIED (HTTP-proof rule holds twice)
+
+- Attempt 1 died on the closing-report schema fault (5 calls ≈$0.14);
+  verbatim retry VERIFIED first-try of the retry: success=True, retained,
+  receipt pre=0/post=1/regressions 0/0, cleanup ok. Cookie-flow assertion
+  holds (/claim + Set-Cookie + Cookie + tier). Blue: exact-match lookup
+  (killed the OR-emulation branch too). 6 calls p11886/c17416 ≈$0.21.
+  Evidence: run `validation/task-3402-c34b-live.txt`,
+  `validation/task-3402-c34b-report.json`.
+- Gate-3 replay PASS on renamed schema (injection → none, array tier →
+  none via typeof guard, benign kept).
+- Vault: red `b90493849e92`, blue `47932423850a`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3403-c34-vault.txt`.
+- Conclusion: Δ(C.34) → 0. The HTTP-proof rule now holds 2/2 (C31, C34) —
+  promoted from rule to LAW-CANDIDATE for the next TRAPS/arch pass:
+  chain contracts MUST demand the HTTP round-trip AND the scribe MUST
+  assert the gate-link shape in the probe. Taxonomy: new T9c class.
+- Reusable prior created: T9c HTTP-cookie combo-gate template.
+
+## E45r — Cycle 45 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7, C22, C24, C25, C29, C30, C31 (9) + Node
+  C2, C8, C11, C14, C17, C18, C27, C32, C34 (9) + PHP C5, C10, C13, C16,
+  C19, C23, C26, C28 (8). Total 26. Max 9/26 = 35% < 40% ✓ — balanced
+  three ways for the first time (was Node 46% at E25r).
+- Scouts: 7 (5 neg + 2 inconclusive). Zero-dep + zero-build rules stand.
+- Class coverage: T9 family now spans a (C11), b (C30/31), c (C34) —
+  the gate chapter is deep. Thinnest: T7 ×1, T8 ×1, T5 ×2.
+- Forced direction: Cycles 36-38 = T7/T8-family gate+selector chains
+  (close the thin-chapter gap) + Cycle 39 scout cadence (zero-dep).
+
+## E35a — Cycle 35 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature (Red exit-0 + Blue proposal accepted, final report
+  malformed; 5 calls ≈$0.30). Retry verbatim per the transient rule
+  (C23/C34 precedent: verbatim retries clear it).
+
+## E35b — Cycle 35 retry: T7b hardware-key chain VERIFIED (HTTP-proof 3/3)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.12); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Cookie-flow assertion holds (claim + Set-Cookie +
+  Cookie). Blue: both slots parameterized. 6 calls p13166/c19656 ≈$0.17.
+  Evidence: run `validation/task-3502-c35b-live.txt`,
+  `validation/task-3502-c35b-report.json`.
+- Gate-3 replay PASS on renamed schema (gate-honored injection dead).
+- Vault: red `5695f826a247`, blue `bdc3912b9d28`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3503-c35-vault.txt`.
+- Conclusion: Δ(C.35) → 0. T7 family now spans role-cookie (T7a, C4) +
+  hardware-key cookie (T7b, C35) — the "thinnest chapter" directive is
+  answered. HTTP-proof rule now 3/3 (C31, C34, C35).
+- Reusable prior created: T7b hardware-key chain template.
+
+## E36a — Cycle 36 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature (Red exit-0 + Blue proposal accepted, final report
+  malformed; 5 calls ≈$0.30). Retry verbatim per the transient rule
+  (C23/C34/C35 precedent).
+
+## E36b — Cycle 36 retry: T8c theme-selector VERIFIED (twin-plant rule holds)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.11); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Blue: allowlist-or-404 + realpath-under-packs (defense
+  in depth, like C28). 6 calls p9601/c14109 ≈$0.16 — cheap.
+  Evidence: run `validation/task-3602-c36b-live.txt`,
+  `validation/task-3602-c36b-report.json`.
+- Gate-3 replay PASS on renamed variant (nested traversal dead).
+- Vault: red `a4357fa1433b`, blue `538245a2bf00`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3603-c36-vault.txt`.
+- Conclusion: Δ(C.36) → 0. T8 family now spans selector (T8b local-store,
+  C7) + theme-pack manifest (T8c, C36). The E45r "T7/T8 depth" direction
+  is answered for T8. Taxonomy: new T8c subclass.
+- Reusable prior created: T8c manifest-selector template + twin-plant rule
+  (3rd confirmation: suffix-appended sinks need a planted twin — C13 tar,
+  C28 include, C36 manifest).
+
+## E37 — Cycle 37: Node T3g exec-string VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven `exec()` shell-string sink verifies with
+  an execFile+allowlist Blue patch.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "OS Command Injection via unsanitized
+  `host` ... concatenated into `child_process.exec` shell string". Blue:
+  hostname allowlist (RFC-ish, ≤253) + `execFile('echo',[host])` — the
+  shell is GONE, not escaped. 6 calls p9376/c12188 ≈$0.15 — cheapest Node
+  cycle. Evidence: run `validation/task-3701-c37-live.txt`,
+  `validation/task-3701-c37-report.json`.
+- Gate-3 replay PASS (4/4 evil blocked, benign kept). Note the doctrine
+  step-up: C5/C13/C23 escaped the shell; C37 ELIMINATES it (execFile argv).
+  Strongest T3 fix tonight — recorded as the preferred pattern in the
+  taxonomy note.
+- Vault: red `a7fe96cb1c35`, blue `a16b36b9ab0c`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3702-c37-vault.txt`.
+- Conclusion: Δ(C.37) → 0. T3g (exec-family) proven — the T3 family now
+  spans shell-arg (T3a), tar (T3c), backtick (T3d), include (T3dd),
+  format-template (T3e), triple-stash (T3f), exec-string (T3g). Taxonomy:
+  new T3g subclass.
+- Reusable prior created: T3g execFile+allowlist template (prefer
+  shell-elimination over shell-escaping).
+
+## E38a — Cycle 38 Gate-0: double-decode layering CONFIRMED (two fixture surgeries)
+
+- First draft had the layers inverted (decode-then-check = SAFE) and my
+  direct-call battery skipped the parse_str layer entirely — both wrong
+  in opposite directions. Real HTTP end-to-end settled it: the VULN order
+  is CHECK(parse_str-output) then USE(urldecode(output)): single-encoded
+  `%2e` is blocked at the check (already decoded once by parse_str);
+  DOUBLE-encoded `%252e` passes the check (no literal `..`) then decodes
+  to `../` at read time → TOP-SECRET-FORGE38 leaks. Benign/single/double
+  triple confirmed over real HTTP.
+- Lesson (TRAPS-grade): Gate-0 batteries MUST run over the REAL stack
+  (real HTTP through parse_str), never direct function calls that skip
+  framework decoding layers. Two wrong batteries preceded the right one.
+
+## E38b — Cycle 38 retry: T8d double-decode VERIFIED (layering lesson)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.12); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Red vuln: "Double URL-decode path traversal ...
+  `..` check runs on singly-decoded value but file read applies
+  urldecode() again". Blue: decode-FIRST, reject `..` + NUL on the
+  decoded value, realpath-under-assets containment. 6 calls p9140/c19510
+  ≈$0.26. Evidence: run `validation/task-3802-c38b-*`.
+  (Note: repo copies are forge-c38/forge-c38-report.json = the RETRY —
+  the driver wrote the same filename; task-3801-* holds the attempt-1
+  logs+error report, task-3602/3802/3803 hold the success artifacts. The
+  validation/ copies were overwritten by the retry; the run log preserves
+  both attempts' tails.)
+- Gate-3 replay PASS — but only after fixing a LAYERING bug in my own
+  replay (raw `%252e` via CLI skips parse_str's decode; must emulate
+  `parse_str('name='.raw)` first). Second layering lesson tonight (C36
+  twin-depth was layout, this is decode-layer). Rule upgraded: Gate-3
+  replays MUST reproduce the framework decoding stack, not call the sink
+  directly. Recorded in TRAPS.
+- Vault: red `8bcef832a528`, blue `67a40f9e7de4` (with replay note);
+  recall KNOWN_ARCHETYPE.
+- Conclusion: Δ(C.38) → 0. T8d (check-then-decode, the DUAL of T4e's
+  check-then-resolve) proven — the family now spans store (T8b), manifest
+  (T8c), and codec-layer (T8d) selectors. Taxonomy: new T8d subclass.
+- Reusable prior created: T8d decode-first + layer-correct replay rule.
+
+## E39 — Cycle 39 scout: escape-string-regexp (NEGATIVE-valuable, rule closed)
+
+- Hypothesis: the canonical regex escaper misses a metacharacter class.
+- Method: LOCAL clone + batteries (metas, u-flag, astral, NUL).
+- Result: CORRECT on every axis, including the documented `\x2d`
+  u-mode decision. NO candidate.
+- Conclusion: the zero-build exotic loop is now CLOSED — one NEGATIVE
+  (`he`), one INCONCLUSIVE that became the rule (`validator`),
+  one NEGATIVE that met it (`escape-string-regexp`), plus a NO-OP triage
+  (`is`, rejected without spend). The scout doctrine is complete and
+  stable: single-file + runnable-as-is + local batteries. Further scouts
+  only on demand.
+- Reusable prior created: escaper-audit battery (metas, u-flag, astral,
+  NUL, literal-roundtrip) + the escaper as reference for forge allowlists.
+
+## E40 — Cycle 40: T7c price-tamper + T1h lookup chain VERIFIED attempt 5 (contract-detail lesson)
+
+- Green: `/tag?item=&price=` sets raw price cookie (Link A); `/checkout`
+  reads cookie into concat order lookup (Link B). Gate-0 local: benign
+  book/20 works; inject `20' OR '1'='1` leaks both rows.
+- Attempts 1-3: Red bottled exit-0 proofs (app.py, shop.py, shop.py) but
+  Blue-phase schema faults (`extra="forbid", strict=True` sampling flake,
+  same signature as C5/C23/C35). Attempt 4 (simplified contract): Red
+  degraded — probe did not confirm (`not_confirmed`, no changes). Lesson:
+  contract detail guides RED's proof structure; the short version lost
+  the claim→replay shape. Attempt 5 (original contract restored):
+  VERIFIED — pre 0, post 1, regressions 0/0, diff-pass.
+- Blue diff (968B): server-side gate in price_tag + parametrized
+  checkout — BOTH links hardened (defense in depth, strongest T7 fix yet).
+- Gate-3 unseen 3/3 (true-diff replay): comment-inject lamp blocked at
+  gate; tamper-to-1 blocked; direct hostile cookie bypassing /tag →
+  `no such order` via parametrization.
+- Vault: red `15edd883f29a`, blue `d887aa3dee3`; recall NOVEL_SURFACE
+  (fingerprint-exact; T7c+T1h pair distinct from T1d solo). Taxonomy v29.
+- Cost: attempt-5 usage ≈$0.41 (6 calls); 5-attempt total ≈$1.2. Flake
+  clustering (3+1) is the worst yet — transient budget discipline held
+  (no contract thrash beyond one simplification + revert).
+- Conclusion: Δ(C.40) → 0 (T7c gate + T1h lookup closed, both links).
+  Reusable: contract-detail-guides-Red rule; both-links-hardened fix
+  doctrine. See ledger Cycle 40; discoveries D25.
+
+## E43 — Cycle 43: T9d XFF-spoof VERIFIED attempt 2 (stateless recovery)
+
+- Green (F13-clean stateless): `client_ip` LAST-XFF trust + `admin_path`
+  allowlist; :memory:-grade statelessness (pure functions, no globals).
+  Gate-0 local: benign remote forbidden; spoof `X-Forwarded-For:
+  127.0.0.1` -> admin panel.
+- Attempt 1: Red exit-0 bottled; Blue-schema transient (tonight's flake
+  signature, ~6th occurrence). Attempt 2: VERIFIED — pre 0, post 1,
+  regressions 0/0, diff-pass. Cost $0.15 (6 calls).
+- Blue diff: ignore-XFF-without-trusted-proxy (textbook CWE-291 fix).
+  Gate-3 unseen 4/4 (multi-hop, spoof-only, v6, padded).
+- Vault: red `05ae3215c4df`, blue `b1b79b129b3c`; NOVEL_SURFACE.
+  Taxonomy v30. Conclusion: Δ(C.43) → 0 (XFF trust closed).
+- Reusable: stateless-first fixture selection (F13 rule) pays off —
+  first VERIFIED since C40 after two parked hotspots.
+
+## E44 — Cycle 44: T7e fallback-secret VERIFIED first-try (stateless streak)
+
+- Green (stateless): HMAC role token with public fallback + role-gated
+  /admin. Gate-0: benign user forbidden; forged admin panel; tampered
+  role-swap correctly forbidden (compare_digest path intact).
+- First-try VERIFIED — pre 0, post 1, regressions 0/0, diff-pass.
+  Cost $0.21 (6 calls). Second consecutive VERIFIED after C43: the F13
+  stateless-first rule + target-service-first contract + Blue-budget hint
+  + ast-parse drivers are now a stable recipe.
+- Blue: env-or-random (1 line + import). Gate-3 4/4. Vault NOVEL.
+  Taxonomy v31. Conclusion: Δ(C.44) → 0 (fallback-secret closed).
+
+## E45 — Cycle 45: T7f alg-none VERIFIED attempt 2 (scout-mirror)
+
+- Green: unsigned-JWT mint + honoring verifier + role-gated /admin.
+  Gate-0: benign user forbidden; forged admin panel.
+- Attempt 1: Red exit-0 bottled; Blue-schema transient. Attempt 2:
+  VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.18 (6 calls).
+- Blue: fail-closed 1-line. Gate-3 4/4. Vault NOVEL. Taxonomy v32.
+- Scout-mirror doctrine: C3 (PyJWT NEGATIVE) + C45 (hand-rolled POSITIVE)
+  belong together — ecosystem-got-it-right vs bespoke-got-it-wrong.
+  Conclusion: Δ(C.45) → 0.
+
+## E47 — Cycle 47: T1i VERIFIED attempt 2, F14 CONFIRMED (controlled test)
+
+- Green: identical vuln to C46, quote-clean sink (double-quoted SQL, no
+  nested-quote shapes). Gate-0: benign ali; hostile % leaks all.
+- Attempt 1: NEW fault signature — "Muse ran out of output tokens"
+  (reasoning counts toward limit). Model laboring over the LIKE shape
+  even quote-clean. Attempt 2: VERIFIED — pre 0, post 1, regressions
+  0/0. Cost $0.15. Total C46+C47 episode: ~$1.3 for one T1i prior.
+- Controlled-test verdict: nested-quote hypothesis CONFIRMED (5x death
+  vs immediate clear, identical vuln). New fixture-authorship rule
+  recorded in taxonomy + traps: least-nested quoting for model-
+  reproduced sinks.
+- Blue: ESCAPE-clause + parametrize (textbook). Gate-3 5/5. Vault
+  NOVEL. Taxonomy v33. Conclusion: Δ(C.47) → 0 (T1i closed, C46 OPEN
+  resolved). Episode ROI is poor but the RULE it bought applies to all
+  future T1-family fixtures.
+
+## E49 — Cycle 49: T6f response-splitting VERIFIED first-try (F15 applied)
+
+- Green: filename->Content-Disposition, stdlib emits raw CRLF (proven
+  byte-level locally before spend). Distinctive shape per F15.
+- First-try VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.23.
+  No faults, no debug dumps. The F15 prescription (shape-distinctive
+  fixtures) produces an immediate clear after C48's 6-attempt burn on
+  a canonical shape. This is the strongest evidence yet for the
+  hallucination mechanism: same models, same night, same recipe —
+  only the fixture shape changed.
+- Blue: first-line+printable (usable fix, preserves spaces). Gate-3
+  5/5. Vault NOVEL. Taxonomy v34. Conclusion: Δ(C.49) → 0.
+
+## E50 — Cycle 50 self-review: 50 commits, 35 VERIFIED, 3 OPEN (2026-10-31T13:41Z)
+
+- Score: 35 VERIFIED cycles + 8 scouts (6 negative, 2 inconclusive) + 10
+  self-reviews; taxonomy v34 (T1-T9 all populated); 105 vault priors
+  (53 red + 52 blue); gates 781 green x40+; UI untouched every commit.
+  Open: C41 T5c (fixture-design flaws, gated-gadget revisit), C42 T6d
+  (global-state physics, needs harness restart support), C48 T9f
+  (Red hallucination; response-splitting sibling C49 cleared instead).
+- F15 correction applied to the record: C46's quoted "chr(37) test" is
+  SUPERSEDED — C47's clear is attributed to shape-distinctiveness, and
+  the C48 capture proves at least one cluster was Red-side. Standing
+  rules: (1) shape-distinctive fixtures, (2) stateless-first (F13),
+  (3) target-service-first contracts, (4) Blue-budget hints, (5) stop-
+  line 5, (6) fault attribution only via capture (debug var armed).
+- Thinnest families: T5 (2 members), T6 (4). Next: T5/T6 breadth with
+  distinctive shapes. ~2.5h to 16:15Z wake. No pushes (all local).
+
+## E51 — Cycle 51: T5d VERIFIED via hallucination-starvation reshape
+
+- v1 (ExtendedInterpolation user-vars): Gate-0 PASS, Red exit-0 x2, but
+  Red second-pass confabulated `safe_vars` + `$$`-escaping twice
+  (captured via debug var, archived task-5101/5102-redtruefault).
+  Identical confabulation 2x = content-deterministic trigger.
+- v2 (section-name injection, zero `$` chars, same severity): VERIFIED
+  first-try — pre 0, post 1, regressions 0/0. Cost $0.16. No faults.
+- Doctrine: hallucination-starvation (remove the confabulated fix's
+  vocabulary from the fixture). Stronger than F15's vague
+  "distinctiveness": it is a TARGETED reshape guided by the captured
+  payload. The debug var paid for itself twice in three cycles.
+- Gate-3 5/5. Vault NOVEL. Taxonomy v35. Conclusion: Δ(C.51) → 0.
+
+## E52 — Cycle 52: T5e extract-overwrite VERIFIED first-try (rare-shape streak)
+
+- Green: rare shape (bare extract) + rare fix vocabulary, F15/F13 clean.
+  Gate-0 Docker (target image PHP 8.4.27): benign bob, hostile admin.
+  Negative batteries first: 1-arg parse_str extinct in PHP8;
+  EXTR_SKIP accidentally safe — the hole needs bare extract().
+- First-try VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.24.
+  No faults, no debug dumps. Third consecutive clean clear on
+  distinctive shapes (C49/C51v2/C52).
+- Blue: extract-removal + deny-admin (stronger than minimal escape).
+  Gate-3 6/6 with gate-composition proof. Vault NOVEL. Taxonomy v36.
+  Conclusion: Δ(C.52) → 0.
+
+## E53 — Cycle 53: T3h VERIFIED attempt 4 (split-proof doctrine)
+
+- Green: string-built + shlex-split arg injection, argv-only sink.
+  Gate-0 local: benign out.txt; hostile pwned written (first-wins
+  stub). Rare shape + rare fix vocabulary; no hallucination, no
+  schema faults once past baseline.
+- Attempts 1-3 all died at BASELINE (F16 trap series, all Green-side).
+  Attempt 4: VERIFIED — pre 0, post 1. Cost $0.15.
+- Blue: allowlist (textbook for CWE-88). Gate-3 5/5. Vault NOVEL.
+  Taxonomy v37. Conclusion: Δ(C.53) → 0. New standing rule: never
+  exec inside the target; split proof across the trust boundary.
+
+## E54 — Cycle 54: T6g VERIFIED v3 (hallucination + executability lessons)
+
+- v1: `_CALLBACK_RE` hallucination x2 (captured). v2: starved the word
+  but benign unexecutable -> clean no-finding. v3: starved + genuinely
+  functional benign -> VERIFIED first-try, pre 0 post 1. Total 4 runs.
+  Cost att4 $0.17.
+- Two rules for the price of one episode: (1) hallucination-starvation
+  (remove the confabulated fix's vocabulary), (2) benign-executability
+  (benign must WORK in its real consumer). Gate-3 8/8 (widest replay
+  of the night). Vault NOVEL. Taxonomy v38. Conclusion: Δ(C.54) → 0.
+
+## E55 — Cycle 55: T2h VERIFIED attempt 3 (reviewer-grounding quote)
+
+- Green: theater-check eval (denylist-the-impossible + live builtins).
+  Gate-0: benign 42, hostile getcwd. Distinctive (evil twin of T2b).
+- a1: infra timeout after Red exit-0. a2: secure-mirror hallucination
+  captured (4th capture of the night, same role/signature). a3: contract
+  + ground-truth block (no allowlist / no builtins restriction / only
+  check is Import-denylist; judge supplied source only) → VERIFIED,
+  pre 0 post 1, zero faults. Cost $0.15.
+- Honest status: grounding is CORRELATED with the clear, not proven
+  causal (streak-break confound). Next hallucination stall MUST
+  A/B it: same fixture, grounding on/off. Until then: grounding is
+  standard in all contracts (cheap, possibly decisive).
+- Gate-3 8/8. Vault NOVEL. Taxonomy v39. Conclusion: Δ(C.55) → 0.
+
+## E56 — Cycle 56: T5f VERIFIED attempt 2 (proof-burden lesson)
+
+- Green: unsigned-pickle role token with C41 lessons applied. Gate-0:
+  benign role:guest; opcode-forged ADMIN-EFFECT (module path matched).
+- a1 inconclusive (opcode-crafting over HTTP near capability ceiling);
+  a2 VERIFIED — pre 0, post 1. Cost att2 $0.32. No hallucination, no
+  schema fault (grounding quote present both runs).
+- Blue: sign-before-load (correct CWE-502 doctrine). Gate-3 4/4.
+  Vault NOVEL. Taxonomy v40. Conclusion: Δ(C.56) → 0.
+- Reusable: proof-burden calibration — match the proof to Red's
+  demonstrated opcode-crafting ceiling; high-burden proofs need the
+  oracle-smuggle fallback designed in.
+
+## E57 — Cycle 57 scout: shell-quote 1.12.0 NEGATIVE-valuable (local clone, removed after)
+
+- Battery (node, no network): quote() neutralizes spaces (single-quote
+  wrap), ;$`()|&~#!, newline-in-quotes, unicode passthrough; parse∘quote
+  round-trips 12/12 incl adversarial corners. Zero findings.
+- Value: cross-validates the night's T3 doctrine from the ecosystem
+  side — the quoting primitive the forge tells Blue to emulate
+  (C5/C13/C23 escaping, C53 allowlist-as-stronger) itself holds.
+  Pairs with C3 (PyJWT), C6 (werkzeug), C39 (escape-string-regexp) as
+  the 4th NEGATIVE ecosystem scout. No CVE, no disclosure.
+
+## E58 — Cycle 58: T4h VERIFIED first-try (grounding promotion)
+
+- Green: textbook join-discard traversal + grounding quote. Gate-0:
+  benign notes, dotdot + absolute both leak. Benign executable (real
+  files served). Cost $0.13 — cheapest VERIFIED of the night.
+- First-try clear on the most canonical shape attempted. Evidence
+  ledger for grounding: UNGROUNDED stalls C48(6), C51v1 x2, C54v1 x2,
+  C55a2 vs GROUNDED clears C55a3, C58. Promoted to RULE; the prescribed
+  next-stall A/B (same fixture, grounding on/off) still stands as the
+  decisive experiment.
+- Blue: gold-standard containment. Gate-3 6/6. Vault NOVEL.
+  Taxonomy v41. Conclusion: Δ(C.58) → 0.
+
+## E59 — Cycle 59: T6h VERIFIED attempt 2 (misattribution refinement)
+
+- Green: CRLF audit events + line viewer. Gate-0: benign prefix,
+  forged line present. F13-safe by design (prefix asserts, fresh
+  targets per stage — confirmed no differential breakage).
+- a1: hallucination capture #5 — the sharpest yet (fix-misattribution,
+  not invention). a2 (identical contract): VERIFIED, pre 0 post 1.
+  Cost att2 $0.21. Grounding demoted (present in stall AND clear).
+- Blue: CRLF-to-space (exactly the hallucinated lines — the model
+  wrote the fix while denying the vuln). Gate-3 4/4. Vault NOVEL.
+  Taxonomy v42. Conclusion: Δ(C.59) → 0.
+
+## E60 — Cycle 60 self-review: 60 commits, 44 VERIFIED, 3 OPEN (2026-10-31T14:47Z)
+
+- Score: 44 VERIFIED cycles + 9 scouts (7 negative, 2 inconclusive) + 11
+  self-reviews; taxonomy v42 (T1-T9: T1x7 T2x7 T3x8 T4x7 T5x6 T6x8 T7x6
+  T8x4 T9x5); 121 vault priors (61 red + 60 blue); gates 781 green x46+;
+  UI untouched every commit. Ledger fix: C46 row annotated CLOSED-by-C47.
+- Open: C41 T5c (fixture flaws; C56's T5f is its done-right heir — the
+  CONCEPT is proven, the original fixture stays parked), C42 T6d
+  (fixture-physics, needs harness restart support), C48 T9f
+  (hallucination; C49's response-splitting sibling cleared instead).
+- Science ledger: 5 hallucination captures (all same role/signature);
+  mechanism refined invention→misattribution; grounding demoted to
+  boilerplate; starvation + executability promoted; prescribed A/B
+  still open. F16 (no-subprocess) + debug-var + prefix-asserts + CWD
+  rules all holding (zero baseline fails since C53a3).
+- 3+ consecutive clean cycles (C56a2/C58/C59a2 all ≤2 attempts).
+  ~1.5h to 16:15Z wake. Direction: T8 (4 members, thinnest) if a
+  sandbox-provable shape exists, else T2/T5 depth; keep recipe.
+- Spend: keyed total is usage-logged per attempt (~$0.13-0.32/clear);
+  no budget pressure observed.
+
+## E61 — Cycle 61 scout: PHP header() NEGATIVE, Python split POSITIVE (asymmetry)
+
+- Battery (target image, Docker): PHP 8.4 `header("X: a\r\nSet-Cookie:
+  hacked=1")` → Warning "may not contain more than a single header",
+  split REFUSED at the SAPI layer. Python 3.14 `send_header` with the
+  same payload → EMITTED raw (proven byte-level, C49 Gate-0).
+- Asymmetry intel: response-splitting is a live primitive in Python's
+  stdlib but dead in PHP 8.4's SAPI. Explains why T6f (Python) verified
+  and no PHP sibling was ever queued. No CVE, no disclosure. Zero keyed
+  spend (Docker-local battery only).
+
+## E62 — Cycle 62 scout: parse_str+EXTR_SKIP composition NEGATIVE (Docker-local, zero spend)
+
+- Battery: 2-arg `parse_str(qs, $q)` + `extract($q, EXTR_SKIP)` resists
+  role-overwrite AND `GLOBALS[pwned]` injection (both absent). The
+  composition is SAFE: array indirection quarantines, SKIP protects.
+- Pairs with T5e (C52): bare `extract($_GET)` = live hole; add EITHER
+  the 2-arg array (+read explicitly, best) or EXTR_SKIP and the hole
+  dies. Documents the exact minimal delta between vulnerable and safe.
+  No CVE, no disclosure.
+
+## E63 — Cycle 63: T4i VERIFIED attempt 2 (final forge cycle)
+
+- Green: require-path locale injection, executable benign, F13-safe
+  cache reasoning. Gate-0: benign world, hostile package.json leak.
+- a1: capture #6 (grounding explicitly disregarded; exact-quotation
+  misattribution). a2 identical: VERIFIED, pre 0 post 1. Cost $0.12 —
+  cheapest keyed clear of the late night.
+- Blue: locale allowlist (byte-identical to hallucinated lines, 3rd
+  instance of the model pre-writing the fix: C59, C63, and C48's
+  redirect-allowlist). Gate-3 8/8. Vault NOVEL. Taxonomy v43.
+  Conclusion: Δ(C.63) → 0. The forge closes its final cycle with the
+  full stall protocol validated end to end.
+
+## E-Phase1 — Candidate selection: validator.js TOP 1 (2026-10-31T18:17Z)
+
+- Hypothesis: among the 11 scouts, exactly one shapes a deterministic local repro of
+  a live third-party weakness with a minimal patch and a clear impact story —
+  validator.js `isURL` host allow/block lists compare case-sensitively while DNS
+  hostnames are case-insensitive (and sibling `isEmail` in the SAME repo already
+  lowercases before `checkHost` — in-repo precedent for the fix).
+- Why this candidate:
+  - Deterministic local repro: YES — babel-free spliced harness
+    (`phase1/splice_harness.mjs`: strips ESM, inlines the 6-file dep closure, no
+    install) reproduces on pinned `9ff34247` (v13.15.35, MIT): `isURL('http://EVIL.COM/',
+    {host_blacklist:['evil.com']})` → `true` (want `false`); 3/3 matrix cells fail
+    with string lists while `/evil\.com/i` blocks (proves string-compare-specific).
+  - Chained-class novelty: host-allowlist bypass is a NEW class for the night (T1–T9
+    cover traversal/eval/cmd/XSS/gate/selector, never validator-case); the bypass
+    defeats the exact `host_whitelist`/`host_blacklist` options the API sells for
+    SSRF/redirect-guard use.
+  - Patchability: one-line-class fix (`host.toLowerCase()` before `checkHost`, mirroring
+    `isEmail`'s `lower_domain`), verifiable by re-running the same battery (exit 1).
+  - License clarity: MIT (`package.json` license field), pinned commit, local clone.
+  - Impact clarity: any app gating fetch/redirect on `isURL(url, {host_blacklist})`
+    with lowercase string entries is bypassed by uppercasing the URL host — DNS
+    resolves identically (WHATWG lowercases; confirmed `new URL` host `evil.com`).
+- Why NOT the others: 9/11 scouts are refuted negatives (correct code, nothing to
+  reproduce); @hapi/shot (C15) is the only other OPEN shape but its dep closure
+  (`@hapi/hoek`) is absent and its static replication leans no-pollution — lower
+  repro score (0) vs validator.js live battery (already running).
+- Expected novelty: LOW-MODERATE — case-sensitivity in blocklists is a known bug
+  CLASS, but whether validator.js `isURL` specifically is affected at this commit
+  is unsearched. Phase 2 novelty step must check NVD/OSV/GHSA + repo issues BEFORE
+  claiming anything beyond `REPRODUCED_LOCALLY`.
