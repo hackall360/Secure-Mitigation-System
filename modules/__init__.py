@@ -13,7 +13,7 @@ class _LibraryAliasLoader(_abc.Loader):
     def create_module(self, spec):
         import importlib as _importlib
 
-        canonical = "library." + spec.name[len("modules."):]
+        canonical = "library." + spec.name[len("modules.") :]
         return _importlib.import_module(canonical)
 
     def exec_module(self, module):

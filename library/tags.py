@@ -49,6 +49,7 @@ def _load_module(dotted: str):
 
     return importlib.import_module(dotted)
 
+
 __version__ = "0.1.0"
 
 FEATURE_TAGS: dict[str, dict[str, object]] = {
@@ -955,7 +956,6 @@ FEATURE_TAGS: dict[str, dict[str, object]] = {
         "cli": None,
         "tui": None,
     },
-
 }
 
 # DOM-id -> extra JS needles proving a live wiring when the control is
