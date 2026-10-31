@@ -327,6 +327,11 @@ class MetaMuseClient:
 
                         _dbg = _os.environ.get("PURPLEBOX_LOG_RAW_RESPONSES")
                         if _dbg:
+                            if not _os.path.isdir(_dbg):
+                                raise AgentError(
+                                    "PURPLEBOX_LOG_RAW_RESPONSES points to a missing "
+                                    "directory; no debug payload was written."
+                                )
                             _fd, _dp = _tf.mkstemp(
                                 prefix=f"schemadebug-{role}-",
                                 suffix=".txt",
@@ -339,6 +344,8 @@ class MetaMuseClient:
                                 _fh.write(cleaned[:8000])
                                 _fh.write("\n----- RAW -----\n")
                                 _fh.write(content[:8000])
+                    except AgentError:
+                        raise
                     except Exception:
                         pass
                     raise AgentError(
