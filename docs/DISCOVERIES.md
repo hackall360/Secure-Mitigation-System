@@ -197,3 +197,14 @@ and taxonomy link.
   patch sha `23f052ba…`), `validation/task-2502-c25-vault.txt`.
 - Taxonomy: T1d-closed. Vault: red `a25a9265a074`, blue `893ae13cafc2`.
 - Gate-3: replay PASS (renamed schema; injection → stranger).
+
+## D17 — T4g prefix-strip prior (Cycle 26, 2026-10-31)
+
+- Novel fixture: Python `safe/`-strip then join. Red exit 0
+  (`safe/../../secret.txt` leaks); Blue normalize-after-strip →
+  exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-2601-c26-report.json` (receipt pre=0/post=1,
+  patch sha `0577656b…`), `validation/task-2602-c26-vault.txt`.
+- Taxonomy: new T4g subclass. Vault: red `4ab0b4866c07`,
+  blue `2e16108b9cc1`.
+- Gate-3: replay PASS (renamed variant; bypass dead).

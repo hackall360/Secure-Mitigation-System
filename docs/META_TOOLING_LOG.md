@@ -56,3 +56,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T10:37Z | muse-wonder-1.0 | C24 (2 calls) | Blue | T4f containment only (T1d open by record) |
 | 2026-10-31T10:41Z | muse-spark-1.3 | C25 (4 calls) | Red | T1d two-step store→read probe exit 0 pre-patch |
 | 2026-10-31T10:41Z | muse-wonder-1.0 | C25 (2 calls) | Blue | re-read parameterize, re-probe exit 1 |
+| 2026-10-31T10:46Z | muse-spark-1.3 | C26 (4 calls) | Red | T4g strip-bypass probe exit 0 pre-patch |
+| 2026-10-31T10:46Z | muse-wonder-1.0 | C26 (2 calls) | Blue | normalize-after-strip, re-probe exit 1 |

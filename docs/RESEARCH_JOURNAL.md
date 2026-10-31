@@ -855,3 +855,24 @@ Run: `overnight_1793434523077_12855248373640259943`.
   Every OPEN record tonight is now closed: C17-T2e (C18), C24-T1d (C25).
 - Reusable prior created: T1d two-step store-then-read probe + re-read
   parameterization template.
+
+## E26b — Cycle 26 keyed run: T4g prefix-strip VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven strip-bypass verifies under the short/slim shape.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "Path Traversal ... single safe/
+  prefix-strip + unsafe os.path.join". Blue: realpath+commonpath AFTER
+  the strip (order is the fix). 6 calls p9209/c17823 ≈$0.16.
+  Evidence: run `validation/task-2601-c26-live.txt`,
+  `validation/task-2601-c26-report.json`.
+- Gate-3 replay PASS on renamed variant (two script-depth errors were mine:
+  fixture depth is notes=root/src/notes with secret at root — evil is
+  exactly `prefix + /../../secret`; the replay must mirror that depth,
+  not my improvised layouts).
+- Vault: red `4ab0b4866c07`, blue `2e16108b9cc1`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2602-c26-vault.txt`.
+- Conclusion: Δ(C.26) → 0. T4g (prefix-strip bypass family) proven — the
+  T4 family now spans no-check (T4a), join (T4b/c), split (T4e),
+  strip (T4g). Taxonomy: new T4g subclass.
+- Reusable prior created: T4g strip-then-normalize template + replay-depth
+  mirroring rule (mirror fixture depth exactly).

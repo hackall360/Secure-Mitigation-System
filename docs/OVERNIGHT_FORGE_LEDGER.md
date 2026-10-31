@@ -36,6 +36,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T10:32Z | 23 | spark-1.3 + wonder-1.0 (slim, short, 2 attempts) | ≈$0.30 total | T3d backtick, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED attempt 2 (transient): escape-outside-quotes; inertness replay; vault T3d; Gate-3 PASS |
 | 2026-10-31T10:37Z | 24 | spark-1.3 + wonder-1.0 (slim, short) | p12526/c19587 ≈$0.18 | T4f + T1d-open, Python | pre 0 | post 1 | 0/0 + diff-pass | PARTIAL (C17 pattern): T4 retained+CLOSED; T1d Gate-0-proven but MISSED by Red; solo queued; vault T4f; Gate-3 PASS |
 | 2026-10-31T10:42Z | 25 | spark-1.3 + wonder-1.0 (slim, short) | p11290/c16122 ≈$0.14 | T1d SOLO, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: CLOSES C24 OPEN; ONE-sink rule validated; vault T1d-closed; Gate-3 PASS |
+| 2026-10-31T10:46Z | 26 | spark-1.3 + wonder-1.0 (slim, short) | p9209/c17823 ≈$0.16 | T4g prefix-strip, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: strip-bypass; normalize-after-strip; vault T4g; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).
