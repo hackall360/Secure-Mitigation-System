@@ -10,6 +10,8 @@ workflows for backward compatibility). Leaf module: only stdlib + typing.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 from typing import Any
 
 EXPLOIT_REDACTED = (

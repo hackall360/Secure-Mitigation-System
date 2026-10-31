@@ -9,6 +9,8 @@ much was omitted. Leaf module (stdlib only).
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 
 def bounded(text: str, limit: int) -> str:
     """Cut text to limit chars, appending how many were omitted."""

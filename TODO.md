@@ -26,6 +26,12 @@ Every item names its files and its proof.
 - [x] CC2. LAW 12 version: 0.10.0 -> 0.11.0 MAJOR (new capabilities judges notice: library/ rename + shims, web/tui/mcp maps, HOW_IT_WORKS, plain README, split AGENTS, sub-agent roster, MCP version single-source). Files: `library/core/version.py` (new source), `main.py` (imports it), `library/services/mcp_bridge.py` (serverInfo from source), `static/index.html` footer, `README.md` badge. Proof: `main.py --version` = 0.11.0, README badge regex test green, ruff clean.
 - [x] CC3. SHIPPED 0.11.0: final gate 798 + All checks on merged develop; offline_scan 4/4; LAW 1 flow done: forge -> develop (24e0bd8) -> pushed develop -> main (0fae2ec) -> pushed main -> back on develop. Stale/duplicate branches (work-tags + 60 already-merged + absorbed writer branches) deliberately NOT bulk-merged; listed in ship report. Proof: push logs + gate output.
 
+## DD. Post-refactor work-tags re-implementation (brief 2026-10-31-worktags-reimplement; branch feature/work-tags-remodel)
+
+- [x] DD1. RED test first (LAW 9): `tests/test_feature_tags.py` ported (library.tags import, double-quote hook pattern, invisibility pins). RED proven: collection ERROR `No module named 'library.tags'` (functional absence, not syntax). Registry-writer agent fanned out (isolated worktree /tmp/wt-tags-reg).
+- [x] DD2. Implement DONE: registry 127/127 + hooks + `dev.py tags` + `docs/TAGS.md` + root-cause fixes (research binds canonical sms_http; single-copy modules alias finder). Full gate 803 passed + All checks + tags 127/127. Proof: gate output.
+- [x] DD3. Live proof DONE: Firefox + Chrome offline cards "Boundary check passed" (attribute-only DOM, no visual change); offline_scan 4/4 verified on tags tree. LAW 12: MINOR (audit tooling, no user-visible capability; version stays 0.11.0, modules start at 0.1.0 per TAGS.md bump rule). Proof: cards + scan lines.
+
 ## A. Research sidecar agent layer (on top of shipped `research.py`)
 
 - [x] A1. Red research-only Muse prompt (`RED_RESEARCH_SYSTEM_PROMPT` in
