@@ -1,5 +1,5 @@
 {
-  "version": "35",
+  "version": "36",
   "classes": [
     {
       "id": "T1",
@@ -174,7 +174,8 @@
       "subclasses": {
         "T5a": "role-grant endpoint (Link A) gates dynamic query (Link B)",
         "T5b": "Node promo-code gate + template-string eval projection (forge Cycle 14)",
-        "T5d": "Python config section-name injection (forge Cycle 51 v2, no-$ reshape; section allowlist fix)"
+        "T5d": "Python config section-name injection (forge Cycle 51 v2, no-$ reshape; section allowlist fix)",
+        "T5e": "PHP bare-extract() variable overwrite (forge Cycle 52; explicit-read + deny-admin fix)"
       },
       "proven_by": "targets/node_chain_link (Wave 14, gate 725)",
       "priors": {
@@ -183,6 +184,10 @@
         "T5d": {
           "red": "f9475d1d9c08",
           "blue": "524f3d596eaa"
+        },
+        "T5e": {
+          "red": "68b8699c2fa5",
+          "blue": "7a284ccbc042"
         }
       }
     },
@@ -349,6 +354,11 @@
       "version": "35",
       "date": "2026-10-31",
       "change": "Cycle 51: +T5d (section-name injection); v1 interpolation PROVOKED Red hallucination x2 (captured), v2 starved it (hallucination-starvation doctrine); vault; Gate-3 5/5"
+    },
+    {
+      "version": "36",
+      "date": "2026-10-31",
+      "change": "Cycle 52: +T5e (extract-overwrite); PHP8 1-arg parse_str extinct (negative); first-try VERIFIED; vault; Gate-3 6/6 incl gate-composition"
     }
   ]
 }

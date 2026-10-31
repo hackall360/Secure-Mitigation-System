@@ -1353,3 +1353,16 @@ Run: `overnight_1793434523077_12855248373640259943`.
   "distinctiveness": it is a TARGETED reshape guided by the captured
   payload. The debug var paid for itself twice in three cycles.
 - Gate-3 5/5. Vault NOVEL. Taxonomy v35. Conclusion: Δ(C.51) → 0.
+
+## E52 — Cycle 52: T5e extract-overwrite VERIFIED first-try (rare-shape streak)
+
+- Green: rare shape (bare extract) + rare fix vocabulary, F15/F13 clean.
+  Gate-0 Docker (target image PHP 8.4.27): benign bob, hostile admin.
+  Negative batteries first: 1-arg parse_str extinct in PHP8;
+  EXTR_SKIP accidentally safe — the hole needs bare extract().
+- First-try VERIFIED — pre 0, post 1, regressions 0/0. Cost $0.24.
+  No faults, no debug dumps. Third consecutive clean clear on
+  distinctive shapes (C49/C51v2/C52).
+- Blue: extract-removal + deny-admin (stronger than minimal escape).
+  Gate-3 6/6 with gate-composition proof. Vault NOVEL. Taxonomy v36.
+  Conclusion: Δ(C.52) → 0.

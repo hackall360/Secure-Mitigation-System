@@ -336,3 +336,11 @@ and taxonomy link.
 - Gate-3: 5/5. Taxonomy v35. Vault: red `f9475d1d9c08`, blue
   `524f3d596eaa`. NOVEL_SURFACE. v1 interpolation variant archived
   as hallucination-trigger specimen.
+
+## D31 — T5e extract-overwrite prior (Cycle 52, 2026-10-31)
+
+- Red: bob detail recorded, crafted role reaches admin panel.
+- Blue: remove extract + explicit read + deny-admin assertion.
+- Gate-3: 6/6 (gate composition). Taxonomy v36. Vault: red
+  `68b8699c2fa5`, blue `7a284ccbc042`. NOVEL_SURFACE.
+- Negative: PHP8 single-arg parse_str extinct; EXTR_SKIP safe.

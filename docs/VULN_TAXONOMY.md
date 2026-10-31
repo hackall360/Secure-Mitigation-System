@@ -298,3 +298,19 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   contradiction, reshape to REMOVE the confabulated fix's vocabulary
   rather than re-running blind.
 - Vault: red `f9475d1d9c08`, blue `524f3d596eaa`; NOVEL_SURFACE.
+
+## T5e note (extract-overwrite variable injection + PHP8 negative)
+
+- Subclass T5e (proven forge Cycle 52, PHP, FIRST-TRY): bare
+  `extract($query)` (EXTR_OVERWRITE default) overwrites `$role`;
+  crafted role param reaches the admin panel. Rare fix vocabulary;
+  no hallucination, no faults.
+- Blue: REMOVE extract() + explicit role read + deny-rule
+  (`admin` from untrusted input forced to guest). Gate composition
+  verified: `admin `, `ADMIN`, `admin\0` all forbidden at the exact
+  gate. Fail-closed for literal-`admin` usernames (correct).
+- NEGATIVE battery (valuable): PHP 8 REMOVED single-arg `parse_str`
+  (ArgumentCountError) — the classic register-globals primitive is
+  extinct; `extract()` is its living heir. Recorded so future Green
+  never wastes Gate-0 on it.
+- Vault: red `68b8699c2fa5`, blue `7a284ccbc042`; NOVEL_SURFACE.
