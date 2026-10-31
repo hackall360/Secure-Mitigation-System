@@ -930,3 +930,25 @@ Run: `overnight_1793434523077_12855248373640259943`.
   include (T3dd). Taxonomy: new T3dd subclass.
 - Reusable prior created: T3dd allowlist-or-404 include template +
   twin-planting provability pattern (suffix sinks need a planted twin).
+
+## E29 — Cycle 29: Python T3e format-template injection VERIFIED first-try
+
+- Hypothesis: the Gate-0-proven `str.format` attribute-walk verifies with a
+  parse-then-format Blue gate.
+- Result: success=True, retained, receipt pre=0/post=1/regressions 0/0,
+  cleanup ok, FIRST TRY. Red vuln: "str.format template injection ...
+  attribute access on Author object (e.g., {1.__class__.__name__})". Blue:
+  `string.Formatter().parse()` pre-pass (fields only `''`/`'0'`, no nested
+  braces) then single-arg `format(name)`. 6 calls p11350/c25525 ≈$0.24.
+  Evidence: run `validation/task-2901-c29-live.txt`,
+  `validation/task-2901-c29-report.json`.
+- Gate-3 replay PASS on renamed shape (`{1.*}`, `{0.*}`, nested-spec all
+  blocked; `{0!r}` conversion allowed — repr of the name only, safe).
+- Vault: red `9e21d63fd849`, blue `53bd3cb3bd28`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-2902-c29-vault.txt`.
+- Conclusion: Δ(C.29) → 0. T3e (format-string template injection, CWE-74)
+  proven — a genuinely NEW sink family for the forge (neither shell, SQL,
+  eval, traversal, XSS, include, nor vm). The T3 "code-ish injection"
+  chapter now spans a-g. Taxonomy: new T3e subclass.
+- Reusable prior created: T3e parse-then-format gate + the fixed-single-arg
+  reduction (remove the rich object from scope entirely where possible).

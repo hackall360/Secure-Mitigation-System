@@ -144,3 +144,14 @@ subclass, refine a subclass with evidence, or prove a cross-language variant.
   (`` `printf "%s" $safeHost` ``) — the quoting inversion is the whole fix.
   Replay semantics: INERTNESS (literal echo + no side effects), not absence.
 - Priors: red `67a3c0ac01e4`, blue `f0435a01ca62` (vault, forge-c23).
+
+## T3e note (format-string template injection, CWE-74)
+
+- Subclass T3e (proven forge Cycle 29, Python): user-controlled template
+  passed to `str.format()` with a rich object in scope — `{1.__class__}`
+  walks attributes. Fix doctrine: `string.Formatter().parse()` pre-pass
+  (fields only `''`/`'0'`, no nested braces), then single-arg format;
+  better, remove the rich object from scope entirely.
+- Gate-0: Template-substitution (`string.Template`, C24) is INERT — no
+  evaluation, no vuln. Evaluation is the necessary ingredient.
+- Priors: red `9e21d63fd849`, blue `53bd3cb3bd28` (vault, forge-c29).

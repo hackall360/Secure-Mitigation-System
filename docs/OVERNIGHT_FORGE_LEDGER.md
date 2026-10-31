@@ -40,6 +40,7 @@ Columns: time (UTC) | cycle | models | tokens | chain (classes+lang) | Red | Blu
 | 2026-10-31T10:51Z | 27a | none (node battery) | 0 | T2f setTimeout-string | n/a | n/a | n/a | REJECTED at Gate 0: dead in Node22 (ERR_INVALID_ARG_TYPE); pivot wins |
 | 2026-10-31T10:54Z | 27 | spark-1.3 + wonder-1.0 (slim, short) | p10525/c16768 ≈$0.17 | T2f2 vm-leaky, Node | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: de-leak + digit-requirement; escape unspellable; vault T2f2; Gate-3 PASS |
 | 2026-10-31T10:59Z | 28 | spark-1.3 + wonder-1.0 (slim, short) | p9193/c11628 ≈$0.12 | T3dd include-LFI, PHP | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: allowlist-or-404; twin-plant provability; vault T3dd; Gate-3 PASS |
+| 2026-10-31T11:04Z | 29 | spark-1.3 + wonder-1.0 (slim, short) | p11350/c25525 ≈$0.24 | T3e format-template, Python | pre 0 | post 1 | 0/0 + diff-pass | VERIFIED first-try: parse-then-format gate; new sink family (CWE-74); vault T3e; Gate-3 PASS |
 
 Cycle 1+ rows appended as they complete. Failure rows stay (rejected rule:
 3 failed adaptations = `[REJECTED]`, container destroyed, next cycle).

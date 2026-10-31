@@ -208,3 +208,14 @@ and taxonomy link.
 - Taxonomy: new T4g subclass. Vault: red `4ab0b4866c07`,
   blue `2e16108b9cc1`.
 - Gate-3: replay PASS (renamed variant; bypass dead).
+
+## D18 — T3e format-template prior (Cycle 29, 2026-10-31)
+
+- Novel fixture: Python user-controlled `str.format` template with an
+  Author object in scope. Red exit 0 (`{1.__class__}` leaks); Blue
+  parse-gate + single-arg format → exit 1, regressions 0/0. First-try.
+- Evidence: run `validation/task-2901-c29-report.json` (receipt pre=0/post=1,
+  patch sha `06abe85e…`), `validation/task-2902-c29-vault.txt`.
+- Taxonomy: new T3e subclass (CWE-74, new family). Vault:
+  red `9e21d63fd849`, blue `53bd3cb3bd28`.
+- Gate-3: replay PASS (renamed variant; attribute walk dead).
