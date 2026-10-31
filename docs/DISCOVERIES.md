@@ -254,3 +254,14 @@ and taxonomy link.
 - Taxonomy: new T3f subclass (3rd CWE-74 member). Vault:
   red `1a97e89f1406`, blue `024cb234faeb`.
 - Gate-3: replay PASS (renamed variant; raw path dead).
+
+## D22 — T8c theme-selector prior (Cycle 36, 2026-10-31)
+
+- Novel fixture: PHP theme-pack manifest selector (`pack` → manifest
+  path). Red exit 0 (twin reads EVIL-PACK-MARKER); Blue allowlist +
+  realpath-under-packs → exit 1, regressions 0/0. Attempt-2 retry.
+- Evidence: run `validation/task-3602-c36b-report.json` (receipt pre=0/post=1,
+  patch sha `68a00e60…`), `validation/task-3603-c36-vault.txt`.
+- Taxonomy: new T8c subclass. Vault: red `a4357fa1433b`,
+  blue `538245a2bf00`.
+- Gate-3: replay PASS (renamed variant; escape dead).

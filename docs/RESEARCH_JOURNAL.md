@@ -1123,3 +1123,27 @@ Run: `overnight_1793434523077_12855248373640259943`.
   hardware-key cookie (T7b, C35) — the "thinnest chapter" directive is
   answered. HTTP-proof rule now 3/3 (C31, C34, C35).
 - Reusable prior created: T7b hardware-key chain template.
+
+## E36a — Cycle 36 attempt 1: closing-report schema fault (INFRA, attempt 1 of 3)
+
+- Same signature (Red exit-0 + Blue proposal accepted, final report
+  malformed; 5 calls ≈$0.30). Retry verbatim per the transient rule
+  (C23/C34/C35 precedent).
+
+## E36b — Cycle 36 retry: T8c theme-selector VERIFIED (twin-plant rule holds)
+
+- Attempt 1 died on the closing-report fault (5 calls ≈$0.11); verbatim
+  retry VERIFIED: success=True, retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok. Blue: allowlist-or-404 + realpath-under-packs (defense
+  in depth, like C28). 6 calls p9601/c14109 ≈$0.16 — cheap.
+  Evidence: run `validation/task-3602-c36b-live.txt`,
+  `validation/task-3602-c36b-report.json`.
+- Gate-3 replay PASS on renamed variant (nested traversal dead).
+- Vault: red `a4357fa1433b`, blue `538245a2bf00`; recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-3603-c36-vault.txt`.
+- Conclusion: Δ(C.36) → 0. T8 family now spans selector (T8b local-store,
+  C7) + theme-pack manifest (T8c, C36). The E45r "T7/T8 depth" direction
+  is answered for T8. Taxonomy: new T8c subclass.
+- Reusable prior created: T8c manifest-selector template + twin-plant rule
+  (3rd confirmation: suffix-appended sinks need a planted twin — C13 tar,
+  C28 include, C36 manifest).
