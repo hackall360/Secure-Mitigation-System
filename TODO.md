@@ -361,5 +361,9 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA26. Wave 26 full-green ingest cycle (server-shaped staged tree + terminating target).
 - [x] AA26. Wave 26 outcome: LOOP FULLY FIRES on ingested tree (validation → staging → compress → vault NOVEL → baseline passed → red review real Muse → verify → cleanup). Sanitized tree → correct no_findings. Vulnerable tree → red found, verify ran, check failed on probe shape (model verifier vs one-shot target mismatch). Verified-verdict on ingested tree pending a cooperating probe shape — wiring proven, probe iteration is refinement. Server torn down, zero leftovers.
 - [ ] AA27. Wave 27 TRIBUNAL (mod-3).
+- [x] AA27. Wave 27 outcome: tribunal weighted **8.80** (was 8.75, +0.05 ingest live-fire). Movers: 2a-3 → 8.0 (runtime proven on real frames). Proof: matrix.
+- [ ] AA28. Wave 28 cooperating probe shape (verifier contract for one-shot targets).
+- [ ] AA29. Wave 29 sustained-load + 429 drill (bounded fault-injection).
+- [ ] AA30. Wave 30 FINAL TRIBUNAL + HARD GATE + WILD CRUCIBLE #3 (gate takes precedence).
 
 
