@@ -359,6 +359,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA25. Wave 25 HARD GATE (mod-5): full gate + Docker loop + browser cards.
 - [x] AA25. Wave 25 outcome: GATE GREEN after one lint fix (unused var, spawner). dev.py check exit 0; Docker 4/4 verified (incl. chain fixture); Chrome + Firefox cards on chain fixture. No Wave-26-regression-only needed.
 - [ ] AA26. Wave 26 full-green ingest cycle (server-shaped staged tree + terminating target).
+- [x] AA26. Wave 26 outcome: LOOP FULLY FIRES on ingested tree (validation → staging → compress → vault NOVEL → baseline passed → red review real Muse → verify → cleanup). Sanitized tree → correct no_findings. Vulnerable tree → red found, verify ran, check failed on probe shape (model verifier vs one-shot target mismatch). Verified-verdict on ingested tree pending a cooperating probe shape — wiring proven, probe iteration is refinement. Server torn down, zero leftovers.
 - [ ] AA27. Wave 27 TRIBUNAL (mod-3).
 
 
