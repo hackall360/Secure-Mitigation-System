@@ -357,6 +357,7 @@ Baseline proof: `dev.py check` 329 passed on `feature/zero-day-wave1-research@21
 - [ ] AA24. Wave 24 TRIBUNAL (mod-3).
 - [x] AA24. Wave 24 outcome: tribunal weighted **8.75** (was 8.70, +0.05 ingest completion). Movers: 2a-1 → 8.5 (live loop fires), 2d-1/6 → 8.5 (styling decided + ingest submits). Proof: matrix.
 - [ ] AA25. Wave 25 HARD GATE (mod-5): full gate + Docker loop + browser cards.
+- [x] AA25. Wave 25 outcome: GATE GREEN after one lint fix (unused var, spawner). dev.py check exit 0; Docker 4/4 verified (incl. chain fixture); Chrome + Firefox cards on chain fixture. No Wave-26-regression-only needed.
 - [ ] AA26. Wave 26 full-green ingest cycle (server-shaped staged tree + terminating target).
 - [ ] AA27. Wave 27 TRIBUNAL (mod-3).
 

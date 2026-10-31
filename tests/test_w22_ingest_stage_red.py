@@ -59,9 +59,7 @@ def test_intake_clone_true_uses_staging_container_not_host():
     sandbox = MagicMock()
     sandbox.client.containers = FakeContainers()
     sandbox._options.return_value = {}
-    snap = repo_intake.intake_repo_to_snapshot(
-        _spec(), ["python3", "app.py"], sandbox=sandbox, clone=True
-    )
+    repo_intake.intake_repo_to_snapshot(_spec(), ["python3", "app.py"], sandbox=sandbox, clone=True)
     assert calls, "clone=True must touch the staging container"
     _, kwargs = calls["created"]
     assert kwargs.get("network_mode") == "none", "staging stays air-gapped"
