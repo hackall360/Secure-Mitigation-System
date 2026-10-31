@@ -41,3 +41,5 @@ Every keyed call is logged here with token counts from the response usage.
 | 2026-10-31T09:59Z | muse-spark-1.3 | C17a (5 calls ≈$0.20; final-report schema fault) | Red | exit-0 proof stood; closing report malformed |
 | 2026-10-31T10:02Z | muse-spark-1.3 | C17b retry (4 calls) | Red | T4c traversal probe exit 0 pre-patch |
 | 2026-10-31T10:02Z | muse-wonder-1.0 | C17b retry (2 calls) | Blue | T4c containment only (T2e left open by record) |
+| 2026-10-31T10:08Z | muse-spark-1.3 | C18 (4 calls) | Red | T2e ctor probe exit 0 pre-patch |
+| 2026-10-31T10:08Z | muse-wonder-1.0 | C18 (2 calls) | Blue | char-class allowlist (ctor retained, residual noted), re-probe exit 1 |

@@ -631,3 +631,30 @@ Run: `overnight_1793434523077_12855248373640259943`.
   locally) + T4c (Node containment, second Node proof).
 - Reusable prior created: T4c containment template; T2e Function-sink probe
   (Gate-0 proven, vault-anchored for the follow-up).
+
+## E18 — Cycle 18: T2e-only follow-up, first-try VERIFIED (closes the C17 OPEN record)
+
+- Hypothesis: the solo Function-constructor box verifies with a tight
+  char-class allowlist, closing the C17 OPEN T2e record.
+- Result: success=True, status retained, receipt pre=0/post=1/regressions
+  0/0, cleanup ok, FIRST TRY. Red vuln: "Remote arbitrary JavaScript
+  execution via unsanitized Function-constructor sink". Blue: length cap +
+  char-class allowlist (`[0-9x+\-*/%(). \t\r\n]`), constructor retained.
+  6 calls p9743/c28984 ≈$0.27.
+  Evidence: run `validation/task-1801-c18-live.txt`,
+  `validation/task-1801-c18-report.json`.
+- Audit honesty: my own 5-shape battery shows `process.version`,
+  `x.constructor`, `;`, arrows all BLOCKED — but the constructor is NOT
+  eliminated and `x`/`.`/parens remain, so the patch is WEAKER than C14's
+  Number-arithmetic rewrite. Vault records the residual + the stronger
+  follow-up explicitly. The receipt proves "known probes blocked", not
+  "sink eliminated" — labeled, not oversold.
+- Gate-3: shape-verified by the same battery (benign preserved, 4/4 evil
+  blocked); no separate variant needed (the audit IS the replay).
+- Vault: red `44dc77251d86`, blue `8fe325cb2fa3` (with residual note);
+  recall KNOWN_ARCHETYPE.
+  Evidence: run `validation/task-1802-c18-vault.txt`.
+- Conclusion: the C17 OPEN record is now CLOSED-by-proof with residual
+  documented. Δ(C.18) → 0. Prior count: 59 known archetypes.
+- Reusable prior created: T2e char-class containment template + residual
+  documentation pattern (prove-blocked AND state-what-remains).
