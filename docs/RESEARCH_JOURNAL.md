@@ -701,3 +701,34 @@ Run: `overnight_1793434523077_12855248373640259943`.
   closed with the resolve-FIRST doctrine. Taxonomy: new T4e subclass.
 - Reusable prior created: T4e resolve-then-check template + short-contract
   rule (3rd confirmation).
+
+## E30r — Cycle 30 self-review: diversity check (5-cycle cadence)
+
+- Keyed tally: Python C1, C4, C7 (3) + Node C2, C8, C11, C14, C17, C18 (6)
+  + PHP C5, C10, C13, C16, C19 (5). Total 14. Node = 6/14 = 43% — STILL
+  over the 40% bar (was 46%, improving). PHP now 5/14 = 36% ✓.
+- Scouts: 3, 6, 9, 12, 15 (4 neg + 1 inconclusive). Cycle 21 cadence due:
+  per E15, ZERO-dependency single-file exotic ONLY.
+- Class coverage: T1×2, T2×7 (a-e shapes), T3×3, T4×5 (a,b,c,e + co),
+  T5×2, T6×3, T7×1, T8×1, T9×1. No family unproven.
+- Forced direction: Cycles 20-22 = PHP/Python Green depth (restore Node
+  balance); Cycle 21 scout = single-file zero-dep exotic or SKIP.
+
+## E21 — Cycle 21 scout: `he` entity codec (NEGATIVE-valuable, zero-dep rule met)
+
+- Hypothesis: the canonical zero-dependency entity codec mishandles a
+  forge payload class or its decode enables XSS.
+- Method: LOCAL clone (`mathiasbynens/he` @ `e5658ecc` v2.0.0, MIT) + LOCAL
+  ESM batteries on `src/he.mjs` (254 lines, no deps — first exotic scout
+  to satisfy the zero-dependency rule).
+- Control: roundtrip exact; 200KB perf flat.
+- Result: encode neutralizes all T6 shapes; double-encode is correct;
+  strict mode throws closed; numerics + astral per spec. NO candidate.
+  Cross-validates the forge's htmlspecialchars doctrine (PHP twin).
+- Conclusion: even the ideal exotic target (tiny, single-file, zero-dep)
+  is hardened. The night's discovery ledger is now 4 neg + 1 inconclusive
+  + 1 neg across 6 scouts — the synthesis engine (13 verified chains) is
+  the proven frontier instrument, scouting the control arm. Next: Green
+  depth continues; scouts only on zero-dep single-file from here.
+- Reusable prior created: encoder-audit battery (payload suite, double-encode
+  direction, strict-vs-legacy, numeric/astral, perf cliff) + `he` option table.

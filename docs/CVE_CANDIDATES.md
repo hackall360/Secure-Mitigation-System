@@ -141,3 +141,32 @@ No candidates yet. Scout runs every 3rd cycle (first: Cycle 3).
   keyless sandbox (no `npm install` of external deps per minimal-footprint
   rule). Honest inconclusive, not a silent clear.
 - Responsible disclosure: nothing to disclose (no finding).
+
+## Scout Cycle 21 — `he` (HTML entities) @ `e5658ecc` (v2.0.0, 2026-10-04), MIT (2026-10-31)
+
+- HYPOTHESIS tested: the canonical JS entity codec (zero-dependency,
+  single-file ESM `src/he.mjs`, 254 lines) mishandles a forge T6 payload
+  class (double-encode, astral, option footgun) or its decode direction
+  enables stored-XSS primitive.
+- Method: LOCAL clone only (depth 4) + LOCAL node ESM batteries (no deps,
+  no network). Zero-dependency rule SATISFIED (first exotic scout to meet it).
+- Results (all LOCAL, deterministic):
+  1. `encode` neutralizes every forge T6 payload tried (`<script>`,
+     `<img onerror>`, `O'Brien` → `&lt;`/`&gt;`/`&quot;`/`&apos;`);
+     defaults emit numeric refs (`&#x3C;`). The forge's `htmlspecialchars`
+     doctrine is the PHP twin of this behavior — cross-validated.
+  2. Pre-encoded input double-encodes (`&lt;` → `&amp;lt;`) — CORRECT
+     (idempotent-safe direction; decode-then-render would be the app's bug,
+     not the codec's).
+  3. `decode` is specified-to-decode (roundtrip exact); strict mode THROWS
+     on unterminated `&ampamp;` (`Parse error`) while legacy decodes to
+     `&amp;` — documented strictness split, fails CLOSED (throw), not open.
+  4. Numeric hex/dec + astral (`&#x1F600;` → emoji) all decode per spec.
+  5. 200KB `encodeEverything` completes in ms-scale (no perf cliff on the
+     tested shape).
+- Verdict: **no candidate**. The codec is the CORRECT answer to the T6
+  family, and its sharp edges (strict-throw, double-encode direction)
+  fail closed or are caller-responsibility. Reusable: `he`'s option table
+  (strict vs legacy, encodeEverything cost) as the reference for any
+  future encoder audit.
+- Responsible disclosure: nothing to disclose (no finding).
