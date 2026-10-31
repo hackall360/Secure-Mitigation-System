@@ -37,8 +37,7 @@ _PHP_ENTRY_CANDIDATES = ("public/index.php", "index.php", "src/index.php")
 _DETECT_PRECEDENCE = ("package.json", "composer.json", "python", "makefile")
 
 _ACTIONABLE_SUFFIX = (
-    "pass an explicit runtime_command argv "
-    "(e.g. ['python3', 'main.py']) to intake_repo_to_snapshot"
+    "pass an explicit runtime_command argv (e.g. ['python3', 'main.py']) to intake_repo_to_snapshot"
 )
 
 
@@ -120,16 +119,11 @@ def _normalise_file_entries(source) -> tuple[tuple[str, str | None], ...]:
             elif isinstance(entry, dict) and len(entry) == 1:
                 name, content = next(iter(entry.items()))
                 items.append((name, content))
-            elif (
-                isinstance(entry, (list, tuple))
-                and len(entry) == 2
-                and isinstance(entry[0], str)
-            ):
+            elif isinstance(entry, (list, tuple)) and len(entry) == 2 and isinstance(entry[0], str):
                 items.append((entry[0], entry[1]))
             else:
                 raise ValueError(
-                    "file entries must be names, {name: content} dicts, "
-                    "or (name, content) pairs"
+                    "file entries must be names, {name: content} dicts, or (name, content) pairs"
                 )
     else:
         raise ValueError(
@@ -217,8 +211,7 @@ def detect_runtime(file_list_or_snapshot) -> list[str]:
     entries = _normalise_file_entries(file_list_or_snapshot)
     if not entries:
         raise ValueError(
-            "could not detect runtime_command from repo contents; "
-            + _ACTIONABLE_SUFFIX
+            "could not detect runtime_command from repo contents; " + _ACTIONABLE_SUFFIX
         )
     names = {name for name, _ in entries}
     basenames = {_basename(name) for name in names}
@@ -231,18 +224,14 @@ def detect_runtime(file_list_or_snapshot) -> list[str]:
 
     candidates: dict[str, list[str]] = {}
     if "package.json" in basenames:
-        candidates["package.json"] = _package_json_command(
-            _content_for("package.json")
-        )
+        candidates["package.json"] = _package_json_command(_content_for("package.json"))
     if "requirements.txt" in basenames or "pyproject.toml" in basenames:
         candidates["python"] = _python_command(names)
     if "composer.json" in basenames:
         candidates["composer.json"] = _php_command(names)
     makefile_hit = basenames & _MAKEFILE_NAMES
     if makefile_hit:
-        candidates["makefile"] = _makefile_command(
-            _content_for(*sorted(makefile_hit))
-        )
+        candidates["makefile"] = _makefile_command(_content_for(*sorted(makefile_hit)))
     for key in _DETECT_PRECEDENCE:
         if key in candidates:
             return candidates[key]
@@ -282,8 +271,7 @@ def intake_repo_to_snapshot(
     if runtime_command is None:
         if file_list is None:
             raise ValueError(
-                "runtime_command is required when file_list is not given; "
-                + _ACTIONABLE_SUFFIX
+                "runtime_command is required when file_list is not given; " + _ACTIONABLE_SUFFIX
             )
         runtime_command = detect_runtime(file_list)
     if not isinstance(runtime_command, (list, tuple)) or not runtime_command:

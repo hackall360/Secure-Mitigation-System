@@ -89,9 +89,7 @@ def test_explicit_runtime_command_wins_over_autodetect():
 
 def test_intake_autodetects_when_runtime_omitted():
     spec = RepoIntakeSpec(url=GOOD_URL, commit_hash=GOOD_HASH)
-    snapshot = intake_repo_to_snapshot(
-        spec, file_list=["package.json"], sandbox=MagicMock()
-    )
+    snapshot = intake_repo_to_snapshot(spec, file_list=["package.json"], sandbox=MagicMock())
     assert tuple(snapshot.runtime_command) == ("npm", "start")
 
 
@@ -104,15 +102,11 @@ def test_intake_without_runtime_or_file_list_fails_closed():
 def test_intake_with_undetectable_files_fails_closed():
     spec = RepoIntakeSpec(url=GOOD_URL, commit_hash=GOOD_HASH)
     with pytest.raises(ValueError, match="runtime_command"):
-        intake_repo_to_snapshot(
-            spec, file_list=["README.md"], sandbox=MagicMock()
-        )
+        intake_repo_to_snapshot(spec, file_list=["README.md"], sandbox=MagicMock())
 
 
 def test_detect_accepts_snapshot_with_files_mapping():
-    snapshot = SimpleNamespace(
-        files=MappingProxyType({"package.json": b'{"name": "demo"}'})
-    )
+    snapshot = SimpleNamespace(files=MappingProxyType({"package.json": b'{"name": "demo"}'}))
     assert detect(snapshot) == ["npm", "start"]
 
 
