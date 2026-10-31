@@ -35,6 +35,20 @@ from pathlib import Path
 
 ENTRY_KEYS = ("surfaces", "backend", "ui", "cli", "tui")
 
+
+def _load_module(dotted: str):
+    """Import through the canonical library package, never the shim.
+
+    `modules.*` re-exports the real subpackage object, but a submodule
+    imported as `modules.x.y` still executes a SECOND copy of the file.
+    Tests that assert `is` identity of re-exported symbols (e.g. the
+    sms_http back-compat aliases) must resolve both sides through one
+    package or the copies diverge.
+    """
+    import importlib
+
+    return importlib.import_module(dotted)
+
 __version__ = "0.1.0"
 
 FEATURE_TAGS: dict[str, dict[str, object]] = {
