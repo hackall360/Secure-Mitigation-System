@@ -53,17 +53,21 @@ rows, vault stats, META_TOOLING_LOG.md, CVE_CANDIDATES.md.
 | Priors passing Reusability Replay on unseen variants | 44 Gate-3 replays logged PASS (last: C63 8/8) | ledger Gate-3 column | [x] VERIFIED |
 | External GitHub repos tested locally | 11 scout cycles (PyJWT, werkzeug, FFU, sabre, hapi/shot, he, validator.js, escape-string-regexp, shell-quote + 2 asymmetry probes) | `docs/RESEARCH_JOURNAL.md` E-sc [#]outs, CVE_CANDIDATES scout sections | [x] VERIFIED |
 | CVE Candidates HYPOTHESIS | 14 hypothesis mentions, all refuted or open-negative (PyJWT SSRF/alg-none refuted; validator confusion open; he/ent-codec negative) | `docs/CVE_CANDIDATES.md` | [x] VERIFIED (as negatives) |
-| CVE Candidates REPRODUCED_LOCALLY | 0 — no third-party vuln reproduced in sandbox | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
-| CVE Candidates PATCH_VERIFIED | 0 — no upstream patch authored or verified | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
-| CVE Candidates NOVELTY_CHECKED | 0 — no candidate reached novelty review | `docs/CVE_CANDIDATES.md` (no such section) | [ ] UNVERIFIED |
-| Responsible-disclosure drafts | 0 — `docs/disclosures/` does not exist | repo listing | [ ] UNVERIFIED |
+| CVE Candidates REPRODUCED_LOCALLY | 1 — validator.js isURL host-list case bug, sandbox exit 0 (3 bypasses), pinned 9ff34247 MIT | `docs/disclosures/validator-isurl-host-case/`, run `phase0/validator-repro-log.txt` | [x] VERIFIED |
+| CVE Candidates PATCH_VERIFIED | 1 — `host.toLowerCase()` before both `checkHost` calls; sandbox exit 1 + benign 0 | `docs/disclosures/validator-isurl-host-case/isurl-host-case.patch`, run `phase0/validator-patched-log.txt` | [x] VERIFIED |
+| CVE Candidates NOVELTY_CHECKED | 1 — NVD/OSV/GHSA/repo-issues searched, no match; CVE-2025-56200 + #887 distinguished | `docs/disclosures/validator-isurl-host-case/novelty_search.md` | [x] VERIFIED |
+| Responsible-disclosure drafts | 1 — PRIVATE draft (summary, commit, repro, impact, patch, mitigation, timeline placeholder); NOTHING sent | `docs/disclosures/validator-isurl-host-case/DISCLOSURE_DRAFT.md` | [x] VERIFIED (as local draft; send is human-only) |
 | Meta model calls logged | 78 entries (spark-1.3 + wonder-1.0, per-cycle costs) | `docs/META_TOOLING_LOG.md` (86 lines) | [x] VERIFIED |
 
 $\Delta$ remaining (honest): the forge loop is a closed-world machine —
 45 self-made fixtures verified against self-made patches. The Push The
-Frontier gap is exactly the four `[ ] UNVERIFIED` rows above: zero
-third-party reproductions, zero upstream patches, zero novelty-checked
-novel findings, zero disclosure drafts. Scout cadence (11 runs) proves the
+Frontier gap CLOSED 2026-10-31 (directive ...frontier-delta): one third-party
+reproduction (validator.js case bug, sandbox exit 0), one verified upstream patch
+(battery exit 1 + benign 0), one novelty-checked finding (keyless-scope log, no
+match), one private disclosure draft (NOT sent — human-only). Remaining risk,
+stated honestly: keyless-novelty scope (no commercial feeds), packaged
+`validators.test.js` not re-run here (no babel — maintainer action), severity SMALL
+in isolation (boundary-relies-on-string-lists + attacker-influences-case). Scout cadence (11 runs) proves the
 pipeline reaches outward, but every outward result was NEGATIVE by design
 (guarded libraries hold). The missing capability is a confirmed-vulnerable
 third-party target, not more self-fixtures. Hotspots C41/C42/C48 (3 OPEN)
