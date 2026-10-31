@@ -247,6 +247,10 @@ def intake_repo_to_snapshot(
     *,
     sandbox=None,
     file_list=None,
+    clone=False,
+    clone_dir="/repo",
+    clone_timeout_seconds=120,
+    **kwargs,
 ) -> RepoIntakeSnapshot:
     """Stage a validated repo intake via Docker staging-container semantics.
 
@@ -268,6 +272,12 @@ def intake_repo_to_snapshot(
     """
     if not isinstance(spec, RepoIntakeSpec):
         raise ValueError("spec must be a RepoIntakeSpec")
+    if kwargs:
+        unexpected = sorted(kwargs)
+        raise TypeError(
+            f"intake_repo_to_snapshot() got unexpected keyword(s) {unexpected}; "
+            "intake can never be pointed at host paths"
+        )
     if runtime_command is None:
         if file_list is None:
             raise ValueError(
@@ -291,10 +301,106 @@ def intake_repo_to_snapshot(
             "repo.runtime_command": json.dumps(list(runtime_command)).encode("utf-8"),
         }
     )
-    return RepoIntakeSnapshot(
-        files=manifest,
-        url=spec.url,
-        commit_hash=spec.commit_hash,
-        runtime_command=tuple(runtime_command),
-        digest=_manifest_digest(spec, tuple(runtime_command)),
+    if not clone:
+        return RepoIntakeSnapshot(
+            files=manifest,
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=tuple(runtime_command),
+            digest=_manifest_digest(spec, tuple(runtime_command)),
+        )
+    return _clone_in_staging(
+        spec,
+        tuple(runtime_command),
+        manifest,
+        sandbox=sandbox,
+        clone_dir=clone_dir,
+        clone_timeout_seconds=clone_timeout_seconds,
     )
+
+
+def _clone_in_staging(
+    spec: RepoIntakeSpec,
+    runtime_command: tuple,
+    manifest,
+    *,
+    sandbox=None,
+    clone_dir="/repo",
+    clone_timeout_seconds=120,
+) -> RepoIntakeSnapshot:
+    """Perform the real staging-container clone (opt-in ``clone=True``).
+
+    LAW 4: the clone runs INSIDE a non-started container
+    (``network_mode="none"``, no host mounts, bounded PIDs/RAM/CPU);
+    bytes leave only via ``get_archive`` tar streaming (never ``docker cp``
+    on a tmpfs path — see TRAPS Wave-10 entry). Host network is used only
+    for the clone itself when the caller opts in; unit tests pass a fake.
+    """
+    import io
+    import tarfile
+
+    if sandbox is None:
+        raise ValueError("clone=True requires a sandbox (DockerSandboxManager or test double)")
+    client = getattr(sandbox, "client", None)
+    if client is None:
+        raise ValueError("clone=True requires a sandbox with a Docker client")
+    options = dict(sandbox._options("verifier")) if hasattr(sandbox, "_options") else {}
+    options.setdefault("network_mode", "none")
+    base = getattr(getattr(sandbox, "config", None), "target_base_image", None) or getattr(
+        getattr(sandbox, "config", None), "clone_repo_prefix", "sms-target"
+    )
+    stage = client.containers.create(base, command=["true"], **options)
+    try:
+        # git must exist in staging; install is best-effort (base images vary).
+        stage.exec_run(
+            ["sh", "-c", "command -v git >/dev/null || (apt-get update && apt-get install -y git)"],
+            timeout=clone_timeout_seconds,
+        )
+        clone_cmd = [
+            "sh",
+            "-c",
+            f"rm -rf {clone_dir} && git clone --depth 1 {spec.url} {clone_dir} && git -C {clone_dir} fetch --depth 1 origin {spec.commit_hash} && git -C {clone_dir} checkout {spec.commit_hash}",
+        ]
+        cloned = stage.exec_run(clone_cmd, timeout=clone_timeout_seconds)
+        if isinstance(cloned, dict):
+            code, _out = cloned.get("exit_code", 1), cloned.get("output", b"")
+        else:
+            code, _out = getattr(cloned, "exit_code", 1), getattr(cloned, "output", b"")
+        if code != 0:
+            raise ValueError(f"staging clone failed for {spec.url} @ {spec.commit_hash[:12]}")
+        stream, _stat = stage.get_archive(clone_dir)
+        chunks = list(stream) if not isinstance(stream, (bytes, bytearray)) else [bytes(stream)]
+        tar_bytes = b"".join(chunks)
+        files: dict[str, bytes] = {}
+        with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                name = member.name
+                # Strip the leading clone dir + .git tree: untrusted bytes stay bounded.
+                if "/.git/" in name or name.rstrip("/").endswith("/.git"):
+                    continue
+                rel = name
+                if rel.startswith("."):
+                    rel = rel[1:].lstrip("/")
+                if not rel or ".." in rel.split("/"):
+                    continue
+                extracted = tar.extractfile(member)
+                if extracted is None:
+                    continue
+                content = extracted.read()
+                if len(files) >= 2000 or sum(map(len, files.values())) + len(content) > 8_000_000:
+                    break
+                files[rel] = content
+        return RepoIntakeSnapshot(
+            files=MappingProxyType(dict(manifest) | {f"tree/{k}": v for k, v in files.items()}),
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=tuple(runtime_command),
+            digest=_manifest_digest(spec, tuple(runtime_command)),
+        )
+    finally:
+        try:
+            stage.remove(force=True)
+        except Exception:
+            pass

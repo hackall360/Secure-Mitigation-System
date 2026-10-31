@@ -261,7 +261,137 @@ async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, c
             "contract": contract_text[:32_768],
         }
     )
-    return await execute_project_workflow(project_input, emit, config=config)
+    return await execute_project_workflow(
+        project_input,
+        emit,
+        config=config,
+        sandbox_factory=_ingest_sandbox_factory(snapshot, project_input.contract, dict(files)),
+    )
+
+
+def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
+    """Build a ``ProjectSandbox`` adapter over staged intake bytes.
+
+    The project workflow needs a sandbox even for in-memory inputs: this
+    adapter snapshots the staged files with the project's own bounded
+    helpers and runs checks through ``DockerSandboxManager`` primitives.
+    No host paths: the bytes come from the staging container (or the
+    validated frame overlay).
+    """
+    from modules.services.projects import ProjectSpec as _ProjectSpec
+
+    def factory(settings):
+        from modules.core.docker_manager import DockerSandboxManager
+        from modules.services import projects as _projects
+        from modules.workflows import project_workflow as _pw
+
+        manager = DockerSandboxManager(settings)
+        if merged_files:
+            base_files = {
+                name: content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                for name, content in dict(merged_files).items()
+                if isinstance(name, str) and isinstance(content, (str, bytes, bytearray))
+            }
+        else:
+            base_files = {
+                name: content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                for name, content in dict(getattr(snapshot, "files", {}) or {}).items()
+                if isinstance(name, str) and isinstance(content, (str, bytes, bytearray))
+            }
+        # Manifest records (repo.*) ride as context, never as executable paths.
+        tree = {k[5:]: v for k, v in base_files.items() if k.startswith("tree/")}
+        code_files = (
+            dict(tree)
+            if tree
+            else {k: v for k, v in base_files.items() if not k.startswith("repo.")}
+        )
+        runtime = list(getattr(snapshot, "runtime_command", []) or ["python3", "app.py"])
+        spec = _ProjectSpec(
+            path=".",
+            command=runtime,
+            test_command=runtime,
+            contract=(contract_text or "Ingested repository boundary.")[:32_768],
+            image=settings.target_base_image,
+        )
+
+        class _IngestSandbox:
+            def __init__(self):
+                self._manager = manager
+                self._network = None
+                self._snapshot = None
+
+            def require_base_images(self):
+                self._manager.require_base_images()
+                self._network = self._manager.create_isolated_network()
+
+            def _ensure_snapshot(self):
+                if self._snapshot is None:
+                    metadata = {
+                        name: _projects.ProjectFileMetadata(size=len(content), mode=0o644)
+                        for name, content in code_files.items()
+                    }
+                    self._snapshot = _projects._make_snapshot(code_files, metadata)
+                return self._snapshot
+
+            def _evidence(self, command=None, script=None):
+                from modules.core.docker_manager import SandboxError
+
+                if self._network is None:
+                    raise SandboxError("Project network was not initialized.")
+                result = self._manager.run_project_check(
+                    self._network,
+                    spec,
+                    self._ensure_snapshot(),
+                    command=command,
+                    script=script,
+                )
+                return _pw.ExecutionEvidence(
+                    exit_code=result.exit_code if result.exit_code is not None else 2,
+                    output=((result.stdout or "") + (result.stderr or ""))[:131_072],
+                )
+
+            def verify_project_snapshot(
+                self,
+                project,
+                files,
+                verification_script_python,
+                regression_command,
+                *,
+                label="",
+            ):
+                replacements = {}
+                for path, content in dict(files or {}).items():
+                    _projects._validate_relative_path(path)
+                    if path in code_files:
+                        replacements[path] = (
+                            content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                        )
+                if replacements:
+                    self._snapshot = _projects.replace_snapshot_files(
+                        self._ensure_snapshot(), replacements
+                    )
+                command = list(regression_command or runtime)
+                probe = self._evidence(
+                    script=verification_script_python or None,
+                    command=None if verification_script_python else command,
+                )
+                regression = self._evidence(command=command)
+                return _pw.SnapshotVerification(
+                    probe=probe,
+                    regression=regression,
+                    fresh_target=True,
+                )
+
+            def close(self):
+                try:
+                    if self._network is not None:
+                        self._manager.close()
+                finally:
+                    self._network = None
+
+        return _IngestSandbox()
+
+    return factory
 
 
 async def run_demo_build(
@@ -689,8 +819,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                                     "an argv list of strings)."
                                 )
                             intake_command: list | tuple | None = list(explicit_command)
-                            frame_files = None
-                            intake_files = None
+                            frame_files = frame.get("file_list")
+                            intake_files = frame_files
                         else:
                             intake_command = None
                             frame_files = frame.get("file_list")
