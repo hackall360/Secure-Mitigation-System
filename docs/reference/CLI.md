@@ -1,7 +1,18 @@
 # CLI reference
 
 Generated from `main.py` argparse (`main()`), 2026-10-30. Run
-`python3 main.py --help` for the live text.
+`python3 main.py --help` for the live text. Dev-tool commands
+(`python3 .jcode/tools/dev.py <cmd>`) live below the main table.
+
+## One-command quickstart (`dev.py`)
+
+| Command | Help |
+|---|---|
+| `quickstart` | Clone-to-verdict: .venv via uv (stdlib fallback), Docker pre-flight, ignored `.env`, idempotent images, offline chain proof — no key |
+| `quickstart --keyed` | Same, plus one live `node_chain_link` scan (fails closed without `.env` key) |
+| `setup` | Create `.venv` (uv locked sync, stdlib fallback), write ignored `.env` template |
+| `check` | Full gate: pytest + ruff + format + compile + node checks + harness + list-targets |
+| `offline-scan` | All fixtures end to end in real Docker: no key, no Muse calls |
 
 ## Commands (mutually exclusive, one required)
 

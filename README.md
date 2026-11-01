@@ -66,7 +66,18 @@ Each `verified` result ships a `VerdictReceipt`: the fix hash plus the exact exi
 
 ## Try it
 
-You need **Python 3.12+** and **Docker** (Linux containers).
+You need **Python 3.12+** and **Docker** (Linux containers). One command goes from clone to live verdict:
+
+```bash
+git clone https://github.com/hackall360/Secure-Mitigation-System.git
+cd Secure-Mitigation-System
+python3 .jcode/tools/dev.py quickstart            # .venv via uv (stdlib fallback), images, chain proof — no key
+python3 .jcode/tools/dev.py quickstart --keyed    # same, plus one live chain scan with your .env key
+```
+
+Keyless default runs the offline harness (no key, no Muse calls) and prints the verdict + receipt per fixture. `--keyed` reads the key from the owner-only `.env` first and fails closed without it, then runs one live `node_chain_link` scan. Add CI/CD adoption: the same command runs in a pipeline — gate on exit 0, archive the receipt line as the build artifact.
+
+Manual path (same stages, step by step):
 
 ```bash
 python3 .jcode/tools/dev.py setup

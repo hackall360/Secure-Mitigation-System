@@ -13,11 +13,11 @@ and the first image build.
 ```sh
 git clone https://github.com/hackall360/Secure-Mitigation-System.git
 cd Secure-Mitigation-System
-python3 .jcode/tools/dev.py setup      # creates .venv, installs locked deps, writes ignored .env
-python3 .jcode/tools/dev.py check      # 309 unit tests + lint + syntax + key-free harness checks (see note below)
-python3 .jcode/tools/dev.py images     # builds the two reusable base images (first run only)
-python3 .jcode/tools/dev.py offline-scan  # all three fixtures end to end in real Docker: no key, no Muse calls
+python3 .jcode/tools/dev.py quickstart  # one command: .venv (uv, stdlib fallback), images, chain proof — no key
+python3 .jcode/tools/dev.py quickstart --keyed  # same, plus one live chain scan (fails closed without .env key)
 ```
+
+Manual stages (same work, step by step) — `setup`, `check`, `images`, `offline-scan` as below. CI/CD adoption: run `quickstart` in a pipeline, gate on exit 0, archive the verdict + receipt line.
 
 Expect: `setup` ends with "All installed packages are compatible"; `images`
 ends with `state: ready` and 0 leftovers; `offline-scan` ends with one line
