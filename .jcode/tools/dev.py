@@ -31,15 +31,31 @@ def python(*args):
     run(PYTHON, *args)
 
 
-def setup():
-    if not shutil.which("uv"):
-        raise RuntimeError(
-            "Install uv first: https://docs.astral.sh/uv/getting-started/installation/"
-        )
+def ensure_venv():
+    """Create .venv via uv, or stdlib venv when uv is absent (never hard-fail)."""
+    if shutil.which("uv"):
+        if not PYTHON.exists():
+            run("uv", "venv", "--python", "3.12", ROOT / ".venv")
+        run("uv", "pip", "sync", "--python", PYTHON, "--require-hashes", "requirements-dev.lock")
+        run("uv", "pip", "check", "--python", PYTHON)
+        return
+    print("uv not found; falling back to stdlib venv + pip (install uv for locked sync).")
     if not PYTHON.exists():
-        run("uv", "venv", "--python", "3.12", ROOT / ".venv")
-    run("uv", "pip", "sync", "--python", PYTHON, "--require-hashes", "requirements-dev.lock")
-    run("uv", "pip", "check", "--python", PYTHON)
+        run(sys.executable, "-m", "venv", str(ROOT / ".venv"))
+    run(
+        str(PYTHON),
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--disable-pip-version-check",
+        "-r",
+        "requirements-dev.txt",
+    )
+
+
+def setup():
+    ensure_venv()
     env = ROOT / ".env"
     if not env.exists():
         # Exclusive creation never overwrites an existing developer configuration.
@@ -272,6 +288,46 @@ def serve_up(port=8000, restart=True, timeout=20.0):
     return process
 
 
+def quickstart(keyed=False, docker_timeout=15):
+    """One command from clone to live verdict: setup, images, chain proof.
+
+    Keyless default runs the offline harness (no key, no Muse calls) and
+    prints the verdict + receipt line. With keyed=True, reads the key from
+    the owner-only .env first (LAW 7 fail-closed: empty key raises before
+    any scan) and runs one live chain-fixture scan.
+    Every stage is idempotent: existing .venv/.env/images are reused.
+    Venv bootstraps via uv, or stdlib venv when uv is absent.
+    """
+    setup()
+    if keyed:
+        # LAW 7 fail-closed: validate the key BEFORE touching Docker/images.
+        key = read_env_key()
+        if not key:
+            raise RuntimeError("META_MUSE_API_KEY is empty; set it in .env first.")
+    try:
+        probe = subprocess.run(
+            [str(PYTHON), "-c", "import docker; docker.from_env(timeout=3).ping()"],
+            cwd=ROOT,
+            capture_output=True,
+            timeout=docker_timeout,
+        )
+        docker_ok = probe.returncode == 0
+    except Exception:
+        docker_ok = False
+    if not docker_ok:
+        raise RuntimeError(
+            "Docker daemon is unreachable (docker.from_env().ping() failed). "
+            "Start the Linux Docker Engine your user can reach (no sudo, "
+            "never chmod the socket), then re-run quickstart."
+        )
+    python("main.py", "--init-images")
+    if keyed:
+        python("main.py", "--scan", "node_chain_link")
+    else:
+        python(".jcode/tools/offline_scan.py")
+    print("Quickstart complete: verdict + receipt above, zero leftovers expected.")
+
+
 def doctor():
     """Preflight that cannot fail out: reports every prerequisite with fix commands."""
     import shutil as _sh
@@ -322,6 +378,7 @@ def main():
             "docker-test",
             "doctor",
             "offline-scan",
+            "quickstart",
             "serve",
             "serve-up",
             "smoke",
@@ -334,6 +391,11 @@ def main():
         "--no-restart",
         action="store_true",
         help="serve-up: leave a live server alone instead of restarting it.",
+    )
+    parser.add_argument(
+        "--keyed",
+        action="store_true",
+        help="quickstart: run one live chain scan with the .env key (fails closed without it).",
     )
     args = parser.parse_args()
     if args.command == "setup":
@@ -355,6 +417,8 @@ def main():
         python("test_harness.py", "--docker")
     elif args.command == "offline-scan":
         python(".jcode/tools/offline_scan.py")
+    elif args.command == "quickstart":
+        quickstart(keyed=args.keyed)
     elif args.command == "serve":
         python("main.py", "--serve", "--port", str(args.port))
     elif args.command == "serve-up":
