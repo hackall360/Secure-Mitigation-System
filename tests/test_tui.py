@@ -111,7 +111,7 @@ def test_apply_action_select_cycle():
     apply_action(state, "select:2")
     assert state.fixture_key == FIXTURE_ORDER[2]
     apply_action(state, "select:9")
-    assert state.fixture_key == FIXTURE_ORDER[9 % 3]
+    assert state.fixture_key == FIXTURE_ORDER[9 % len(FIXTURE_ORDER)]
 
 
 def test_describe_result_no_trace_leak():
