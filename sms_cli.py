@@ -30,7 +30,7 @@ CAPABILITIES_TEXT = (
     "  receipts: receipt.json proves what the sandbox actually ran (probe exits + patch hash).\n"
     "  rationale: guard rationales show why each patch guard fired, in plain words.\n"
     "  topping: fast-lane topping lists the most reachable + fixable CVE first (--fast-lane).\n"
-    "  mutations: mutation probes confirm the fix still holds under small input changes.\n"
+    "  mutations: project-mode mutation probes confirm the fix still holds under small input changes.\n"
     "  freshness: freshness stamps show the intel was fetched live today, not cached.\n"
     "  templates: template-shaped patches stay inside the small-edit guard budget.\n"
     "  stale token: KEV/EPSS signals older than 1 day render as stale:<date> so old intel never outranks fresh.\n"

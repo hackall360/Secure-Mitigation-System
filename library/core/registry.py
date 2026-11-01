@@ -83,15 +83,19 @@ TARGETS_REGISTRY = {
         "binary_argv_echo",
         "echo",
         "Binary argv echo",
-        "Probe an unvalidated argv reflection in the compiled ELF fixture "
+        "Probe an unbounded argv reflection in the compiled ELF fixture "
         "(targets/binary_argv_echo/echo). Run via the binary harness path "
         "(--binary-target / /ws/binary), not --scan: the ELF bytes are not "
-        "UTF-8 source. Short alphanumeric argv input echoes back; overlong "
-        "or shell-metachar argv input must be rejected by the mitigated harness.",
+        "UTF-8 source. Short alphanumeric argv input echoing back is the "
+        "EXPECTED normal behavior (trusted contract); the vulnerability is "
+        "that overlong or shell-metachar argv input ALSO echoes back instead "
+        "of being rejected or truncated. A correct mitigation keeps short "
+        "alnum echo and rejects overlong/metachar input.",
         ("python3", "/workspace/binary_harness.py"),
         (),
         "Companion to the compiled ELF fixture targets/binary_argv_echo/echo. "
-        "Short alphanumeric argv input echoes back; overlong or shell-metachar "
-        "argv input must be rejected by the mitigated harness.",
+        "Short alphanumeric argv input echoing back is EXPECTED normal "
+        "behavior; overlong or shell-metachar argv input must be rejected "
+        "by the mitigated harness.",
     ),
 }

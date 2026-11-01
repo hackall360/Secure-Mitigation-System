@@ -2,6 +2,12 @@
 // https://polyformproject.org/licenses/noncommercial/1.0.0
 // SMS v3 · core/version.js — name, version, description and build notes shown on the
 // start page (Version info). Bump `version` / `date` and append to `changes` on each release.
+// VERSION MAPPING (LAW 12): `version` below is the *Web UI v3 design revision*
+// (dashboard layout contract), NOT the release version. The release version is
+// the single source in library/core/version.py (APP_VERSION), rendered by
+// FastAPI metadata, /api/health, --version, MCP serverInfo, and the dashboard
+// footer. The two numbers move independently: UI 3.x tracks dashboard design,
+// 0.major.minor tracks shipped product behavior.
 'use strict';
 (() => {
   const SMS = (window.SMS = window.SMS || {});

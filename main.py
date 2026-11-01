@@ -65,7 +65,7 @@ CAPABILITIES_EPILOG = """Same-day value (Wave 2/5/8, all in the default scan, no
   receipts: receipt.json proves what the sandbox actually ran (probe exits + patch hash).
   rationale: guard rationales show why each patch guard fired, in plain words.
   topping: fast-lane topping lists the most reachable + fixable CVE first (--fast-lane).
-  mutations: mutation probes confirm the fix still holds under small input changes.
+  mutations: project-mode mutation probes confirm the fix still holds under small input changes.
   freshness: freshness stamps show the intel was fetched live today, not cached.
   templates: template-shaped patches stay inside the small-edit guard budget.
   stale token: KEV/EPSS signals older than 1 day render as stale:<date> so old intel never outranks fresh.
@@ -637,7 +637,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             print(
                 "[SYSTEM] Secure Mitigation System ready: "
                 f"inference={snapshot['inference_mode']} "
-                f"(ready={snapshot['inference_ready']}), "
+                f"(key_present={snapshot['inference_ready']}; no live handshake), "
                 f"docker={snapshot['docker']['state']}, "
                 f"profile={snapshot['default_profile']}.",
                 flush=True,
@@ -2429,10 +2429,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     commands = parser.add_mutually_exclusive_group(required=True)
     commands.add_argument(
-        "--init-images", action="store_true", help="Build the two base images (requires Docker)"
+        "--init-images", action="store_true", help="Build the three base images (requires Docker)"
     )
     commands.add_argument(
-        "--rebuild-images", action="store_true", help="Force a fresh rebuild of both base images"
+        "--rebuild-images",
+        action="store_true",
+        help="Force a fresh rebuild of all three base images",
     )
     commands.add_argument(
         "--docker-status", action="store_true", help="Report Docker daemon and image readiness"
@@ -2451,7 +2453,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_argument(
         "--scan",
         choices=list(TARGETS_REGISTRY),
-        help="Scan one bundled fixture; result card shows receipt, guard rationales, mutation probes",
+        help="Scan one bundled fixture; result card shows receipt, guard rationales, and (project-mode) mutation probes",
     )
     commands.add_argument(
         "--project",
@@ -2614,7 +2616,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--format",
         choices=["table", "json"],
         default="table",
-        help="Non-interactive output shape: human-readable tables (default) or redacted JSON; tables show guard rationales and mutation probes",
+        help="Non-interactive output shape: human-readable tables (default) or redacted JSON; tables show guard rationales and (project-mode) mutation probes",
     )
     parser.add_argument(
         "--show-usage",

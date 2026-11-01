@@ -90,7 +90,12 @@ library/intel/       Keyless intel (OSV/CIRCL/GHSA/EPSS) + scanner transports
 library/services/    API, projects, chatter, intake, demo
 library/shared/      Shared helpers
 main.py              CLI (--scan/--research/--research-scanners), FastAPI, WebSocket
-static/              Dashboard (app.js, index.html, app.css)
+sms_cli.py           Non-interactive CLI presentation (tables/JSON for scan reports)
+tui.py               Terminal UI (in-process workflow via emit bridge)
+static/              Dashboard v2 (app.js, index.html, app.css)
+web/                 Dashboard v3 (js/, css/, pages/; served at /web/*)
+docker/              Pinned-base images (target/verifier/binary) + harness runner
+modules/             Alias shim: modules.x.y resolves to canonical library.x.y
 targets/             Intentionally vulnerable fixtures
 tests/               Unit + API tests (mocked; live paths opt-in)
 docs/                HOW_IT_WORKS.md, guides/, TRAPS.md, ...
