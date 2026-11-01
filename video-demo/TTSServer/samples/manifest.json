@@ -1,0 +1,56 @@
+{
+  "text": "This is a simple test. This is how I sound! Do you like it?",
+  "sample_rate": 24000,
+  "samples": [
+    {
+      "seed": 5923,
+      "file": "voice_5923.mp3",
+      "seconds": 4.03
+    },
+    {
+      "seed": 8059,
+      "file": "voice_8059.mp3",
+      "seconds": 4.98
+    },
+    {
+      "seed": 6623,
+      "file": "voice_6623.mp3",
+      "seconds": 5.08
+    },
+    {
+      "seed": 6338,
+      "file": "voice_6338.mp3",
+      "seconds": 4.38
+    },
+    {
+      "seed": 4545,
+      "file": "voice_4545.mp3",
+      "seconds": 4.63
+    },
+    {
+      "seed": 2235,
+      "file": "voice_2235.mp3",
+      "seconds": 4.47
+    },
+    {
+      "seed": 3823,
+      "file": "voice_3823.mp3",
+      "seconds": 5.13
+    },
+    {
+      "seed": 7908,
+      "file": "voice_7908.mp3",
+      "seconds": 4.81
+    },
+    {
+      "seed": 3217,
+      "file": "voice_3217.mp3",
+      "seconds": 4.81
+    },
+    {
+      "seed": 4967,
+      "file": "voice_4967.mp3",
+      "seconds": 4.48
+    }
+  ]
+}
