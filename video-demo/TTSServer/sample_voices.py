@@ -28,10 +28,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-SAMPLE_TEXT = (
-    "This is a voice test! I hope you enjoy how I sound. "
-    "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
-)
+try:
+    from try_voice import TRY_TEXT as SAMPLE_TEXT
+except ModuleNotFoundError:  # loaded by path (tests) without TTSServer/ on sys.path
+    SAMPLE_TEXT = (
+        "This is a voice test! Can you hear how I sound, from a whisper to a "
+        "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
+        "pineapple... apple... pen."
+    )
+
 SAMPLE_RATE = 24000
 
 # Seeds the user rejected (word-merging batch, 2026-11-01) — never reuse.
@@ -148,8 +153,8 @@ def synthesize_for_seed(chat, seed, literal=True):
             **infer_kwargs,
         )
     else:
-        params_infer = chat.InferCodeParams(spk_emb=spk, temperature=0.3)
-        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_4]")
+        params_infer = chat.InferCodeParams(spk_emb=spk, temperature=0.3, top_P=0.7, top_K=20)
+        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_6]")
         wavs = chat.infer(
             [SAMPLE_TEXT],
             skip_refine_text=False,

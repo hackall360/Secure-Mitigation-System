@@ -37,23 +37,56 @@ import sys
 from pathlib import Path
 
 TRY_TEXT = (
-    "This is a voice test! I hope you enjoy how I sound. "
-    "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+    "This is a voice test! Can you hear how I sound, from a whisper to a "
+    "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
+    "pineapple... apple... pen."
 )
 
-# Best-known delivery default: upstream lively values (temperature 0.3), with
+# Best-known delivery default: upstream README lively values
+# (temperature 0.3, top_P 0.7, top_K 20 — Advanced Usage pins all three), with
 # the full manual_seed pin for determinism. Near-zero temperatures flatten
 # prosody (user verdict 2026-11-01) — the pin, not the flatness, is what makes
 # repeats identical, so this stays lively AND repeatable.
 DEFAULT_TEMPERATURE = 0.3
+DEFAULT_TOP_P = 0.7
+DEFAULT_TOP_K = 20
+
+# README sentence-level expressive control (Advanced Usage) — break_6, not
+# the self-intro break_4 we used before.
+EXPRESSIVE_PROMPT = "[oral_2][laugh_0][break_6]"
+
+
+def apply_word_breaks(text, enabled=True):
+    """Opt-in README word-level control: prefix each sentence with [uv_break].
+
+    Mirrors the self-introduction example pattern; literal default keeps clean
+    text. Only ever emits [uv_break] — one of the three token-level controls
+    the released model supports ([laugh], [uv_break], [lbreak]).
+    """
+    if not enabled:
+        return text
+    import re
+
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p.strip()]
+    return " ".join(f"[uv_break]{p}" for p in parts)
 
 
 def speak_params(seed, literal=True):
-    """Exact infer kwargs: verbatim path + token stream pinned to `seed`."""
+    """Exact infer kwargs: verbatim path + token stream pinned to `seed`.
+
+    Pins the full README sampling triple so our params can't silently drift
+    with upstream dataclass defaults.
+    """
     return {
         "skip_refine_text": bool(literal),
         "infer_seed": int(seed),
-        "params_pin": {"manual_seed": int(seed)},
+        "refine_prompt": "",
+        "params_pin": {
+            "manual_seed": int(seed),
+            "temperature": DEFAULT_TEMPERATURE,
+            "top_P": DEFAULT_TOP_P,
+            "top_K": DEFAULT_TOP_K,
+        },
     }
 
 
@@ -107,8 +140,14 @@ def tensor_hash(spk_emb):
     return hashlib.sha256(repr(spk_emb).encode()).hexdigest()[:16]
 
 
-def render_seed(chat, seed, text, out_path, literal=True, temperature=DEFAULT_TEMPERATURE):
-    """Pin voice tensor + token stream, synthesize, write wav. Returns hash."""
+def render_seed(
+    chat, seed, text, out_path, literal=True, temperature=DEFAULT_TEMPERATURE, word_breaks=False
+):
+    """Pin voice + token stream, synthesize, write wav. Returns hash.
+
+    Applies the README sampling triple on top of the temperature override so
+    `--temperature` tunes delivery without dropping the top_P/top_K pins.
+    """
     import torch
     from sample_voices import check_audio_non_silent, write_wav
 
@@ -118,13 +157,14 @@ def render_seed(chat, seed, text, out_path, literal=True, temperature=DEFAULT_TE
     digest = tensor_hash(spk_emb)
     params_infer = chat.InferCodeParams(spk_emb=spk_emb, temperature=temperature)
     for key, value in spec["params_pin"].items():
-        setattr(params_infer, key, value)
+        if key != "temperature":
+            setattr(params_infer, key, value)
     if literal:
-        params_refine = chat.RefineTextParams(prompt="")
+        params_refine = chat.RefineTextParams(prompt=spec["refine_prompt"])
     else:
-        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_4]")
+        params_refine = chat.RefineTextParams(prompt=EXPRESSIVE_PROMPT)
     wavs = chat.infer(
-        [text],
+        [apply_word_breaks(text, enabled=word_breaks)],
         skip_refine_text=spec["skip_refine_text"],
         params_refine_text=params_refine,
         params_infer_code=params_infer,
@@ -158,6 +198,11 @@ def main(argv=None):
     parser.add_argument("--out", default="try_voice.wav", help="temp output path")
     parser.add_argument("--literal", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
+    parser.add_argument(
+        "--word-breaks",
+        action="store_true",
+        help="README word-level control: prefix sentences with [uv_break]",
+    )
     parser.add_argument("--next", action="store_true", help="draw next unbanned seed")
     parser.add_argument("--pass", dest="do_pass", action="store_true")
     parser.add_argument("--fail", dest="do_fail", action="store_true")
@@ -225,6 +270,7 @@ def main(argv=None):
         args.out,
         literal=args.literal,
         temperature=args.temperature,
+        word_breaks=args.word_breaks,
     )
     print(f"[try] seed {args.seed} -> {args.out} (tensor {digest})")
     print("listen, then: --pass (pins) or --fail (bans + next)")

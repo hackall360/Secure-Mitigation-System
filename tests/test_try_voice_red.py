@@ -58,6 +58,29 @@ def test_speak_params_expressive_keeps_refine_but_still_pins(looper):
     assert kwargs["params_pin"]["manual_seed"] == 28
 
 
+def test_speak_params_pins_readme_sampling_values(looper):
+    kwargs = looper.speak_params(seed=28, literal=True)
+    pin = kwargs["params_pin"]
+    assert pin["temperature"] == 0.3
+    assert pin["top_P"] == 0.7
+    assert pin["top_K"] == 20
+    assert kwargs["refine_prompt"] == ""
+
+
+def test_expressive_prompt_is_readme_break_6(looper):
+    assert looper.EXPRESSIVE_PROMPT == "[oral_2][laugh_0][break_6]"
+
+
+def test_word_breaks_wraps_sentences(looper):
+    out = looper.apply_word_breaks("Hello there. How are you?")
+    assert out.count("[uv_break]") == 2
+    assert "Hello there." in out and "How are you?" in out
+
+
+def test_word_breaks_plain_without_flag(looper):
+    assert looper.apply_word_breaks("Hello there.", enabled=False) == "Hello there."
+
+
 def test_next_candidate_avoids_banned(looper):
     banned = {1111, 2222}
     for _ in range(20):
@@ -92,8 +115,9 @@ def test_state_round_trips_empty(tmp_path, looper):
 
 def test_default_text_is_user_line(looper):
     assert looper.TRY_TEXT == (
-        "This is a voice test! I hope you enjoy how I sound. "
-        "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+        "This is a voice test! Can you hear how I sound, from a whisper to a "
+        "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
+        "pineapple... apple... pen."
     )
 
 

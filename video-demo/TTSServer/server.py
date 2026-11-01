@@ -50,7 +50,7 @@ class ServerSettings:
     compile: bool = _env_flag("TTS_COMPILE", False)
     playback: bool = _env_flag("TTS_PLAYBACK", True)
     device: str = os.environ.get("TTS_DEVICE", "").strip() or "auto"
-    refine_prompt: str = os.environ.get("TTS_REFINE_PROMPT", "[oral_2][laugh_0][break_4]")
+    refine_prompt: str = os.environ.get("TTS_REFINE_PROMPT", "[oral_2][laugh_0][break_6]")
     temperature: float = float(os.environ.get("TTS_TEMPERATURE", "0.3"))
     voice_pt: str = os.environ.get("TTS_VOICE_PT", "").strip()
     voice_seed: str = os.environ.get("TTS_VOICE_SEED", "").strip()
@@ -110,7 +110,10 @@ class ChatTTSSynthesizer:
         if not self.ready:
             raise RuntimeError("Model not loaded; call load() first.")
         params_infer = self.chat.InferCodeParams(
-            spk_emb=self.spk_emb, temperature=self.settings.temperature
+            spk_emb=self.spk_emb,
+            temperature=self.settings.temperature,
+            top_P=0.7,
+            top_K=20,
         )
         params_refine = self.chat.RefineTextParams(prompt=self.settings.refine_prompt)
         wavs = self.chat.infer(

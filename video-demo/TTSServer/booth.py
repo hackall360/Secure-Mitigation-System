@@ -198,7 +198,12 @@ def main(argv=None):
         "--temperature",
         type=float,
         default=None,
-        help="sampling temperature (default: best-known near-zero; upstream issue #228)",
+        help="sampling temperature (default: README 0.3 lively)",
+    )
+    parser.add_argument(
+        "--word-breaks",
+        action="store_true",
+        help="README word-level control: prefix sentences with [uv_break]",
     )
     args = parser.parse_args(argv)
 
@@ -241,6 +246,7 @@ def main(argv=None):
                 wav,
                 literal=not args.expressive,
                 temperature=temperature,
+                word_breaks=args.word_breaks,
             )
             state.played_hashes[seed] = digest
         return state.played_hashes.get(seed, "")
