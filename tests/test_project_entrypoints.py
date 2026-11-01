@@ -14,6 +14,7 @@ from starlette.websockets import WebSocketDisconnect
 import main
 from modules.core.config import PurpleBoxConfig
 from modules.core.pricing import ScanUsage
+from tests.helpers import drain_snapshot
 
 
 def project_payload(tmp_path):
@@ -62,7 +63,7 @@ def test_project_socket_passes_spec_and_profile(tmp_path, monkeypatch):
             "ws://localhost/ws/project?profile=economy", headers={"origin": "http://localhost"}
         ) as socket:
             socket.send_json(project_payload(tmp_path))
-            assert socket.receive_json()["team"] == "red"
+            assert drain_snapshot(socket)["team"] == "red"
             assert socket.receive_json()["status"] == "verified"
     assert seen[0][0].cycles == 2
     assert seen[0][1].red_team_model == seen[0][1].blue_team_model
@@ -84,7 +85,7 @@ def test_project_socket_derives_named_scan_cycles(tmp_path, monkeypatch):
             "ws://localhost/ws/project", headers={"origin": "http://localhost"}
         ) as socket:
             socket.send_json(payload)
-            assert socket.receive_json()["status"] == "verified"
+            assert drain_snapshot(socket)["status"] == "verified"
     assert seen[0].scan_profile == "medium"
     assert seen[0].cycles == 5
     assert (seen[0].red_agents, seen[0].blue_agents) == (7, 6)
@@ -110,7 +111,7 @@ def test_invalid_project_never_starts_workflow(tmp_path, change, monkeypatch):
             "ws://localhost/ws/project", headers={"origin": "http://localhost"}
         ) as socket:
             socket.send_json({**project_payload(tmp_path), **change})
-            assert socket.receive_json()["type"] == "invalid"
+            assert drain_snapshot(socket)["type"] == "invalid"
         assert client.get("/api/health").json()["busy"] is False
 
 
@@ -129,7 +130,7 @@ def test_project_disconnect_cancels_and_shared_lock_blocks_fixture(tmp_path, mon
         headers = {"origin": "http://localhost"}
         with client.websocket_connect("ws://localhost/ws/project", headers=headers) as first:
             first.send_json(project_payload(tmp_path))
-            assert first.receive_json()["msg"] == "Started project"
+            assert drain_snapshot(first)["msg"] == "Started project"
             with client.websocket_connect(
                 "ws://localhost/ws/combat/node_query_sink", headers=headers
             ) as second:

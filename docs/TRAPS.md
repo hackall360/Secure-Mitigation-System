@@ -228,3 +228,13 @@ with system python. What the evidence showed: the CDP drive path does
 `import websockets`, which only exists in `.venv` — instant ModuleNotFoundError.
 Firefox (WebDriver/urllib path) works on either. Rule: always run browser
 proof as `.venv/bin/python .jcode/tools/ui_scan.py ...`.
+
+## 2026-11-01 — physical `web/` is safe, `tui/` is not (GG2 follow-up, webui-v3 branch)
+
+Wrong assumption (carried from GG2): NO physical category dirs at all. What
+the evidence showed: the shadowing trap is name-specific — root `tui.py`
+occupies the `tui` import name, so only a `tui/` package dir breaks the gate.
+`web/` has no root `web.py` counterpart, so a physical `web/` dir imports
+cleanly and the gate stays green. Rule refined: physical dirs are allowed
+unless a same-named top-level module exists; `tui/` stays a map, `web/` may
+be physical. Verified: gate green after `web/` migration (contract suite).

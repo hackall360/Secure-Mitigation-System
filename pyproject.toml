@@ -9,6 +9,10 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# web/tools/ is the vendored WebUI v3 pipeline (upstream style: one-line
+# imports, colon one-liners). Never hand-edit the assets:begin blocks; route
+# changes through web/tools/manifest.json. Keep ruff off the vendored copy.
+exclude = ["web/tools/*"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "B"]

@@ -1,0 +1,44 @@
+/* Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use. */
+/* https://polyformproject.org/licenses/noncommercial/1.0.0 */
+/* SMS v3 · css/core/tokens.css — design tokens (colors, fonts, easing) + base reset. Change the palette HERE. */
+
+
+:root {
+  color-scheme: dark;
+  --bg: #02050a;
+  --bg-2: #060b14;
+  --glass: rgba(6, 11, 20, 0.72);
+  --glass-hi: rgba(10, 18, 32, 0.86);
+  --line: rgba(148, 178, 214, 0.12);
+  --line-hi: rgba(148, 178, 214, 0.26);
+  --text: #e8f0fb;
+  --muted: #8fa3bf;
+  --faint: #5b6f8a;
+  --teal: #2dd4bf;
+  --red: #ff3b5c;
+  --blue: #38bdf8;
+  --purple: #b06cff;
+  --green: #34f5a2;
+  --yellow: #facc15;
+  --orange: #fb923c;
+  --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: "Inter", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --r: 12px;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--teal); }
+[hidden] { display: none !important; }
+::selection { background: rgba(45, 212, 191, 0.3); }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: -999px; top: 8px; z-index: 100; background: var(--teal); color: #021; padding: 8px 12px; border-radius: 8px; }
+.skip:focus { left: 8px; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }

@@ -159,8 +159,11 @@ def build_telemetry_event(
     Returns ``{"team": "telemetry", "type": "log", "msg": ...}`` so the
     dashboard ``writeLine`` path renders it on the activity timeline like
     any other team event. ``msg`` carries redacted counts only (no payload
-    material, no model text) per LAW 4.
+    material, no model text) per LAW 4. Carries server ``ts`` for the
+    WebUI v3 ``eventTime()`` ordering.
     """
+    import time
+
     return {
         "team": "telemetry",
         "type": "log",
@@ -169,6 +172,7 @@ def build_telemetry_event(
             f"(Savings {float(savings_pct):.1f}%; novel {int(novel)}, "
             f"known {int(known)})"
         ),
+        "ts": time.time(),
     }
 
 
@@ -178,8 +182,10 @@ def build_ingest_event(*, repo_url: str, sha: str) -> dict[str, str]:
     Returns ``{"team": "ingest", "type": "log", "msg": ...}`` for
     ``writeLine``. LAW 4: the URL is redacted to host + short commit sha —
     credentials, userinfo, paths, and query strings never reach the wire,
-    so ``msg`` contains no ``@``.
+    so ``msg`` contains no ``@``. Carries server ``ts`` for v3 ordering.
     """
+    import time
+
     try:
         host = urlparse(str(repo_url)).hostname or "unknown-host"
     except (ValueError, AttributeError, TypeError):
@@ -189,6 +195,7 @@ def build_ingest_event(*, repo_url: str, sha: str) -> dict[str, str]:
         "team": "ingest",
         "type": "log",
         "msg": f"Ingest: {host} {short_sha}",
+        "ts": time.time(),
     }
 
 
