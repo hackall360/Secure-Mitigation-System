@@ -364,11 +364,11 @@ def _leader_decision_message(
             continue
     try:
         safe_cycle = int(cycle)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         safe_cycle = 0
     try:
         safe_pass = int(pass_number)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         safe_pass = 0
     labels = _safe_focus_labels(focus)
     why = "; ".join(labels) if labels else "routine sweep"
