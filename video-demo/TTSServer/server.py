@@ -32,6 +32,13 @@ SAMPLE_RATE = 24000
 DEFAULT_PORT = 8002
 TEXT_LIMIT = 2000
 
+# Demo narrator (user pick 2026-11-01): 6420 male @ temperature 0.3, literal
+# (no refiner rewrites). Env overrides: TTS_VOICE_SEED / TTS_TEMPERATURE /
+# TTS_LITERAL. server.py must NOT default voice_pt: a checked-in absolute path
+# would break every other checkout (trap: env paths are machine-local).
+NARRATOR_SEED = "6420"
+NARRATOR_TEMPERATURE = 0.3
+
 
 def _env_flag(name, default):
     return os.environ.get(name, "1" if default else "0").strip().lower() in (
@@ -51,9 +58,27 @@ class ServerSettings:
     playback: bool = _env_flag("TTS_PLAYBACK", True)
     device: str = os.environ.get("TTS_DEVICE", "").strip() or "auto"
     refine_prompt: str = os.environ.get("TTS_REFINE_PROMPT", "[oral_2][laugh_0][break_6]")
-    temperature: float = float(os.environ.get("TTS_TEMPERATURE", "0.3"))
+    temperature: float = float(os.environ.get("TTS_TEMPERATURE", str(NARRATOR_TEMPERATURE)))
+    literal: bool = _env_flag("TTS_LITERAL", True)
     voice_pt: str = os.environ.get("TTS_VOICE_PT", "").strip()
-    voice_seed: str = os.environ.get("TTS_VOICE_SEED", "").strip()
+    voice_seed: str = os.environ.get("TTS_VOICE_SEED", NARRATOR_SEED).strip()
+
+
+def build_infer_spec(settings):
+    """Deterministic infer spec for the pinned narrator.
+
+    The token stream seed is the voice seed (same pin the booth proved:
+    manual_seed into InferCodeParams fixes delivery across runs). Returns a
+    plain dict so tests can assert the exact contract without torch.
+    """
+    return {
+        "infer_seed": int(settings.voice_seed),
+        "manual_seed": int(settings.voice_seed),
+        "temperature": float(settings.temperature),
+        "top_P": 0.7,
+        "top_K": 20,
+        "skip_refine_text": bool(settings.literal),
+    }
 
 
 class ChatTTSSynthesizer:
@@ -109,16 +134,23 @@ class ChatTTSSynthesizer:
     def synthesize(self, text):
         if not self.ready:
             raise RuntimeError("Model not loaded; call load() first.")
+        import torch
+
+        spec = build_infer_spec(self.settings)
+        # Booth-proved pin: the voice seed fixes the embedding AND the
+        # token stream, so the narrator is bit-identical across renders.
+        torch.manual_seed(spec["infer_seed"])
         params_infer = self.chat.InferCodeParams(
             spk_emb=self.spk_emb,
-            temperature=self.settings.temperature,
-            top_P=0.7,
-            top_K=20,
+            temperature=spec["temperature"],
+            top_P=spec["top_P"],
+            top_K=spec["top_K"],
         )
+        params_infer.manual_seed = spec["manual_seed"]
         params_refine = self.chat.RefineTextParams(prompt=self.settings.refine_prompt)
         wavs = self.chat.infer(
             [text],
-            skip_refine_text=False,
+            skip_refine_text=spec["skip_refine_text"],
             params_refine_text=params_refine,
             params_infer_code=params_infer,
         )

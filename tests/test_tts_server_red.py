@@ -12,6 +12,9 @@ wiring into red/blue agents, the main app, dashboard, TUI, CLI, or MCP
 - POST /render returns 16-bit PCM WAV bytes at 24000 Hz (video pipeline input)
 - start.sh / stop.sh exist and are executable (spin up / spin down)
 - shutdown leaves no worker threads running (LAW 10I bounded teardown)
+- demo narrator pinned: seed 6420 male @ 0.3 literal by default (brief
+  2026-11-01-pin-narrator-6420); TTS_VOICE_SEED / TTS_TEMPERATURE / TTS_LITERAL
+  override; token stream seeded so renders are deterministic
 
 RED proof: collection ERROR `No module named 'video_demo_tts_server'`
 (functional absence, not syntax) before TTS2 implements it.
@@ -135,3 +138,42 @@ def test_shutdown_leaves_no_workers(app_module):
     engine.shutdown()
     assert engine.is_running is False
     assert engine.text_queue.empty()
+
+
+def test_narrator_defaults_to_6420_male_at_03_literal(app_module):
+    settings = app_module.ServerSettings()
+    assert settings.voice_seed == "6420"
+    assert settings.temperature == 0.3
+    assert settings.literal is True
+
+
+def test_narrator_env_overrides_seed_temp_literal(app_module, monkeypatch):
+    # Trap: ServerSettings is a dataclass — os.environ.get runs ONCE at
+    # import, so monkeypatch-after-import cannot move the defaults. Reload
+    # the module with the env set to exercise the override path for real.
+    monkeypatch.setenv("TTS_VOICE_SEED", "1869")
+    monkeypatch.setenv("TTS_TEMPERATURE", "0.5")
+    monkeypatch.setenv("TTS_LITERAL", "0")
+    reloaded = load_server()
+    settings = reloaded.ServerSettings()
+    assert settings.voice_seed == "1869"
+    assert settings.temperature == 0.5
+    assert settings.literal is False
+
+
+def test_synthesize_pins_token_stream_to_seed(app_module):
+    """Same seed+text must build identical infer params (deterministic delivery).
+
+    Records the kwargs the synthesizer would hand to the ChatTTS pipeline:
+    speaker seed, manual_seed, temperature, skip_refine. Two builds from the
+    same settings must match exactly; a different seed must differ.
+    """
+    first = app_module.build_infer_spec(app_module.ServerSettings())
+    second = app_module.build_infer_spec(app_module.ServerSettings())
+    assert first == second
+    assert first["manual_seed"] == 6420
+    assert first["temperature"] == 0.3
+    assert first["skip_refine_text"] is True
+    other = app_module.build_infer_spec(app_module.ServerSettings(voice_seed="1869"))
+    assert other["manual_seed"] == 1869
+    assert other != first

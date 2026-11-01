@@ -50,8 +50,12 @@ curl 127.0.0.1:8002/healthz   # {"ready": true, ...} once weights are loaded
 Environment knobs: `TTS_PORT` (default 8002 — the main app owns 8000),
 `TTS_PLAYBACK=0` (headless: no speakers), `TTS_PRELOAD=0` (open the port
 without weights; same as `--no-preload` — probing only, `/render` 503s),
-`TTS_COMPILE=1` (torch.compile: slow boot, fast inference), `TTS_DEVICE` (default auto), `TTS_TEMPERATURE`,
-`TTS_REFINE_PROMPT`.
+`TTS_COMPILE=1` (torch.compile: slow boot, fast inference), `TTS_DEVICE` (default auto), `TTS_TEMPERATURE`
+(default 0.3), `TTS_REFINE_PROMPT`, `TTS_VOICE_SEED` (default 6420 — the
+picked male narrator; empty string restores a random voice), `TTS_VOICE_PT`
+(load a passed `.pt` instead of the seed), `TTS_LITERAL=0` (restore the
+refiner; default 1 keeps lines verbatim, so the server reads exactly what
+you send).
 
 Direct run: `python server.py --port 8002 --no-playback --no-preload --compile`
 (`--no-preload` opens the port without weights; dev only — `/render` 503s).
@@ -74,6 +78,8 @@ Empty text → 400; text over 2000 chars → 400 (split first).
 ## Notes
 
 - Lifespan gate: the port opens only after weights load (1–3 min first boot).
-- Voice is fixed per server session (one sampled speaker embedding).
+- Narrator pinned by default: seed 6420 (male) @ temperature 0.3, literal —
+  the voice picked in the booth bake-off. Same seed + same line = same audio
+  every render (token stream seeded, not just the embedding).
 - Unit tests (`tests/test_tts_server_red.py`) run against a fake synthesizer —
   no torch/GPU/audio needed for the repo gate.
