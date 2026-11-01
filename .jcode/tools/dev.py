@@ -322,7 +322,16 @@ def quickstart(keyed=False, docker_timeout=15):
         )
     python("main.py", "--init-images")
     if keyed:
-        python("main.py", "--scan", "node_chain_link")
+        # LAW 7: main.py never loads .env itself, so the keyed scan must run
+        # with the key exported in its environment (same as serve_up).
+        env = keyed_env()
+        print("+ <venv-python> main.py --scan node_chain_link (keyed)", flush=True)
+        subprocess.run(
+            [str(PYTHON), "main.py", "--scan", "node_chain_link"],
+            cwd=ROOT,
+            check=True,
+            env={**env, "PYTHONUNBUFFERED": "1"},
+        )
     else:
         python(".jcode/tools/offline_scan.py")
     print("Quickstart complete: verdict + receipt above, zero leftovers expected.")

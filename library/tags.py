@@ -82,6 +82,13 @@ FEATURE_TAGS: dict[str, dict[str, object]] = {
         "cli": "--cleanup",
         "tui": None,
     },
+    "quickstart": {
+        "surfaces": ["api"],
+        "backend": ".jcode/tools/dev.py:quickstart",
+        "ui": None,
+        "cli": None,
+        "tui": None,
+    },
     "serve-dashboard": {
         "surfaces": ["cli", "api"],
         "backend": "main.py:index",

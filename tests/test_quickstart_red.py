@@ -129,3 +129,30 @@ def test_quickstart_keyed_fails_closed_without_key(dev, tmp_path):
     (tmp_path / ".env").write_text("META_MUSE_API_KEY=\n")
     with pytest.raises(RuntimeError, match="[Kk]ey"):
         dev.quickstart(keyed=True)
+
+
+def test_quickstart_keyed_propagates_key_to_scan_env(dev, tmp_path, monkeypatch):
+    """--keyed with a key: the scan subprocess env must carry META_MUSE_API_KEY."""
+    import subprocess as _sp
+
+    (tmp_path / ".env").write_text("META_MUSE_API_KEY=test-key-not-a-secret\n")
+    seen: dict = {}
+
+    def fake_python(*args):
+        pass  # skip images/offline stages; the scan path is what this pins
+
+    monkeypatch.setattr(dev, "python", fake_python)
+
+    def recording_run(*a, **k):
+        # Docker pre-flight ping passes; the keyed scan records env then fails.
+        if "from_env" in str(a[0] if a else "") or "ping" in str(a[0] if a else ""):
+            return _sp.CompletedProcess(a[0] if a else "docker", 0)
+        seen.update(k.get("env", {}))
+        raise _sp.CalledProcessError(7, a[0] if a else "scan")
+
+    monkeypatch.setattr(dev.subprocess, "run", recording_run)
+    with pytest.raises(_sp.CalledProcessError):
+        dev.quickstart(keyed=True)
+    assert seen.get("META_MUSE_API_KEY") == "test-key-not-a-secret", (
+        "keyed scan must run with the key exported (LAW 7: main.py never loads .env)"
+    )
