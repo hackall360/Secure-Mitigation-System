@@ -89,11 +89,27 @@ async def execute_binary_sweep(
     muse_factory=MetaMuseClient,
     max_passes: int = 3,
 ) -> SweepScanResult:
-    """Run the 3-pass sweep over one validated binary spec."""
+    """Run the 3-pass sweep over one validated binary spec.
+
+    The chain pass (max_passes=4) is refused fail-closed: source-sweep
+    chain verdicts gate on 3-link chain evidence, which binary harness
+    probes cannot express, so no binary "chain" verdict is ever produced.
+    """
     result = SweepScanResult(target=f"binary:{spec.filename}")
     sandbox = None
     muse = None
     log = make_log(emit)
+    if max(1, min(4, max_passes)) >= 4:
+        refusal = (
+            "Binary sweep refuses the chain pass (max_passes=4): binary "
+            "harness probes cannot express the 3-link chain evidence the "
+            "source sweep requires, so a binary chain verdict would carry "
+            "none of that evidence. Re-run with max_passes<=3."
+        )
+        await log("system", f"[refused] {refusal}")
+        result.status, result.message = "error", refusal
+        await log("system", f"[done] {result.message}")
+        return result
     selected = [
         p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
