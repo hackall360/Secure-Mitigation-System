@@ -76,6 +76,28 @@ def test_readme_v1_sections():
         assert marker in text, marker
 
 
+def test_architecture_project_map_paths_exist():
+    """L2: every .py path cited in the ARCHITECTURE.md project map must exist on disk.
+
+    The map once cited the pre-rename `modules/...` spelling; `modules/` now
+    holds only the `__init__.py` alias shim, so those citations were dead.
+    Canonical spelling is `library/...`.
+    """
+    import re
+
+    text = ARCH.read_text(encoding="utf-8")
+    start = text.index("## Project map")
+    fence_start = text.index("```text", start)
+    fence_end = text.index("```", fence_start + len("```text"))
+    block = text[fence_start:fence_end]
+    # Only directory-qualified citations (contain a "/"); bare basenames like
+    # deep_scan.py / dev.py are description fragments, not path citations.
+    paths = re.findall(r"(?<![\w./-])([\w.-]+/[\w./-]*\.py)", block)
+    assert paths, "no .py paths found in project map block"
+    missing = sorted({p for p in paths if not (ROOT / p).is_file()})
+    assert not missing, f"project map cites missing files: {missing}"
+
+
 def test_readme_version_badge_matches_app():
     import re
 
