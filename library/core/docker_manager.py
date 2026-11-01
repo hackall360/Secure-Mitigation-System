@@ -465,14 +465,20 @@ class DockerSandboxManager:
 
     def replace_target(self, previous, snapshot: str, network, target: Target, source: str):
         # Fresh process and immutable filesystem; no pkill or shell command interpolation.
+        keep_tracked = False
         try:
             previous.remove(force=True)
         except NotFound:
-            # Already reaped (cancel/disconnect path removed it); still untrack below.
+            # Already reaped (cancel/disconnect path removed it); untrack below.
             pass
-        finally:
-            if previous in self.containers:
-                self.containers.remove(previous)
+        except DockerException:
+            # Transient daemon failure: LEAVE the container tracked so the
+            # session close() retries the reap. Untracking here would leak a
+            # running target the session can no longer see (correctness audit
+            # round 6: one running target per scan survived this way).
+            keep_tracked = True
+        if not keep_tracked and previous in self.containers:
+            self.containers.remove(previous)
         return self.start_cloneable_target(network, target, source, base_image=snapshot)
 
     def run_isolated_verifier(self, network, script: str) -> VerificationResult:
