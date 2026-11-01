@@ -610,17 +610,17 @@ async def run_demo_build(
     if scan_profile == "custom" and cycles is not None:
         try:
             dump["cycles"] = max(1, min(20, int(cycles)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     if scan_profile == "ultra_heavy":
         try:
             dump["red_agents"] = max(1, min(12, int(red_agents)))
             dump["blue_agents"] = max(1, min(12, int(blue_agents)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     try:
         dump["context_budget"] = max(1024, min(131072, int(context_budget)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     dump["allow_remote_inference"] = not intel_offline or settings.inference_mode == "local"
     spec = _Spec.model_validate(dump)
@@ -990,7 +990,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         demo_cycles = (
                             None if demo_cycles is None else max(1, min(20, int(demo_cycles)))
                         )
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_cycles = None
                     try:
                         demo_red = max(1, min(12, int(request.get("red_agents", 5))))
@@ -998,7 +998,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         demo_budget = max(
                             1024, min(131072, int(request.get("context_budget", 32768)))
                         )
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_red, demo_blue, demo_budget = 5, 5, 32768
                     demo_size = str(request.get("demo_size", "") or "")
                     if demo_size not in ("small", "standard"):
@@ -1006,12 +1006,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     try:
                         _flaw = request.get("flaw_count", None)
                         demo_flaw_count = None if _flaw is None else max(1, min(8, int(_flaw)))
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_flaw_count = None
                     try:
                         _seed = request.get("seed", None)
                         demo_seed = None if _seed is None else int(_seed)
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_seed = None
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
