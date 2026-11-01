@@ -126,6 +126,60 @@ def test_readme_cost_claim_grounded_in_pricing():
     assert "about a fifth of Wonder per token" not in text
 
 
+def test_how_it_works_fixture_count_matches_registry():
+    """M5: HOW_IT_WORKS names every registry fixture; count == registry size."""
+
+    from library.core.registry import TARGETS_REGISTRY
+
+    text = (ROOT / "docs" / "HOW_IT_WORKS.md").read_text(encoding="utf-8")
+    assert "Five bundled targets" in text
+    found = [key for key in TARGETS_REGISTRY if key in text]
+    assert sorted(found) == sorted(TARGETS_REGISTRY), f"missing: {sorted(set(TARGETS_REGISTRY) - set(found))}"
+
+
+def test_architecture_fixture_table_covers_registry():
+    """M5: ARCHITECTURE.md fixture table has a row per registry key."""
+
+    from library.core.registry import TARGETS_REGISTRY
+
+    text = ARCH.read_text(encoding="utf-8")
+    for key in TARGETS_REGISTRY:
+        assert key in text, key
+
+
+def test_cli_image_count_matches_dockerfiles():
+    """M6: CLI.md + ARCHITECTURE.md image count == Dockerfiles in docker/."""
+
+    dockerfiles = sorted((ROOT / "docker").glob("Dockerfile.*"))
+    assert len(dockerfiles) >= 3, [p.name for p in dockerfiles]
+    cli = (ROOT / "docs" / "reference" / "CLI.md").read_text(encoding="utf-8").lower()
+    assert "three base images" in cli
+    assert "two base images" not in cli and "both base images" not in cli
+    assert "three pre-built images" in ARCH.read_text(encoding="utf-8").lower()
+
+
+def test_tags_app_version_matches_version_py():
+    """M7: docs/TAGS.md cites the current APP_VERSION."""
+
+    from library.core.version import APP_VERSION
+
+    text = (ROOT / "docs" / "TAGS.md").read_text(encoding="utf-8")
+    assert APP_VERSION in text
+    assert '"0.12.0"' not in text
+
+
+def test_readme_lists_every_mcp_tool():
+    """M8: every name in MCP_TOOLS appears in README.md."""
+
+    from library.services.mcp_bridge import MCP_TOOLS
+
+    text = README.read_text(encoding="utf-8")
+    names = [tool["name"] for tool in MCP_TOOLS]
+    assert len(names) >= 6, names
+    missing = [name for name in names if name not in text]
+    assert not missing, f"README missing MCP tools: {missing}"
+
+
 def test_readme_links_technical_breakdown():
     """C3: README links the deep-cut doc; the doc exists with dense sections."""
 

@@ -27,9 +27,11 @@ flowchart LR
     RECHECK -- "broken" --> FAIL
 ```
 
-Three bundled targets keep the loop reproducible: a Node dynamic-expression
-sink, a PHP local-command argument, and a MySQL config audit (plus a
-compiled-ELF fixture for the binary path and a chained two-link fixture).
+Five bundled targets keep the loop reproducible: `node_query_sink` (Node
+dynamic-expression sink), `node_chain_link` (chained two-link fixture),
+`php_command_sink` (PHP local-command argument), `mysql_insecure_conf`
+(MySQL config audit), and `binary_argv_echo` (compiled-ELF fixture for the
+binary path).
 
 ## Where things live
 

@@ -36,8 +36,8 @@ branch is superseded; this doc replaces `TAGS_NOTES.md`.
 Stamped `__version__ = "0.1.0"` on 11 leaves
 (`library.shared.sms_*`, `library.intel.research`,
 `library.services.demo_gen`, `library.workflows.{workflow,project_workflow}`,
-`library.tags`); `library.core.version` carries `APP_VERSION = "0.12.0"` +
-`__version__ = "0.12.0"`. All mirrored in `library.tags.MODULE_VERSIONS`
+`library.tags`); `library.core.version` carries `APP_VERSION = "0.13.0"` +
+`__version__ = "0.13.0"`. All mirrored in `library.tags.MODULE_VERSIONS`
 with importable dotted keys (test-pinned equality).
 
 Bump rule (mirrors LAW 12): capability -> module minor (`0.1.0` ->

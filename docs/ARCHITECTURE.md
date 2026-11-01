@@ -82,11 +82,13 @@ Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, di
 | --- | --- |
 | CLI + FastAPI | Shared async workflow, localhost binding, one active UI scan per process |
 | Dashboard | Local-only assets, split red/blue traces, arena comms, cancel, report download |
-| Three fixtures | Node dynamic-expression sink, PHP local command argument, MySQL config audit |
+| Five fixtures | `node_query_sink` dynamic expression, `php_command_sink` local command, `mysql_insecure_conf` config audit, `node_chain_link` chained two-link, `binary_argv_echo` compiled ELF |
+| Chain fixture | `node_chain_link`: logic-abuse role grant (Link A) gating a dynamic query expression (Link B) |
+| Binary fixture | `binary_argv_echo`: unvalidated argv reflection in the compiled ELF, run via the binary harness path |
 | Local projects | Bounded immutable snapshots, user-supplied offline runtime and regression commands |
 | Repeated red/blue cycles | Fresh role contexts, structured handoffs, original-probe rechecks, rollback of failed candidates |
 | Large-project context | Explicit bounded source batches and coverage records, never one growing conversation |
-| Docker lifecycle | Two pre-built images; isolated target/verifier; immutable per-session snapshots |
+| Docker lifecycle | Three pre-built images; isolated target/verifier/binary; immutable per-session snapshots |
 | Resource controls | Non-root, dropped caps, no-new-privs, CPU/RAM/PID caps, read-only roots, bounded `/tmp` |
 | Patch guard | Required notices, small-diff budget, protected lines, exact MySQL allowlist |
 | Verification | Trusted normal-input checks before/after; explicit 0/1/2 verifier semantics |
