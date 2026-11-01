@@ -19,10 +19,10 @@ moving: `dev.py check` runs `node --check static/app.js` and smoke-tests
 
 ## web/server/ ≡ `main.py` serving section (pinned, do not move)
 
-`create_app` + `application.mount("/static", ...)` (~l.665),
-`/api/health|/api/targets` (~ll.695-730), WS executors
-`run_socket/combat/project_combat/demo_build/binary_combat` (~ll.737-1100),
-`POST /mcp` + `--mcp` STDIO (~ll.100-170, ~2300s), `--serve/--port`.
+`create_app` + `application.mount("/static", ...)` (~l.663),
+`/api/health|/api/targets` (~ll.682-693), WS executors
+`run_socket/combat/project_combat/demo_build/binary_combat` (~ll.735-1093),
+`POST /mcp` + `--mcp` STDIO (~ll.1098+, ~1445+), `--serve/--port`.
 Tests pinning it: `test_web.py`, `test_mcp_server.py`, `test_tui_plain.py`
 (monkeypatch `main.*`), `test_w22_ingest_wire_red.py`,
 `.jcode/tools/project_ui_scan.py` (`import main`).

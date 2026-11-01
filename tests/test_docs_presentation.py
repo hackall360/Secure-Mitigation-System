@@ -41,7 +41,7 @@ def test_readme_why_muse():
     text = README.read_text(encoding="utf-8")
     assert "muse-spark-1.3" in text.lower() or "Spark 1.3" in text
     assert "muse-wonder-1.0" in text.lower() or "Wonder 1.0" in text
-    assert "$150" in text
+    assert "library/core/pricing.py" in text
 
 
 def test_readme_links_architecture():
@@ -85,3 +85,36 @@ def test_readme_version_badge_matches_app():
     import main as app_module
 
     assert match.group(1) == app_module.APP_VERSION
+
+
+def test_readme_competitor_refusal_names():
+    """C1: README names the contest brief's refusing models (grounded)."""
+
+    text = README.read_text(encoding="utf-8")
+    for marker in ("Opus 5.5", "Fable 5.1", "Luna 6", "Sol 6.1"):
+        assert marker in text, marker
+
+
+def test_readme_cost_claim_grounded_in_pricing():
+    """C2: cost wording points at pricing.py; ungrounded pool figure stays out."""
+
+    text = README.read_text(encoding="utf-8")
+    assert "library/core/pricing.py" in text
+    assert "$150" not in text
+    assert "about a fifth of Wonder per token" not in text
+
+
+def test_readme_links_technical_breakdown():
+    """C3: README links the deep-cut doc; the doc exists with dense sections."""
+
+    text = README.read_text(encoding="utf-8")
+    assert "docs/TECHNICAL_BREAKDOWN.md" in text
+    breakdown = (ROOT / "docs" / "TECHNICAL_BREAKDOWN.md").read_text(encoding="utf-8")
+    for marker in (
+        "SWEEP_PASSES",
+        "network_mode",
+        "PURPLEBOX_VAULT_DIR",
+        "verify_receipt",
+        "writeLine",
+    ):
+        assert marker in breakdown, marker
