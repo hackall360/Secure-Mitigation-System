@@ -134,7 +134,9 @@ def test_how_it_works_fixture_count_matches_registry():
     text = (ROOT / "docs" / "HOW_IT_WORKS.md").read_text(encoding="utf-8")
     assert "Five bundled targets" in text
     found = [key for key in TARGETS_REGISTRY if key in text]
-    assert sorted(found) == sorted(TARGETS_REGISTRY), f"missing: {sorted(set(TARGETS_REGISTRY) - set(found))}"
+    assert sorted(found) == sorted(TARGETS_REGISTRY), (
+        f"missing: {sorted(set(TARGETS_REGISTRY) - set(found))}"
+    )
 
 
 def test_architecture_fixture_table_covers_registry():

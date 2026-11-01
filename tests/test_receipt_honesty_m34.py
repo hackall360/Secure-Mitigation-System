@@ -107,6 +107,6 @@ def test_m4_alias_comment_points_at_receipt_docstring():
 
     source = inspect.getsource(workflow)
     idx = source.index("differential_passed=regression_passed")
-    window = source[max(0, idx - 400): idx + 100].lower()
+    window = source[max(0, idx - 400) : idx + 100].lower()
     assert "verdictreceipt" in window
     assert "single" in window and "gate" in window

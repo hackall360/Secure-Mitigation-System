@@ -41,9 +41,9 @@ def test_snippet_flag_both_spellings_documented():
     doc = CLI_MD.read_text()
     bare = re.compile(r"(?<![\w-])--snippet(?![\w-])")
     lines = doc.splitlines()
-    assert any(
-        "--mcp-snippet" in ln and bare.search(ln) for ln in lines
-    ), "both spellings must share one CLI.md row"
+    assert any("--mcp-snippet" in ln and bare.search(ln) for ln in lines), (
+        "both spellings must share one CLI.md row"
+    )
 
 
 def test_health_error_path_carries_version():

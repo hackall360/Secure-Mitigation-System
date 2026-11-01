@@ -199,9 +199,7 @@ def test_m1_cycle_evidence_long_probe_output_withheld():
         def model_dump(self):
             return {
                 "red": {"report": {}},
-                "pre_verification": {
-                    "probe": {"output": "EVIL:" + "B" * 600, "exit_code": 0}
-                },
+                "pre_verification": {"probe": {"output": "EVIL:" + "B" * 600, "exit_code": 0}},
             }
 
     data = redact_cycle_evidence(Ev())
