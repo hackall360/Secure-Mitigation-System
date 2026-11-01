@@ -33,6 +33,15 @@ MCP_CONTRACT_MAX_CHARS = 8_192
 # key stays "mcp_snippet" so receipts identify the external submission;
 # execute_mcp_snippet_scan maps the baseline script for that key only.
 MCP_ALLOWED_LANGUAGES: tuple[str, ...] = ("javascript", "python", "php")
+#: Canonical file-suffix -> snippet language map (C1: single source of truth;
+#: main.py + tui.py import this instead of carrying duplicate copies).
+SNIPPET_LANGUAGE_BY_SUFFIX: dict[str, str] = {
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".py": "python",
+    ".php": "php",
+}
 _MCP_LANGUAGE_BASELINE_KEY: dict[str, str] = {
     "javascript": "node_query_sink",
     "python": "node_query_sink",

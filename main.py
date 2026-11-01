@@ -29,6 +29,9 @@ from modules.core.profiles import ProfileError, apply_profile, available_profile
 from modules.core.registry import BASE_DIR, TARGETS_REGISTRY
 from modules.core.scan_profiles import SCAN_PROFILES
 from modules.services.mcp_bridge import (
+    SNIPPET_LANGUAGE_BY_SUFFIX as _SNIPPET_LANGUAGE_BY_SUFFIX,
+)
+from modules.services.mcp_bridge import (
     SNIPPET_TOOL_NAME,
     handle_mcp_request,
     jsonrpc_error,
@@ -1460,15 +1463,6 @@ def _mcp_scan_response(rpc_id: object, structured: dict) -> JSONResponse:
 
 
 app = create_app()
-
-
-_SNIPPET_LANGUAGE_BY_SUFFIX = {
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".py": "python",
-    ".php": "php",
-}
 
 
 async def mcp_snippet_runner(

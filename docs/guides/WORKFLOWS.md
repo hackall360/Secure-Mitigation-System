@@ -44,11 +44,18 @@ needed.
 Muse Spark (`muse-spark-1.3-contributor`) is CHEAP and does good work. Use
 sub-agents aggressively (up to 10 at once, typically 3–5):
 
-- First `swarm list_models` to confirm the route, then spawn with the model
-  pinned exactly:
-  `swarm spawn label:"<short role>" model:"muse-spark-1.3-contributor"
+- First `swarm list_models` to confirm the route. Then spawn WITHOUT a
+  `model:` pin so the worker inherits this session's proven coordinator
+  route:
+  `swarm spawn label:"<short role>"
   prompt:"<tight brief: repo path, branch, exact task, no-write vs write>"`.
-  Copy the model id verbatim — guessed ids fail loudly with a round trip.
+  Do NOT pass `model:"muse-spark-1.3-contributor"` (or any bare Meta id):
+  the router interprets a bare id as an Anthropic request
+  (`claude:muse-spark-1.3-contributor`) and refuses rather than
+  substituting — 11 refusals recorded 2026-11-01 (TRAPS swarm-spawn
+  entry). Only pin `model:` when `list_models` shows the exact route-prefixed
+  id for a *different* provider; copying the bare contributor id verbatim
+  is the failure mode, not the fix.
 - The contributor route rides this session's Meta Model API credentials, so
   auth never breaks. Never use a generic or guessed model id.
 - Brief tightly. One unit of work per agent: survey X, resolve conflict in
