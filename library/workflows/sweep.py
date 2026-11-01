@@ -403,9 +403,7 @@ async def execute_sweep_scan(
             )
             passed.pre_exit_code = pre.exit_code
             result.traces[f"{pass_id}:before"] = pre.output
-            await log(
-                "red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}."
-            )
+            await log("red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}.")
             await log(
                 "red",
                 chatter(
