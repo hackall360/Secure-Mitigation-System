@@ -226,7 +226,9 @@ def main(argv=None):
 
     print("Loading ChatTTS weights (cached after first run)...")
     chat = ChatTTS.Chat()
-    if not chat.load(compile=False, source="huggingface"):
+    with tv.quiet_chattts():
+        loaded = chat.load(compile=False, source="huggingface")
+    if not loaded:
         print("weights failed to load.", file=sys.stderr)
         return 1
     print("Model ready. Commands: p play, r relisten, pass, fail, v 0-100,")

@@ -30,6 +30,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import random
@@ -38,8 +39,8 @@ from pathlib import Path
 
 TRY_TEXT = (
     "This is a voice test! Can you hear how I sound, from a whisper to a "
-    "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
-    "pineapple... apple... pen."
+    "shout? Do you like it, really? The slow golden sunset fades over "
+    "quiet lakes... while bright voices rise and fall."
 )
 
 # Best-known delivery default: upstream README lively values
@@ -140,6 +141,68 @@ def tensor_hash(spk_emb):
     return hashlib.sha256(repr(spk_emb).encode()).hexdigest()[:16]
 
 
+@contextlib.contextmanager
+def quiet_chattts(disabled=True):
+    """Silence ChatTTS chatter (normalizer warnings, weight/infer bars).
+
+    Display-only: ChatTTS logger levels to ERROR, HF-hub progress bars off
+    (the 182-file "Loading weights" bar comes from huggingface_hub inside
+    chat.load), tqdm bars off via show_tqdm=False on our params. All restored
+    in the finally. Sampling path untouched — hashes are unaffected.
+    """
+    import logging
+    import os
+
+    targets = ["ChatTTS", "ChatTTS.core", "ChatTTS.norm", "ChatTTS.model", "utils"]
+    saved_levels = {}
+    saved_env = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    saved_tqdm = os.environ.get("TQDM_DISABLE")
+    try:
+        for name in targets:
+            logger = logging.getLogger(name)
+            saved_levels[name] = logger.level
+            logger.setLevel(logging.ERROR)
+        if disabled:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+            os.environ["TQDM_DISABLE"] = "1"
+            try:
+                from huggingface_hub.utils import disable_progress_bars
+
+                disable_progress_bars()
+            except ImportError:
+                pass
+            try:
+                from transformers.utils import logging as hf_logging
+
+                hf_logging.disable_progress_bar()
+            except ImportError:
+                pass
+        yield
+    finally:
+        for name, level in saved_levels.items():
+            logging.getLogger(name).setLevel(level)
+        if saved_env is None:
+            os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+        else:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = saved_env
+        if saved_tqdm is None:
+            os.environ.pop("TQDM_DISABLE", None)
+        else:
+            os.environ["TQDM_DISABLE"] = saved_tqdm
+        try:
+            from huggingface_hub.utils import enable_progress_bars
+
+            enable_progress_bars()
+        except ImportError:
+            pass
+        try:
+            from transformers.utils import logging as hf_logging
+
+            hf_logging.enable_progress_bar()
+        except ImportError:
+            pass
+
+
 def render_seed(
     chat, seed, text, out_path, literal=True, temperature=DEFAULT_TEMPERATURE, word_breaks=False
 ):
@@ -159,16 +222,18 @@ def render_seed(
     for key, value in spec["params_pin"].items():
         if key != "temperature":
             setattr(params_infer, key, value)
+    params_infer.show_tqdm = False
     if literal:
-        params_refine = chat.RefineTextParams(prompt=spec["refine_prompt"])
+        params_refine = chat.RefineTextParams(prompt=spec["refine_prompt"], show_tqdm=False)
     else:
-        params_refine = chat.RefineTextParams(prompt=EXPRESSIVE_PROMPT)
-    wavs = chat.infer(
-        [apply_word_breaks(text, enabled=word_breaks)],
-        skip_refine_text=spec["skip_refine_text"],
-        params_refine_text=params_refine,
-        params_infer_code=params_infer,
-    )
+        params_refine = chat.RefineTextParams(prompt=EXPRESSIVE_PROMPT, show_tqdm=False)
+    with quiet_chattts():
+        wavs = chat.infer(
+            [apply_word_breaks(text, enabled=word_breaks)],
+            skip_refine_text=spec["skip_refine_text"],
+            params_refine_text=params_refine,
+            params_infer_code=params_infer,
+        )
     if not wavs:
         raise RuntimeError(f"seed {seed}: ChatTTS returned no audio")
     audio = wavs[0]

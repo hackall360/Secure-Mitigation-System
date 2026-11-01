@@ -30,8 +30,8 @@ import pytest
 TTS_DIR = Path(__file__).resolve().parents[1] / "video-demo" / "TTSServer"
 EXPECTED_TEXT = (
     "This is a voice test! Can you hear how I sound, from a whisper to a "
-    "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
-    "pineapple... apple... pen."
+    "shout? Do you like it, really? The slow golden sunset fades over "
+    "quiet lakes... while bright voices rise and fall."
 )
 
 

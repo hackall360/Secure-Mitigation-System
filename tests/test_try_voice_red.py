@@ -81,6 +81,19 @@ def test_word_breaks_plain_without_flag(looper):
     assert looper.apply_word_breaks("Hello there.", enabled=False) == "Hello there."
 
 
+def test_quiet_render_gates_logger_and_tqdm(looper):
+    import inspect
+
+    source = inspect.getsource(looper.render_seed)
+    assert "show_tqdm" in source, "render must silence ChatTTS progress bars"
+    assert "quiet_chattts" in source, "render must gate the ChatTTS logger"
+    gate = inspect.getsource(looper.quiet_chattts)
+    assert "ERROR" in gate and "finally" in gate, "logger gate must restore level"
+    assert "TQDM_DISABLE" in gate or "HF_HUB_DISABLE" in gate, (
+        "weight bar comes from huggingface_hub; gate must cover it"
+    )
+
+
 def test_next_candidate_avoids_banned(looper):
     banned = {1111, 2222}
     for _ in range(20):
@@ -116,8 +129,8 @@ def test_state_round_trips_empty(tmp_path, looper):
 def test_default_text_is_user_line(looper):
     assert looper.TRY_TEXT == (
         "This is a voice test! Can you hear how I sound, from a whisper to a "
-        "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
-        "pineapple... apple... pen."
+        "shout? Do you like it, really? The slow golden sunset fades over "
+        "quiet lakes... while bright voices rise and fall."
     )
 
 

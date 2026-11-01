@@ -33,8 +33,8 @@ try:
 except ModuleNotFoundError:  # loaded by path (tests) without TTSServer/ on sys.path
     SAMPLE_TEXT = (
         "This is a voice test! Can you hear how I sound, from a whisper to a "
-        "shout? Do you like it, really? Pen, pineapple, apple, pen! Pen... "
-        "pineapple... apple... pen."
+        "shout? Do you like it, really? The slow golden sunset fades over "
+        "quiet lakes... while bright voices rise and fall."
     )
 
 SAMPLE_RATE = 24000
@@ -59,8 +59,10 @@ def literal_params(temperature=LITERAL_TEMPERATURE):
     """
     import ChatTTS
 
-    infer_code = ChatTTS.Chat.InferCodeParams(temperature=LITERAL_TEMPERATURE, top_K=LITERAL_TOP_K)
-    refine_text = ChatTTS.Chat.RefineTextParams(prompt="")
+    infer_code = ChatTTS.Chat.InferCodeParams(
+        temperature=LITERAL_TEMPERATURE, top_K=LITERAL_TOP_K, show_tqdm=False
+    )
+    refine_text = ChatTTS.Chat.RefineTextParams(prompt="", show_tqdm=False)
     return infer_code, refine_text, {"skip_refine_text": True}
 
 
@@ -153,8 +155,10 @@ def synthesize_for_seed(chat, seed, literal=True):
             **infer_kwargs,
         )
     else:
-        params_infer = chat.InferCodeParams(spk_emb=spk, temperature=0.3, top_P=0.7, top_K=20)
-        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_6]")
+        params_infer = chat.InferCodeParams(
+            spk_emb=spk, temperature=0.3, top_P=0.7, top_K=20, show_tqdm=False
+        )
+        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_6]", show_tqdm=False)
         wavs = chat.infer(
             [SAMPLE_TEXT],
             skip_refine_text=False,
