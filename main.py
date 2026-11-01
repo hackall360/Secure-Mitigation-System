@@ -1217,7 +1217,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         if target not in TARGETS_REGISTRY:
                             raise ValueError(f"Unknown target: {target!r}.")
                         max_passes = int(live_arguments.get("max_passes") or 1)
-                    except (ValueError, TypeError) as exc:
+                    except (ValueError, TypeError, OverflowError) as exc:
                         return JSONResponse(
                             jsonrpc_error(rpc_id, -32602, f"Invalid scan arguments: {exc}."),
                             status_code=200,
@@ -1607,7 +1607,7 @@ def mcp_stdio_runner() -> int:
             target = str(arguments.get("target") or "")
             try:
                 max_passes = int(arguments.get("max_passes") or 1)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 max_passes = 1
 
             async def _emit_source(team: str, message: str) -> None:
@@ -1692,7 +1692,7 @@ def mcp_stdio_runner() -> int:
                 try:
                     max_passes_raw = arguments.get("max_passes") or 3
                     max_passes_bin = int(max_passes_raw)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     max_passes_bin = 3
                 result = asyncio.run(
                     _scan_binary_run(
@@ -1912,7 +1912,7 @@ async def ai_demo_runner(
     elif cycles is not None:
         try:
             _dump["cycles"] = max(1, min(20, int(cycles)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     _dump["red_agents"] = red_agents
     _dump["blue_agents"] = blue_agents
