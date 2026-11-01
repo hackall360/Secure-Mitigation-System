@@ -18,8 +18,8 @@ Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 
 | Flag | Help |
 |---|---|
-| `--init-images` | Build the two base images (requires Docker) |
-| `--rebuild-images` | Force a fresh rebuild of both base images |
+| `--init-images` | Build the three base images (requires Docker) |
+| `--rebuild-images` | Force a fresh rebuild of all three base images |
 | `--docker-status` | Report Docker daemon and image readiness |
 | `--cleanup` | Remove leftover session resources |
 | `--serve` | Serve the local dashboard |
