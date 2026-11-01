@@ -89,6 +89,55 @@ def test_redact_never_leaks_scripts():
     assert "truncated" in safe["traces"]["baseline"]
 
 
+def _normal_trace_result(payload: str):
+    class R:
+        def model_dump(self):
+            return {
+                "finding": {},
+                "traces": {
+                    "baseline": payload,
+                    "regression": payload,
+                    "after_probe_regression": payload,
+                },
+            }
+
+    return R()
+
+
+def test_redact_normal_traces_capped_at_200_chars():
+    """L3: normal traces keep at most a 200-char prefix + suffix.
+
+    A reflecting target can echo attacker-influenced input into "normal"
+    output past the old 2000-char redaction boundary.
+    """
+    from modules.shared.sms_redact import NORMAL_OUTPUT_SUFFIX
+
+    payload = "n" * 300
+    safe = redact_fixture_result(_normal_trace_result(payload))
+    for key in ("baseline", "regression", "after_probe_regression"):
+        assert safe["traces"][key] == "n" * 200 + NORMAL_OUTPUT_SUFFIX
+
+
+def test_redact_normal_traces_short_output_untouched():
+    short = "ok"
+    safe = redact_fixture_result(_normal_trace_result(short))
+    for key in ("baseline", "regression", "after_probe_regression"):
+        assert safe["traces"][key] == short
+
+
+def test_redact_normal_traces_reflected_payload_past_old_boundary():
+    """L3: attacker-influenced echo at offset >200 must not survive redaction."""
+    from modules.shared.sms_redact import NORMAL_OUTPUT_SUFFIX
+
+    reflected = "benign-prefix " + "ATTACKER" * 100  # payload lives past char 200
+    assert 200 < len(reflected) < 2000  # old 2000-char cap would leak this whole
+    safe = redact_fixture_result(_normal_trace_result(reflected))
+    for key in ("baseline", "regression", "after_probe_regression"):
+        out = safe["traces"][key]
+        assert out == reflected[:200] + NORMAL_OUTPUT_SUFFIX
+        assert len(out) == 200 + len(NORMAL_OUTPUT_SUFFIX)
+
+
 def test_record_dict_and_dedupe():
     class R:
         source = "circl"
