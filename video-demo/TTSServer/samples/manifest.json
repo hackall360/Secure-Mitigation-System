@@ -3,54 +3,54 @@
   "sample_rate": 24000,
   "samples": [
     {
-      "seed": 5923,
-      "file": "voice_5923.mp3",
+      "seed": 2937,
+      "file": "voice_2937.mp3",
+      "seconds": 4.15
+    },
+    {
+      "seed": 8724,
+      "file": "voice_8724.mp3",
+      "seconds": 4.01
+    },
+    {
+      "seed": 2148,
+      "file": "voice_2148.mp3",
+      "seconds": 3.98
+    },
+    {
+      "seed": 7178,
+      "file": "voice_7178.mp3",
+      "seconds": 4.07
+    },
+    {
+      "seed": 4480,
+      "file": "voice_4480.mp3",
+      "seconds": 4.61
+    },
+    {
+      "seed": 3963,
+      "file": "voice_3963.mp3",
+      "seconds": 3.72
+    },
+    {
+      "seed": 2660,
+      "file": "voice_2660.mp3",
+      "seconds": 3.86
+    },
+    {
+      "seed": 5329,
+      "file": "voice_5329.mp3",
+      "seconds": 4.12
+    },
+    {
+      "seed": 1515,
+      "file": "voice_1515.mp3",
+      "seconds": 3.66
+    },
+    {
+      "seed": 6553,
+      "file": "voice_6553.mp3",
       "seconds": 4.03
-    },
-    {
-      "seed": 8059,
-      "file": "voice_8059.mp3",
-      "seconds": 4.98
-    },
-    {
-      "seed": 6623,
-      "file": "voice_6623.mp3",
-      "seconds": 5.08
-    },
-    {
-      "seed": 6338,
-      "file": "voice_6338.mp3",
-      "seconds": 4.38
-    },
-    {
-      "seed": 4545,
-      "file": "voice_4545.mp3",
-      "seconds": 4.63
-    },
-    {
-      "seed": 2235,
-      "file": "voice_2235.mp3",
-      "seconds": 4.47
-    },
-    {
-      "seed": 3823,
-      "file": "voice_3823.mp3",
-      "seconds": 5.13
-    },
-    {
-      "seed": 7908,
-      "file": "voice_7908.mp3",
-      "seconds": 4.81
-    },
-    {
-      "seed": 3217,
-      "file": "voice_3217.mp3",
-      "seconds": 4.81
-    },
-    {
-      "seed": 4967,
-      "file": "voice_4967.mp3",
-      "seconds": 4.48
     }
   ]
 }

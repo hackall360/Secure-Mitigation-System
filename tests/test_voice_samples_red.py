@@ -1,6 +1,6 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""RED (VOX2): seeded voice-sample contract. Now GREEN.
+"""RED (VOX2+VOX7): seeded voice-sample contract. Now GREEN.
 
 `video-demo/TTSServer/sample_voices.py` generates one audio file per random
 4-digit seed so voices can be compared seed-to-seed. Pinned here (no model,
@@ -11,6 +11,10 @@ no audio drivers needed):
 - `sample_filename(seed, ext)` embeds the seed in the basename.
 - `SAMPLE_TEXT` is the exact user-specified line.
 - A manifest maps every seed to its file.
+- VOX7 (literal retry): the 10 rejected seeds in BANNED_SEEDS are never
+  generated; `synthesize_for_seed` defaults to literal mode (skip refine
+  text, low temperature, top_K 1) so the refiner cannot insert words
+  (`sound` -> `sound like` provenance, brief 2026-11-01-voice-seed-retry).
 
 RED proof: collection ERROR `No module named 'sample_voices'`
 (functional absence, not syntax) before VOX2 implemented it.
@@ -70,3 +74,57 @@ def test_sample_filename_wav_fallback(sampler):
     name = sampler.sample_filename(7, "wav")
     assert "7" in name
     assert name.endswith(".wav")
+
+
+def test_banned_seeds_are_the_ten_rejected(sampler):
+    assert set(sampler.BANNED_SEEDS) == {
+        5923,
+        8059,
+        6623,
+        6338,
+        4545,
+        2235,
+        3823,
+        7908,
+        3217,
+        4967,
+    }, "banned set must be exactly the 10 user-rejected seeds"
+
+
+def test_generate_seeds_never_returns_banned(sampler):
+    seeds = sampler.generate_seeds(10, 4, random.Random(1234))
+    assert not (set(seeds) & set(sampler.BANNED_SEEDS)), "retry must exclude rejected seeds"
+
+
+def test_generate_seeds_skips_banned_deterministically(sampler):
+    first = sampler.generate_seeds(10, 4, random.Random(99))
+    second = sampler.generate_seeds(10, 4, random.Random(99))
+    assert first == second
+    assert not (set(first) & set(sampler.BANNED_SEEDS))
+
+
+def test_literal_mode_is_default(sampler):
+    import inspect
+
+    sig = inspect.signature(sampler.synthesize_for_seed)
+    assert sig.parameters["literal"].default is True
+
+
+def test_literal_params_skip_refine_and_tighten_sampling(sampler):
+    try:
+        infer_code, refine_text, kwargs = sampler.literal_params(0.3)
+    except ModuleNotFoundError:
+        pytest.skip("ChatTTS not installed in repo venv; source pins it instead")
+    assert kwargs["skip_refine_text"] is True
+    assert infer_code.temperature == 0.1
+    assert infer_code.top_K == 1
+    assert refine_text.prompt == ""
+
+
+def test_literal_params_source_pins_verbatim_path(sampler):
+    import inspect
+
+    source = inspect.getsource(sampler.literal_params)
+    assert "skip_refine_text" in source
+    assert "top_K" in source
+    assert 'prompt=""' in source or "prompt=''" in source

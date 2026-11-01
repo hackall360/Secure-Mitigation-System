@@ -31,17 +31,46 @@ from pathlib import Path
 SAMPLE_TEXT = "This is a simple test. This is how I sound! Do you like it?"
 SAMPLE_RATE = 24000
 
+# Seeds the user rejected (word-merging batch, 2026-11-01) — never reuse.
+BANNED_SEEDS = frozenset({5923, 8059, 6623, 6338, 4545, 2235, 3823, 7908, 3217, 4967})
+
+# Literal-mode sampling: tight deterministic decoding so the model reads the
+# words as written instead of improvising. Provenance: with refine enabled the
+# refiner rewrote `sound` -> `sound like` before synthesis (refine_text_only
+# capture, brief 2026-11-01-voice-seed-retry-literal), so literal mode skips
+# the refine pass entirely and decodes greedily.
+LITERAL_TEMPERATURE = 0.1
+LITERAL_TOP_K = 1
+
+
+def literal_params(temperature=LITERAL_TEMPERATURE):
+    """Build (infer_code, refine_text, infer_kwargs) for verbatim delivery.
+
+    Needs the real ChatTTS classes, so this imports ChatTTS lazily and is only
+    called on synthesis paths — unit tests that pin these values run against
+    the installed package, not a stub.
+    """
+    import ChatTTS
+
+    infer_code = ChatTTS.Chat.InferCodeParams(temperature=LITERAL_TEMPERATURE, top_K=LITERAL_TOP_K)
+    refine_text = ChatTTS.Chat.RefineTextParams(prompt="")
+    return infer_code, refine_text, {"skip_refine_text": True}
+
 
 def generate_seeds(count, digits, rng=None):
-    """Draw `count` UNIQUE ints with exactly `digits` digits (length 4: 1000-9999)."""
+    """Draw `count` UNIQUE ints with exactly `digits` digits (length 4: 1000-9999).
+
+    The 10 user-rejected seeds (BANNED_SEEDS) are never returned.
+    """
     if digits < 1:
         raise ValueError("digits must be >= 1")
     lo = 10 ** (digits - 1) if digits > 1 else 0
     hi = (10**digits) - 1
-    if count > hi - lo + 1:
+    pool = [s for s in range(lo, hi + 1) if s not in BANNED_SEEDS]
+    if count > len(pool):
         raise ValueError(f"cannot draw {count} unique {digits}-digit seeds")
     rng = rng or random.Random()
-    return rng.sample(range(lo, hi + 1), count)
+    return rng.sample(pool, count)
 
 
 def sample_filename(seed, ext):
@@ -96,20 +125,35 @@ def to_mp3(wav_path, mp3_path):
     return True
 
 
-def synthesize_for_seed(chat, seed):
-    """Pin voice via torch seed, sample speaker, synthesize the test line."""
+def synthesize_for_seed(chat, seed, literal=True):
+    """Pin voice via torch seed, sample speaker, synthesize the test line.
+
+    literal=True (default): skip the refine pass and decode greedily so the
+    model reads the words as written. literal=False restores the original
+    expressive behavior (oral/laugh/break refine prompt, temperature 0.3).
+    """
     import torch
 
     torch.manual_seed(int(seed))
     spk = chat.sample_random_speaker()
-    params_infer = chat.InferCodeParams(spk_emb=spk, temperature=0.3)
-    params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_4]")
-    wavs = chat.infer(
-        [SAMPLE_TEXT],
-        skip_refine_text=False,
-        params_refine_text=params_refine,
-        params_infer_code=params_infer,
-    )
+    if literal:
+        params_infer, params_refine, infer_kwargs = literal_params()
+        params_infer.spk_emb = spk
+        wavs = chat.infer(
+            [SAMPLE_TEXT],
+            params_refine_text=params_refine,
+            params_infer_code=params_infer,
+            **infer_kwargs,
+        )
+    else:
+        params_infer = chat.InferCodeParams(spk_emb=spk, temperature=0.3)
+        params_refine = chat.RefineTextParams(prompt="[oral_2][laugh_0][break_4]")
+        wavs = chat.infer(
+            [SAMPLE_TEXT],
+            skip_refine_text=False,
+            params_refine_text=params_refine,
+            params_infer_code=params_infer,
+        )
     if not wavs:
         raise RuntimeError(f"seed {seed}: ChatTTS returned no audio")
     audio = wavs[0]
@@ -124,6 +168,11 @@ def main(argv=None):
     parser.add_argument("--format", choices=("mp3", "wav"), default="mp3")
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--expressive",
+        action="store_true",
+        help="restore the original oral/laugh/break refine style (default is literal)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -153,7 +202,7 @@ def main(argv=None):
 
     for seed in seeds:
         print(f"[voices] synthesizing seed {seed}...")
-        frames = synthesize_for_seed(chat, seed)
+        frames = synthesize_for_seed(chat, seed, literal=not args.expressive)
         wav_path = out_dir / sample_filename(seed, "wav")
         write_wav(wav_path, frames)
         seconds = check_audio_non_silent(wav_path)
