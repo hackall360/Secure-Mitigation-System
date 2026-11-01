@@ -106,6 +106,11 @@ def redact_project_result(result: Any) -> dict:
     data["cycles"] = data["cycle_reports"]
     history = []
     for item in data.get("verified_history", []):
-        history.append({k: v for k, v in item.items()})
+        new_item = {k: v for k, v in item.items()}
+        if "verification_script_python" in new_item:
+            new_item["verification_script_python"] = EXPLOIT_REDACTED
+        if isinstance(new_item.get("evidence"), dict):
+            new_item["evidence"] = redact_cycle_evidence(new_item["evidence"])
+        history.append(new_item)
     data["verified_history"] = history
     return data
