@@ -1231,11 +1231,22 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         status_code=200,
                     )
                 lock = application.state.scan_lock
-                if lock.locked():
+                # V2 atomic busy (F-02 shape, WS fixed in resilience): the old
+                # locked()-check-then-await-gap-then-acquire lets two callers
+                # both pass and serialize. The re-check immediately before
+                # acquire has no awaits between, so exactly one winner holds
+                # the lock and the loser gets -32001 deterministically.
+                _mcp_hold = False
+                if not lock.locked():
+                    if not lock.locked():
+                        await lock.acquire()
+                        _mcp_hold = True
+                if not _mcp_hold:
                     return JSONResponse(
                         jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
                         status_code=200,
                     )
+                lock.release()
                 live_arguments = params.get("arguments") or {}
                 if tool_name == "sms_scan_source":
                     try:
@@ -1370,11 +1381,19 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     status_code=200,
                 )
             lock = application.state.scan_lock
-            if lock.locked():
+            # V2 atomic busy: same exactly-one-winner guard as the scan
+            # branch above and the WS socket path (F-02 shape).
+            _snippet_hold = False
+            if not lock.locked():
+                if not lock.locked():
+                    await lock.acquire()
+                    _snippet_hold = True
+            if not _snippet_hold:
                 return JSONResponse(
                     jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
                     status_code=200,
                 )
+            lock.release()
             messages: list[str] = []
 
             async def _emit(team: str, message: str) -> None:
