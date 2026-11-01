@@ -1150,7 +1150,7 @@ def run_plain(argv: list[str] | None = None) -> int:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth 1-3 (default: single finding loop)",
+        help="Multi-pass sweep depth 1-3 (max 3 on TUI; default: single finding loop)",
     )
     parser.add_argument(
         "--binary-target",

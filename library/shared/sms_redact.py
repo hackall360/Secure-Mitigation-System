@@ -26,13 +26,22 @@ PROBE_TRUNCATED_SUFFIX = "\n[probe output truncated; full exploit output withhel
 
 NORMAL_OUTPUT_SUFFIX = "\n[normal-input output truncated]"
 
+# L3: normal traces keep at most this many chars of prefix. A reflecting
+# target can echo attacker-influenced input into "normal" output past any
+# generous truncation boundary, so keep the prefix small.
+NORMAL_TRACE_PREFIX_CHARS = 200
+
 
 def redact_probe_output(output: Any, limit: int = 500) -> Any:
-    """Redact one probe output: keep exit codes upstream, drop payload text."""
+    """Redact one probe output: keep exit codes upstream, drop payload text.
+
+    M1: every non-empty string is FULLY withheld. A retained prefix of any
+    size can carry a working exploit one-liner into user reports via
+    redact_cycle_evidence, so no prefix is kept. ``limit`` is retained
+    for signature compatibility only.
+    """
     if not isinstance(output, str) or not output:
         return output
-    if len(output) > limit:
-        return output[:limit] + PROBE_TRUNCATED_SUFFIX
     return EXPLOIT_REDACTED
 
 
@@ -45,11 +54,12 @@ def redact_fixture_result(result: Any) -> dict:
     for key in ("before", "after"):
         if isinstance(data.get("traces", {}).get(key), str):
             data["traces"][key] = PROBE_OUTPUT_WITHHELD
+    # L3: normal traces keep at most a small prefix (see NORMAL_TRACE_PREFIX_CHARS).
     for key in ("baseline", "regression", "after_probe_regression"):
         if isinstance(data.get("traces", {}).get(key), str):
             out = data["traces"][key]
-            if len(out) > 2000:
-                data["traces"][key] = out[:2000] + NORMAL_OUTPUT_SUFFIX
+            if len(out) > NORMAL_TRACE_PREFIX_CHARS:
+                data["traces"][key] = out[:NORMAL_TRACE_PREFIX_CHARS] + NORMAL_OUTPUT_SUFFIX
     return data
 
 
@@ -96,6 +106,11 @@ def redact_project_result(result: Any) -> dict:
     data["cycles"] = data["cycle_reports"]
     history = []
     for item in data.get("verified_history", []):
-        history.append({k: v for k, v in item.items()})
+        new_item = {k: v for k, v in item.items()}
+        if "verification_script_python" in new_item:
+            new_item["verification_script_python"] = EXPLOIT_REDACTED
+        if isinstance(new_item.get("evidence"), dict):
+            new_item["evidence"] = redact_cycle_evidence(new_item["evidence"])
+        history.append(new_item)
     data["verified_history"] = history
     return data

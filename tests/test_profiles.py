@@ -81,6 +81,8 @@ def test_socket_uses_chosen_profile(monkeypatch):
             headers={"origin": "http://localhost"},
         ) as socket:
             first = socket.receive_json()
+            if first.get("type") == "snapshot":
+                first = socket.receive_json()
             if first["type"] != "result":
                 assert first["team"] == "system"  # hello preamble precedes result
                 assert socket.receive_json()["type"] == "result"

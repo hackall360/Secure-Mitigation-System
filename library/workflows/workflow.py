@@ -272,6 +272,8 @@ def build_verdict_receipt(
         pre_exit_code=pre_exit_code,
         post_exit_code=post_exit_code,
         regression_passed=regression_passed,
+        # Single-gate fixture loop: differential shares the regression signal
+        # (see VerdictReceipt docstring); no separate differential gate runs.
         differential_passed=regression_passed,
         property_exit_code=None,
         property_passed=None,
@@ -421,7 +423,7 @@ async def execute_purple_workflow(
         )
         result.pre_exit_code = pre.exit_code
         result.traces["before"] = pre.output
-        await log("red", f"[phase red probe] Boundary check exited {pre.exit_code}. {pre.output}")
+        await log("red", f"[phase red probe] Boundary check exited {pre.exit_code}.")
         await log(
             "red",
             chatter(
@@ -488,7 +490,7 @@ async def execute_purple_workflow(
             result.traces["after"] = post.output
             await log(
                 "blue",
-                f"[phase verify] Post-patch boundary check exited {post.exit_code}. {post.output}",
+                f"[phase verify] Post-patch boundary check exited {post.exit_code}.",
             )
             await log(
                 "blue",

@@ -97,11 +97,20 @@ def query_vault_stats(vault_dir: str | None = None) -> dict[str, Any]:
 def verify_receipt(candidate: dict[str, Any]) -> dict[str, Any]:
     """Validate a VerdictReceipt / CycleReceipt digest without Docker.
 
-    Structural check only: schema conformance + sha256 shape + sane exit
-    codes, plus the optional receipt-chain link. Returns
-    {"valid": bool, "chain_ok": bool, ...}; never raises on malformed input.
-    Docker evidence (not this function) is what earns a receipt: a broken
-    chain link sets ``chain_ok`` False but never flips ``valid``.
+    Structural-only check: schema conformance + sha256 shape + sane exit
+    codes, plus the optional receipt-chain link. It never recomputes the
+    digest from patch bytes, so it cannot confirm the patch the receipt
+    claims. Returns {"valid": bool, "chain_ok": bool, ...}; never raises
+    on malformed input. Docker evidence (not this function) is what earns
+    a verdict: a broken chain link sets ``chain_ok`` False but never flips
+    ``valid``.
+
+    Chain semantics: the link binds re-attestation equality (a chained
+    receipt re-attests the SAME patch, so a live ``prev_receipt_sha`` must
+    equal this receipt's ``patch_sha256``). Production receipts are
+    currently always-unlinked (genesis): no caller threads prev receipts
+    today, so ``chain_ok`` is always False outside tests that hand-build a
+    linked receipt.
     """
     try:
         receipt = VerdictReceipt.model_validate(candidate)
@@ -159,8 +168,11 @@ def build_telemetry_event(
     Returns ``{"team": "telemetry", "type": "log", "msg": ...}`` so the
     dashboard ``writeLine`` path renders it on the activity timeline like
     any other team event. ``msg`` carries redacted counts only (no payload
-    material, no model text) per LAW 4.
+    material, no model text) per LAW 4. Carries server ``ts`` for the
+    WebUI v3 ``eventTime()`` ordering.
     """
+    import time
+
     return {
         "team": "telemetry",
         "type": "log",
@@ -169,6 +181,7 @@ def build_telemetry_event(
             f"(Savings {float(savings_pct):.1f}%; novel {int(novel)}, "
             f"known {int(known)})"
         ),
+        "ts": time.time(),
     }
 
 
@@ -178,8 +191,10 @@ def build_ingest_event(*, repo_url: str, sha: str) -> dict[str, str]:
     Returns ``{"team": "ingest", "type": "log", "msg": ...}`` for
     ``writeLine``. LAW 4: the URL is redacted to host + short commit sha —
     credentials, userinfo, paths, and query strings never reach the wire,
-    so ``msg`` contains no ``@``.
+    so ``msg`` contains no ``@``. Carries server ``ts`` for v3 ordering.
     """
+    import time
+
     try:
         host = urlparse(str(repo_url)).hostname or "unknown-host"
     except (ValueError, AttributeError, TypeError):
@@ -189,6 +204,7 @@ def build_ingest_event(*, repo_url: str, sha: str) -> dict[str, str]:
         "team": "ingest",
         "type": "log",
         "msg": f"Ingest: {host} {short_sha}",
+        "ts": time.time(),
     }
 
 

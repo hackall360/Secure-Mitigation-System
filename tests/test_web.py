@@ -29,6 +29,10 @@ def test_disconnect_cancels_workflow_and_another_scan_is_rejected(monkeypatch):
             "ws://localhost/ws/combat/node_query_sink", headers=headers
         ) as first:
             msg = first.receive_json()
+            # Connect-time snapshot hydrates the v3 map/HUD before any line.
+            if msg.get("type") == "snapshot":
+                assert set(msg["hud"]) >= {"nodes", "msgs", "findings", "patches", "verified"}
+                msg = first.receive_json()
             if msg.get("msg") != "Scan started":
                 assert msg["team"] == "system"  # hello preamble precedes workflow
                 assert first.receive_json()["msg"] == "Scan started"

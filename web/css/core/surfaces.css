@@ -1,0 +1,73 @@
+/* Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use. */
+/* https://polyformproject.org/licenses/noncommercial/1.0.0 */
+/* SMS v3 · css/core/surfaces.css — ambient CRT/noise layers, typography, glass panels, buttons, chips. */
+
+/* ---------- ambient layers ---------- */
+.crt { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+.crt::before { /* scanlines */
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+.crt::after { /* vignette */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,0.65) 100%);
+}
+.noise { position: fixed; inset: -50%; pointer-events: none; z-index: 49; opacity: 0.05;
+  background-image: radial-gradient(rgba(255,255,255,0.9) 0.5px, transparent 0.6px);
+  background-size: 3px 3px; animation: noise 1.2s steps(6) infinite; }
+@keyframes noise { 0% { transform: translate(0,0); } 25% { transform: translate(-1%, 1%); } 50% { transform: translate(1%, -1%); } 75% { transform: translate(-1%, -1%); } 100% { transform: translate(0,0); } }
+
+.graph-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+
+/* ---------- typography bits ---------- */
+.mono { font-family: var(--mono); }
+.eyebrow { font: 600 10.5px/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.kbd, kbd { font: 600 10px/1 var(--mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--line-hi); background: rgba(255,255,255,0.04); color: var(--muted); }
+.glitch { position: relative; display: inline-block; }
+.glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; opacity: 0.7; }
+.glitch::before { color: var(--red); transform: translate(-1px, 0); clip-path: inset(0 0 55% 0); animation: gl1 3.6s infinite steps(1); }
+.glitch::after { color: var(--blue); transform: translate(1px, 0); clip-path: inset(55% 0 0 0); animation: gl2 3.1s infinite steps(1); }
+@keyframes gl1 { 0%, 92%, 100% { transform: translate(0,0); opacity: 0; } 93% { transform: translate(-3px, -1px); opacity: .8; } 96% { transform: translate(2px, 1px); opacity: .8; } }
+@keyframes gl2 { 0%, 88%, 100% { transform: translate(0,0); opacity: 0; } 89% { transform: translate(3px, 1px); opacity: .8; } 91% { transform: translate(-2px, 0); opacity: .8; } }
+
+/* ---------- glass panel ---------- */
+.glass {
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.62), rgba(5, 9, 17, 0.78));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 20px 50px -24px rgba(0,0,0,0.9);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+.brackets { position: relative; }
+.brackets::before, .brackets::after { content: ""; position: absolute; width: 10px; height: 10px; border: 1.5px solid var(--teal); opacity: 0.6; pointer-events: none; }
+.brackets::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-top-left-radius: 4px; }
+.brackets::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-bottom-right-radius: 4px; }
+.panel-title { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 10px 12px 8px; border-bottom: 1px solid var(--line); }
+.panel-title h2, .panel-title h3 { margin: 0; font: 700 11px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); animation: blink 1.4s infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+
+/* ---------- buttons / chips ---------- */
+.btn { display: inline-flex; align-items: center; gap: 8px; justify-content: center; border-radius: 9px; border: 1px solid var(--line-hi); background: rgba(255,255,255,0.03); padding: 9px 14px; font: 600 12.5px/1 var(--sans); cursor: pointer; transition: background .2s, border-color .2s, transform .15s; text-decoration: none; color: var(--text); white-space: nowrap; }
+.btn:hover:not(:disabled) { background: rgba(255,255,255,0.07); border-color: rgba(148,178,214,0.4); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: linear-gradient(135deg, #2dd4bf, #38bdf8 55%, #b06cff); border: 0; color: #01110f; box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset, 0 10px 30px -10px rgba(45,212,191,0.7); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: linear-gradient(135deg, #2dd4bf, #38bdf8 55%, #b06cff); }
+.btn.danger { border-color: rgba(255,59,92,0.5); color: #ffb3c0; }
+.btn.sm { padding: 6px 9px; font-size: 11.5px; border-radius: 7px; }
+.btn.icon { padding: 7px; }
+.btn svg { width: 14px; height: 14px; }
+.btn[aria-pressed="true"] { border-color: var(--teal); color: var(--teal); background: rgba(45,212,191,0.08); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.02); white-space: nowrap; }
+.chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.chip[data-state="ok"] i { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.chip[data-state="warn"] i { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.chip[data-state="error"] i { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.chip[data-state="replay"] { color: var(--yellow); border-color: rgba(250,204,21,0.4); }
+.chip[data-state="replay"] i { background: var(--yellow); }
+.chip[data-state="live"] { color: var(--red); border-color: rgba(255,59,92,0.45); }
+.chip[data-state="live"] i { background: var(--red); box-shadow: 0 0 8px var(--red); animation: blink 1s infinite; }

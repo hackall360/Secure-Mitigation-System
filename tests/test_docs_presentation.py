@@ -76,6 +76,28 @@ def test_readme_v1_sections():
         assert marker in text, marker
 
 
+def test_architecture_project_map_paths_exist():
+    """L2: every .py path cited in the ARCHITECTURE.md project map must exist on disk.
+
+    The map once cited the pre-rename `modules/...` spelling; `modules/` now
+    holds only the `__init__.py` alias shim, so those citations were dead.
+    Canonical spelling is `library/...`.
+    """
+    import re
+
+    text = ARCH.read_text(encoding="utf-8")
+    start = text.index("## Project map")
+    fence_start = text.index("```text", start)
+    fence_end = text.index("```", fence_start + len("```text"))
+    block = text[fence_start:fence_end]
+    # Only directory-qualified citations (contain a "/"); bare basenames like
+    # deep_scan.py / dev.py are description fragments, not path citations.
+    paths = re.findall(r"(?<![\w./-])([\w.-]+/[\w./-]*\.py)", block)
+    assert paths, "no .py paths found in project map block"
+    missing = sorted({p for p in paths if not (ROOT / p).is_file()})
+    assert not missing, f"project map cites missing files: {missing}"
+
+
 def test_readme_version_badge_matches_app():
     import re
 
@@ -102,6 +124,62 @@ def test_readme_cost_claim_grounded_in_pricing():
     assert "library/core/pricing.py" in text
     assert "$150" not in text
     assert "about a fifth of Wonder per token" not in text
+
+
+def test_how_it_works_fixture_count_matches_registry():
+    """M5: HOW_IT_WORKS names every registry fixture; count == registry size."""
+
+    from library.core.registry import TARGETS_REGISTRY
+
+    text = (ROOT / "docs" / "HOW_IT_WORKS.md").read_text(encoding="utf-8")
+    assert "Five bundled targets" in text
+    found = [key for key in TARGETS_REGISTRY if key in text]
+    assert sorted(found) == sorted(TARGETS_REGISTRY), (
+        f"missing: {sorted(set(TARGETS_REGISTRY) - set(found))}"
+    )
+
+
+def test_architecture_fixture_table_covers_registry():
+    """M5: ARCHITECTURE.md fixture table has a row per registry key."""
+
+    from library.core.registry import TARGETS_REGISTRY
+
+    text = ARCH.read_text(encoding="utf-8")
+    for key in TARGETS_REGISTRY:
+        assert key in text, key
+
+
+def test_cli_image_count_matches_dockerfiles():
+    """M6: CLI.md + ARCHITECTURE.md image count == Dockerfiles in docker/."""
+
+    dockerfiles = sorted((ROOT / "docker").glob("Dockerfile.*"))
+    assert len(dockerfiles) >= 3, [p.name for p in dockerfiles]
+    cli = (ROOT / "docs" / "reference" / "CLI.md").read_text(encoding="utf-8").lower()
+    assert "three base images" in cli
+    assert "two base images" not in cli and "both base images" not in cli
+    assert "three pre-built images" in ARCH.read_text(encoding="utf-8").lower()
+
+
+def test_tags_app_version_matches_version_py():
+    """M7: docs/TAGS.md cites the current APP_VERSION."""
+
+    from library.core.version import APP_VERSION
+
+    text = (ROOT / "docs" / "TAGS.md").read_text(encoding="utf-8")
+    assert APP_VERSION in text
+    assert '"0.12.0"' not in text
+
+
+def test_readme_lists_every_mcp_tool():
+    """M8: every name in MCP_TOOLS appears in README.md."""
+
+    from library.services.mcp_bridge import MCP_TOOLS
+
+    text = README.read_text(encoding="utf-8")
+    names = [tool["name"] for tool in MCP_TOOLS]
+    assert len(names) >= 6, names
+    missing = [name for name in names if name not in text]
+    assert not missing, f"README missing MCP tools: {missing}"
 
 
 def test_readme_links_technical_breakdown():

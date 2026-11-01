@@ -1,0 +1,23 @@
+{
+  "_doc": "Single source of truth for which CSS/JS each page loads, and in what order. Edit this, then run: python3 tools/sync_assets.py  (it rewrites the <!-- assets:begin/end --> block in every page and fails if a file is missing or unreferenced). Entries starting with @ expand a group.",
+  "groups": {
+    "@core-css": ["css/core/tokens.css", "css/core/surfaces.css", "css/core/hud.css", "css/core/forms.css", "css/core/explain.css"],
+    "@motion-css": ["css/core/motion.css"],
+    "@core": ["js/core/palette.js", "js/core/lenses.js", "js/core/version.js", "js/core/handoff.js"],
+    "@model": ["js/model/topo-builder.js", "js/model/topo-profiles.js", "js/model/parse-source.js", "js/model/parse-binary.js", "js/model/parse-system.js", "js/model/topo-showcase.js", "js/model/extract.js"],
+    "@engine": ["js/engine/kit.js", "js/engine/graph.js", "js/engine/lens.js", "js/engine/graph-model.js", "js/engine/layout.js", "js/engine/agents.js", "js/engine/effects.js", "js/engine/camera.js", "js/engine/input.js", "js/engine/loop.js", "js/engine/render-scene.js", "js/engine/render-nodes.js", "js/engine/render-agents.js"],
+    "@stream": ["js/stream/rules.js", "js/stream/choreography.js", "js/stream/narrator.js", "js/stream/interpreter.js", "js/stream/scenario.js", "js/stream/link.js"],
+    "@options": ["js/options/schema.js", "js/options/form.js", "js/options/compile.js"],
+    "@ui": ["js/ui/dom.js", "js/ui/explainer.js", "js/ui/comms-feed.js", "js/ui/legend.js", "js/ui/stage-bar.js", "js/ui/terminal.js", "js/ui/hex-stream.js", "js/ui/hover-card.js", "js/ui/stream-meter.js"],
+    "@ui-console": ["js/ui/result-view.js", "js/ui/history.js", "js/ui/inspector.js", "js/ui/activity.js"],
+    "@lib": ["@core", "@model", "@engine", "@stream", "@options", "@ui"]
+  },
+  "pages": {
+    "index.html":      { "styles": ["@core-css", "css/pages/start.css", "@motion-css"],                                   "scripts": ["@lib", "js/pages/start.js"] },
+    "demo-setup.html": { "styles": ["@core-css", "css/pages/setup.css", "@motion-css"],                                   "scripts": ["@lib", "js/pages/setup-demo.js"] },
+    "prod-setup.html": { "styles": ["@core-css", "css/pages/setup.css", "css/pages/console.css", "@motion-css"],          "scripts": ["@lib", "js/pages/setup-prod.js"] },
+    "demo.html":       { "styles": ["@core-css", "css/pages/demo.css", "@motion-css"],                                    "scripts": ["@lib", "js/pages/demo.js"] },
+    "console.html":    { "styles": ["@core-css", "css/pages/setup.css", "css/pages/console.css", "@motion-css"],          "scripts": ["@lib", "@ui-console", "js/pages/console.js"] },
+    "visualizer.html": { "styles": ["@core-css", "css/pages/demo.css", "css/pages/visualizer.css", "@motion-css"],        "scripts": ["@lib", "js/pages/visualizer.js"] }
+  }
+}

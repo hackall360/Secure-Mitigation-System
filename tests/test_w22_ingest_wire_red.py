@@ -26,6 +26,7 @@ from starlette.websockets import WebSocketDisconnect
 import main
 from modules.core.config import PurpleBoxConfig
 from modules.core.pricing import ScanUsage
+from tests.helpers import drain_snapshot
 
 GOOD_URL = "https://github.com/example/demo"
 GOOD_HASH = "a" * 40
@@ -75,7 +76,7 @@ def test_ingest_first_frame_is_accepted_not_invalid(monkeypatch):
             socket.send_json(
                 {"ingest_repo": GOOD_URL, "commit_hash": GOOD_HASH, "file_list": ["package.json"]}
             )
-            first = socket.receive_json()
+            first = drain_snapshot(socket)
             assert first.get("type") != "invalid", f"ingest frame rejected: {first}"
     assert seen, "ingest frame never reached the project workflow"
 
@@ -100,7 +101,7 @@ def test_ingest_first_frame_carries_no_host_paths(monkeypatch):
                     "path": "/tmp/evil",
                 }
             )
-            first = socket.receive_json()
+            first = drain_snapshot(socket)
             assert first.get("type") != "invalid", f"ingest frame rejected: {first}"
     assert seen, "ingest frame never reached the project workflow"
     dumped = json.dumps(seen[0].model_dump() if hasattr(seen[0], "model_dump") else dict(seen[0]))
@@ -128,7 +129,7 @@ def test_ingest_validation_failures_are_invalid_and_never_start_workflow(monkeyp
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
             socket.send_json(frame)
-            reply = socket.receive_json()
+            reply = drain_snapshot(socket)
             assert reply["type"] == "invalid"
             assert reply.get("msg"), "invalid reply must carry an actionable message"
 
@@ -197,7 +198,9 @@ def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch
                 if frame_out.get("type") == "result":
                     reply = frame_out
                     break
-                assert frame_out.get("type") == "log", f"unexpected frame: {frame_out}"
+                assert frame_out.get("type") in ("log", "snapshot"), (
+                    f"unexpected frame: {frame_out}"
+                )
             assert reply is not None, "workflow closed without a result frame"
             assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
             assert reply.get("status") in ("verified", "partial", "unresolved")
@@ -242,7 +245,7 @@ def test_explicit_runtime_command_wins_over_detect(monkeypatch):
                     "file_list": ["package.json"],
                 }
             )
-            reply = socket.receive_json()
+            reply = drain_snapshot(socket)
             assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
     assert intake_calls
     assert list(intake_calls[0]["runtime_command"]) == ["python3", "custom.py"]
@@ -275,7 +278,7 @@ def test_detect_runtime_used_when_frame_omits_command(monkeypatch):
                     "file_list": ["package.json"],
                 }
             )
-            reply = socket.receive_json()
+            reply = drain_snapshot(socket)
             assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
     assert intake_calls
     # file_list without an explicit command reaches intake uncommanded, so
@@ -303,7 +306,7 @@ def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
                     "file_list": ["README.md"],
                 }
             )
-            reply = socket.receive_json()
+            reply = drain_snapshot(socket)
             assert reply["type"] == "invalid"
             assert "runtime_command" in reply.get("msg", "")
 
@@ -319,8 +322,9 @@ def test_ingest_invalid_frame_closes_1008(monkeypatch):
         with pytest.raises(WebSocketDisconnect) as error:
             with connect(client) as socket:
                 socket.send_json({"ingest_repo": GOOD_URL, "commit_hash": "short"})
-                socket.receive_json()
-                socket.receive_json()
+                reply = drain_snapshot(socket)
+                assert reply["type"] == "invalid"
+                socket.receive_json()  # server closed 1008 → raises
         assert error.value.code == 1008
 
 
@@ -345,7 +349,7 @@ def test_project_spec_frames_still_pass_through_unchanged(monkeypatch, tmp_path)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
             socket.send_json(payload)
-            reply = socket.receive_json()
+            reply = drain_snapshot(socket)
             assert reply.get("type") != "invalid", f"project frame rejected: {reply}"
     assert seen and str(seen[0].path) == str(tmp_path)
 

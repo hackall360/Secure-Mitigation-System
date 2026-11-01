@@ -1,0 +1,8 @@
+/* Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use. */
+/* https://polyformproject.org/licenses/noncommercial/1.0.0 */
+/* SMS v3 · css/core/motion.css — reduced-motion overrides (load last). */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  .noise { display: none; }
+}
