@@ -4,6 +4,7 @@ New here? Read the [README](../README.md) (5 minutes), then
 [HOW_IT_WORKS](HOW_IT_WORKS.md) (the technical companion).
 
 - [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — the loop, the parts, where each part lives.
+- [TECHNICAL_BREAKDOWN.md](TECHNICAL_BREAKDOWN.md) — deep cut for engineers: passes, compression, vault, isolation, 429s, receipts, telemetry, with file and line pointers (linked from README).
 - [ARCHITECTURE.md](ARCHITECTURE.md) — production deep dive (evidence loop, wave specs, isolation, config, project map; executive pitch stays in `README.md`).
 - [REFACTOR_PLAN.md](REFACTOR_PLAN.md) — code category maps: `library/` (core+shared+intel+services+workflows), `web/`, `tui/`, `mcp/`.
 - [web/INDEX.md](web/INDEX.md) · [tui/INDEX.md](tui/INDEX.md) · [mcp/INDEX.md](mcp/INDEX.md) — per-surface what/where/why indexes.

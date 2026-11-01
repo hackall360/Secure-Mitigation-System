@@ -1,7 +1,9 @@
 # tui/ — terminal surface (category map, files stay pinned)
 
-`tui/` is a documented category, not a moved directory. Pins: `import tui`
-in 6 test files + `from tui import main` in `main.py:2796`; `scripts.*`
+`tui/` is a documented category, not a moved directory (a physical `tui/`
+package would shadow root `tui.py` and break `import tui` — attempted and
+reverted 06:15 UTC). Pins: `import tui`
+in 6 test files + `from tui import main` in `main.py:2794`; `scripts.*`
 namespace asserted by `test_mcp_demo_red.py`; CLI output asserted by
 `test_cli_parity.py`.
 

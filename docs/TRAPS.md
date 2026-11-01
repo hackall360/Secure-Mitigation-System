@@ -199,3 +199,32 @@ here, not in scattered notes.
   Correlated with C55's clear; CONFOUNDED with streak-breaking — needs
   an A/B (same fixture, grounding on/off) before promotion to rule.
   Until then: include by default (cheap, possibly decisive).
+
+## 2026-11-01 — physical `tui/` dir shadows root `tui.py` (GG2)
+
+Wrong assumption: creating `web/`, `tui/`, `mcp/` marker packages alongside
+root `tui.py` is additive and gate-safe. What the evidence showed: any
+`tui/` directory with `__init__.py` makes `import tui` resolve to the package
+instead of root `tui.py`, so `from tui import FIXTURE_ORDER` raises
+ImportError and the gate goes red at collection. Fix: no physical category
+dirs — `docs/{web,tui,mcp}/INDEX.md` maps are the form. Same reason root
+`modules/` stays a shim and `tui.py` keeps its `modules.*` spellings.
+
+## 2026-11-01 — swarm spawn misroutes contributor id to Anthropic (GG lead)
+
+Wrong assumption: `swarm spawn model:"muse-spark-1.3-contributor"` (or
+`model:"inherit"`) reaches the Meta route. What the evidence showed: the
+router built `request 'claude:muse-spark-1.3-contributor'`, Anthropic
+rejected it, and spawn refused 11x rather than substitute. Correct route per
+`swarm list_models` is the openai-compatible `meta-muse` route with the
+jcode credential — but the spawn path did not honor it from this session.
+Workaround: proceed solo, one write at a time; re-attempt spawn only for
+genuinely parallel writer work.
+
+## 2026-11-01 — `ui_scan.py` needs the project venv for Chrome (GG5)
+
+Wrong assumption: `python3 .jcode/tools/ui_scan.py --browser chrome` works
+with system python. What the evidence showed: the CDP drive path does
+`import websockets`, which only exists in `.venv` — instant ModuleNotFoundError.
+Firefox (WebDriver/urllib path) works on either. Rule: always run browser
+proof as `.venv/bin/python .jcode/tools/ui_scan.py ...`.

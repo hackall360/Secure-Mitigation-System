@@ -1,6 +1,9 @@
 # mcp/ — Model Context Protocol surface (category map, files stay pinned)
 
-`mcp/` is a documented category, not a moved directory. Pins:
+`mcp/` is a documented category, not a moved directory (physical `mcp/`
+marker dirs were attempted and reverted 06:15 UTC: a `tui/` package shadows
+root `tui.py` and breaks `import tui`; symmetric map-only is the gate-safe
+form). Pins:
 `test_mcp_server.py` (`import main as app_module`, `monkeypatch.setattr("main.*")`),
 `test_library_api.py`, `test_mcp_demo_red.py`.
 
