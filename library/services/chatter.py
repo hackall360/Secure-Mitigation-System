@@ -111,9 +111,17 @@ def chatter(
 
 
 def socket_emit(socket):
-    """Build a WebSocket Emit: forwards (team, message) as log frames to one client."""
+    """Build a WebSocket Emit: forwards (team, message) as log frames to one client.
+
+    Every frame carries a server ``ts`` (epoch seconds, float) so the WebUI v3
+    ``eventTime()`` (``js/stream/rules.js``) can order lines by server time
+    instead of arrival time. Additive only: existing ``team``/``msg``/``type``
+    keys are unchanged.
+    """
+
+    import time
 
     async def emit(team: str, message: str) -> None:
-        await socket.send_json({"team": team, "msg": message, "type": "log"})
+        await socket.send_json({"team": team, "msg": message, "type": "log", "ts": time.time()})
 
     return emit

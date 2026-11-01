@@ -661,6 +661,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
     )
     application.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+    application.mount("/web", StaticFiles(directory=BASE_DIR / "web"), name="webui-v3")
     application.state.scan_lock = asyncio.Lock()
 
     @application.middleware("http")
@@ -678,6 +679,21 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     @application.get("/")
     async def index():
         return FileResponse(BASE_DIR / "static" / "index.html")
+
+    # WebUI v3 multi-page entry points (AGENTS.md §3 page flow). Served from
+    # web/ so v3 asset URLs stay relative; the v2 dashboard keeps `/`.
+    for _v3_page in (
+        "index.html",
+        "console.html",
+        "demo.html",
+        "prod-setup.html",
+        "demo-setup.html",
+        "visualizer.html",
+    ):
+
+        @application.get(f"/web/{_v3_page}")
+        async def _web_page(_v3_page=_v3_page):
+            return FileResponse(BASE_DIR / "web" / _v3_page)
 
     @application.get("/api/targets")
     async def list_targets():
@@ -729,7 +745,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             }
         except ConfigurationError as exc:
             return JSONResponse(
-                {"status": "configuration_error", "message": str(exc)}, status_code=503
+                {"status": "configuration_error", "version": APP_VERSION, "message": str(exc)},
+                status_code=503,
             )
 
     async def run_socket(socket: WebSocket, target_key: str | None = None):
@@ -789,8 +806,39 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             return
 
         from modules.services.chatter import socket_emit as _socket_emit
+        from modules.services.telemetry_hub import build_snapshot as _build_snapshot
 
         emit = _socket_emit(socket)
+
+        # Connect-time state hydration (WebUI v3 Subsystem C): push a total
+        # snapshot immediately on accept so a page that loads mid-run
+        # (refresh, setup → console navigation) hydrates without waiting for
+        # the next stream line. Roster/counts only, never probe material.
+        try:
+            from modules.core.docker_manager import docker_status as _docker_state
+
+            _docker = await asyncio.to_thread(_docker_state, config or load_config())
+            _docker_state_name = str(_docker.get("state", "unavailable"))
+        except Exception:
+            _docker_state_name = "unavailable"
+        try:
+            _settings = config or load_config()
+            _key_ok = bool(_settings.inference_mode == "local" or _settings.meta_api_key)
+        except Exception:
+            _key_ok = False
+        try:
+            await socket.send_json(
+                _build_snapshot(
+                    targets={
+                        key: {"title": target.title} for key, target in TARGETS_REGISTRY.items()
+                    },
+                    busy=False,
+                    docker_state=_docker_state_name,
+                    key_ok=_key_ok,
+                )
+            )
+        except (WebSocketDisconnect, RuntimeError):
+            return
 
         async def disconnected():
             try:
@@ -2431,7 +2479,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_argument(
         "--mcp",
         action="store_true",
-        help="MCP STDIO transport: read JSON-RPC requests on stdin, write responses on stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt)",
+        help="MCP STDIO transport: read JSON-RPC requests on stdin, write responses on stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt, sms_scan_status)",
     )
     commands.add_argument(
         "--binary-target",
@@ -2690,8 +2738,8 @@ def main() -> int:
         parser.error("--demo-seed requires --ai-demo")
     if args.sweep_passes is not None and not args.scan:
         parser.error("--sweep-passes requires --scan")
-    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 3:
-        parser.error("--sweep-passes must be between 1 and 3")
+    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 4:
+        parser.error("--sweep-passes must be between 1 and 4")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")

@@ -85,13 +85,17 @@ def tags():
 
 
 def check():
+    tags()
     python("-m", "pytest", "-q")
     python("-m", "ruff", "check", ".", ".jcode/tools")
     python("-m", "ruff", "format", "--check", ".", ".jcode/tools")
     python("-m", "compileall", "-q", "-x", r"/(\.git|\.venv)/", ".")
-    for script in ("static/app.js", "targets/node_query_sink/app.js"):
+    scripts = ["static/app.js", "targets/node_query_sink/app.js"]
+    scripts += sorted(str(p.relative_to(ROOT)) for p in ROOT.glob("web/js/**/*.js"))
+    for script in scripts:
         run("node", "--check", script)
     python("test_harness.py")
+    print("SKIP: live Docker/API paths not run in gate; opt in via test_harness.py --docker/--api")
     python("main.py", "--list-targets")
 
 

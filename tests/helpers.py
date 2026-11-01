@@ -298,3 +298,16 @@ class ResearchFakeFixtureMuse(FakeFixtureMuse):
             fix_patterns=["grounded fix"],
             cwe_hints=["CWE-78"],
         )
+
+
+def drain_snapshot(socket):
+    """Receive one frame, skipping the connect-time {type:snapshot} hydration.
+
+    WebUI v3 Subsystem C: the server sends a state snapshot immediately on
+    accept so mid-run page loads hydrate. WS tests assert on workflow frames,
+    so they drain the snapshot first. Returns the first non-snapshot frame.
+    """
+    frame = socket.receive_json()
+    if isinstance(frame, dict) and frame.get("type") == "snapshot":
+        frame = socket.receive_json()
+    return frame
