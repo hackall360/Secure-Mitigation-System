@@ -33,11 +33,15 @@ NORMAL_TRACE_PREFIX_CHARS = 200
 
 
 def redact_probe_output(output: Any, limit: int = 500) -> Any:
-    """Redact one probe output: keep exit codes upstream, drop payload text."""
+    """Redact one probe output: keep exit codes upstream, drop payload text.
+
+    M1: every non-empty string is FULLY withheld. A retained prefix of any
+    size can carry a working exploit one-liner into user reports via
+    redact_cycle_evidence, so no prefix is kept. ``limit`` is retained
+    for signature compatibility only.
+    """
     if not isinstance(output, str) or not output:
         return output
-    if len(output) > limit:
-        return output[:limit] + PROBE_TRUNCATED_SUFFIX
     return EXPLOIT_REDACTED
 
 
