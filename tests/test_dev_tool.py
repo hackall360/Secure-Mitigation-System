@@ -51,12 +51,18 @@ def test_setup_preserves_existing_environment_and_configuration(dev):
     assert not any("venv" in call.args for call in dev.run.call_args_list)
 
 
-def test_setup_missing_uv_does_not_modify_environment(dev, monkeypatch):
+def test_setup_missing_uv_falls_back_to_stdlib_venv(dev, monkeypatch):
+    """HH1 behavior change: missing uv falls back to stdlib venv, never raises."""
+    import io
+
     monkeypatch.setattr(dev.shutil, "which", lambda name: None)
-    with pytest.raises(RuntimeError, match="Install uv first"):
-        dev.setup()
-    dev.run.assert_not_called()
-    assert not (dev.ROOT / ".env").exists()
+    out = io.StringIO()
+    monkeypatch.setattr(dev.sys, "stdout", out)
+    dev.setup()
+    assert "uv" in out.getvalue().lower()
+    venv_calls = [c.args for c in dev.run.call_args_list]
+    assert any("venv" in " ".join(map(str, c)) for c in venv_calls)
+    assert (dev.ROOT / ".env").is_file()
 
 
 def test_python_command_requires_repository_environment(dev):
