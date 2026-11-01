@@ -28,6 +28,12 @@ from pathlib import Path
 
 BATCH_SIZE = 10
 DEFAULT_VOLUME = 0.5
+DEFAULT_VARY_TEMPS = (0.1, 0.3, 0.5, 0.7, 0.9)
+
+
+def variation_schedule(seeds, temps=DEFAULT_VARY_TEMPS):
+    """5 temperature variations per pinned seed, seeds in order (20 total)."""
+    return [(int(s), float(t)) for s in seeds for t in temps]
 
 
 class BoothState:
@@ -38,6 +44,8 @@ class BoothState:
         self.banned = set()
         self.passed = []
         self.played_hashes = {}
+        self.variation_picks = []
+        self.variation_banned = set()
 
     def set_volume(self, value):
         self.volume = max(0.0, min(1.0, float(value)))
@@ -64,6 +72,14 @@ class BoothState:
     def on_pass(self, seed, tensor_hash):
         self.passed.append({"seed": int(seed), "tensor": tensor_hash})
         self.index += 1
+
+    def variation_pass(self, seed, temperature, tensor_hash):
+        self.variation_picks.append(
+            {"seed": int(seed), "temperature": float(temperature), "tensor": tensor_hash}
+        )
+
+    def variation_fail(self, seed, temperature):
+        self.variation_banned.add((int(seed), float(temperature)))
 
 
 def play_wav(path, volume):
@@ -204,6 +220,155 @@ def run_booth(
     return transcript
 
 
+def run_variations(seeds, temps, commands, play_fn, render_fn, volume=DEFAULT_VOLUME):
+    """Scripted variation pass: (seed, temp) pairs in schedule order.
+
+    play_fn(seed, volume, temperature); render_fn(seed, temperature) -> hash.
+    Silent renders auto-ban the pair and advance. Returns transcript.
+    """
+    state = BoothState(volume=volume)
+    schedule = variation_schedule(seeds, temps)
+    transcript = {
+        "played": [],
+        "variation_picks": [],
+        "variation_banned": [],
+        "quit": False,
+        "schedule": schedule,
+    }
+    rendered = {}
+    index = 0
+
+    def safe_render(seed, temperature):
+        key = (seed, temperature)
+        if key in rendered:
+            return rendered[key]
+        try:
+            rendered[key] = render_fn(seed, temperature)
+            return rendered[key]
+        except Exception as exc:
+            state.variation_fail(seed, temperature)
+            transcript["variation_banned"].append(f"{seed}@{temperature} (silent: {exc})")
+            return None
+
+    for raw in commands:
+        cmd = raw.strip().lower()
+        if cmd in ("q", "quit"):
+            transcript["quit"] = True
+            break
+        if index >= len(schedule):
+            break
+        seed, temperature = schedule[index]
+        if cmd in ("p", "play", "r", "relisten"):
+            digest = safe_render(seed, temperature)
+            if digest is None:
+                index += 1
+                continue
+            play_fn(seed, volume, temperature)
+            transcript["played"].append((seed, temperature))
+        elif cmd in ("pass", "y"):
+            digest = safe_render(seed, temperature)
+            if digest is None:
+                index += 1
+                continue
+            state.variation_pass(seed, temperature, digest)
+            transcript["variation_picks"].append((seed, temperature))
+            index += 1
+        elif cmd in ("fail", "f", "n", "s", "skip"):
+            state.variation_fail(seed, temperature)
+            transcript["variation_banned"].append((seed, temperature))
+            index += 1
+    transcript["state"] = state
+    return transcript
+
+
+def run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature):
+    """Variation pass: 5 temperatures per pinned seed, pass/fail each."""
+    import subprocess
+
+    seeds = [int(s) for s in args.vary.split(",") if s.strip()]
+    temps = [float(t) for t in args.vary_temps.split(",") if t.strip()]
+    schedule = variation_schedule(seeds, temps)
+    vary_saved = tv.load_state(args.vary_state)
+    picks = list(vary_saved.get("variation_picks", vary_saved.get("passed", [])))
+    index = 0
+    total = len(schedule)
+    print(f"Variation pass: {len(seeds)} seeds x {len(temps)} temps = {total} auditions.")
+    print("Commands: p play, r relisten, pass (keep this temp), fail, v 0-100, q quit.")
+    while index < len(schedule):
+        seed, temp = schedule[index]
+        print(
+            f"\n[{index + 1}/{total}] seed {seed} @ temp {temp} "
+            f"(kept={len(picks)} vol={int(state.volume * 100)}%)"
+        )
+        try:
+            cmd = input("vary> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            tv.save_state(args.vary_state, {"variation_picks": picks})
+            print("\nQuit. Variations saved.")
+            return 0
+        if cmd.startswith("v"):
+            try:
+                state.set_volume(float(cmd[1:].strip()) / 100.0)
+                print(f"volume {int(state.volume * 100)}%")
+            except ValueError:
+                print("usage: v 0-100")
+            continue
+        if cmd in ("q", "quit"):
+            tv.save_state(args.vary_state, {"variation_picks": picks})
+            print("Quit. Variations saved.")
+            return 0
+        wav = scratch / f"vary_{seed:04d}_{str(temp).replace('.', 'p')}.wav"
+        if cmd in ("p", "play", "r", "relisten", "pass", "y"):
+            try:
+                digest = tv.render_seed(
+                    chat,
+                    seed,
+                    text,
+                    wav,
+                    literal=not args.expressive,
+                    temperature=temp,
+                    word_breaks=args.word_breaks,
+                )
+            except Exception as exc:
+                try:
+                    wav.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                print(f"seed {seed} @ {temp} failed ({exc}); auto-banned, moving on.")
+                index += 1
+                continue
+            if cmd in ("p", "play", "r", "relisten"):
+                if play_wav(wav, state.volume):
+                    print(f"(played seed {seed} @ {temp} at {int(state.volume * 100)}%)")
+                else:
+                    print(f"(no audio device; file kept: {wav})")
+                continue
+            pt = keep / f"voice_{seed:04d}_t{str(temp).replace('.', 'p')}.pt"
+            tv.pin_tensor(chat, seed, pt)
+            mp3 = keep / f"voice_{seed:04d}_t{str(temp).replace('.', 'p')}.mp3"
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-v", "error", "-i", str(wav), str(mp3)],
+                    check=True,
+                    timeout=120,
+                )
+                kept = mp3.name
+            except Exception:
+                kept = wav.name
+            picks.append({"seed": seed, "temperature": temp, "tensor": digest, "file": kept})
+            tv.save_state(args.vary_state, {"variation_picks": picks})
+            print(f"KEPT seed {seed} @ temp {temp}: tensor -> {pt.name}, audio -> {kept}")
+            index += 1
+        elif cmd in ("fail", "f", "n", "s", "skip"):
+            print(f"failed seed {seed} @ {temp}. next.")
+            index += 1
+        else:
+            print("p play, r relisten, pass, fail, v 0-100, q quit")
+    tv.save_state(args.vary_state, {"variation_picks": picks})
+    print(f"\nVariation pass done. Kept {len(picks)} of {total}.")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Voice listening booth")
     parser.add_argument("--batch", type=int, default=BATCH_SIZE)
@@ -227,6 +392,21 @@ def main(argv=None):
         "--word-breaks",
         action="store_true",
         help="README word-level control: prefix sentences with [uv_break]",
+    )
+    parser.add_argument(
+        "--vary",
+        default="",
+        help="variation pass: comma seeds, e.g. --vary 1869,6420,812,7358",
+    )
+    parser.add_argument(
+        "--vary-temps",
+        default=",".join(str(t) for t in DEFAULT_VARY_TEMPS),
+        help="comma temperatures for --vary (default 0.1,0.3,0.5,0.7,0.9)",
+    )
+    parser.add_argument(
+        "--vary-state",
+        default="variations.json",
+        help="where variation picks/bans are recorded",
     )
     args = parser.parse_args(argv)
 
@@ -260,6 +440,9 @@ def main(argv=None):
     rng = random.Random()
     text = args.text or tv.TRY_TEXT
     temperature = args.temperature if args.temperature is not None else tv.DEFAULT_TEMPERATURE
+
+    if args.vary.strip():
+        return run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature)
 
     def render(seed):
         wav = scratch / f"booth_{seed:04d}.wav"

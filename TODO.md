@@ -507,5 +507,13 @@ User's 27-audition session crashed on seed 3665 (near-silent peak 31 → fail-cl
 - [x] PP3. Implemented: `run_booth(..., fail_silent=True)` + `safe_render` (auto-ban w/ reason, session continues); interactive `render()` catches, deletes bad wav, auto-bans via `record_fail`, returns None (play/pass skip); `try_voice.py` CLI prints clean fail + suggestion, exit 1, no traceback; also wrapped CLI weight load in quiet gate. Voice output of good seeds untouched. Files: `booth.py`, `try_voice.py`. Proof: tests + live seed-3665 re-render (clean fail message, exit path, no traceback).
 - [x] PP4. User picks committed: `passed/voice_{1869,6420,0812,7358}.{mp3,pt}` (mp3 + pinned embedding each) + `booth.json` session record (4 passed, 23 banned) — merged from user's session as-is. Gate green: 853 passed + 1 skipped, ruff + compileall. Committed on `feature/video-demo-tts-server`. NOT SHIPPED — stays on feature branch until asked. Files: this section + `passed/`. Proof: gate output + file listing on this branch.
 
+## QQ. Temperature variation pass over 4 pinned voices (brief 2026-11-01-voice-repin-variations; branch feature/video-demo-tts-server)
+
+User re-auditions the 4 pinned voices at 5 temperatures each (0.1/0.3/0.5/0.7/0.9 = 20 auditions), pass/fail per variation. Analysis note: passed embeddings are mutually distant (cosine 0.03–0.20) — user selected delivery survivors, not a timbre family — so temperature (delivery control) is the right axis to vary, not more seeds.
+
+- [x] QQ1. RED-first: `variation_schedule` (20 pairs, seed-major order), `variation_pass/fail` (temp pairing record), `run_variations` scripted session (6 played, 4 picks). RED proven: 3 failed pre-change. Files: `tests/test_booth_red.py`. Proof: 46 passed + 1 skipped.
+- [x] QQ2. Implemented: `variation_schedule()`, `BoothState.variation_pass/fail`, `run_variations()` (silent-safe, scripted), interactive `run_vary_mode()` (`--vary 1869,6420,812,7358 --vary-temps ... --vary-state variations.json`): renders `vary_<seed>_<temp>.wav`, pass pins `.pt` + mp3 + records `{seed, temperature}`, fail advances, quit-anytime saves. Voice identity untouched (same seed → same tensor, `.pt` files as-is). Files: `video-demo/TTSServer/booth.py`. Proof: tests + live below.
+- [x] QQ3. Live proof: seed 1869 @ 0.1 vs 0.9 → same tensor (04330622274b889b = passed record) + different audio hashes — voice fixed, delivery varies, both deterministic. Gate green: 856 passed + 1 skipped, ruff + compileall. Committed on `feature/video-demo-tts-server`. NOT SHIPPED — user runs the variation pass; stays on feature branch until asked. Files: this section. Proof: hash transcript + gate output on this branch.
+
 
 

@@ -155,3 +155,45 @@ def test_silent_seed_auto_bans_and_session_continues(booth):
     banned = transcript["state"].banned
     assert silent_seed in banned, "silent seed must be banned"
     assert any("silent" in str(b).lower() for b in transcript["banned"])
+
+
+def test_variation_schedule_spans_seeds_and_temps(booth):
+    seeds = [1869, 6420, 812, 7358]
+    temps = [0.1, 0.3, 0.5, 0.7, 0.9]
+    schedule = booth.variation_schedule(seeds, temps)
+    assert len(schedule) == 20
+    assert schedule[0] == (1869, 0.1)
+    assert schedule[4] == (1869, 0.9)
+    assert schedule[5] == (6420, 0.1)
+    assert len({s for s, _ in schedule}) == 4
+    for _, t in schedule:
+        assert t in temps
+
+
+def test_variation_verdict_records_temp_pairing(booth):
+    state = booth.BoothState()
+    state.variation_pass(1869, 0.5, "hash-1869-05")
+    assert state.variation_picks == [{"seed": 1869, "temperature": 0.5, "tensor": "hash-1869-05"}]
+    state.variation_fail(1869, 0.7)
+    assert (1869, 0.7) in state.variation_banned
+
+
+def test_variation_session_completes_all_twenty(booth):
+    played = []
+
+    def fake_play(seed, volume, temperature=None):
+        played.append((seed, temperature))
+
+    def fake_render(seed, temperature=0.3):
+        return "hash-%d-%.1f" % (seed, temperature)
+
+    transcript = booth.run_variations(
+        [1869, 6420],
+        [0.1, 0.3, 0.5],
+        ["p", "pass", "p", "fail", "p", "pass", "p", "pass", "p", "fail", "p", "pass", "q"],
+        play_fn=fake_play,
+        render_fn=fake_render,
+    )
+    assert transcript["quit"] is True
+    assert len(transcript["played"]) == 6
+    assert len(transcript["variation_picks"]) == 4
