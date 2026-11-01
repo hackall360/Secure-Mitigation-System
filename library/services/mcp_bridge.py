@@ -80,6 +80,9 @@ SCAN_STATUS_IDLE_SCAN_ID = "none"
 #: Server-side scan registry: scan_id -> {"scan_id", "phase", "done"}.
 #: Populated by the live /mcp route when scans start/finish; the status
 #: tool only reads it (no Docker, no I/O, never raises).
+#: F-03 bound: at most SCAN_REGISTRY_MAX_ENTRIES entries; oldest-first
+#: eviction keeps a long-lived server from accumulating one entry per scan.
+SCAN_REGISTRY_MAX_ENTRIES = 128
 _SCAN_REGISTRY: dict[str, dict[str, Any]] = {}
 
 
@@ -87,6 +90,8 @@ def scan_status_register(scan_id: str, phase: str = "red", done: bool = False) -
     """Record (or refresh) a scan entry; returns the stored envelope."""
     entry = {"scan_id": scan_id, "phase": phase, "done": bool(done)}
     _SCAN_REGISTRY[scan_id] = entry
+    while len(_SCAN_REGISTRY) > SCAN_REGISTRY_MAX_ENTRIES:
+        _SCAN_REGISTRY.pop(next(iter(_SCAN_REGISTRY)))
     return dict(entry)
 
 

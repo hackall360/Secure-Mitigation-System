@@ -607,13 +607,18 @@ class DockerSandboxManager:
 
     def replace_binary_harness(self, previous, snapshot: str, network, *, mitigation: str = ""):
         """Restart the harness on the same snapshot with new mitigation rules."""
+        keep_tracked = False
         try:
             previous.remove(force=True)
         except NotFound:
             pass
-        finally:
-            if previous in self.containers:
-                self.containers.remove(previous)
+        except DockerException:
+            # Same keep-tracked rule as replace_target (round 6): a transient
+            # daemon failure must not untrack a still-running harness, or the
+            # session close() can never retry the reap (F-01).
+            keep_tracked = True
+        if not keep_tracked and previous in self.containers:
+            self.containers.remove(previous)
         return self.start_binary_harness_from_snapshot(snapshot, network, mitigation=mitigation)
 
     def start_binary_harness_from_snapshot(self, snapshot: str, network, *, mitigation: str = ""):

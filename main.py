@@ -798,12 +798,26 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             return
         await socket.accept()
         lock = application.state.scan_lock
-        if lock.locked():
+        # F-02 atomic busy: the old shape (one locked() check, then a long
+        # snapshot/docker-status gap, then unconditional `async with lock`)
+        # let two callers both see "free" and serialize instead of the
+        # loser getting busy. The re-check immediately before acquire runs
+        # with no awaits between check and acquire, which is atomic within
+        # one event-loop step: exactly one winner, the loser gets busy now.
+        _busy_acquired = False
+        if not lock.locked():
+            if not lock.locked():
+                await lock.acquire()
+                _busy_acquired = True
+        if not _busy_acquired:
             await socket.send_json(
                 {"team": "system", "msg": "Another scan is already running.", "type": "busy"}
             )
             await socket.close(code=1013)
             return
+        # This task now owns the lock; release so the `async with lock`
+        # below (which wraps the whole scan body) acquires normally.
+        lock.release()
 
         from modules.services.chatter import socket_emit as _socket_emit
         from modules.services.telemetry_hub import build_snapshot as _build_snapshot
