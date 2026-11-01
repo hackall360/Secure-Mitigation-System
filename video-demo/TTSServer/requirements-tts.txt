@@ -1,0 +1,23 @@
+# ChatTTS model deps for the standalone video-demo TTS server.
+# Kept OUT of the repo's main gate (heavy: torch + audio). Install only when
+# you want the real voice: pip install -r requirements-tts.txt
+# Versions mirror upstream 2noise/ChatTTS requirements.txt (Nov 2026).
+fastapi
+uvicorn
+pydantic
+numpy<3.0.0
+numba
+torch>=2.1.0
+torchaudio
+tqdm
+vector_quantize_pytorch
+transformers>=4.41.1
+vocos
+pynini==2.1.5; sys_platform == 'linux'
+WeTextProcessing; sys_platform == 'linux'
+nemo_text_processing; sys_platform == 'linux'
+av
+pydub
+requests
+sounddevice
+ChatTTS

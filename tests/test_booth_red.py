@@ -1,0 +1,248 @@
+# Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+"""RED (VOX12): voice-booth TUI contract. Now GREEN.
+
+`video-demo/TTSServer/booth.py` is the listening booth from brief
+2026-11-01-voice-booth-tui: batches of 10, per-voice play/relisten/pass/fail,
+volume default 50%, stop-or-deal-more at batch end. Pinned here without
+audio, model, or a terminal (pure state machine + scripted I/O):
+
+- `BoothState` starts at volume 0.5, empty batch, zero passed/banned.
+- `deal_batch(state, n, rng)` fills n unbanned candidates.
+- `on_pass` records the pin and advances; `on_fail` bans and auto-advances.
+- `set_volume` clamps to 0.0-1.0 (default 0.5).
+- `run_booth` drives a scripted session (commands in, transcript out) so the
+  whole flow — play, relisten, pass, fail, volume, batch end, deal-more, quit —
+  is proven without a human at the keyboard.
+- Batch end offers stop or another 10; quitting anytime keeps state saved.
+
+RED proof: `FileNotFoundError: .../booth.py` (functional absence) before
+VOX12 implemented it.
+"""
+
+import importlib.util
+from pathlib import Path
+
+import pytest
+
+TTS_DIR = Path(__file__).resolve().parents[1] / "video-demo" / "TTSServer"
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("booth", TTS_DIR / "booth.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def booth():
+    return load_module()
+
+
+def test_default_volume_is_half(booth):
+    state = booth.BoothState()
+    assert state.volume == 0.5
+
+
+def test_set_volume_clamps(booth):
+    state = booth.BoothState()
+    state.set_volume(2.0)
+    assert state.volume == 1.0
+    state.set_volume(-1.0)
+    assert state.volume == 0.0
+    state.set_volume(0.75)
+    assert state.volume == 0.75
+
+
+def test_deal_batch_ten_unbanned(booth):
+    import random
+
+    state = booth.BoothState()
+    state.deal_batch(10, random.Random(7))
+    assert len(state.batch) == 10
+    assert len(set(state.batch)) == 10
+    assert all(1 <= s <= 9999 for s in state.batch)
+
+
+def test_deal_batch_skips_banned(booth):
+    import random
+
+    first = booth.BoothState()
+    first.deal_batch(10, random.Random(7))
+    banned_one = {first.batch[0]}
+    second = booth.BoothState()
+    second.banned = set(banned_one)
+    second.deal_batch(10, random.Random(7))
+    assert first.batch[0] not in second.batch
+
+
+def test_on_fail_bans_and_advances(booth):
+    state = booth.BoothState()
+    state.batch = [1111, 2222, 3333]
+    state.index = 0
+    state.on_fail(1111)
+    assert 1111 in state.banned
+    assert state.index == 1
+    assert state.current() == 2222
+
+
+def test_on_pass_pins_and_advances(booth):
+    state = booth.BoothState()
+    state.batch = [1111, 2222]
+    state.on_pass(1111, "abc123")
+    assert state.passed == [{"seed": 1111, "tensor": "abc123"}]
+    assert state.index == 1
+
+
+def test_batch_end_reports_done(booth):
+    state = booth.BoothState()
+    state.batch = [1111]
+    state.index = 0
+    state.on_fail(1111)
+    assert state.batch_done() is True
+
+
+def test_run_booth_scripted_flow(booth):
+    import random
+
+    played = []
+
+    def fake_play(seed, volume):
+        played.append((seed, volume))
+
+    def fake_render(seed):
+        return "hash-%d" % seed
+
+    transcript = booth.run_booth(
+        ["p", "p", "r", "v 80", "p", "f", "p", "q"],
+        play_fn=fake_play,
+        render_fn=fake_render,
+        rng=random.Random(11),
+        batch_size=3,
+    )
+    assert transcript["banned"], "fail must ban"
+    assert played, "play must be called"
+    assert any(v == 0.8 for _, v in played), "volume change must reach playback"
+    assert transcript["quit"] is True
+
+
+def test_silent_seed_auto_bans_and_session_continues(booth):
+    import random
+
+    played = []
+    probe = booth.BoothState()
+    probe.deal_batch(3, random.Random(11))
+    silent_seed = probe.batch[0]
+
+    def fake_play(seed, volume):
+        played.append((seed, volume))
+
+    def fake_render(seed):
+        if seed == silent_seed:
+            raise RuntimeError("peak amplitude 31, looks silent")
+        return "hash-%d" % seed
+
+    transcript = booth.run_booth(
+        ["p", "p", "q"],
+        play_fn=fake_play,
+        render_fn=fake_render,
+        rng=random.Random(11),
+        batch_size=3,
+        fail_silent=True,
+    )
+    assert transcript["quit"] is True, "session must survive a silent seed"
+    banned = transcript["state"].banned
+    assert silent_seed in banned, "silent seed must be banned"
+    assert any("silent" in str(b).lower() for b in transcript["banned"])
+
+
+def test_default_vary_temps_cover_sweet_spot(booth):
+    # Listening finding: below 0.3 monotone, above 0.5 weird/buggy.
+    # Default sweep is the 0.3-0.5 band in 0.05 steps.
+    assert booth.DEFAULT_VARY_TEMPS == (0.3, 0.35, 0.4, 0.45, 0.5)
+
+
+def test_final_takes_plan_names_and_lines(booth):
+    lines = booth.FINAL_TAKES_LINES
+    assert len(lines) == 3
+    assert "vulnerability" in lines[1]
+    assert "vulnurability" not in " ".join(lines)
+    plan = booth.final_takes_plan()
+    assert len(plan) == 12
+    names = [entry["file"] for entry in plan]
+    assert "7358-female-0.3-1.mp3" in names
+    assert len(set(names)) == 12
+    for entry in plan:
+        assert entry["literal"] is True
+        assert entry["seed"] in (7358, 6420)
+        assert entry["temperature"] in (0.3, 0.5)
+
+
+def test_final_takes_runner_completes_all_twelve(booth):
+    plan = booth.final_takes_plan()
+    rendered = []
+
+    def fake_render(entry, wav_path):
+        rendered.append(entry["file"])
+
+    def fake_convert(wav_path, mp3_path):
+        pass
+
+    done = booth.run_final_takes(plan, fake_render, fake_convert)
+    assert len(done["rendered"]) == 12
+    assert done["failed"] == []
+    assert len(rendered) == 12
+
+
+def test_final_takes_runner_records_failure_without_stopping(booth):
+    plan = booth.final_takes_plan()[:3]
+
+    def bad_render(entry, wav_path):
+        raise RuntimeError("silent")
+
+    done = booth.run_final_takes(plan, bad_render, lambda w, m: None)
+    assert done["rendered"] == []
+    assert len(done["failed"]) == 3
+
+
+def test_variation_schedule_spans_seeds_and_temps(booth):
+    seeds = [1869, 6420, 812, 7358]
+    temps = [0.1, 0.3, 0.5, 0.7, 0.9]
+    schedule = booth.variation_schedule(seeds, temps)
+    assert len(schedule) == 20
+    assert schedule[0] == (1869, 0.1)
+    assert schedule[4] == (1869, 0.9)
+    assert schedule[5] == (6420, 0.1)
+    assert len({s for s, _ in schedule}) == 4
+    for _, t in schedule:
+        assert t in temps
+
+
+def test_variation_verdict_records_temp_pairing(booth):
+    state = booth.BoothState()
+    state.variation_pass(1869, 0.5, "hash-1869-05")
+    assert state.variation_picks == [{"seed": 1869, "temperature": 0.5, "tensor": "hash-1869-05"}]
+    state.variation_fail(1869, 0.7)
+    assert (1869, 0.7) in state.variation_banned
+
+
+def test_variation_session_completes_all_twenty(booth):
+    played = []
+
+    def fake_play(seed, volume, temperature=None):
+        played.append((seed, temperature))
+
+    def fake_render(seed, temperature=0.3):
+        return "hash-%d-%.1f" % (seed, temperature)
+
+    transcript = booth.run_variations(
+        [1869, 6420],
+        [0.1, 0.3, 0.5],
+        ["p", "pass", "p", "fail", "p", "pass", "p", "pass", "p", "fail", "p", "pass", "q"],
+        play_fn=fake_play,
+        render_fn=fake_render,
+    )
+    assert transcript["quit"] is True
+    assert len(transcript["played"]) == 6
+    assert len(transcript["variation_picks"]) == 4
