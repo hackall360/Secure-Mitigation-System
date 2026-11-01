@@ -97,11 +97,20 @@ def query_vault_stats(vault_dir: str | None = None) -> dict[str, Any]:
 def verify_receipt(candidate: dict[str, Any]) -> dict[str, Any]:
     """Validate a VerdictReceipt / CycleReceipt digest without Docker.
 
-    Structural check only: schema conformance + sha256 shape + sane exit
-    codes, plus the optional receipt-chain link. Returns
-    {"valid": bool, "chain_ok": bool, ...}; never raises on malformed input.
-    Docker evidence (not this function) is what earns a receipt: a broken
-    chain link sets ``chain_ok`` False but never flips ``valid``.
+    Structural-only check: schema conformance + sha256 shape + sane exit
+    codes, plus the optional receipt-chain link. It never recomputes the
+    digest from patch bytes, so it cannot confirm the patch the receipt
+    claims. Returns {"valid": bool, "chain_ok": bool, ...}; never raises
+    on malformed input. Docker evidence (not this function) is what earns
+    a verdict: a broken chain link sets ``chain_ok`` False but never flips
+    ``valid``.
+
+    Chain semantics: the link binds re-attestation equality (a chained
+    receipt re-attests the SAME patch, so a live ``prev_receipt_sha`` must
+    equal this receipt's ``patch_sha256``). Production receipts are
+    currently always-unlinked (genesis): no caller threads prev receipts
+    today, so ``chain_ok`` is always False outside tests that hand-build a
+    linked receipt.
     """
     try:
         receipt = VerdictReceipt.model_validate(candidate)
