@@ -2738,8 +2738,8 @@ def main() -> int:
         parser.error("--demo-seed requires --ai-demo")
     if args.sweep_passes is not None and not args.scan:
         parser.error("--sweep-passes requires --scan")
-    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 3:
-        parser.error("--sweep-passes must be between 1 and 3")
+    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 4:
+        parser.error("--sweep-passes must be between 1 and 4")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")
