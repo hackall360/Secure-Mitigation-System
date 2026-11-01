@@ -137,11 +137,14 @@ Supply-chain attacks show the cost. Shai-Hulud and php2shell, plus steady npm an
 
 ## Why Muse?
 
-We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Spark costs about a fifth of Wonder per token, so the split saves money. Our tests used a small $150 credit pool. Docker scores each verdict, so bigger models would add cost, not quality.
+We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Per-token prices live in `library/core/pricing.py`: Spark runs about a third of Wonder on input and a fifth on output, so the split saves money. Our tests ran on the hackathon's small credit pool. Docker scores each verdict, so bigger models would add cost, not quality.
+
+The loop needs a model that will attack its own code inside a locked sandbox and then patch it. Muse Spark and Wonder both do that here. Some hosted models are built to refuse the attack step even for defense — the contest brief names Opus 5.5, Fable 5.1, Luna 6, and Sol 6.1 as models that decline offensive probing — so tools built on refusers stay point-and-fix: they flag a line and stop.
 
 ## Go deeper
 
 - [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — start here: the loop in plain words.
+- [`docs/TECHNICAL_BREAKDOWN.md`](docs/TECHNICAL_BREAKDOWN.md) — deep cut: passes, vault, isolation, 429s, receipts, telemetry, with file and line pointers.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full detail: receipts, guards, isolation, config.
 - [`docs/index.md`](docs/index.md) — map of all docs. [`TODO.md`](TODO.md) — work queue.
 

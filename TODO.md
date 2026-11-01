@@ -554,3 +554,13 @@ Goal: headless Wayland capture + virtual camera pipeline under `video-demo/deskt
 
 
 
+
+## GG. Closed-loop guidance: refactor + README + governance (brief 2026-11-01-closed-loop-guidance; branch feature/closed-loop-guidance)
+
+Lead ran solo (swarm spawn infra DOWN 06:11 UTC: router misroutes `muse-spark-1.3-contributor` to Anthropic, 11 refusals, recorded in brief + TRAPS-worthy). Honest Δ: prior BB/CC/DD had already zeroed most of the directive — recon proved it before any edit.
+
+- [x] GG1. Recon + GUIDANCE_MATRIX.md ledger (S_current per subsystem, Δ, vectors, gate status). Baseline gate green pre-change. Files: `GUIDANCE_MATRIX.md`, `.jcode/briefs/2026-11-01-closed-loop-guidance.md`. Proof: gate 06:11 UTC green + matrix.
+- [x] GG2. Subsystem A: line-number drift refreshed in `docs/{web,tui,mcp}/INDEX.md` (true ll. 663/682-693/735-1093/1098+/1445+, main.py:2794); physical `web|tui|mcp/` dirs ATTEMPTED then REVERTED (a `tui/` package shadows root `tui.py` -> `import tui` resolves to package -> collection ERROR; same asymmetric risk for web/mcp) — maps-only is the gate-safe form per LAW 10B/10D; `modules.*` spelling VERIFIED KEEP (test_tui.py:145 fake-injection seam needs it, proven live). Files: `docs/*/INDEX.md`. Proof: gate 876 + shadowing transcript.
+- [x] GG3. Subsystem B: verified zero-change (`.gitignore:277-278` ignores briefs/session, `git ls-files .jcode/briefs` empty; flat `docs/*.md` are `# Moved` stubs or canonical — diffed each). Files: `GUIDANCE_MATRIX.md` rows B4/B5. Proof: check-ignore + diff transcripts.
+- [x] GG4. Subsystem C RED->GREEN: `docs/TECHNICAL_BREAKDOWN.md` created (119 lines, all refs true); README refusal paragraph scoped to contest brief (Opus 5.5/Fable 5.1/Luna 6/Sol 6.1) + breakdown link; cost claim grounded in `pricing.py` table (Spark 0.31 in / 0.21 out vs Wonder), stale `$150` pin strengthened to `pricing.py` citation; 3 new tests (refusal names, grounded cost, breakdown link). Files: `README.md`, `docs/TECHNICAL_BREAKDOWN.md`, `tests/test_docs_presentation.py`. Proof: 12/12 presentation tests.
+- [x] GG5. Subsystem D live proof: Gate 1 `dev.py check` 876 passed + All checks passed; Gate 2 `offline_scan` 4/4 verified pre=0 post=1 + cleanup; Gate 3 LAW 11 Firefox + Chrome `node_query_sink --offline` both "Boundary check passed" (Chrome needs `.venv/bin/python`; system python lacks `websockets`). Files: `GUIDANCE_MATRIX.md` row D1. Proof: gate + scan + card outputs.
