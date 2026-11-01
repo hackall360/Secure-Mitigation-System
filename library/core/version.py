@@ -6,6 +6,6 @@ Every surface renders this: FastAPI metadata, /api/health, --version, MCP
 serverInfo, dashboard footer, README badge. Bump in this file only.
 """
 
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.13.0"
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"

@@ -995,7 +995,7 @@ MODULE_VERSIONS: dict[str, str] = {
     "library.workflows.workflow": "0.1.0",
     "library.workflows.project_workflow": "0.1.0",
     "library.tags": "0.1.0",
-    "library.core.version": "0.12.0",
+    "library.core.version": "0.13.0",
 }
 
 
