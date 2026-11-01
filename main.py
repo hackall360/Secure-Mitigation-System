@@ -745,7 +745,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             }
         except ConfigurationError as exc:
             return JSONResponse(
-                {"status": "configuration_error", "message": str(exc)}, status_code=503
+                {"status": "configuration_error", "version": APP_VERSION, "message": str(exc)},
+                status_code=503,
             )
 
     async def run_socket(socket: WebSocket, target_key: str | None = None):
@@ -2478,7 +2479,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_argument(
         "--mcp",
         action="store_true",
-        help="MCP STDIO transport: read JSON-RPC requests on stdin, write responses on stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt)",
+        help="MCP STDIO transport: read JSON-RPC requests on stdin, write responses on stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_query_vault_stats, sms_verify_receipt, sms_scan_status)",
     )
     commands.add_argument(
         "--binary-target",
