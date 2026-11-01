@@ -62,7 +62,7 @@ def test_deal_batch_ten_unbanned(booth):
     state.deal_batch(10, random.Random(7))
     assert len(state.batch) == 10
     assert len(set(state.batch)) == 10
-    assert all(1000 <= s <= 9999 for s in state.batch)
+    assert all(1 <= s <= 9999 for s in state.batch)
 
 
 def test_deal_batch_skips_banned(booth):

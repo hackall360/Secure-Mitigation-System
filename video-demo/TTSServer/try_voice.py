@@ -36,7 +36,16 @@ import random
 import sys
 from pathlib import Path
 
-TRY_TEXT = "System online. Generating test audio for this specific seed."
+TRY_TEXT = (
+    "This is a voice test! I hope you enjoy how I sound. "
+    "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+)
+
+# Best-known delivery default: upstream lively values (temperature 0.3), with
+# the full manual_seed pin for determinism. Near-zero temperatures flatten
+# prosody (user verdict 2026-11-01) — the pin, not the flatness, is what makes
+# repeats identical, so this stays lively AND repeatable.
+DEFAULT_TEMPERATURE = 0.3
 
 
 def speak_params(seed, literal=True):
@@ -49,9 +58,9 @@ def speak_params(seed, literal=True):
 
 
 def next_candidate(banned, rng=None):
-    """Draw a 4-digit seed outside `banned`."""
+    """Draw a seed from 1-9999 outside `banned`."""
     rng = rng or random.Random()
-    pool = [s for s in range(1000, 10000) if s not in set(banned)]
+    pool = [s for s in range(1, 10000) if s not in set(banned)]
     if not pool:
         raise ValueError("banned set exhausted the 4-digit pool")
     return rng.choice(pool)
@@ -98,7 +107,7 @@ def tensor_hash(spk_emb):
     return hashlib.sha256(repr(spk_emb).encode()).hexdigest()[:16]
 
 
-def render_seed(chat, seed, text, out_path, literal=True, temperature=0.3):
+def render_seed(chat, seed, text, out_path, literal=True, temperature=DEFAULT_TEMPERATURE):
     """Pin voice tensor + token stream, synthesize, write wav. Returns hash."""
     import torch
     from sample_voices import check_audio_non_silent, write_wav
@@ -148,7 +157,7 @@ def main(argv=None):
     parser.add_argument("--text", default=TRY_TEXT, help="phrase to synthesize")
     parser.add_argument("--out", default="try_voice.wav", help="temp output path")
     parser.add_argument("--literal", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--temperature", type=float, default=0.3)
+    parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
     parser.add_argument("--next", action="store_true", help="draw next unbanned seed")
     parser.add_argument("--pass", dest="do_pass", action="store_true")
     parser.add_argument("--fail", dest="do_fail", action="store_true")

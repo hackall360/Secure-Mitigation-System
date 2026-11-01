@@ -44,7 +44,7 @@ class BoothState:
 
     def deal_batch(self, n, rng=None):
         rng = rng or random.Random()
-        pool = [s for s in range(1000, 10000) if s not in self.banned]
+        pool = [s for s in range(1, 10000) if s not in self.banned]
         self.batch = rng.sample(pool, min(n, len(pool)))
         self.index = 0
         return self.batch
@@ -191,14 +191,14 @@ def main(argv=None):
     parser.add_argument(
         "--scratch-dir", default=".booth-scratch", help="temp iteration audio (never committed)"
     )
-    parser.add_argument("--text", default=None, help="phrase (default: booth line)")
+    parser.add_argument("--text", default=None, help="phrase (default: voice-test line)")
     parser.add_argument("--expressive", action="store_true")
     parser.add_argument("--volume", type=float, default=50.0)
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.3,
-        help="sampling temperature; lower = more fixed (upstream issue #228 suggests near-zero for max fixity)",
+        default=None,
+        help="sampling temperature (default: best-known near-zero; upstream issue #228)",
     )
     args = parser.parse_args(argv)
 
@@ -229,6 +229,7 @@ def main(argv=None):
 
     rng = random.Random()
     text = args.text or tv.TRY_TEXT
+    temperature = args.temperature if args.temperature is not None else tv.DEFAULT_TEMPERATURE
 
     def render(seed):
         wav = scratch / f"booth_{seed:04d}.wav"
@@ -239,7 +240,7 @@ def main(argv=None):
                 text,
                 wav,
                 literal=not args.expressive,
-                temperature=args.temperature,
+                temperature=temperature,
             )
             state.played_hashes[seed] = digest
         return state.played_hashes.get(seed, "")

@@ -28,19 +28,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-SAMPLE_TEXT = "This is a simple test. This is how I sound! Do you like it?"
+SAMPLE_TEXT = (
+    "This is a voice test! I hope you enjoy how I sound. "
+    "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+)
 SAMPLE_RATE = 24000
 
 # Seeds the user rejected (word-merging batch, 2026-11-01) — never reuse.
 BANNED_SEEDS = frozenset({5923, 8059, 6623, 6338, 4545, 2235, 3823, 7908, 3217, 4967})
 
-# Literal-mode sampling: tight deterministic decoding so the model reads the
-# words as written instead of improvising. Provenance: with refine enabled the
-# refiner rewrote `sound` -> `sound like` before synthesis (refine_text_only
-# capture, brief 2026-11-01-voice-seed-retry-literal), so literal mode skips
-# the refine pass entirely and decodes greedily.
-LITERAL_TEMPERATURE = 0.1
-LITERAL_TOP_K = 1
+# Literal-mode sampling: verbatim path (skip refine, empty prompt) with
+# upstream lively sampling (temperature 0.3, top_K 20) — the manual_seed pin
+# carries determinism, so delivery stays expressive AND repeatable. Near-zero
+# temperatures were tried and sounded monotone (brief 2026-11-01-monotone-fix).
+LITERAL_TEMPERATURE = 0.3
+LITERAL_TOP_K = 20
 
 
 def literal_params(temperature=LITERAL_TEMPERATURE):

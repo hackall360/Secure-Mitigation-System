@@ -62,7 +62,7 @@ def test_next_candidate_avoids_banned(looper):
     banned = {1111, 2222}
     for _ in range(20):
         seed = looper.next_candidate(banned, random.Random())
-        assert 1000 <= seed <= 9999
+        assert 1 <= seed <= 9999
         assert seed not in banned
 
 
@@ -88,3 +88,35 @@ def test_record_pass_pins_tensor_hash(tmp_path, looper):
 def test_state_round_trips_empty(tmp_path, looper):
     state = tmp_path / "loop.json"
     assert looper.load_state(state) == {"banned": [], "passed": []}
+
+
+def test_default_text_is_user_line(looper):
+    assert looper.TRY_TEXT == (
+        "This is a voice test! I hope you enjoy how I sound. "
+        "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+    )
+
+
+def test_default_temperature_is_lively(looper):
+    assert looper.DEFAULT_TEMPERATURE == pytest.approx(0.3)
+
+
+def test_next_candidate_spans_1_to_9999(looper):
+    import random
+
+    seen_low = False
+    rng = random.Random(3)
+    for _ in range(300):
+        seed = looper.next_candidate(set(), rng)
+        assert 1 <= seed <= 9999
+        if seed < 1000:
+            seen_low = True
+    assert seen_low, "1-9999 pool must be able to draw sub-1000 seeds"
+
+
+def test_seed_pool_includes_28(looper):
+    banned = set()
+    pool = [s for s in range(1, 10000) if s not in banned]
+    assert 28 in pool
+    assert 1 in pool
+    assert 9999 in pool

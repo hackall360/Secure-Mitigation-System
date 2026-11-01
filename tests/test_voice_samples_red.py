@@ -7,7 +7,8 @@
 no audio drivers needed):
 
 - `generate_seeds(count, length, rng)` returns `count` UNIQUE ints with exactly
-  `length` digits (1000-9999 for length 4), deterministic for a seeded rng.
+  `length` digits, deterministic for a seeded rng (1-9999 pool, banned seeds
+  excluded).
 - `sample_filename(seed, ext)` embeds the seed in the basename.
 - `SAMPLE_TEXT` is the exact user-specified line.
 - A manifest maps every seed to its file.
@@ -27,7 +28,10 @@ from pathlib import Path
 import pytest
 
 TTS_DIR = Path(__file__).resolve().parents[1] / "video-demo" / "TTSServer"
-EXPECTED_TEXT = "This is a simple test. This is how I sound! Do you like it?"
+EXPECTED_TEXT = (
+    "This is a voice test! I hope you enjoy how I sound. "
+    "Pen pineapple apple pen. Pen, Pineapple, Apple, pen."
+)
 
 
 def load_module():
@@ -46,11 +50,11 @@ def test_sample_text_is_exact_user_line(sampler):
     assert sampler.SAMPLE_TEXT == EXPECTED_TEXT
 
 
-def test_generate_seeds_ten_unique_four_digit(sampler):
+def test_generate_seeds_ten_unique_in_pool(sampler):
     seeds = sampler.generate_seeds(10, 4, random.Random(1234))
     assert len(seeds) == 10
     assert len(set(seeds)) == 10, "seeds must be unique per run"
-    assert all(1000 <= s <= 9999 for s in seeds), "length-4 means 1000-9999"
+    assert all(1 <= s <= 9999 for s in seeds), "pool is 1-9999"
 
 
 def test_generate_seeds_deterministic_for_seeded_rng(sampler):
@@ -116,8 +120,8 @@ def test_literal_params_skip_refine_and_tighten_sampling(sampler):
     except ModuleNotFoundError:
         pytest.skip("ChatTTS not installed in repo venv; source pins it instead")
     assert kwargs["skip_refine_text"] is True
-    assert infer_code.temperature == 0.1
-    assert infer_code.top_K == 1
+    assert infer_code.temperature == pytest.approx(0.3)
+    assert infer_code.top_K == 20
     assert refine_text.prompt == ""
 
 
