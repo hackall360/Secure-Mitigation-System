@@ -161,15 +161,64 @@ def test_cvss_from_map_first_score_wins():
     assert cvss_from_map({"x": "not-a-dict"}) == ""
 
 
+def test_m1_long_probe_output_fully_withheld():
+    """M1: over-limit probe outputs are FULLY withheld, no prefix retained."""
+    long_out = "y" * 600
+    assert redact_probe_output(long_out) == EXPLOIT_REDACTED
+
+
+def test_m1_long_output_retains_no_prefix_chars():
+    """M1: a 500-char prefix can carry a working exploit one-liner; keep none."""
+    payload = "EXPLOIT-ONE-LINER:" + "A" * 581  # 600 chars, payload up front
+    assert len(payload) > 500
+    result = redact_probe_output(payload)
+    assert result == EXPLOIT_REDACTED
+    assert "EXPLOIT-ONE-LINER" not in result
+    assert "A" * 10 not in result
+
+
+def test_m1_custom_limit_is_threshold_only():
+    """M1: limit still accepted but only decides the withhold threshold."""
+    assert redact_probe_output("x" * 150, limit=100) == EXPLOIT_REDACTED
+    assert redact_probe_output("x" * 50, limit=100) == EXPLOIT_REDACTED
+    assert redact_probe_output("x" * 600, limit=500) == EXPLOIT_REDACTED
+
+
+def test_m1_probe_output_passthrough_unchanged():
+    """M1: empty/non-string behavior unchanged."""
+    assert redact_probe_output("") == ""
+    assert redact_probe_output(None) is None
+    assert redact_probe_output(0) == 0
+    assert redact_probe_output(123) == 123
+
+
+def test_m1_cycle_evidence_long_probe_output_withheld():
+    """M1: long probe output via redact_cycle_evidence keeps exit code, drops text."""
+
+    class Ev:
+        def model_dump(self):
+            return {
+                "red": {"report": {}},
+                "pre_verification": {
+                    "probe": {"output": "EVIL:" + "B" * 600, "exit_code": 0}
+                },
+            }
+
+    data = redact_cycle_evidence(Ev())
+    assert data["pre_verification"]["probe"]["output"] == EXPLOIT_REDACTED
+    assert data["pre_verification"]["probe"]["exit_code"] == 0
+
+
 def test_redact_probe_output_truncate_vs_withhold():
+    """M1 supersedes the old prefix contract: no prefix is ever retained."""
     assert redact_probe_output("") == ""
     assert redact_probe_output(None) is None
     assert redact_probe_output(0) == 0
     assert redact_probe_output("short payload") == EXPLOIT_REDACTED
     long_out = "y" * 600
     cut = redact_probe_output(long_out)
-    assert cut.startswith("y" * 500) and "truncated" in cut
-    assert "y" * 600 not in cut or "truncated" in cut
+    assert cut == EXPLOIT_REDACTED
+    assert "y" * 10 not in cut
 
 
 def test_redact_cycle_evidence_never_leaks_scripts():
