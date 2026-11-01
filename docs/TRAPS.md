@@ -4,6 +4,17 @@ One growing map per `docs/guides/WORKFLOWS.md`. Highest value first: the
 wrong assumption, then what the evidence actually showed. Link new entries
 here, not in scattered notes.
 
+## Overnight int(inf) OverflowError class (2026-11-01, branch feature/overnight-verify)
+
+- **Trap: `int()` on untrusted numerics raises `OverflowError`, not `ValueError` — and every `(TypeError, ValueError)` guard in the repo missed it.**
+  Wrong assumption: "Invalid values never raise: they clamp or fall back" + `except (TypeError, ValueError)` covers all garbage. `int("abc")` and `int(None)` do raise those — but `int(float("inf"))` raises `OverflowError: cannot convert float infinity to integer`, which escapes. `float()` never has this problem (inf is a valid float); only `int()` does.
+  Evidence: 5 RED-first fixes, same shape, all proven with OverflowError in-trace on unmodified code: transport clamps (`sms_http._clamp_tries/_clamp_max_bytes`), `_leader_decision_message` + `generate_demo_project` counters, 7 `/ws/demo` parsing guards (hostile browser JSON: `json.loads` decodes literal `Infinity`/`1e999` to inf via allow_nan default; the socket died `ClosedResourceError` instead of fail-closed defaults), 5 fail-closed evidence-gate guards (Mapping-form evidence from deserialized JSON; the gates crashed instead of returning False), 4 MCP `max_passes`/stamp-cycles guards (raw-Infinity POST body; HTTP contract is clean `-32602`, not a scan). Fixed shape: `except (TypeError, ValueError, OverflowError)`. Files: `library/shared/sms_http.py`, `library/services/project_agents.py`, `library/services/demo_gen.py`, `main.py`, `library/workflows/project_workflow.py`; tests `test_transport_bounds_red.py`, `test_int_overflow_red.py`, `test_ws_demo_inf_red.py`, `test_evidence_gates_inf_red.py`, `test_mcp_inf_red.py`.
+  Lesson: any `int()` on network/JSON-adjacent input must catch `OverflowError` too. `float()` sites need no fix. Audit with: grep for `except (TypeError, ValueError)` near `int(`, then prove inf-reachability per site (pydantic-validated ints and int-only callers are safe by construction — verify, don't harden).
+- **Trap (tooling): the `write` tool can report success on a new file that never lands — verify with `ls`/`read` before editing it.**
+  Wrong assumption: `write` replying "Created ..." means the file exists with that content.
+  Evidence: two `edit` calls on `tests/test_int_overflow_red.py` failed "old_string not found", then `read` said "File not found" and `ls` confirmed absence — the create never landed despite the success message. Shell heredoc (`cat > file <<EOF`) worked first try; existing-file edits in the same session were fine.
+  Lesson: after `write` of a NEW file, verify existence before editing; if edits mysteriously miss, re-check existence rather than retrying.
+
 ## Ascendancy Wave 2 RED tests (2026-10-30, branch feature/30-wave-ascendancy)
 
 - **Trap: a module-level `import` of a not-yet-existing module makes pytest report ERROR, not FAIL — and 2 such files abort the whole session.**
