@@ -125,3 +125,33 @@ def test_run_booth_scripted_flow(booth):
     assert played, "play must be called"
     assert any(v == 0.8 for _, v in played), "volume change must reach playback"
     assert transcript["quit"] is True
+
+
+def test_silent_seed_auto_bans_and_session_continues(booth):
+    import random
+
+    played = []
+    probe = booth.BoothState()
+    probe.deal_batch(3, random.Random(11))
+    silent_seed = probe.batch[0]
+
+    def fake_play(seed, volume):
+        played.append((seed, volume))
+
+    def fake_render(seed):
+        if seed == silent_seed:
+            raise RuntimeError("peak amplitude 31, looks silent")
+        return "hash-%d" % seed
+
+    transcript = booth.run_booth(
+        ["p", "p", "q"],
+        play_fn=fake_play,
+        render_fn=fake_render,
+        rng=random.Random(11),
+        batch_size=3,
+        fail_silent=True,
+    )
+    assert transcript["quit"] is True, "session must survive a silent seed"
+    banned = transcript["state"].banned
+    assert silent_seed in banned, "silent seed must be banned"
+    assert any("silent" in str(b).lower() for b in transcript["banned"])

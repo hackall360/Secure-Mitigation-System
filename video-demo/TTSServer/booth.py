@@ -116,11 +116,21 @@ def play_wav(path, volume):
             pass
 
 
-def run_booth(commands, play_fn, render_fn, rng=None, batch_size=BATCH_SIZE, volume=DEFAULT_VOLUME):
+def run_booth(
+    commands,
+    play_fn,
+    render_fn,
+    rng=None,
+    batch_size=BATCH_SIZE,
+    volume=DEFAULT_VOLUME,
+    fail_silent=True,
+):
     """Scripted booth session: commands in, transcript out (no I/O, no model).
 
     play_fn(seed, volume) plays; render_fn(seed) -> tensor hash (renders on
-    first play of a seed). Returns transcript dict.
+    first play of a seed). A seed that fails to render (silent/empty) is
+    auto-banned and skipped — the session never dies on one bad seed.
+    Returns transcript dict.
     """
     rng = rng or random.Random()
     state = BoothState(volume=volume)
@@ -134,6 +144,20 @@ def run_booth(commands, play_fn, render_fn, rng=None, batch_size=BATCH_SIZE, vol
         "quit": False,
     }
     rendered = {}
+
+    def safe_render(seed):
+        if seed in rendered:
+            return rendered[seed]
+        try:
+            rendered[seed] = render_fn(seed)
+            state.played_hashes[seed] = rendered[seed]
+            return rendered[seed]
+        except Exception as exc:
+            if fail_silent:
+                state.on_fail(seed)
+                transcript["banned"].append(f"{seed} (silent: {exc})")
+                return None
+            raise
 
     for raw in commands:
         cmd = raw.strip().lower()
@@ -158,16 +182,15 @@ def run_booth(commands, play_fn, render_fn, rng=None, batch_size=BATCH_SIZE, vol
         elif cmd in ("p", "play", "r", "relisten"):
             if seed is None:
                 continue
-            if seed not in rendered:
-                rendered[seed] = render_fn(seed)
-                state.played_hashes[seed] = rendered[seed]
+            if safe_render(seed) is None:
+                continue
             play_fn(seed, state.volume)
             transcript["played"].append(seed)
         elif cmd in ("pass", "y"):
             if seed is None:
                 continue
-            if seed not in rendered:
-                rendered[seed] = render_fn(seed)
+            if safe_render(seed) is None:
+                continue
             state.on_pass(seed, rendered[seed])
             transcript["passed"].append(seed)
         elif cmd in ("fail", "f", "n"):
@@ -240,7 +263,9 @@ def main(argv=None):
 
     def render(seed):
         wav = scratch / f"booth_{seed:04d}.wav"
-        if not wav.is_file():
+        if wav.is_file() and seed in state.played_hashes:
+            return state.played_hashes[seed]
+        try:
             digest = tv.render_seed(
                 chat,
                 seed,
@@ -251,7 +276,16 @@ def main(argv=None):
                 word_breaks=args.word_breaks,
             )
             state.played_hashes[seed] = digest
-        return state.played_hashes.get(seed, "")
+            return digest
+        except Exception as exc:
+            try:
+                wav.unlink(missing_ok=True)
+            except OSError:
+                pass
+            state.on_fail(seed)
+            tv.record_fail(args.state, seed)
+            print(f"seed {seed} failed to render ({exc}); auto-banned, moving on.")
+            return None
 
     def play(seed, volume):
         wav = scratch / f"booth_{seed:04d}.wav"
@@ -293,10 +327,13 @@ def main(argv=None):
             except ValueError:
                 print("usage: v 0-100")
         elif cmd in ("p", "play", "r", "relisten"):
-            render(seed)
+            if render(seed) is None:
+                continue
             play(seed, state.volume)
         elif cmd in ("pass", "y"):
             digest = render(seed)
+            if digest is None:
+                continue
             pt = keep / f"voice_{seed:04d}.pt"
             tv.pin_tensor(chat, seed, pt)
             mp3 = keep / f"voice_{seed:04d}.mp3"

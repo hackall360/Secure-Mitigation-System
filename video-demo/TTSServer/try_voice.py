@@ -325,18 +325,25 @@ def main(argv=None):
         return 1
     chat = ChatTTS.Chat()
     print("[try] loading weights (cached after first run)...")
-    if not chat.load(compile=False, source="huggingface"):
+    with quiet_chattts():
+        loaded = chat.load(compile=False, source="huggingface")
+    if not loaded:
         print("[try] weights failed to load.", file=sys.stderr)
         return 1
-    digest = render_seed(
-        chat,
-        args.seed,
-        args.text,
-        args.out,
-        literal=args.literal,
-        temperature=args.temperature,
-        word_breaks=args.word_breaks,
-    )
+    try:
+        digest = render_seed(
+            chat,
+            args.seed,
+            args.text,
+            args.out,
+            literal=args.literal,
+            temperature=args.temperature,
+            word_breaks=args.word_breaks,
+        )
+    except RuntimeError as exc:
+        print(f"[try] seed {args.seed} failed: {exc}", file=sys.stderr)
+        print("suggest: --fail this seed and try the next one", file=sys.stderr)
+        return 1
     print(f"[try] seed {args.seed} -> {args.out} (tensor {digest})")
     print("listen, then: --pass (pins) or --fail (bans + next)")
     return 0
