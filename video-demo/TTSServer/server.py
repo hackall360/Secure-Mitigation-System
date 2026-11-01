@@ -52,6 +52,8 @@ class ServerSettings:
     device: str = os.environ.get("TTS_DEVICE", "").strip() or "auto"
     refine_prompt: str = os.environ.get("TTS_REFINE_PROMPT", "[oral_2][laugh_0][break_4]")
     temperature: float = float(os.environ.get("TTS_TEMPERATURE", "0.3"))
+    voice_pt: str = os.environ.get("TTS_VOICE_PT", "").strip()
+    voice_seed: str = os.environ.get("TTS_VOICE_SEED", "").strip()
 
 
 class ChatTTSSynthesizer:
@@ -82,7 +84,26 @@ class ChatTTSSynthesizer:
                 raise RuntimeError("TTS_DEVICE needs torch, which is not installed.") from exc
         if not self.chat.load(**kwargs):
             raise RuntimeError("ChatTTS failed to load weights (check disk/HF cache).")
-        self.spk_emb = self.chat.sample_random_speaker()
+        if self.settings.voice_pt:
+            try:
+                import torch
+            except ImportError as exc:
+                raise RuntimeError("TTS_VOICE_PT needs torch, which is not installed.") from exc
+            try:
+                self.spk_emb = torch.load(self.settings.voice_pt, map_location="cpu")
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    f"Pinned voice file not found: {self.settings.voice_pt}"
+                ) from exc
+            print(f"[TTS] pinned voice loaded from {self.settings.voice_pt}")
+        elif self.settings.voice_seed:
+            import torch
+
+            torch.manual_seed(int(self.settings.voice_seed))
+            self.spk_emb = self.chat.sample_random_speaker()
+            print(f"[TTS] voice pinned to seed {self.settings.voice_seed}")
+        else:
+            self.spk_emb = self.chat.sample_random_speaker()
         self.ready = True
 
     def synthesize(self, text):

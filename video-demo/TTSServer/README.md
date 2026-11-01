@@ -1,5 +1,30 @@
 # TTSServer — local ChatTTS voice for the video demo (STANDALONE)
 
+## Voice booth (pick your narrator)
+
+`booth.py` is the interactive listening loop — you run it, it plays voices,
+you pass or fail them. Batches of 10; pass pins the voice (`.pt` tensor +
+audio kept), fail bans the seed and moves on.
+
+```bash
+cd video-demo/TTSServer
+~/.local/share/tts-voice-samples/bin/python booth.py
+```
+
+Commands: `p` play, `r` relisten, `pass`, `fail`, `v 0-100` (volume, default
+50), `s` skip, `more` (another 10), `q` quit. At each batch end it asks
+`Another 10? [y/n]`. State saves to `booth.json` (banned + passed), so you
+can quit anytime and resume — failed seeds never come back.
+
+Knobs: `--text "Your line."` (what every voice reads), `--temperature`
+(lower = more fixed delivery; upstream suggests near-zero for max fixity),
+`--expressive` (restore the laugh/break style), `TTS_VOICE_PT` (server loads
+a passed `.pt`), `TTS_VOICE_SEED` (server pins a seed directly).
+
+Iteration audio lives in `.booth-scratch/` (temp, never committed); passed
+voices land in `passed/` (`.pt` tensor + `.mp3`).
+
+
 Local, API-accessible text-to-speech. No wiring into red/blue agents, the main
 app, dashboard, TUI, CLI, or MCP — this folder is a dev tool for narrating the
 demo video, nothing more.
