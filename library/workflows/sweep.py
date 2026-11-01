@@ -477,10 +477,6 @@ async def execute_sweep_scan(
                 )
                 if link_b_pre.inconclusive:
                     raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
-                passed.chain_links = [
-                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
-                ]
                 link_a_post = await blocking(
                     sandbox.run_isolated_verifier, network, link_scripts[0]
                 )
@@ -507,8 +503,8 @@ async def execute_sweep_scan(
                     )
                 passed.chain_links = [
                     ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_b_pre.exit_code),
-                    ChainLink(pre_exit=link_a_post.exit_code, post_exit=link_b_post.exit_code),
+                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_a_post.exit_code),
+                    ChainLink(pre_exit=link_b_pre.exit_code, post_exit=link_b_post.exit_code),
                 ]
             else:
                 passed.chain_links = [
