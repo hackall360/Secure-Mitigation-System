@@ -1,0 +1,52 @@
+{
+  "variation_picks": [
+    {
+      "seed": 6420,
+      "temperature": 0.3,
+      "tensor": "dd1e40d0f813e52b",
+      "file": "voice_6420_t0p3.mp3"
+    },
+    {
+      "seed": 6420,
+      "temperature": 0.45,
+      "tensor": "dd1e40d0f813e52b",
+      "file": "voice_6420_t0p45.mp3"
+    },
+    {
+      "seed": 6420,
+      "temperature": 0.5,
+      "tensor": "dd1e40d0f813e52b",
+      "file": "voice_6420_t0p5.mp3"
+    },
+    {
+      "seed": 812,
+      "temperature": 0.3,
+      "tensor": "9d6bfa567884c409",
+      "file": "voice_0812_t0p3.mp3"
+    },
+    {
+      "seed": 812,
+      "temperature": 0.45,
+      "tensor": "9d6bfa567884c409",
+      "file": "voice_0812_t0p45.mp3"
+    },
+    {
+      "seed": 7358,
+      "temperature": 0.3,
+      "tensor": "267b9784ad401d3c",
+      "file": "voice_7358_t0p3.mp3"
+    },
+    {
+      "seed": 7358,
+      "temperature": 0.35,
+      "tensor": "267b9784ad401d3c",
+      "file": "voice_7358_t0p35.mp3"
+    },
+    {
+      "seed": 7358,
+      "temperature": 0.5,
+      "tensor": "267b9784ad401d3c",
+      "file": "voice_7358_t0p5.mp3"
+    }
+  ]
+}
