@@ -82,6 +82,13 @@ FEATURE_TAGS: dict[str, dict[str, object]] = {
         "cli": "--cleanup",
         "tui": None,
     },
+    "quickstart": {
+        "surfaces": ["api"],
+        "backend": ".jcode/tools/dev.py:quickstart",
+        "ui": None,
+        "cli": None,
+        "tui": None,
+    },
     "serve-dashboard": {
         "surfaces": ["cli", "api"],
         "backend": "main.py:index",
@@ -988,7 +995,7 @@ MODULE_VERSIONS: dict[str, str] = {
     "library.workflows.workflow": "0.1.0",
     "library.workflows.project_workflow": "0.1.0",
     "library.tags": "0.1.0",
-    "library.core.version": "0.11.0",
+    "library.core.version": "0.12.0",
 }
 
 
