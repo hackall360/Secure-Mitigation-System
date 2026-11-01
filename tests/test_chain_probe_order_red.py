@@ -82,9 +82,7 @@ class ChainOrderFakeMuse:
     async def run_red_team_pass_analysis(self, pass_id, filename, source, contract=""):
         from modules.core.agents import RedTeamFinding
 
-        script = (
-            UNIFIED_CHAIN_SCRIPT if pass_id == "chain" else "import sys\nsys.exit(1)\n"
-        )
+        script = UNIFIED_CHAIN_SCRIPT if pass_id == "chain" else "import sys\nsys.exit(1)\n"
         return RedTeamFinding(
             vulnerability_class=f"test chain boundary {pass_id}",
             sink_location=filename,

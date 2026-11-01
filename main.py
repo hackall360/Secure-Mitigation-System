@@ -1041,10 +1041,22 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 )
             else:
                 if target_key == "binary_argv_echo":
-                    raise ValueError(
-                        "binary_argv_echo is a compiled ELF fixture: use the Binary "
-                        "sweep mode (/ws/binary) or --binary-target, not the fixture socket."
+                    # Fail-closed redirect (LAW 4): the ELF fixture is not UTF-8
+                    # source, so the fixture socket must refuse it with the same
+                    # invalid-frame contract the project/demo/binary branches use
+                    # — never an unhandled ValueError that drops the socket.
+                    await socket.send_json(
+                        {
+                            "type": "invalid",
+                            "team": "system",
+                            "msg": (
+                                "binary_argv_echo is a compiled ELF fixture: use the Binary "
+                                "sweep mode (/ws/binary) or --binary-target, not the fixture socket."
+                            ),
+                        }
                     )
+                    await socket.close(code=1008)
+                    return
                 if sweep_depth is not None:
                     coroutine = execute_sweep_scan(
                         target_key, emit, config=scan_config, max_passes=sweep_depth
