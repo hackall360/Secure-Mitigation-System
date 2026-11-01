@@ -91,9 +91,7 @@ def test_binary_sweep_still_allows_three_passes():
             self.closed = True
 
     async def go():
-        spec = validate_binary_blob(
-            ELF_MAGIC, filename="t.elf", contract="Only stdin matters."
-        )
+        spec = validate_binary_blob(ELF_MAGIC, filename="t.elf", contract="Only stdin matters.")
         sandbox = FakeBinarySandbox()
         muse = SweepFakeMuse()
         result = await execute_binary_sweep(

@@ -1021,9 +1021,8 @@ def test_cli_reference_lists_v1_leaves():
 
 def test_h3_sweep_passes_4_accepted(monkeypatch):
     """H3: CLI accepts documented --sweep-passes 4 (help + WS accept 4)."""
-    from modules.workflows.sweep import SweepScanResult
-
     import main as _main
+    from modules.workflows.sweep import SweepScanResult
 
     seen = {}
 
@@ -1032,9 +1031,7 @@ def test_h3_sweep_passes_4_accepted(monkeypatch):
         return SweepScanResult(target=target_key, status="verified", message="ok")
 
     monkeypatch.setattr(_main, "execute_sweep_scan", fake_sweep)
-    monkeypatch.setattr(
-        "sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "4"]
-    )
+    monkeypatch.setattr("sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "4"])
     assert _main.main() == 0
     assert seen.get("max_passes") == 4
 
@@ -1045,9 +1042,7 @@ def test_h3_sweep_passes_5_rejected(monkeypatch):
 
     import main as _main
 
-    monkeypatch.setattr(
-        "sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "5"]
-    )
+    monkeypatch.setattr("sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "5"])
     with _pytest.raises(SystemExit) as exited:
         _main.main()
     assert exited.value.code == 2
