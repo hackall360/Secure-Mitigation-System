@@ -515,5 +515,14 @@ User re-auditions the 4 pinned voices at 5 temperatures each (0.1/0.3/0.5/0.7/0.
 - [x] QQ2. Implemented: `variation_schedule()`, `BoothState.variation_pass/fail`, `run_variations()` (silent-safe, scripted), interactive `run_vary_mode()` (`--vary 1869,6420,812,7358 --vary-temps ... --vary-state variations.json`): renders `vary_<seed>_<temp>.wav`, pass pins `.pt` + mp3 + records `{seed, temperature}`, fail advances, quit-anytime saves. Voice identity untouched (same seed → same tensor, `.pt` files as-is). Files: `video-demo/TTSServer/booth.py`. Proof: tests + live below.
 - [x] QQ3. Live proof: seed 1869 @ 0.1 vs 0.9 → same tensor (04330622274b889b = passed record) + different audio hashes — voice fixed, delivery varies, both deterministic. Gate green: 856 passed + 1 skipped, ruff + compileall. Committed on `feature/video-demo-tts-server`. NOT SHIPPED — user runs the variation pass; stays on feature branch until asked. Files: this section. Proof: hash transcript + gate output on this branch.
 
+## RR. Vary sweet-spot retune + reset (brief 2026-11-01-vary-sweet-spot-retune; branch feature/video-demo-tts-server)
+
+User listening findings: below temp 0.3 is monotone; above 0.5 is weird/buggy/monotone-with-weird-pitches. Sweet spot is 0.3–0.5, so sweep that band in 0.05 steps — and reset the partial run so it starts fresh.
+
+- [x] RR1. RED-first: `test_default_vary_temps_cover_sweet_spot` asserts `DEFAULT_VARY_TEMPS == (0.3, 0.35, 0.4, 0.45, 0.5)`. RED proven (failed pre-change). Files: `tests/test_booth_red.py`. Proof: pytest failure pre-fix.
+- [x] RR2. Retuned: `DEFAULT_VARY_TEMPS = (0.3, 0.35, 0.4, 0.45, 0.5)` + `--vary-temps` help + docstrings updated; `--vary-temps` flag still overrides for custom sweeps. Still 20 auditions (4 seeds × 5 temps); only the temp axis changed. Files: `video-demo/TTSServer/booth.py`. Proof: RED test green.
+- [x] RR3. Reset per user request: deleted untracked `variations.json` (2 1869 picks), `passed/voice_1869_t0p{3,5}.{mp3,pt}`, and 5 `vary_1869_*.wav` scratch files — all regenerable, none committed. Base 4 voices (`voice_{1869,6420,0812,7358}.{mp3,pt}`) untouched. Verified `run_vary_mode` always starts at index 0 (no skip-ahead logic) — the "resume" feel was loaded picks + leftovers, now cleared. Files: (deletions only, untracked). Proof: rm transcript + ls after.
+- [x] RR4. Gate green: 857 passed + 1 skipped, ruff + compileall. Committed on `feature/video-demo-tts-server`. NOT SHIPPED — user runs the fresh 20-audition sweep; stays on feature branch until asked. Files: this section. Proof: gate output + commit on this branch.
+
 
 

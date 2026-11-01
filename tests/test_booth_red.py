@@ -157,6 +157,12 @@ def test_silent_seed_auto_bans_and_session_continues(booth):
     assert any("silent" in str(b).lower() for b in transcript["banned"])
 
 
+def test_default_vary_temps_cover_sweet_spot(booth):
+    # Listening finding: below 0.3 monotone, above 0.5 weird/buggy.
+    # Default sweep is the 0.3-0.5 band in 0.05 steps.
+    assert booth.DEFAULT_VARY_TEMPS == (0.3, 0.35, 0.4, 0.45, 0.5)
+
+
 def test_variation_schedule_spans_seeds_and_temps(booth):
     seeds = [1869, 6420, 812, 7358]
     temps = [0.1, 0.3, 0.5, 0.7, 0.9]

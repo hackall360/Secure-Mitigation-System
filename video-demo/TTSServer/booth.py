@@ -28,11 +28,11 @@ from pathlib import Path
 
 BATCH_SIZE = 10
 DEFAULT_VOLUME = 0.5
-DEFAULT_VARY_TEMPS = (0.1, 0.3, 0.5, 0.7, 0.9)
+DEFAULT_VARY_TEMPS = (0.3, 0.35, 0.4, 0.45, 0.5)
 
 
 def variation_schedule(seeds, temps=DEFAULT_VARY_TEMPS):
-    """5 temperature variations per pinned seed, seeds in order (20 total)."""
+    """5 sweet-spot temperature variations per pinned seed, seeds in order (20 total)."""
     return [(int(s), float(t)) for s in seeds for t in temps]
 
 
@@ -282,7 +282,7 @@ def run_variations(seeds, temps, commands, play_fn, render_fn, volume=DEFAULT_VO
 
 
 def run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature):
-    """Variation pass: 5 temperatures per pinned seed, pass/fail each."""
+    """Variation pass: sweet-spot temperatures per pinned seed, pass/fail each."""
     import subprocess
 
     seeds = [int(s) for s in args.vary.split(",") if s.strip()]
@@ -401,7 +401,7 @@ def main(argv=None):
     parser.add_argument(
         "--vary-temps",
         default=",".join(str(t) for t in DEFAULT_VARY_TEMPS),
-        help="comma temperatures for --vary (default 0.1,0.3,0.5,0.7,0.9)",
+        help="comma temperatures for --vary (default 0.3,0.35,0.4,0.45,0.5 sweet spot)",
     )
     parser.add_argument(
         "--vary-state",
