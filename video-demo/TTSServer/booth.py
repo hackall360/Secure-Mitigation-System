@@ -36,6 +36,44 @@ def variation_schedule(seeds, temps=DEFAULT_VARY_TEMPS):
     return [(int(s), float(t)) for s in seeds for t in temps]
 
 
+# Final voice bake-off: corrected demo lines, reused across both voices and
+# both temps so delivery is directly comparable. Letter-spaced S M S / S Q L
+# forces letter-by-letter delivery instead of a mumbled acronym.
+FINAL_TAKES_LINES = (
+    "This is Secure Mitigation System, or S M S, a purple team system "
+    "that lets you secure any project.",
+    "Here the red team is attacking a known S Q L injection vulnerability.",
+    "As we can see by the graph, everything has been patched and secured against attacks.",
+)
+
+FINAL_TAKES_VOICES = ((7358, "female"), (6420, "male"))
+FINAL_TAKES_TEMPS = (0.3, 0.5)
+
+
+def final_takes_plan():
+    """12 takes: 2 voices x 2 temps x 3 lines, seed-major order.
+
+    Each entry: seed/gender/temperature/n (1-3)/text/file/literal. Filenames
+    like 7358-female-0.3-1.mp3. Literal mode keeps the lines verbatim.
+    """
+    plan = []
+    for seed, gender in FINAL_TAKES_VOICES:
+        for temp in FINAL_TAKES_TEMPS:
+            for n, line in enumerate(FINAL_TAKES_LINES, 1):
+                plan.append(
+                    {
+                        "seed": int(seed),
+                        "gender": gender,
+                        "temperature": float(temp),
+                        "n": n,
+                        "text": line,
+                        "file": f"{seed}-{gender}-{temp}-{n}.mp3",
+                        "literal": True,
+                    }
+                )
+    return plan
+
+
 class BoothState:
     def __init__(self, volume=DEFAULT_VOLUME):
         self.volume = float(volume)
@@ -281,6 +319,26 @@ def run_variations(seeds, temps, commands, play_fn, render_fn, volume=DEFAULT_VO
     return transcript
 
 
+def run_final_takes(plan, render_fn, convert_fn):
+    """Scripted final-takes run: render each entry, convert wav->mp3.
+
+    render_fn(entry, wav_path) synthesizes (raises on silent/empty);
+    convert_fn(wav_path, mp3_path) converts (raises on failure).
+    Returns {"rendered": [files], "failed": [(file, error)]} — failures are
+    recorded, never raised, so one bad take can't kill the other eleven.
+    """
+    done = {"rendered": [], "failed": []}
+    for entry in plan:
+        wav = Path(entry["file"]).with_suffix(".wav")
+        try:
+            render_fn(entry, wav)
+            convert_fn(wav, entry["file"])
+            done["rendered"].append(entry["file"])
+        except Exception as exc:
+            done["failed"].append((entry["file"], str(exc)))
+    return done
+
+
 def run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature):
     """Variation pass: sweet-spot temperatures per pinned seed, pass/fail each."""
     import subprocess
@@ -369,6 +427,66 @@ def run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature):
     return 0
 
 
+def run_takes_mode(args, chat, tv):
+    """Final takes: render the 12 demo-line takes into --takes dir.
+
+    Non-interactive. Each entry renders its own line at its own pinned
+    seed+temperature in literal mode; wav->mp3 via ffmpeg; .wav cleaned up.
+    Failures recorded + reported, never fatal to the other takes.
+    """
+    import subprocess
+
+    out = Path(args.takes)
+    out.mkdir(parents=True, exist_ok=True)
+    plan = final_takes_plan()
+    for entry in plan:
+        entry["file"] = str(out / entry["file"])
+    print(f"Final takes: {len(plan)} renders into {out}/")
+
+    def render(entry, wav_path):
+        return tv.render_seed(
+            chat,
+            entry["seed"],
+            entry["text"],
+            Path(entry["file"]).with_suffix(".wav"),
+            literal=entry["literal"],
+            temperature=entry["temperature"],
+        )
+
+    def convert(wav_path, mp3_path):
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(wav_path), str(mp3_path)],
+            check=True,
+            timeout=120,
+        )
+        try:
+            Path(wav_path).unlink()
+        except OSError:
+            pass
+
+    done = {"rendered": [], "failed": []}
+    for i, entry in enumerate(plan, 1):
+        wav = Path(entry["file"]).with_suffix(".wav")
+        label = Path(entry["file"]).name
+        print(f"[{i}/{len(plan)}] {label} ...", flush=True)
+        try:
+            render(entry, wav)
+            convert(wav, entry["file"])
+            done["rendered"].append(entry["file"])
+            print(f"  kept {label}")
+        except Exception as exc:
+            try:
+                wav.unlink(missing_ok=True)
+            except OSError:
+                pass
+            done["failed"].append((entry["file"], str(exc)))
+            print(f"  FAILED {label}: {exc}")
+    print(f"\nTakes done. Rendered {len(done['rendered'])} of {len(plan)} into {out}/.")
+    for failed, err in done["failed"]:
+        print(f"  missing: {Path(failed).name} ({err})")
+    return 0 if not done["failed"] else 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Voice listening booth")
     parser.add_argument("--batch", type=int, default=BATCH_SIZE)
@@ -408,6 +526,11 @@ def main(argv=None):
         default="variations.json",
         help="where variation picks/bans are recorded",
     )
+    parser.add_argument(
+        "--takes",
+        default="",
+        help="final takes: output dir for the 12 demo-line takes, e.g. --takes takes",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -443,6 +566,9 @@ def main(argv=None):
 
     if args.vary.strip():
         return run_vary_mode(args, chat, tv, text, scratch, keep, state, temperature)
+
+    if args.takes.strip():
+        return run_takes_mode(args, chat, tv)
 
     def render(seed):
         wav = scratch / f"booth_{seed:04d}.wav"

@@ -163,6 +163,49 @@ def test_default_vary_temps_cover_sweet_spot(booth):
     assert booth.DEFAULT_VARY_TEMPS == (0.3, 0.35, 0.4, 0.45, 0.5)
 
 
+def test_final_takes_plan_names_and_lines(booth):
+    lines = booth.FINAL_TAKES_LINES
+    assert len(lines) == 3
+    assert "vulnerability" in lines[1]
+    assert "vulnurability" not in " ".join(lines)
+    plan = booth.final_takes_plan()
+    assert len(plan) == 12
+    names = [entry["file"] for entry in plan]
+    assert "7358-female-0.3-1.mp3" in names
+    assert len(set(names)) == 12
+    for entry in plan:
+        assert entry["literal"] is True
+        assert entry["seed"] in (7358, 6420)
+        assert entry["temperature"] in (0.3, 0.5)
+
+
+def test_final_takes_runner_completes_all_twelve(booth):
+    plan = booth.final_takes_plan()
+    rendered = []
+
+    def fake_render(entry, wav_path):
+        rendered.append(entry["file"])
+
+    def fake_convert(wav_path, mp3_path):
+        pass
+
+    done = booth.run_final_takes(plan, fake_render, fake_convert)
+    assert len(done["rendered"]) == 12
+    assert done["failed"] == []
+    assert len(rendered) == 12
+
+
+def test_final_takes_runner_records_failure_without_stopping(booth):
+    plan = booth.final_takes_plan()[:3]
+
+    def bad_render(entry, wav_path):
+        raise RuntimeError("silent")
+
+    done = booth.run_final_takes(plan, bad_render, lambda w, m: None)
+    assert done["rendered"] == []
+    assert len(done["failed"]) == 3
+
+
 def test_variation_schedule_spans_seeds_and_temps(booth):
     seeds = [1869, 6420, 812, 7358]
     temps = [0.1, 0.3, 0.5, 0.7, 0.9]
