@@ -26,18 +26,18 @@ wave specs, receipts, guards, isolation mechanics, and the module map.
 
 ## The evidence-gated loop
 
-One loop, evidence-gated (`modules/workflows/workflow.py:build_verdict_receipt`, `modules/workflows/project_workflow.py:build_cycle_receipt`):
+One loop, evidence-gated (`library/workflows/workflow.py:build_verdict_receipt`, `library/workflows/project_workflow.py:build_cycle_receipt`):
 
 - **Red proves it.** A probe runs in an air-gapped container; exit `0` = boundary reached, `1` = blocked, `2` = inconclusive, fail-closed.
-- **Blue fixes only the boundary.** Sanitization-only patch under a 60-line budget (`modules/core/patches.py:EDIT_BUDGET_LINES`); rejected patches carry the firing guard (`project_workflow.py:GuardRationale`).
-- **Regression re-proves it.** Trusted normal-input checks re-run on original and patched targets; equal pass/fail class required (`project_workflow.py:differential_passed`), plus opt-in property gate (`property_gate_passed`) and 4-seed mutation gate (`modules/core/checks.py:MUTATION_SEED=20261029`, `mutation_gate_passed`).
+- **Blue fixes only the boundary.** Sanitization-only patch under a 60-line budget (`library/core/patches.py:EDIT_BUDGET_LINES`); rejected patches carry the firing guard (`project_workflow.py:GuardRationale`).
+- **Regression re-proves it.** Trusted normal-input checks re-run on original and patched targets; equal pass/fail class required (`project_workflow.py:differential_passed`), plus opt-in property gate (`property_gate_passed`) and 4-seed mutation gate (`library/core/checks.py:MUTATION_SEED=20261029`, `mutation_gate_passed`).
 - Only all-green is `verified`/`retained`; every verdict ships a machine-readable receipt (`workflow.py:export_receipt_json`, `project_workflow.py:export_cycle_receipt_json`) pinning the exits and `patch_sha256`.
 
-Zero-day triage edge (`modules/workflows/cve_workflow.py`, flags `main.py --cve-scan/--fast-lane/--deep-assessment/--offline-cve`):
+Zero-day triage edge (`library/workflows/cve_workflow.py`, flags `main.py --cve-scan/--fast-lane/--deep-assessment/--offline-cve`):
 
 - **Reachable+fixable first.** `_fast_lane_rank` orders `(-reach_score, fix availability, kev_listed, epss_percentile, id)`; `_queue_evidence` prints the auditable tie-break `reach:{n} fix:{v} kev:{...} epss:{...}`.
 - **Freshness stamps.** KEV/EPSS signals carry `kev_date`/`epss_date`; older than `_SOURCE_FRESH_DAYS=1` read as absent, fail-closed. `FAST_LANE_EXCLUDED_SOURCES={euvd}` keeps unverified feeds out of the fast lane.
-- **Frozen inputs.** Mutation pools assert `FROZEN_MUTATION_POOL_SHA256` (`modules/core/checks.py`), so a re-run reproduces byte-identical inputs.
+- **Frozen inputs.** Mutation pools assert `FROZEN_MUTATION_POOL_SHA256` (`library/core/checks.py`), so a re-run reproduces byte-identical inputs.
 
 Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, differential, topping, freshness, fast lane. LABEL = property (opt-in), mutation (shape check), templates (small diffs). CUT = frozen-pool digest hygiene, receipt JSON, rationale text, demo/greenhouse, scanners/sidecars, dashboard chrome — documentation labels, not deletions.
 
@@ -65,16 +65,16 @@ Hardening posture (`ZERO_DAY_BLUEPRINT.md:77-81`): SHIP = probe loop, guards, di
 
 ## Wave 2 (SPEC 14.8)
 
-- **Verdict receipts.** Every verified fixture cycle records a `VerdictReceipt` (`modules/workflows/workflow.py`: `fixture`, `pre_exit_code`, `post_exit_code`, `regression_passed`, `differential_passed`, `property_exit_code`, `property_passed`, `patch_sha256`, `verified`; built by `build_verdict_receipt`, serialized by `export_receipt_json`); every retained project cycle records a `CycleReceipt` (`modules/workflows/project_workflow.py`: `fixture`, `pre_probe_exit`, `post_probe_exit`, `baseline_regression_exit`, `patched_regression_exit`, `differential_passed`, `property_exit`, `property_passed`, `patch_sha256`, `retained`; built by `build_cycle_receipt`, serialized by `export_cycle_receipt_json`, carried on `ProjectCycleReport.receipt`) exported alongside the candidate patch. Novelty: Dependabot/Snyk emit version-bump PRs with notes, we emit machine-readable exit-0/exit-1 execution receipts, advancing evidence-over-opinion verdicts. Same-day: a reviewer accepts the patch today because the receipt pins exactly which Docker exits the claim rests on.
-- **Guard rationale.** Rejected patches carry a structured `GuardRationale` (`guard_id`, `reason`, `trigger`) on `ReplacementValidation.guard_rationale` (`modules/workflows/project_workflow.py`). Novelty: Semgrep/Snyk Code emit AI draft fixes for human/rescan validation, we bind the fired guard and its trigger to each rejected patch, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees why the safe patch is the shape it is, with no guard-guessing round trip.
-- **Fast-lane topping.** `_fast_lane_rank` (`modules/workflows/cve_workflow.py`) orders reachable+fixable first — `(-reach_score, fix availability, kev_listed, epss_percentile, id)` — and `_queue_evidence` surfaces the auditable tie-break string `reach:{n} fix:{v} kev:{listed|absent} epss:{pct|absent}` read from `reach_score` / `fixed_versions` / `kev_listed` / `epss_percentile`. Novelty: NVD/OSV/EUVD rank by CVSS, we top reachable+fixable with KEV/EPSS evidence strings, advancing day-zero queue auditability. Same-day: the team patches reachable+fixable CVEs first, in an order anyone can re-derive.
-- **Mutation probes.** `modules/core/checks.py` runs N=4 (`MUTATION_COUNT = 4`) deterministic seeded (`MUTATION_SEED = 20261029`) per-contract mutations, fail-closed through `mutation_gate_passed` (exit 0 = held, 1 = mishandled, 2 = inconclusive): node shares one capped run via `project_property_mutation_script`, php/mysql run standalone via `project_mutation_script`, dispatched by `mutation_fixture_supported`. Novelty: open-ended fuzzers chase coverage with unbounded runs, we run four seeded contract mutations inside the existing capped check, advancing bounded boundary-shape confidence. Same-day: shape regressions in the patched target fail the cycle the day the patch lands, not after merge.
+- **Verdict receipts.** Every verified fixture cycle records a `VerdictReceipt` (`library/workflows/workflow.py`: `fixture`, `pre_exit_code`, `post_exit_code`, `regression_passed`, `differential_passed`, `property_exit_code`, `property_passed`, `patch_sha256`, `verified`; built by `build_verdict_receipt`, serialized by `export_receipt_json`); every retained project cycle records a `CycleReceipt` (`library/workflows/project_workflow.py`: `fixture`, `pre_probe_exit`, `post_probe_exit`, `baseline_regression_exit`, `patched_regression_exit`, `differential_passed`, `property_exit`, `property_passed`, `patch_sha256`, `retained`; built by `build_cycle_receipt`, serialized by `export_cycle_receipt_json`, carried on `ProjectCycleReport.receipt`) exported alongside the candidate patch. Novelty: Dependabot/Snyk emit version-bump PRs with notes, we emit machine-readable exit-0/exit-1 execution receipts, advancing evidence-over-opinion verdicts. Same-day: a reviewer accepts the patch today because the receipt pins exactly which Docker exits the claim rests on.
+- **Guard rationale.** Rejected patches carry a structured `GuardRationale` (`guard_id`, `reason`, `trigger`) on `ReplacementValidation.guard_rationale` (`library/workflows/project_workflow.py`). Novelty: Semgrep/Snyk Code emit AI draft fixes for human/rescan validation, we bind the fired guard and its trigger to each rejected patch, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees why the safe patch is the shape it is, with no guard-guessing round trip.
+- **Fast-lane topping.** `_fast_lane_rank` (`library/workflows/cve_workflow.py`) orders reachable+fixable first — `(-reach_score, fix availability, kev_listed, epss_percentile, id)` — and `_queue_evidence` surfaces the auditable tie-break string `reach:{n} fix:{v} kev:{listed|absent} epss:{pct|absent}` read from `reach_score` / `fixed_versions` / `kev_listed` / `epss_percentile`. Novelty: NVD/OSV/EUVD rank by CVSS, we top reachable+fixable with KEV/EPSS evidence strings, advancing day-zero queue auditability. Same-day: the team patches reachable+fixable CVEs first, in an order anyone can re-derive.
+- **Mutation probes.** `library/core/checks.py` runs N=4 (`MUTATION_COUNT = 4`) deterministic seeded (`MUTATION_SEED = 20261029`) per-contract mutations, fail-closed through `mutation_gate_passed` (exit 0 = held, 1 = mishandled, 2 = inconclusive): node shares one capped run via `project_property_mutation_script`, php/mysql run standalone via `project_mutation_script`, dispatched by `mutation_fixture_supported`. Novelty: open-ended fuzzers chase coverage with unbounded runs, we run four seeded contract mutations inside the existing capped check, advancing bounded boundary-shape confidence. Same-day: shape regressions in the patched target fail the cycle the day the patch lands, not after merge.
 
 ## Wave 5 (SPEC 14.9)
 
-- **queue_evidence freshness.** `_queue_evidence` (`modules/workflows/cve_workflow.py`) gates KEV/EPSS signals through `_source_fresh` (`_SOURCE_FRESH_DAYS = 1`): per-source date stamps (`kev_date`, `epss_date`) older than 1 day read as absent — fail-closed, never blocks the scan — and `FAST_LANE_EXCLUDED_SOURCES` keeps EUVD out of the fast lane (no keyless JSON endpoint verified 2026-10-29). Novelty: CVSS-ranked feeds reuse stale exploit-probability vintages, we stamp each source date and drop day-old signals from the queue string, advancing triage-time freshness. Same-day: the team queues reachable+fixable CVEs today on signals stamped today, not last month's EPSS.
-- **Frozen-pool mutation inputs.** `modules/core/checks.py` pins every mutation id behind `FROZEN_MUTATION_POOL_SHA256`: pools are byte-identical across runs, with no live generative loop in-container (any offline pool proposal must freeze+seed before use). Novelty: generative red loops invent new cases per run and cannot re-derive a verdict, we freeze the seeded pool and assert its digest, advancing re-derivable boundary evidence. Same-day: a re-run today reproduces byte-identical mutation inputs, so a green gate means the same thing it meant yesterday.
-- **Guard-discipline template inputs.** Template-shaped inputs are allowed only inside the existing 60-line sanitization guards (`EDIT_BUDGET_LINES = 60`, `modules/core/patches.py`); the budget never widens and `is_solver_synthesized_shape` rejects solver-synthesized edits with a bound `GuardRationale`. Novelty: AI-fix tools accept solver-shaped rewrites and grow the diff to fit, we hold template inputs inside the fixed 60-line budget and name the rejecting guard, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees a small template-shaped diff today with the fired guard attached, not a re-architected file.
+- **queue_evidence freshness.** `_queue_evidence` (`library/workflows/cve_workflow.py`) gates KEV/EPSS signals through `_source_fresh` (`_SOURCE_FRESH_DAYS = 1`): per-source date stamps (`kev_date`, `epss_date`) older than 1 day read as absent — fail-closed, never blocks the scan — and `FAST_LANE_EXCLUDED_SOURCES` keeps EUVD out of the fast lane (no keyless JSON endpoint verified 2026-10-29). Novelty: CVSS-ranked feeds reuse stale exploit-probability vintages, we stamp each source date and drop day-old signals from the queue string, advancing triage-time freshness. Same-day: the team queues reachable+fixable CVEs today on signals stamped today, not last month's EPSS.
+- **Frozen-pool mutation inputs.** `library/core/checks.py` pins every mutation id behind `FROZEN_MUTATION_POOL_SHA256`: pools are byte-identical across runs, with no live generative loop in-container (any offline pool proposal must freeze+seed before use). Novelty: generative red loops invent new cases per run and cannot re-derive a verdict, we freeze the seeded pool and assert its digest, advancing re-derivable boundary evidence. Same-day: a re-run today reproduces byte-identical mutation inputs, so a green gate means the same thing it meant yesterday.
+- **Guard-discipline template inputs.** Template-shaped inputs are allowed only inside the existing 60-line sanitization guards (`EDIT_BUDGET_LINES = 60`, `library/core/patches.py`); the budget never widens and `is_solver_synthesized_shape` rejects solver-synthesized edits with a bound `GuardRationale`. Novelty: AI-fix tools accept solver-shaped rewrites and grow the diff to fit, we hold template inputs inside the fixed 60-line budget and name the rejecting guard, advancing reviewer-legible safe-patch shapes. Same-day: the reviewer sees a small template-shaped diff today with the fired guard attached, not a re-architected file.
 
 ## What is implemented
 
@@ -100,7 +100,7 @@ The PHP fixture uses `printf` for a deterministic local diagnostic (no external 
 
 `POST /mcp` speaks JSON-RPC over Streamable HTTP (`initialize`, `tools/list`,
 `tools/call`, `ping`; unknown methods get `-32601`). The single tool,
-`submit_code_snippet` (`modules/services/mcp_bridge.py`), accepts a bounded
+`submit_code_snippet` (`library/services/mcp_bridge.py`), accepts a bounded
 snippet (`javascript`/`python`/`php`, 64 KiB, bare filename, mandatory
 contract) and runs it through the existing `execute_purple_workflow` via an
 ephemeral `mcp_snippet` fixture target: the snippet reuses its language
@@ -117,7 +117,7 @@ with the receipt sha pinned and zero leftover containers.
 
 ## Multi-pass sweep (Milestone 3)
 
-`modules/workflows/sweep.py:execute_sweep_scan` runs `standard → deep →
+`library/workflows/sweep.py:execute_sweep_scan` runs `standard → deep →
 threat_actor` passes over the same sandboxed target and never stops at the
 first finding. Each pass is the full loop: red pass analysis
 (`agents.run_red_team_pass_analysis` selects `RED_TEAM` / `RED_DEEP_SWEEP` /
@@ -140,12 +140,12 @@ build/ensure of the third image, `_create_binary_tar` (strict basenames,
 capped total), `start/replace_binary_harness` (tar into stopped containers,
 read-only runtime, harness as PID 1, `target-service` alias on the isolated
 network), and `binary_static_profile` (`file`/`strings`/`readelf` in-sandbox,
-bounded text). `modules/services/binary_intake.py` validates ELF/Mach-O/PE
+bounded text). `library/services/binary_intake.py` validates ELF/Mach-O/PE
 magic, the 8 MiB cap, bare names, and a mandatory contract — never executing
 on the host. `docker/binary_harness.py` (trusted, in-sandbox only) serves
 HTTP, runs the binary as a subprocess with bounded argv/stdin and a 5-second
 timeout, and pre-rejects inputs matching `reject:` mitigation rules.
-`modules/workflows/binary_sweep.py:execute_binary_sweep` profiles, baselines
+`library/workflows/binary_sweep.py:execute_binary_sweep` profiles, baselines
 the harness, then runs the same 3-pass loop: probe exit 0 requests blue
 mitigation rules (`extract_mitigation_rules` keeps only `reject:` lines,
 8 KiB budget), the harness restarts mitigated, and the probe re-runs —
@@ -157,7 +157,7 @@ zero leftovers.
 
 ## V1: compression, encrypted vault, binary fixture, library + MCP tools
 
-**Compression** (`modules/shared/sms_compress.py`): structural line dedup,
+**Compression** (`library/shared/sms_compress.py`): structural line dedup,
 semantic pruning of boilerplate, and token-budget prioritization in front of
 every red/blue call; security-critical sink/flow sentences are never dropped.
 `CompressionReport` (raw/compressed/saved/ratio) rides `ScanResult` and
@@ -165,7 +165,7 @@ every red/blue call; security-critical sink/flow sentences are never dropped.
 JSON; `CompressionStats`/`DictionaryStore` (0600 persisted) accumulate
 cross-session savings.
 
-**Vault** (`modules/intel/sms_vault.py`): AES-256-GCM Red/Blue/Green
+**Vault** (`library/intel/sms_vault.py`): AES-256-GCM Red/Blue/Green
 namespaces on disk, owner-only key + directories, sink/structure
 fingerprinting, `KNOWN_ARCHETYPE` ("done before") vs `NOVEL_SURFACE` query
 before every run, commit-after-verified, redacted stats only. Dirty default
@@ -186,7 +186,7 @@ dashboard Binary sweep mode. Source workflows fail closed on this key with a
 routing error; `binary_telemetry.summarize_profile` interprets in-sandbox
 `file`/`strings`/`readelf` output on the host without executing anything.
 
-**Library + MCP** (`modules/services/sms_api.py`, `mcp_bridge.MCP_TOOLS`,
+**Library + MCP** (`library/services/sms_api.py`, `mcp_bridge.MCP_TOOLS`,
 `main.py --mcp`): `scan_source`/`scan_binary`/`query_vault_stats`/
 `verify_receipt` for external Python callers; five MCP tools over `POST /mcp`
 (vault stats inline, scans live under the scan lock) and `--mcp` STDIO.
@@ -243,27 +243,27 @@ Default tests are mocked (no Meta/Docker contact). See [`archive/VALIDATION.md`]
 ## Project map
 
 ```text
-modules/core/agents.py      Muse transport, strict schemas, red/blue + research methods
-modules/core/prompts.py     Red/blue/research task contracts
-modules/core/config.py      Env validation, model lock, PURPLEBOX_RESEARCH* gates
-modules/workflows/workflow.py          Baseline → probe → patch → regression → cleanup
-modules/intel/research.py   Keyless intel transport (OSV/CIRCL/GHSA/EPSS)
-modules/intel/scanner_binaries.py      Trivy / Grype / OSV-Scanner / Dependency-Check wrappers
-modules/intel/scanner_dtrack.py        Dependency-Track BOM upload client
-modules/services/personas.py          Agent personas (tone only, safety rules override)
-modules/services/chatter.py Safe server-built team chatter summaries
+library/core/agents.py      Muse transport, strict schemas, red/blue + research methods
+library/core/prompts.py     Red/blue/research task contracts
+library/core/config.py      Env validation, model lock, PURPLEBOX_RESEARCH* gates
+library/workflows/workflow.py          Baseline → probe → patch → regression → cleanup
+library/intel/research.py   Keyless intel transport (OSV/CIRCL/GHSA/EPSS)
+library/intel/scanner_binaries.py      Trivy / Grype / OSV-Scanner / Dependency-Check wrappers
+library/intel/scanner_dtrack.py        Dependency-Track BOM upload client
+library/core/personas.py              Agent personas (tone only, safety rules override)
+library/services/chatter.py Safe server-built team chatter summaries
 main.py                     CLI (--scan/--project/--research/--ai-demo), FastAPI, WebSocket
-modules/core/registry.py    Fixture registry + normal-behavior contracts
-modules/services/projects.py           Arbitrary project intake, validation, sandbox execution
-modules/workflows/project_workflow.py  Red/blue cycles, handoffs, regression, final reports
-modules/services/project_agents.py     Project-scoped Muse roles + bounded source batches
-modules/core/scan_profiles.py          Cycle profiles (economy/balanced/quality/custom)
-modules/intel/intel_search.py          NVD CVE lookup for deep scans + demo intel
-modules/workflows/cve_workflow.py     CVE scan workflow; deep_scan.py deep static CVE scan
-modules/services/demo_gen.py           AI-built demo project generation
-modules/core/patches.py     Patch guards, unified diffs
-modules/core/docker_manager.py         Images, isolated runtimes, deadlines, cleanup
-modules/core/checks.py      Normal-input + egress checks
+library/core/registry.py    Fixture registry + normal-behavior contracts
+library/services/projects.py           Arbitrary project intake, validation, sandbox execution
+library/workflows/project_workflow.py  Red/blue cycles, handoffs, regression, final reports
+library/services/project_agents.py     Project-scoped Muse roles + bounded source batches
+library/core/scan_profiles.py          Cycle profiles (economy/balanced/quality/custom)
+library/intel/intel_search.py          NVD CVE lookup for deep scans + demo intel
+library/workflows/cve_workflow.py     CVE scan workflow; deep_scan.py deep static CVE scan
+library/services/demo_gen.py           AI-built demo project generation
+library/core/patches.py     Patch guards, unified diffs
+library/core/docker_manager.py         Images, isolated runtimes, deadlines, cleanup
+library/core/checks.py      Normal-input + egress checks
 static/                     Dashboard (app.js, index.html, app.css)
 targets/                    Three intentionally vulnerable fixtures
 tests/                      Unit + API tests
