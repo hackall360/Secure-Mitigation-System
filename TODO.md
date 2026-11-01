@@ -524,5 +524,14 @@ User listening findings: below temp 0.3 is monotone; above 0.5 is weird/buggy/mo
 - [x] RR3. Reset per user request: deleted untracked `variations.json` (2 1869 picks), `passed/voice_1869_t0p{3,5}.{mp3,pt}`, and 5 `vary_1869_*.wav` scratch files — all regenerable, none committed. Base 4 voices (`voice_{1869,6420,0812,7358}.{mp3,pt}`) untouched. Verified `run_vary_mode` always starts at index 0 (no skip-ahead logic) — the "resume" feel was loaded picks + leftovers, now cleared. Files: (deletions only, untracked). Proof: rm transcript + ls after.
 - [x] RR4. Gate green: 857 passed + 1 skipped, ruff + compileall. Committed on `feature/video-demo-tts-server`. NOT SHIPPED — user runs the fresh 20-audition sweep; stays on feature branch until asked. Files: this section. Proof: gate output + commit on this branch.
 
+## SS. Final voice bake-off: 12 demo-line takes (brief 2026-11-01-final-voice-takes; branch feature/video-demo-tts-server)
+
+User's top two (7358 female favorite, 6420 male second) × anchor temps (0.3, 0.5) × 3 spelling-corrected demo lines, named `<seed>-<gender>-<temp>-<N>.mp3`, so the final choice compares identical text across voices.
+
+- [x] SS1. RED-first: `test_final_takes_plan_names_and_lines` (12 entries, `7358-female-0.3-1.mp3` present, unique names, literal, seeds/temps in scope) + `test_final_takes_runner_completes_all_twelve` + `test_final_takes_runner_records_failure_without_stopping` (one bad take can't kill the rest). RED proven (AttributeError pre-change). Files: `tests/test_booth_red.py`. Proof: pytest failure pre-fix, 16 passed post.
+- [x] SS2. Implemented: `FINAL_TAKES_LINES` (S M S / S Q L letter-spaced, "vulnerability" corrected), `FINAL_TAKES_VOICES`, `FINAL_TAKES_TEMPS`, `final_takes_plan()`, `run_final_takes()` (failures recorded, never raised), `run_takes_mode()` (non-interactive, wav->mp3 via ffmpeg, wav cleaned up) + `--takes <dir>` CLI wired in main. LAW 8: plan + runner + CLI surface, no orphaned logic. Files: `video-demo/TTSServer/booth.py`. Proof: RED tests green + `--help` shows flag.
+- [x] SS3. Live proof: `booth.py --takes takes` → 12 of 12 kept, exit 0; sizes 16–29KB each and identical rank-order across combos (line 1 longest, line 2 shortest — delivery tracks text, not wandering); non-silent guard passed on all. Files: `video-demo/TTSServer/takes/*.mp3`. Proof: render transcript + ls/ffprobe.
+- [x] SS4. Gate green: 860 passed + 1 skipped, ruff + compileall. Committed `d4dfcd0` on `feature/video-demo-tts-server` (also swept in user's regenerated `variations.json` + 8 temp-pinned `passed/` files from the sweep run — small, document choices, keeping). NOT SHIPPED — stays on feature branch until asked. Files: this section. Proof: gate output + commit on this branch.
+
 
 
