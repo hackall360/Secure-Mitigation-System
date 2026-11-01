@@ -564,3 +564,37 @@ Lead ran solo (swarm spawn infra DOWN 06:11 UTC: router misroutes `muse-spark-1.
 - [x] GG3. Subsystem B: verified zero-change (`.gitignore:277-278` ignores briefs/session, `git ls-files .jcode/briefs` empty; flat `docs/*.md` are `# Moved` stubs or canonical — diffed each). Files: `GUIDANCE_MATRIX.md` rows B4/B5. Proof: check-ignore + diff transcripts.
 - [x] GG4. Subsystem C RED->GREEN: `docs/TECHNICAL_BREAKDOWN.md` created (119 lines, all refs true); README refusal paragraph scoped to contest brief (Opus 5.5/Fable 5.1/Luna 6/Sol 6.1) + breakdown link; cost claim grounded in `pricing.py` table (Spark 0.31 in / 0.21 out vs Wonder), stale `$150` pin strengthened to `pricing.py` citation; 3 new tests (refusal names, grounded cost, breakdown link). Files: `README.md`, `docs/TECHNICAL_BREAKDOWN.md`, `tests/test_docs_presentation.py`. Proof: 12/12 presentation tests.
 - [x] GG5. Subsystem D live proof: Gate 1 `dev.py check` 876 passed + All checks passed; Gate 2 `offline_scan` 4/4 verified pre=0 post=1 + cleanup; Gate 3 LAW 11 Firefox + Chrome `node_query_sink --offline` both "Boundary check passed" (Chrome needs `.venv/bin/python`; system python lacks `websockets`). Files: `GUIDANCE_MATRIX.md` row D1. Proof: gate + scan + card outputs.
+
+## VV. Audit-to-ship backlog: competition-lockdown branch (briefs 2026-11-01-correctness-audit through 2026-11-01-architectural-audit; branch feature/competition-lockdown@`c8470d8`, gate 1027+1)
+
+Context: six engineering stages + SAPRE + architectural audit landed on this branch (commits `3944a49` → `c8470d8`). Gate green 1027+1, working tree clean, nothing pushed. Items below are the unresolved tail: ship mechanics, blocked live proofs, deferred consolidations, residue cleanup, and open questions for the user. Owner: Jcode agent unless marked USER.
+
+### VV-A. Ship mechanics (needs USER go-ahead per LAW 1)
+
+- [ ] VV-A1. Ship `feature/competition-lockdown` per LAW 1/5/12: final `dev.py check` green (re-run at ship time), decide LAW 12 bump (0.13.1 → 0.14.0 MAJOR: WS atomic-busy + vault flag + registry cap + KEV TTL are behavior changes a judge could notice; else 0.13.2 minor), write ship commit message with version reason, merge feature → develop → pushed → main → pushed → back on develop. Proof: gate output + push logs + `--version` consistency (APP_VERSION/README badge/MCP serverInfo/dashboard footer).
+- [ ] VV-A2. Confirm TODO.md merge policy at ship: this file is edited on the feature branch and merges up like any other file (AGENTS.md §7) — no separate handling needed, but call it out in the ship report so the develop/main copies stay in sync.
+
+### VV-B. Blocked live proofs (need USER resources: key and/or display)
+
+- [ ] VV-B1. Keyed live flip on the ship commit: `main.py --scan node_chain_link` with real Muse (red→blue→verify + receipt), then `offline_scan` 4/4. BLOCKED: needs `META_MUSE_API_KEY` in owner-only `.env`. Proof: scan card with token counts + receipt hash + zero leftovers.
+- [ ] VV-B2. LAW-11 browser matrix on the ship commit: `ui_scan node_query_sink --offline` in headless Firefox AND Chrome, operate (not just load) the touched controls (binary redirect, busy banner, pass chip). BLOCKED: needs headless browsers on the ship machine (this box: Firefox null-selector pre-hydration + Chrome rootless crash). Proof: cards + offline E2E JSON.
+- [ ] VV-B3. Project 2/2 re-run on the ship commit: `project_scan.py` PASS (last green was on `6776671`; `main.py` admission changed since in `0482d04`). Needs Docker only (no key). Proof: PASS line + cleanup.
+
+### VV-C. Deferred code consolidations (small, safe, implement when authorized)
+
+- [ ] VV-C1. D-1/D-2 snippet-map consolidation (P2, architectural audit): canonical `_SNIPPET_LANGUAGE_BY_SUFFIX` (+ filename map) in `library/services/mcp_bridge.py` (already owns `_MCP_LANGUAGE_*`); replace duplicates in `main.py:1465` + `tui.py:127` (+ `tui.py:497`) with imports. Files: `mcp_bridge.py`, `main.py`, `tui.py`, `tests/test_correctness_parity_red.py` (+1 identity pin). Proof: gate green + parity tests.
+- [ ] VV-C2. P3 import-direction test: AST walk asserting no `modules.workflows`/`modules.services` imports in `library/core` (except `services.projects` types) and no `import main` anywhere; keeps the no-cycle property enforced (extends SAPRE `test_s1`). Files: `tests/test_sapre_assurance_red.py`. Proof: gate green.
+
+### VV-D. Residue + hygiene (operator actions, need USER decision)
+
+- [ ] VV-D1. Session residue: 16 pre-existing `purplebox.session` containers (13:39–15:07, incl. running targets + Created verifiers from pre-fix sessions) predate the keep-tracked fixes. Decide: run `main.py --cleanup` (reaps only session-labeled resources, keeps base images) or explicitly exclude. Files: none (operator run). Proof: `docker ps -a --filter label=purplebox.session` empty + fresh offline run leaves zero.
+- [ ] VV-D2. MCP-HTTP busy sites: WS path fixed (`main.py` re-check atomic); the two `/mcp` branches (`~1233`, `~1372`) share the old check-then-acquire shape with a bigger validation gap. Recovery pass added regression tests proving the pattern; MCP sites NOT yet converted (HTTP lock held across validation by design, race window smaller but nonzero). Decide: convert to the same re-check pattern (mechanical, mirrors WS fix) or document as accepted residual. Files: `main.py`, `tests/test_recovery_convergence_red.py`. Proof: concurrent-pair test, second gets `-32001` ≤1 s.
+- [ ] VV-D3. Swarm spawn infra: `muse-spark-1.3-contributor` route misroutes to Anthropic (11 refusals, 2026-11-01 06:11 UTC). All audit phases ran single-agent. Decide: report to harness maintainer / retry later; no repo change. Proof: successful spawn when infra recovers.
+
+### VV-E. Open questions for USER (blocking go-ahead or scope)
+
+- [ ] VV-E1. Ship now or keep validating? Branch is green (1027+1) with 6 briefs + full A–G deliverables per stage. Options: (a) ship as-is (LAW 12 bump + LAW 1 flow), (b) land VV-C1/C-2 + VV-D2 first (small, ~30 min), (c) wait for keyed/browser proofs (VV-B1/B-2). Which?
+- [ ] VV-E2. LAW 12 version call: MAJOR 0.14.0 (fail-closed behavior changes: atomic busy, vault flag, registry cap, KEV TTL) or minor 0.13.2 (audit + tests only, no user-visible capability)? Recommendation: MAJOR — the busy-refusal and vault-flag surface changes are judge-noticeable.
+- [ ] VV-E3. `video-demo/TTSServer/` + `video-demo/desktop-capture/` (prior branches, NOT on this branch): ship with this branch, separately, or never? This branch never touched them; confirm they stay out of the ship diff.
+- [ ] VV-E4. Daemon-kill mid-verdict recovery drill (chaos handoff item): authorized to run against an isolated daemon (would orphan the 16 pre-existing sessions otherwise), or explicitly deferred to post-ship ops?
+- [ ] VV-E5. 100-scan soak for residue statistics (qualification handoff): run overnight pre-ship, or accept the bounded-mechanism evidence (cap/TTL/close-idempotency) and defer soak to post-ship reliability?
