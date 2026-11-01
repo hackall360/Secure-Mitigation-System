@@ -1017,3 +1017,37 @@ def test_cli_reference_lists_v1_leaves():
     cli = (Path(__file__).resolve().parents[1] / "docs" / "reference" / "CLI.md").read_text()
     for token in ("sms_compress", "sms_vault", "sms_api", "--mcp", "binary_argv_echo"):
         assert token in cli, f"CLI.md missing {token!r}"
+
+
+def test_h3_sweep_passes_4_accepted(monkeypatch):
+    """H3: CLI accepts documented --sweep-passes 4 (help + WS accept 4)."""
+    from modules.workflows.sweep import SweepScanResult
+
+    import main as _main
+
+    seen = {}
+
+    async def fake_sweep(target_key, emit, **kwargs):
+        seen.update(kwargs)
+        return SweepScanResult(target=target_key, status="verified", message="ok")
+
+    monkeypatch.setattr(_main, "execute_sweep_scan", fake_sweep)
+    monkeypatch.setattr(
+        "sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "4"]
+    )
+    assert _main.main() == 0
+    assert seen.get("max_passes") == 4
+
+
+def test_h3_sweep_passes_5_rejected(monkeypatch):
+    """H3: CLI rejects --sweep-passes 5 (out of 1..4 range), exit 2."""
+    import pytest as _pytest
+
+    import main as _main
+
+    monkeypatch.setattr(
+        "sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "5"]
+    )
+    with _pytest.raises(SystemExit) as exited:
+        _main.main()
+    assert exited.value.code == 2
