@@ -404,7 +404,7 @@ async def execute_sweep_scan(
             passed.pre_exit_code = pre.exit_code
             result.traces[f"{pass_id}:before"] = pre.output
             await log(
-                "red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}. {pre.output}"
+                "red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}."
             )
             await log(
                 "red",
@@ -465,8 +465,7 @@ async def execute_sweep_scan(
                 result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
                 await log(
                     "blue",
-                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}. "
-                    f"{link_a_pre.output}",
+                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}.",
                 )
                 if link_a_pre.inconclusive:
                     raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
@@ -474,8 +473,7 @@ async def execute_sweep_scan(
                 result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
                 await log(
                     "blue",
-                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}. "
-                    f"{link_b_pre.output}",
+                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}.",
                 )
                 if link_b_pre.inconclusive:
                     raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
@@ -489,8 +487,7 @@ async def execute_sweep_scan(
                 result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
                 await log(
                     "blue",
-                    f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}. "
-                    f"{link_a_post.output}",
+                    f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}.",
                 )
                 if link_a_post.inconclusive:
                     raise SandboxError(
@@ -502,8 +499,7 @@ async def execute_sweep_scan(
                 result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
                 await log(
                     "blue",
-                    f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}. "
-                    f"{link_b_post.output}",
+                    f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}.",
                 )
                 if link_b_post.inconclusive:
                     raise SandboxError(
@@ -522,8 +518,7 @@ async def execute_sweep_scan(
             result.traces[f"{pass_id}:after"] = post.output
             await log(
                 "blue",
-                f"[sweep {pass_id}] Post-patch boundary check exited {post.exit_code}. "
-                f"{post.output}",
+                f"[sweep {pass_id}] Post-patch boundary check exited {post.exit_code}.",
             )
             if post.inconclusive:
                 raise SandboxError(f"Sweep pass {pass_id} post-patch verifier was inconclusive.")
