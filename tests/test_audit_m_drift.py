@@ -61,8 +61,8 @@ def test_health_error_path_carries_version():
 
 
 def test_tui_sweep_help_states_cap():
-    """(d) TUI --sweep-passes help states the TUI max of 3."""
+    """(d) TUI --sweep-passes help states the TUI max of 4 (truth-sweep F7)."""
     result = subprocess.run(
         [sys.executable, "tui.py", "--help"], capture_output=True, text=True, cwd=ROOT
     )
-    assert "max 3" in result.stdout.lower(), result.stdout
+    assert "max 4" in result.stdout.lower(), result.stdout

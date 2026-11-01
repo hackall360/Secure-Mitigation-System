@@ -30,11 +30,11 @@ NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved fo
 WIDTH = 80
 HEIGHT = 24
 
-FIXTURE_ORDER = ("node_query_sink", "php_command_sink", "mysql_insecure_conf")
-FIXTURE_SHORT = ("Node query", "PHP command", "MySQL conf")
+FIXTURE_ORDER = ("node_query_sink", "node_chain_link", "php_command_sink", "mysql_insecure_conf")
+FIXTURE_SHORT = ("Node query", "Chain link", "PHP cmd", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3 fixture  m mcp  b binary  p project  i ingest  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3/4 fixture  m mcp  b binary  p project  i ingest  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
 
 # Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
 # same plain-English value lines). Toggled with h; must stay terminal-safe.
@@ -43,7 +43,7 @@ CAPABILITIES_LINES = (
     "receipts prove the sandbox run (probe exits + patch hash)",
     "rationale shows why each patch guard fired",
     "topping lists the most reachable + fixable CVE first",
-    "mutations confirm the fix holds under small input changes",
+    "mutations confirm the fix holds under small input changes (project mode)",
     "freshness shows the intel was fetched live today",
     "templates keep patches inside the small-edit guard",
     "stale:<date> means KEV/EPSS older than 1 day, never outranks fresh",
@@ -149,7 +149,7 @@ def _state_sweep_passes(state: TuiState) -> int:
     for value in (depth, passes):
         if value is not None:
             try:
-                return max(1, min(3, int(value)))
+                return max(1, min(4, int(value)))
             except (TypeError, ValueError):
                 pass
     return 1
@@ -277,7 +277,7 @@ def parse_key(key: object) -> str:
         char = chr(code)
     except ValueError:
         return "unknown"
-    if char in ("1", "2", "3"):
+    if char in ("1", "2", "3", "4"):
         return f"select:{int(char) - 1}"
     lowered = char.lower()
     if lowered == "s":
@@ -323,7 +323,7 @@ def apply_action(state: TuiState, action: str) -> str:
         if mode in TUI_MODES:
             state.mode = mode
     elif action == "depth:inc":
-        state.sweep_depth = min(3, state.sweep_depth + 1)
+        state.sweep_depth = min(4, state.sweep_depth + 1)
     elif action == "depth:dec":
         state.sweep_depth = max(1, state.sweep_depth - 1)
     elif action == "filter":
@@ -359,9 +359,15 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
     for i, (_key, short) in enumerate(zip(FIXTURE_ORDER, FIXTURE_SHORT, strict=True)):
         mark = "*" if i == state.fixture_index else " "
         chips.append(f"{mark}{i + 1}:{short}")
-    filt = f"filter:{state.filter_kind or 'all'}"
-    mode_chip = f"mode:{state.mode}  depth:{state.sweep_depth}"
-    lines.append((" ".join(chips) + "  " + filt + "  " + mode_chip)[:width].ljust(width))
+    _filter_readout = f"filter:{state.filter_kind or 'all'}"
+    mode_chip = f"mode:{state.mode} d:{state.sweep_depth} {_filter_readout}"
+    chips_text = " ".join(chips)
+    # Fixture chips + mode are the primary controls: never truncate them.
+    # The filter readout yields (f key still cycles it; was: tail pushed
+    # mode: off-screen once a 4th fixture chip joined — truth-sweep F2).
+    tail = f"  {mode_chip}"
+    room = max(0, width - len(chips_text))
+    lines.append((chips_text + tail[:room]).ljust(width))
 
     pane_width = max(10, (width - 4) // 3)
     titles = [f" {name.upper()} ".center(pane_width, "-")[:pane_width] for name in PANES]
@@ -1064,7 +1070,7 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
                 execute_sweep_scan(
                     args.fixture,
                     queue_emit(event_queue),
-                    max_passes=max(1, min(3, args.sweep_passes)),
+                    max_passes=max(1, min(4, args.sweep_passes)),
                 )
             )
         else:
@@ -1150,7 +1156,7 @@ def run_plain(argv: list[str] | None = None) -> int:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth 1-3 (max 3 on TUI; default: single finding loop)",
+        help="Multi-pass sweep depth 1-4 (max 4 on TUI; default: single finding loop)",
     )
     parser.add_argument(
         "--binary-target",

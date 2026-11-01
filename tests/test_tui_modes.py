@@ -15,9 +15,9 @@ def test_parse_key_c_selects_cve_mode():
 
 
 def test_digits_select_fixture_index_and_fixture_mode():
-    for digit, index in (("1", 0), ("2", 1), ("3", 2)):
+    for digit, index in (("1", 0), ("2", 1), ("3", 2), ("4", 3)):
         assert tui.parse_key(digit) == f"select:{index}"
-    for index in range(3):
+    for index in range(4):
         state = tui.TuiState()
         tui.apply_action(state, "mode:sweep")
         assert state.mode == "sweep"
@@ -36,7 +36,7 @@ def test_render_panes_mode_depth_chips_all_modes_within_80_cols():
             lines = tui.render_panes(state, width=80, height=24)
             text = "\n".join(lines)
             assert f"mode:{mode}" in text
-            assert f"depth:{depth}" in text
+            assert f"d:{depth}" in text
             assert all(len(line) <= 80 for line in lines)
 
 
