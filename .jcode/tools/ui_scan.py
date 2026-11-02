@@ -259,7 +259,7 @@ async def drive(
             deviceScaleFactor=1,
             mobile=False,
         )
-        await call("Page.navigate", url=f"http://localhost:{port}/")
+        await call("Page.navigate", url=f"http://localhost:{port}/v2/")
         await asyncio.sleep(2)
         if design_check:
             await js(DESIGN_CHECK)
@@ -404,7 +404,7 @@ def drive_firefox(
                 base, "POST", f"/session/{session}/execute/sync", {"script": script, "args": []}
             )["value"]
 
-        wd_request(base, "POST", f"/session/{session}/url", {"url": f"http://localhost:{port}/"})
+        wd_request(base, "POST", f"/session/{session}/url", {"url": f"http://localhost:{port}/v2/"})
         deadline = time.time() + 60
         while time.time() < deadline:
             if execute("return document.getElementById('run-btn') !== null"):

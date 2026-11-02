@@ -46,7 +46,7 @@ def test_disconnect_cancels_workflow_and_another_scan_is_rejected(monkeypatch):
 
 def test_ui_and_registry_work_without_key_or_docker():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
-        response = client.get("/")
+        response = client.get("/v2/")
         assert response.status_code == 200 and "Boundary auditor" in response.text
         assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
         assert len(client.get("/api/targets").json()) == 5
@@ -136,7 +136,7 @@ def test_socket_redaction_failure_fails_closed(monkeypatch):
 
 def test_dashboard_exposes_interactive_dark_theme_controls():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
-        page = client.get("/").text
+        page = client.get("/v2/").text
         for element in (
             'id="pipeline"',
             'id="target-list"',

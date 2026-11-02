@@ -169,3 +169,50 @@ def test_telemetry_batcher_coalesces_rapid_events():
 
     asyncio.run(go())
     assert 1 <= len(frames) <= 4, f"expected coalesced frames, got {len(frames)}"
+
+
+# --- 2026-11-02 reconcile: v3 is the primary site (brief v3-webui-reconcile) ---
+
+
+def test_root_serves_v3_start_page():
+    with TestClient(_client(), base_url="http://localhost") as client:
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code in (302, 307), resp.status_code
+        assert resp.headers["location"] == "/web/index.html"
+        page = client.get("/").text
+        assert "assets:begin" in page and "Boundary auditor" not in page
+
+
+def test_web_dir_root_serves_v3_index():
+    with TestClient(_client(), base_url="http://localhost") as client:
+        resp = client.get("/web/", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        assert resp.headers["location"] == "/web/index.html"
+
+
+def test_v2_dashboard_kept_at_v2_path():
+    with TestClient(_client(), base_url="http://localhost") as client:
+        resp = client.get("/v2/")
+        assert resp.status_code == 200 and "Boundary auditor" in resp.text
+        assert client.get("/static/app.js").status_code == 200
+
+
+def test_v3_pages_have_no_inline_style_attributes():
+    # CSP is style-src 'self': inline style="" attributes are silently dropped.
+    for page in EXPECTED_PAGES:
+        text = (ROOT / "web" / page).read_text()
+        assert 'style="' not in text, f"{page} carries an inline style attribute"
+
+
+def test_ws_system_refuses_explicitly():
+    with TestClient(_client(), base_url="http://localhost") as client:
+        with client.websocket_connect(
+            "ws://localhost/ws/system", headers={"origin": "http://localhost"}
+        ) as ws:
+            ws.send_json({"snapshot_ref": "x", "services": "a", "contract": "c"})
+            frame = ws.receive_json()
+            while frame.get("type") not in ("invalid", "busy", "result"):
+                frame = ws.receive_json()
+    assert frame["type"] == "invalid"
+    assert "system snapshot" in frame["msg"].lower()
+    assert "not available" in frame["msg"].lower()
