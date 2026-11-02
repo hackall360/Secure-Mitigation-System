@@ -1,16 +1,20 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""RED-first contracts for the UI guidance-matrix upgrades (A/B/C).
+"""WebUI v3 contracts for the guidance layer (page chain, engine, scoreboard, run options).
 
-LAW 9: these tests define the desired behavior BEFORE implementation. Each
-fails for the expected functional reason (missing elements/APIs), not syntax.
-Implementation must satisfy them without weakening assertions (LAW 9B).
+v2 was a single-shell hash router (``static/index.html`` with ``#/demo`` /
+``#/live`` routes, ``static/graph.js`` SMSGraph, ``hud-toggle-*`` ids). v3 is
+a multi-page flow under ``web/`` (start -> setup -> visual) with the
+``SMS.*`` kit modules, a canvas ``#graph``, a ``dl`` scoreboard, and run
+options driven by ``web/js/options/schema.js``. These tests pin the v3
+surface. Each fails if its anchor is removed (LAW 9B: sharp assertions).
 """
 
 from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+WEB = ROOT / "web"
 
 
 class Elements(HTMLParser):
@@ -21,148 +25,142 @@ class Elements(HTMLParser):
     def handle_starttag(self, tag, attrs):
         self.nodes.append((tag, dict(attrs)))
 
-    def handle_data(self, data):
-        if self.nodes:
-            tag, attrs = self.nodes[-1]
-            attrs["_text"] = attrs.get("_text", "") + data
 
-
-def _parse_index():
+def _nodes(path: Path):
     parser = Elements()
-    parser.feed((ROOT / "static/index.html").read_text())
+    parser.feed(path.read_text(encoding="utf-8"))
     return parser.nodes
 
 
-def _ids(nodes):
-    return [attrs["id"] for _, attrs in nodes if "id" in attrs]
+def _ids(path: Path):
+    return [attrs["id"] for _, attrs in _nodes(path) if "id" in attrs]
 
 
-def _links(nodes):
-    return [attrs["href"] for tag, attrs in nodes if tag == "a" and "href" in attrs]
+def _links(path: Path):
+    return [attrs["href"] for tag, attrs in _nodes(path) if tag == "a" and "href" in attrs]
 
 
-# --- Subsystem A: split routes (landing + #/demo + #/live, shared core) ---
+# --- Subsystem A: multi-page chain (start -> setup -> visual) ---
 
 
-def test_route_shell_has_landing_demo_live_links():
-    """RED A: index.html exposes landing + #/demo + #/live navigation."""
-    nodes = _parse_index()
-    links = _links(nodes)
-    assert "#/" in links, "landing route link #/ missing"
-    assert "#/demo" in links, "demo route link #/demo missing"
-    assert "#/live" in links, "live route link #/live missing"
+def test_start_cards_link_to_setup_pages():
+    """Start cards navigate to the setup pages, not hash routes."""
+    links = _links(WEB / "index.html")
+    assert "demo-setup.html" in links, "demo card link missing"
+    assert "prod-setup.html" in links, "production card link missing"
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    assert "#/demo" not in html and "#/live" not in html, "v2 hash routes must not survive in v3 start page"
 
 
-def test_route_views_exist_with_shared_core_mounts():
-    """RED A: demo/live views exist and keep the shared viz core mounts."""
-    nodes = _parse_index()
-    ids = _ids(nodes)
-    assert "view-landing" in ids, "#view-landing missing"
-    assert "view-demo" in ids, "#view-demo missing"
-    assert "view-live" in ids, "#view-live missing"
-    # Shared core is DRY: exactly one set of core mounts, not per-view clones.
-    for mount in ("red-log", "blue-log", "sys-log", "scan-timeline", "pipeline"):
-        assert ids.count(mount) == 1, f"shared core mount #{mount} must appear exactly once"
+def test_setup_launch_saves_handoff_to_visual_page():
+    """Setup Launch/Start persists the run via SMS.launch and navigates to the visual page."""
+    prod = (WEB / "js" / "pages" / "setup-prod.js").read_text(encoding="utf-8")
+    assert "L.save(" in prod, "prod setup must persist the launch via SMS.launch.save"
+    assert "location.href = 'console.html'" in prod, "prod Launch must navigate to console.html"
+    demo = (WEB / "js" / "pages" / "setup-demo.js").read_text(encoding="utf-8")
+    assert "L.save(" in demo, "demo setup must persist the launch via SMS.launch.save"
+    assert "location.href = 'demo.html'" in demo, "demo Start must navigate to demo.html"
 
 
-def test_app_js_hash_router_syncs_modes_to_routes():
-    """RED A: app.js routes hash <-> source modes without duplicating the core."""
-    js = (ROOT / "static/app.js").read_text()
-    assert "#/demo" in js
-    assert "#/live" in js
-    assert "view-demo" in js
-    assert "view-live" in js
-    assert "hashchange" in js
+# --- Subsystem B: SpiderGraph engine (canvas #graph + SMS kit) ---
 
 
-# --- Subsystem B: cinematic force-directed graph engine ---
-
-
-def test_graph_engine_file_exports_sms_graph_api():
-    """RED B: static/graph.js exposes SMSGraph init/update/fallback."""
-    path = ROOT / "static/graph.js"
-    assert path.exists(), "static/graph.js missing"
-    js = path.read_text()
-    assert "SMSGraph" in js
-    assert "init" in js
-    assert "update" in js
-    assert "isFallback" in js or "fallback" in js
+def test_engine_kit_and_graph_modules_exist():
+    """The v3 engine ships the shared kit plus the SpiderGraph module."""
+    assert (WEB / "js" / "engine" / "kit.js").read_text(encoding="utf-8").count("SMS.engine") >= 1
+    graph = (WEB / "js" / "engine" / "graph.js").read_text(encoding="utf-8")
+    assert "SpiderGraph" in graph, "engine/graph.js must define SpiderGraph"
+    assert "SMS.SpiderGraph" in graph, "SpiderGraph must publish on the SMS namespace"
 
 
 def test_graph_mount_and_team_language_wired():
-    """RED B: canvas mount exists; team color language + wiring present."""
-    nodes = _parse_index()
-    assert "phase-graph" in _ids(nodes), "#phase-graph canvas missing"
-    graph_js = (ROOT / "static/graph.js").read_text()
-    for token in ("probe", "patch", "verified", "green", "red", "blue", "purple"):
-        assert token in graph_js.lower(), f"team language token {token!r} missing in graph.js"
-    app_js = (ROOT / "static/app.js").read_text()
-    assert "SMSGraph" in app_js, "app.js must feed events into SMSGraph"
-    index_js = (ROOT / "static/index.html").read_text()
-    assert "graph.js" in index_js, "index.html must load graph.js (CSP-safe, same-origin)"
+    """Canvas mount exists on the visual pages; team color language present in the palette."""
+    assert "graph" in _ids(WEB / "console.html"), "#graph canvas missing on console.html"
+    assert "graph" in _ids(WEB / "demo.html"), "#graph canvas missing on demo.html"
+    console = (WEB / "console.html").read_text(encoding="utf-8")
+    assert "js/engine/graph.js" in console, "console.html must load the engine graph module"
+    palette = (WEB / "js" / "core" / "palette.js").read_text(encoding="utf-8")
+    for token in ("red", "blue", "purple", "green", "yellow", "orange"):
+        assert token in palette.lower(), f"team color token {token!r} missing from palette.js"
 
 
 def test_timeline_strip_remains_as_fallback():
-    """RED B: the log-derived timeline strip stays as the degraded path."""
-    nodes = _parse_index()
-    assert "scan-timeline" in _ids(nodes)
-    graph_js = (ROOT / "static/graph.js").read_text()
-    assert "scan-timeline" in graph_js or "fallback" in graph_js.lower()
+    """The log-derived timeline marker strip stays mounted beside the canvas map."""
+    assert "timeline" in _ids(WEB / "console.html"), "#timeline strip missing on console.html"
+    activity = (WEB / "js" / "ui" / "activity.js").read_text(encoding="utf-8")
+    assert "Timeline" in activity, "activity.js must define the Timeline marker strip"
 
 
-# --- Subsystem C: telemetry HUD + feature surfacing ---
+# --- Subsystem C: session scoreboard + schema-driven run options ---
 
 
 def test_scoreboard_aggregates_session_telemetry():
-    """RED C: header scoreboard with agents/vulns/patches/verified aggregates."""
-    nodes = _parse_index()
-    ids = _ids(nodes)
-    assert "scoreboard" in ids, "#scoreboard missing"
-    for slot in ("score-agents", "score-vulns", "score-patches", "score-verified"):
-        assert slot in ids, f"#{slot} missing"
+    """Header scoreboard (dl#c-score) carries Messages/Findings/Patches/Verified aggregates."""
+    nodes = _nodes(WEB / "console.html")
+    boards = [
+        (tag, attrs)
+        for tag, attrs in nodes
+        if tag == "dl" and attrs.get("aria-label") == "Session scoreboard"
+    ]
+    assert boards, "scoreboard dl[aria-label='Session scoreboard'] missing"
+    assert any("c-score" in attrs.get("class", "") for _, attrs in boards)
+    ids = _ids(WEB / "console.html")
+    for slot in ("sc-msgs", "sc-find", "sc-patch", "sc-ver", "sc-time"):
+        assert slot in ids, f"#{slot} missing from the session scoreboard"
 
 
-def test_hud_toggles_cover_backend_capabilities():
-    """RED C: HUD toggles exist for every backend capability family."""
-    nodes = _parse_index()
-    ids = _ids(nodes)
-    for toggle in (
-        "hud-toggle-sweep",
-        "hud-toggle-profile",
-        "hud-toggle-research",
-        "hud-toggle-compression",
-        "hud-toggle-vault",
-        "hud-toggle-differential",
-        "hud-toggle-binary",
+def test_schema_fields_cover_backend_capability_families():
+    """Run-options schema FIELDS cover the backend capability families."""
+    schema = (WEB / "js" / "options" / "schema.js").read_text(encoding="utf-8")
+    for field in (
+        "sweep_passes:",
+        "scan_profile:",
+        "research:",
+        "research_scanners:",
+        "binary:",
+        "ingest_repo:",
     ):
-        assert toggle in ids, f"#{toggle} missing"
+        assert field in schema, f"schema field {field!r} missing (capability family uncovered)"
+    # ORPHAN (narrowed 2026-11-02): v3 has NO hud-toggle-compression /
+    # hud-toggle-vault / hud-toggle-differential surface. Compression and
+    # vault-recall render as result facts when the payload carries them
+    # (result-view.js ``Compression``/``Vault recall``), and differential
+    # wording lives in the stream narration (narrator.js); none of the
+    # three is a schema toggle. Do NOT add a schema field to satisfy this.
+    lowered = schema.lower()
+    assert "compression" not in lowered.replace("comp(", "x"), "compression must stay a payload fact, not a schema field"
+    assert "differential" not in lowered, "differential must stay narration-only, not a schema field"
 
 
 def test_terminal_semantics_preserved_csp_safe():
-    """RED C: red/blue logs keep terminal semantics; no inline handlers."""
-    nodes = _parse_index()
-    by_id = {attrs["id"]: (tag, attrs) for tag, attrs in nodes if "id" in attrs}
-    for log in ("red-log", "blue-log"):
-        assert log in by_id, f"#{log} missing"
-        tag, attrs = by_id[log]
-        assert attrs.get("role") == "log", f"#{log} must keep role=log"
-        assert attrs.get("tabindex") == "0", f"#{log} must stay focusable"
-    html = (ROOT / "static/index.html").read_text()
-    assert "onclick" not in html and "onchange" not in html, "no inline handlers (CSP)"
+    """Comms + activity logs keep role=log; no inline handlers anywhere in v3 pages."""
+    for page in ("console.html", "demo.html"):
+        nodes = _nodes(WEB / page)
+        by_id = {attrs["id"]: (tag, attrs) for tag, attrs in nodes if "id" in attrs}
+        assert "comms" in by_id, f"#comms missing on {page}"
+        assert by_id["comms"][1].get("role") == "log", f"#comms on {page} must keep role=log"
+        html = (WEB / page).read_text(encoding="utf-8")
+        assert "onclick" not in html and "onchange" not in html, f"no inline handlers on {page} (CSP)"
+    by_id = {attrs["id"]: (tag, attrs) for tag, attrs in _nodes(WEB / "console.html") if "id" in attrs}
+    assert "log" in by_id, "#log activity pane missing on console.html"
+    assert by_id["log"][1].get("role") == "log", "#log must keep role=log"
+    assert by_id["log"][1].get("tabindex") == "0", "#log must stay focusable"
+    assert "term" in _ids(WEB / "demo.html"), "#term stdout stream missing on demo.html (demo-only)"
 
 
-# --- Docs parity (LAW 5): dashboard changes must surface in README + reference ---
+# --- Docs parity (LAW 5): README describes the v3 page flow; reference maps the layers ---
 
 
-def test_readme_describes_guidance_routes_graph_hud():
-    """RED docs: README covers the route/graph/HUD surfaces."""
-    text = (ROOT / "README.md").read_text()
-    for marker in ("#/demo", "#/live", "phase graph", "scoreboard", "HUD"):
+def test_readme_describes_v3_page_flow():
+    """README guides Start -> setup -> console/demo; stale v2 hash routes are gone."""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    for marker in ("prod-setup.html", "demo-setup.html", "console.html", "scoreboard", "stagebar"):
         assert marker in text, f"README missing {marker!r}"
+    assert "#/demo" not in text and "#/live" not in text, "stale v2 hash routes must not survive in README"
 
 
-def test_dashboard_reference_covers_guidance_layer():
-    """RED docs: DASHBOARD.md maps graph.js routes/scoreboard/toggles."""
-    text = (ROOT / "docs" / "reference" / "DASHBOARD.md").read_text()
-    for marker in ("graph.js", "scoreboard", "hud-toggle", "#/demo"):
+def test_dashboard_reference_covers_v3_guidance_layer():
+    """DASHBOARD.md maps web/js/pages, the stagebar, and the CommsFeed."""
+    text = (ROOT / "docs" / "reference" / "DASHBOARD.md").read_text(encoding="utf-8")
+    for marker in ("web/js/pages", "stagebar", "CommsFeed"):
         assert marker in text, f"DASHBOARD.md missing {marker!r}"
