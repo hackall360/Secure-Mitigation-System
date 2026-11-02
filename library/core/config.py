@@ -96,7 +96,7 @@ class PurpleBoxConfig:
                 "without credentials, query parameters, or a custom port."
             )
         for model in (self.red_team_model, self.blue_team_model):
-            # Meta Model API IDs (muse-spark-1.3, muse-wonder-1.0) or the open-weight
+            # Meta Model API IDs (muse-spark-1.3-contributor, muse-wonder-1.0) or the open-weight
             # Muse Spark Open release served by a hosted provider (meta-models/...).
             if not re.fullmatch(
                 r"muse-(?:spark|wonder)(?:-[a-z0-9]+(?:\.[0-9]+)*)*"
