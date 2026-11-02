@@ -613,6 +613,12 @@ Context: six engineering stages + SAPRE + architectural audit landed on this bra
 - [ ] VV-E4. Daemon-kill mid-verdict recovery drill (chaos handoff item): authorized to run against an isolated daemon (would orphan the 16 pre-existing sessions otherwise), or explicitly deferred to post-ship ops?
 - [ ] VV-E5. 100-scan soak for residue statistics (qualification handoff): run overnight pre-ship, or accept the bounded-mechanism evidence (cap/TTL/close-idempotency) and defer soak to post-ship reliability?
 
+## YY. Vendor-name scrub (briefs 2026-11-02 vendor-name scrub + commits rule; same branch)
+
+- [x] YY1. Inventory: 8 tracked files held the token; tracked zero-width/BOM markers: none. Ignored paths (`.jcode/briefs`, `.pytest_cache`) and git history out of scope.
+- [x] YY2. Incidental mentions removed (6 files): `AGENTS.md`, `.jcode/AGENTS.md`, `docs/guides/WORKFLOWS.md`, `docs/TRAPS.md`, `docs/SESSION_LESSONS.md`, `web/AGENTS.md` (harness-list/router notes reworded, meaning preserved). Intentional refs kept per user: MCP-bridge client example + model-lock reject vector.
+- [x] YY3. Scrub-hygiene test written then DELETED per user (a token-search test carries the token itself). Verification by direct `git grep` instead: only the 2 intentional lines remain. Behavior unchanged: `test_model_lock` + suites green (65 passed), lint clean. Commit message pre-checked token-free. Proof: this section + commit `9ccb945`.
+
 ## XX. v3 WebUI primary site + live wiring (brief 2026-11-02-v3-webui-reconcile; branch feature/v3-webui-reconcile)
 
 - [x] XX1. Copy audit: `web/` matches external `~/Downloads/SMS-WebUI-complete/SMS-WebUI/v3` (only diffs: version.js mapping comment, ruff-formatted sync_assets.py, no .github). Root cause of "none of the site": `/` still served v2. Proof: `diff -rq` transcript.
