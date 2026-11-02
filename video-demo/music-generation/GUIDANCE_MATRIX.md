@@ -1,0 +1,21 @@
+# GUIDANCE MATRIX — music-generation closed-loop ledger (brief 2026-11-01-closed-loop-guidance)
+
+Live Δ tracker for `video-demo/music-generation`. A subsystem exists in
+$S_{current}$ **only** when its verification gate exits 0.
+Status: `[ ]` UNVERIFIED | `[~]` IN_PROGRESS | `[x]` VERIFIED_ZERO_DELTA.
+
+LAWs governing: 0, 1, 2, 3, 5, 10. Branch: `feature/music-generation-harness`.
+Target interpreter: system `python3` (3.14.4; ships numpy 2.4.4 + scipy 1.17.1).
+Repo `.venv` (3.12) has neither numpy nor scipy and is NOT the target.
+
+| ID | Subsystem | $S_{current}$ (measured) | $\Delta$ deviation | Corrective vector | Gate | Status |
+|----|-----------|--------------------------|--------------------|-------------------|------|--------|
+| A | Environment and dependencies | dedicated `video-demo/music-generation/.venv` (py3.14.4): dawdreamer 0.9.0 + numpy 2.5.4 + scipy 1.18.1 importable, RenderEngine(44100,512) constructs. System python3 left untouched (PEP 668 externally managed, not overridden) | 0 — `import dawdreamer, numpy, scipy` exits 0 in fixture venv | fixture-local venv `video-demo/music-generation/.venv` (pip install dawdreamer numpy scipy) | import + RenderEngine construct gate | `[x]` |
+| B | DawDreamer test harness (`test_generator.py`) | complete 69-line script: dawdreamer-first import, RenderEngine(44100,512), make_faust_processor sine DSP (os.osc 440 Hz, -6 dB), load_graph, render 3.0 s, get_audio transpose, scipy wav write | 0 — py_compile exit 0, live run exit 0, 132300 frames (3.00 s) stereo peak 0.5012 | none further | compile + live run | `[x]` |
+| C | Artifact generation (`test_render.wav`) | `test_render.wav` 1058458 bytes, scipy readback rate 44100 shape (132300, 2) float32 — non-silent tone | 0 — exists, size > 0, frames = 3 s | none further | stat + wav readback | `[x]` |
+
+## Δ-recompute log
+
+- 2026-11-01 recon: `video-demo/` held only TTSServer + desktop-capture; `music-generation/` absent → created. System python3 3.14.4, numpy 2.4.4, scipy 1.17.1 importable; `.venv` 3.12 lacks both. `import dawdreamer` fails on system python3. PyPI shows dawdreamer 0.9.0; install docs support py3.11–3.14 Linux x86_64 via wheel.
+- Faust DSP reference (upstream README basic example): `engine.make_faust_processor("faust")` + `set_dsp_string` with `os.osc` sine + `load_graph([(proc, [])])` + `render(seconds)` + `get_audio()` shaped (channels, samples) → `wavfile.write(path, rate, audio.T)`. LLVM caution: import dawdreamer before any LLVM lib.
+- 2026-11-01 gates green: fixture `.venv` created (PEP 668 blocked system pip even with --user, so fixture-local venv is the target env). `pip install dawdreamer numpy scipy` → 0.9.0/2.5.4/1.18.1. Gate 1 py_compile exit 0. Gate 2 live run exit 0: 132300 frames, 3.00 s, peak 0.5012 (matches -6 dB sine). Gate 3: test_render.wav 1058458 bytes, readback 44100 Hz (132300, 2) float32. Δ=0 across A/B/C. Note: `.venv/` + `__pycache__/` + `*.wav` are repo-ignored so only GUIDANCE_MATRIX.md + test_generator.py are committable source.
