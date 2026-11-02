@@ -27,7 +27,7 @@ def test_key_only_required_for_inference(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     settings = load_config()
     assert settings.meta_base_url == "https://api.meta.ai/v1"
-    assert settings.red_team_model == "muse-spark-1.3"
+    assert settings.red_team_model == "muse-spark-1.3-contributor"
     assert settings.blue_team_model == "muse-wonder-1.0"
     with pytest.raises(ConfigurationError, match="META_MUSE_API_KEY"):
         require_api_key(settings)
@@ -65,7 +65,7 @@ async def test_muse_request_uses_exact_configured_endpoint_and_strict_schema():
         assert str(request.url) == "https://api.meta.ai/v1/chat/completions"
         assert request.headers["authorization"] == "Bearer unit-test-key"
         body = json.loads(request.content)
-        assert body["model"] == "muse-spark-1.3"
+        assert body["model"] == "muse-spark-1.3-contributor"
         assert body["response_format"] == {
             "type": "json_schema",
             "json_schema": {"name": "RedTeamFinding", "schema": RedTeamFinding.model_json_schema()},
@@ -162,7 +162,10 @@ def test_other_hosted_model_ids_rejected(model):
 def test_meta_defaults_and_open_model_on_baseten():
     config = PurpleBoxConfig()
     assert config.meta_base_url == "https://api.meta.ai/v1"
-    assert (config.red_team_model, config.blue_team_model) == ("muse-spark-1.3", "muse-wonder-1.0")
+    assert (config.red_team_model, config.blue_team_model) == (
+        "muse-spark-1.3-contributor",
+        "muse-wonder-1.0",
+    )
     config.validate()
     replace(
         config,

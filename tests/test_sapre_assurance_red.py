@@ -184,7 +184,7 @@ def test_s6_cli_tui_surfaces_live():
     for args, needle in [
         (["main.py", "--list-targets"], "node_query_sink"),
         (["main.py", "--health"], "Secure Mitigation"),
-        (["main.py", "--version"], "0.13.1"),
+        (["main.py", "--version"], "0.14.0"),
     ]:
         proc = subprocess.run([sys.executable] + args, capture_output=True, text=True, timeout=60)
         assert needle in (proc.stdout + proc.stderr), args

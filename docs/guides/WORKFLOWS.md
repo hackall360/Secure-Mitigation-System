@@ -1,6 +1,6 @@
 # WORKFLOWS — rules, routines, and habits that serve the LAWs
 
-Read `AGENTS.md` (the LAW index) and `LAWS.md` (the six LAWs) first. This file
+Read `AGENTS.md` (the LAW index) and `LAWS.md` (the LAWs in full — canonical) first. This file
 is the how: the daily routines that keep agents fast without breaking LAWs.
 LAW 1–6 always win over anything here.
 

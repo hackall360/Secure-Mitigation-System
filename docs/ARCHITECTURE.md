@@ -195,13 +195,13 @@ routing error; `binary_telemetry.summarize_profile` interprets in-sandbox
 
 ## Configuration
 
-All inference goes through `agents.MetaMuseClient`: HTTPX against Meta's compatible `/chat/completions` endpoint, strict Pydantic response validation, bounded response size, no redirects, no fallback provider. Only Muse Spark/Wonder IDs and `meta-models/muse-spark-open[-suffix]` validate. **Verified default:** red `muse-spark-1.3`, blue `muse-wonder-1.0`.
+All inference goes through `agents.MetaMuseClient`: HTTPX against Meta's compatible `/chat/completions` endpoint, strict Pydantic response validation, bounded response size, no redirects, no fallback provider. Only Muse Spark/Wonder IDs and `meta-models/muse-spark-open[-suffix]` validate. **Verified default:** red `muse-spark-1.3-contributor`, blue `muse-wonder-1.0`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `META_MUSE_API_KEY` | unset | Meta Model API key (`dev.meta.ai`). Required for scans |
 | `META_MUSE_BASE_URL` | `https://api.meta.ai/v1` | Meta Model API. Baseten/Modal allowed for the open model |
-| `META_MUSE_RED_MODEL` | `muse-spark-1.3` | Boundary analysis |
+| `META_MUSE_RED_MODEL` | `muse-spark-1.3-contributor` | Boundary analysis |
 | `META_MUSE_BLUE_MODEL` | `muse-wonder-1.0` | Sanitization patch generation |
 | `META_MUSE_TIMEOUT_SECONDS` | `180` | Per-request API timeout, 1–300 s |
 | `META_MUSE_MAX_TOKENS` | `32768` | Output budget, 1024–131072. **Reasoning tokens count toward it** |

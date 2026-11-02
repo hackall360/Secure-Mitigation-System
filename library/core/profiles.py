@@ -32,14 +32,14 @@ META_PROFILES: dict[str, Profile] = {
         "economy",
         "Economy",
         "Muse Spark for red (fast triage) and blue (fast patch). Lowest cost.",
-        "muse-spark-1.3",
-        "muse-spark-1.3",
+        "muse-spark-1.3-contributor",
+        "muse-spark-1.3-contributor",
     ),
     "balanced": Profile(
         "balanced",
         "Balanced",
         "Spark red triage, Wonder blue patch. Default.",
-        "muse-spark-1.3",
+        "muse-spark-1.3-contributor",
         "muse-wonder-1.0",
     ),
     "quality": Profile(

@@ -40,7 +40,7 @@ class PurpleBoxConfig:
     inference_mode: str = "hosted"
     observability_mode: str = "prod"
     # Red team default is Spark (fast triage); blue team default is Wonder (deep patch).
-    red_team_model: str = "muse-spark-1.3"
+    red_team_model: str = "muse-spark-1.3-contributor"
     blue_team_model: str = "muse-wonder-1.0"
     target_base_image: str = "purplebox-target-base:latest"
     verifier_base_image: str = "purplebox-verifier-base:latest"
@@ -96,7 +96,7 @@ class PurpleBoxConfig:
                 "without credentials, query parameters, or a custom port."
             )
         for model in (self.red_team_model, self.blue_team_model):
-            # Meta Model API IDs (muse-spark-1.3, muse-wonder-1.0) or the open-weight
+            # Meta Model API IDs (muse-spark-1.3-contributor, muse-wonder-1.0) or the open-weight
             # Muse Spark Open release served by a hosted provider (meta-models/...).
             if not re.fullmatch(
                 r"muse-(?:spark|wonder)(?:-[a-z0-9]+(?:\.[0-9]+)*)*"
@@ -162,7 +162,7 @@ def load_config() -> PurpleBoxConfig:
             .rstrip("/"),
             inference_mode=os.getenv("PURPLEBOX_INFERENCE_MODE", "hosted").strip().lower(),
             observability_mode=os.getenv("PURPLEBOX_OBSERVABILITY_MODE", "prod").strip().lower(),
-            red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3").strip(),
+            red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3-contributor").strip(),
             blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "180")),
             max_output_tokens=int(os.getenv("META_MUSE_MAX_TOKENS", "32768")),

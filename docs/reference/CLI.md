@@ -69,7 +69,7 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--command` | — | Target argv as JSON, e.g. `["python3", "app.py"]` |
 | `--test-command` | — | Trusted regression argv as JSON |
 | `--contract` | "" | Expected behavior and sanitization-only patch constraints |
-| `--scan-profile {profile,c custom}` | custom | Project scan intensity, independent of `--profile` models |
+| `--scan-profile {extra_light,light,medium,heavy,super_heavy,ultra_heavy,custom}` | custom | Project scan intensity, independent of `--profile` models |
 | `--cycles N` | — | Explicit custom red/blue cycles, 1 to 20 (legacy default: 1) |
 | `--red-agents N` | 5 | Red agent team size, 1 to 12 |
 | `--blue-agents N` | 5 | Blue agent team size, 1 to 12 |
