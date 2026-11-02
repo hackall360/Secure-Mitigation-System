@@ -75,6 +75,19 @@ CAPABILITIES_EPILOG = """Same-day value (Wave 2/5/8, all in the default scan, no
   repeat-stability: repeat-stability re-runs the check so a flaky pass cannot verify."""
 
 
+def _init_observability(args, config) -> str:
+    """Open the observability sink once per process: flag > env/config default.
+
+    Returns the resolved mode. Safe to call once at startup; shutdown runs
+    from main()'s finally clause (also safe without init).
+    """
+    from modules.shared import sms_observability as _obs
+
+    flag = getattr(args, "observability_mode", None)
+    mode = flag or getattr(config, "observability_mode", None) or None
+    return _obs.init(root="logs", mode=mode)
+
+
 def _demo_build_failure(exc: BaseException) -> dict:
     """User-safe error report for a failed demo build (UI result-card shape)."""
     return {
@@ -1571,6 +1584,17 @@ def mcp_stdio_runner() -> int:
     sms_scan_source, sms_scan_binary) execute the live loop and return the
     structured result. A `shutdown` notification ends the session.
     """
+    from modules.shared import sms_observability as _mcp_obs
+
+    _mcp_obs.init(root="logs", mode=None)
+    try:
+        return _mcp_stdio_loop()
+    finally:
+        _mcp_obs.shutdown()
+
+
+def _mcp_stdio_loop() -> int:
+    """JSON-RPC request loop behind mcp_stdio_runner (observability-wrapped)."""
     import sys as _sys
 
     from modules.services.mcp_bridge import (
@@ -2720,6 +2744,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Pinned 40-hex commit for --ingest-repo (required with --ingest-repo)",
     )
+    parser.add_argument(
+        "--observability-mode",
+        choices=["dev", "prod"],
+        default=None,
+        help="Observability verbosity (default: PURPLEBOX_OBSERVABILITY_MODE or prod)",
+    )
     return parser
 
 
@@ -2866,6 +2896,7 @@ def main() -> int:
                 print(f"{key}: {target.description}")
             return 0
         settings = load_config()
+        _init_observability(args, settings)
         if args.health:
             report = _health_report(settings)
             if out_format == "json":
@@ -3073,6 +3104,13 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    finally:
+        try:
+            from modules.shared import sms_observability as _obs_shutdown
+
+            _obs_shutdown.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

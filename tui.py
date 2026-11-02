@@ -1165,9 +1165,28 @@ def run_plain(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if getattr(args, "stats", False):
         return _print_global_stats()
+    try:
+        from modules.core.config import load_config as _obs_config
+        from modules.shared import sms_observability as _obs
+
+        try:
+            _obs_mode = _obs_config().observability_mode
+        except Exception:
+            _obs_mode = None
+        _obs.init(root="logs", mode=_obs_mode)
+    except Exception:
+        pass
     explicit = set(argv or [])
     if "--mode" in explicit or getattr(args, "mode", "fixture") != "fixture":
-        return _run_plain_dispatch(args)
+        try:
+            return _run_plain_dispatch(args)
+        finally:
+            try:
+                from modules.shared import sms_observability as _obs_done
+
+                _obs_done.shutdown()
+            except Exception:
+                pass
     if (
         getattr(args, "snippet_path", "")
         or getattr(args, "project_image", "")
@@ -1186,8 +1205,24 @@ def run_plain(argv: list[str] | None = None) -> int:
         or getattr(args, "contract", "")
         or getattr(args, "snippet_language", "")
     ):
-        return _run_plain_dispatch(args)
-    return _run_plain_legacy(args)
+        try:
+            return _run_plain_dispatch(args)
+        finally:
+            try:
+                from modules.shared import sms_observability as _obs_done
+
+                _obs_done.shutdown()
+            except Exception:
+                pass
+    try:
+        return _run_plain_legacy(args)
+    finally:
+        try:
+            from modules.shared import sms_observability as _obs_done
+
+            _obs_done.shutdown()
+        except Exception:
+            pass
 
 
 def _curses_main(stdscr, state: TuiState) -> None:
@@ -1268,10 +1303,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     state = _state_from_args(args)
     try:
+        from modules.core.config import load_config as _obs_config
+        from modules.shared import sms_observability as _obs
+
+        try:
+            _obs_mode = _obs_config().observability_mode
+        except Exception:
+            _obs_mode = None
+        _obs.init(root="logs", mode=_obs_mode)
+    except Exception:
+        pass
+    try:
         curses.wrapper(_curses_main, state)
     except Exception as exc:
         print(f"TUI exited ({type(exc).__name__}); falling back to plain mode.")
         return run_plain(["--fixture", state.fixture_key])
+    finally:
+        try:
+            from modules.shared import sms_observability as _obs_done
+
+            _obs_done.shutdown()
+        except Exception:
+            pass
     return 0
 
 
