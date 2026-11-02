@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import tui
 
 VALID_REPO = "https://example.com/org/demo.git"
@@ -49,36 +51,14 @@ def test_cli_stats_stdout_has_raw_sent_saved_keys(capsys):
 
 
 def test_tui_ingest_dispatch_renders_rows_live(monkeypatch):
-    """Pin 3: drive the ingest dispatch path in-process (FakeMuse/FakeSandbox
-    pattern): the REAL RepoIntakeSpec validates repo+commit (fail closed on
-    garbage); only the Docker workflow is faked. Assert the ingest branch
-    renders repo/commit/token rows without crashing."""
-    import modules.workflows.workflow as wf
-
-    events: list[tuple[str, str]] = []
-
-    async def fake_emit(kind, message):
-        events.append((kind, str(message)))
-
-    async def fake_workflow(key, emit, **kwargs):
-        await emit("red", "ingest probe pass")
-        return _result(target=key)
-
-    monkeypatch.setattr(wf, "execute_purple_workflow", fake_workflow)
-
-    state = tui.TuiState()
-    state.mode = "ingest"
-    state.ingest_repo = VALID_REPO
-    state.ingest_commit = VALID_COMMIT
-    summary = tui.dispatch_scan(state, fake_emit)
-    assert isinstance(summary, str) and summary
-    kinds = [kind for kind, _ in events]
-    assert "ingest" in kinds
-    assert "telemetry" in kinds
-    joined = " ".join(str(message) for _, message in events)
-    assert "example.com" in joined
-    assert VALID_COMMIT[:12] in joined
-    assert state.fixture_key in joined
+    """Pin 3 (RETIRED by F-02 fix 2026-11-02): the old contract asserted the
+    ingest branch runs the fixture workflow and renders its rows — that was
+    the false-success defect itself (fixture bytes reported as the repo's
+    verdict). Repo-intake staging has no clone yet, so ingest now refuses
+    fail-closed. Contract moved to tests/test_ingest_cli_tui_red.py
+    (refusal + never-calls-workflow pins). This stub keeps the pin count
+    stable and documents the supersession."""
+    pytest.skip("superseded by F-02 honest-refusal contract (test_ingest_cli_tui_red.py)")
 
 
 def test_format_facts_carries_telemetry_keys():
