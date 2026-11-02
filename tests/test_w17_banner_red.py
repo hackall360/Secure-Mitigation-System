@@ -60,9 +60,13 @@ def test_error_text_routes_to_toast_and_cfg_errors():
     source = _console_js()
     assert "toast(" in source, "console.js must surface errors via toast()"
     assert "cfg-errors" in source, "console.js must write error text into #cfg-errors"
-    assert "$('cfg-errors').textContent" in source, "cfg-errors text must be assigned (textContent-only)"
-    onrefuse = source[source.index("onRefuse"):]
-    assert "toast(" in onrefuse[:1200], "refusal path must toast ('Server busy' / 'Request rejected')"
+    assert "$('cfg-errors').textContent" in source, (
+        "cfg-errors text must be assigned (textContent-only)"
+    )
+    onrefuse = source[source.index("onRefuse") :]
+    assert "toast(" in onrefuse[:1200], (
+        "refusal path must toast ('Server busy' / 'Request rejected')"
+    )
 
 
 def test_rate_limit_text_reaches_error_surface():
@@ -74,9 +78,11 @@ def test_rate_limit_text_reaches_error_surface():
     ``errors([msg])``.
     """
     source = _console_js()
-    assert "rate limit" in source.lower().replace("-", " "), "rate-limit wording missing from console.js"
+    assert "rate limit" in source.lower().replace("-", " "), (
+        "rate-limit wording missing from console.js"
+    )
     assert "429" in source, "429 wording missing from console.js"
-    branch = source[source.index("onLine(team, msg, payload)"):]
+    branch = source[source.index("onLine(team, msg, payload)") :]
     branch = branch[: branch.index("if (graph.selected)")]
     assert "errors([msg])" in branch, "rate-limit branch must write the message via errors([msg])"
 
@@ -90,7 +96,7 @@ def test_docker_text_reaches_error_surface():
     """
     source = _console_js()
     assert "docker daemon" in source.lower(), "docker-daemon wording missing from console.js"
-    branch = source[source.index("onLine(team, msg, payload)"):]
+    branch = source[source.index("onLine(team, msg, payload)") :]
     branch = branch[: branch.index("if (graph.selected)")]
     assert "errors([msg])" in branch
 
@@ -99,7 +105,7 @@ def test_next_success_start_clears_errors():
     """A fresh start dismisses the error surface (``errors([])`` in ``start()``)."""
     source = _console_js()
     assert "function resetRun()" in source
-    start = source[source.index("async function start()"):]
+    start = source[source.index("async function start()") :]
     start = start[: start.index("state.session = ")]
     assert "errors([])" in start, "start() must clear #cfg-errors before streaming"
 
@@ -109,6 +115,6 @@ def test_chip_key_turns_warn_on_key_trouble():
     source = _console_js()
     assert "chip-key" in source, "console.js must drive the chip-key readout"
     assert "'warn'" in source or '"warn"' in source, "chip-key warn state missing"
-    snapshot = source[source.index("function onSnapshot"):]
+    snapshot = source[source.index("function onSnapshot") :]
     snapshot = snapshot[: snapshot.index("function onGraph")]
     assert "chip-key" in snapshot and "warn" in snapshot, "snapshot path must set chip-key to warn"

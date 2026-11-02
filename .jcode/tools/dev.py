@@ -139,7 +139,13 @@ def smoke():
                 if response.status != 200 or not body:
                     raise RuntimeError(f"Empty or unsuccessful response: {path}")
                 if path == "/api/targets":
-                    expected = {"node_query_sink", "php_command_sink", "mysql_insecure_conf", "node_chain_link", "binary_argv_echo"}
+                    expected = {
+                        "node_query_sink",
+                        "php_command_sink",
+                        "mysql_insecure_conf",
+                        "node_chain_link",
+                        "binary_argv_echo",
+                    }
                     if set(json.loads(body)) != expected:
                         raise RuntimeError("Development server returned unexpected fixtures.")
             print(f"PASS: GET {path}")

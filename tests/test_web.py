@@ -50,7 +50,10 @@ def test_ui_and_registry_work_without_key_or_docker():
         assert response.status_code in (200, 307)
         page = client.get("/web/index.html").text
         assert "Secure Mitigation System" in page
-        assert "frame-ancestors 'none'" in client.get("/web/index.html").headers["content-security-policy"]
+        assert (
+            "frame-ancestors 'none'"
+            in client.get("/web/index.html").headers["content-security-policy"]
+        )
         assert len(client.get("/api/targets").json()) == 5
         assert "binary_argv_echo" in client.get("/api/targets").json()
         assert "node_chain_link" in client.get("/api/targets").json()
@@ -148,7 +151,13 @@ def test_dashboard_exposes_interactive_dark_theme_controls():
         ):
             assert element in page
         # Untrusted model output must be rendered as text, never parsed as HTML.
-        for js in ("link.js", "ui/comms-feed.js", "ui/terminal.js", "ui/hex-stream.js", "ui/stream-meter.js"):
+        for js in (
+            "link.js",
+            "ui/comms-feed.js",
+            "ui/terminal.js",
+            "ui/hex-stream.js",
+            "ui/stream-meter.js",
+        ):
             script = client.get(f"/web/js/{js}").text
             assert ".innerHTML" not in script and ".insertAdjacentHTML" not in script
         assert "prefers-reduced-motion" in client.get("/web/css/core/motion.css").text

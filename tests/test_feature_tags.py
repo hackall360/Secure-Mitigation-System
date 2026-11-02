@@ -60,9 +60,7 @@ def test_dom_tags_invisible_and_registered():
     console = (ROOT / "web" / "console.html").read_text(encoding="utf-8")
     setup = (ROOT / "web" / "prod-setup.html").read_text(encoding="utf-8")
     html = console + setup
-    css = "".join(
-        p.read_text(encoding="utf-8") for p in (ROOT / "web" / "css").rglob("*.css")
-    )
+    css = "".join(p.read_text(encoding="utf-8") for p in (ROOT / "web" / "css").rglob("*.css"))
     js = "".join(p.read_text(encoding="utf-8") for p in (ROOT / "web" / "js").rglob("*.js"))
     # Audit hooks only: no styling, no behavior reads. v3 keeps audit hooks
     # as data-f attributes (console.html team-filter buttons); grep confirms
@@ -89,16 +87,32 @@ def test_dom_tags_invisible_and_registered():
     # 19 anchors survive in v3 (chips, comms/log rails, result sheet, setup);
     # 23 v2-flat-dashboard anchors are retired with static/.
     assert present == {
-        "cfg-errors", "chip-docker", "chip-key", "chip-server", "comms",
-        "cp-diff", "dl-json", "dl-patch", "fixture-list", "launch", "legend",
-        "r-cycles", "r-diff", "r-facts", "r-usage", "result", "stagebar",
-        "stop", "timeline",
+        "cfg-errors",
+        "chip-docker",
+        "chip-key",
+        "chip-server",
+        "comms",
+        "cp-diff",
+        "dl-json",
+        "dl-patch",
+        "fixture-list",
+        "launch",
+        "legend",
+        "r-cycles",
+        "r-diff",
+        "r-facts",
+        "r-usage",
+        "result",
+        "stagebar",
+        "stop",
+        "timeline",
     }, sorted(present)
     assert len(absent) == 23, sorted(absent)
     # v2-flat-dashboard ids live in the delegated-needle map, not as ui
     # anchors: their v3 equivalents (launch, timeline, c-fx, ...) are
     # asserted present above; here the retired raw ids must stay gone.
     import library.tags as _tags
+
     retired = {"run-btn", "scan-timeline", "target-list", "usage", "telemetry-log"}
     assert retired <= set(_tags.WEB_DELEGATED_NEEDLES), sorted(retired)
     for dom_id in retired:

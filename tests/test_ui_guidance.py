@@ -49,7 +49,9 @@ def test_start_cards_link_to_setup_pages():
     assert "demo-setup.html" in links, "demo card link missing"
     assert "prod-setup.html" in links, "production card link missing"
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    assert "#/demo" not in html and "#/live" not in html, "v2 hash routes must not survive in v3 start page"
+    assert "#/demo" not in html and "#/live" not in html, (
+        "v2 hash routes must not survive in v3 start page"
+    )
 
 
 def test_setup_launch_saves_handoff_to_visual_page():
@@ -128,8 +130,12 @@ def test_schema_fields_cover_backend_capability_families():
     # wording lives in the stream narration (narrator.js); none of the
     # three is a schema toggle. Do NOT add a schema field to satisfy this.
     lowered = schema.lower()
-    assert "compression" not in lowered.replace("comp(", "x"), "compression must stay a payload fact, not a schema field"
-    assert "differential" not in lowered, "differential must stay narration-only, not a schema field"
+    assert "compression" not in lowered.replace("comp(", "x"), (
+        "compression must stay a payload fact, not a schema field"
+    )
+    assert "differential" not in lowered, (
+        "differential must stay narration-only, not a schema field"
+    )
 
 
 def test_terminal_semantics_preserved_csp_safe():
@@ -140,8 +146,12 @@ def test_terminal_semantics_preserved_csp_safe():
         assert "comms" in by_id, f"#comms missing on {page}"
         assert by_id["comms"][1].get("role") == "log", f"#comms on {page} must keep role=log"
         html = (WEB / page).read_text(encoding="utf-8")
-        assert "onclick" not in html and "onchange" not in html, f"no inline handlers on {page} (CSP)"
-    by_id = {attrs["id"]: (tag, attrs) for tag, attrs in _nodes(WEB / "console.html") if "id" in attrs}
+        assert "onclick" not in html and "onchange" not in html, (
+            f"no inline handlers on {page} (CSP)"
+        )
+    by_id = {
+        attrs["id"]: (tag, attrs) for tag, attrs in _nodes(WEB / "console.html") if "id" in attrs
+    }
     assert "log" in by_id, "#log activity pane missing on console.html"
     assert by_id["log"][1].get("role") == "log", "#log must keep role=log"
     assert by_id["log"][1].get("tabindex") == "0", "#log must stay focusable"
@@ -156,7 +166,9 @@ def test_readme_describes_v3_page_flow():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     for marker in ("prod-setup.html", "demo-setup.html", "console.html", "scoreboard", "stagebar"):
         assert marker in text, f"README missing {marker!r}"
-    assert "#/demo" not in text and "#/live" not in text, "stale v2 hash routes must not survive in README"
+    assert "#/demo" not in text and "#/live" not in text, (
+        "stale v2 hash routes must not survive in README"
+    )
 
 
 def test_dashboard_reference_covers_v3_guidance_layer():

@@ -789,7 +789,7 @@ def test_arena_name_lists_match_backend_wrap_order():
     js = (Path(__file__).resolve().parents[1] / "web" / "js" / "core" / "palette.js").read_text()
     start = js.index("const AGENTS = ")
     raw = js[start : js.index("];", start) + 1]
-    agents = json.loads(re.sub(r"(\w+):", r'"\1":', raw[raw.index("["):].replace("'", '"')))
+    agents = json.loads(re.sub(r"(\w+):", r'"\1":', raw[raw.index("[") :].replace("'", '"')))
     red = [a["id"] for a in agents if a["team"] == "red"]
     blue = [a["id"] for a in agents if a["team"] == "blue"]
     # v3 seats each family with its leader first, then the five backend

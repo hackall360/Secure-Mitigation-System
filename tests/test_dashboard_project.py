@@ -84,13 +84,9 @@ def test_hosted_intake_requires_consent_and_local_intake_never_grants_it():
     """Remote inference stays gated: hosted + consent allows, local never sends."""
     from library.services.projects import ProjectSpec
 
-    hosted_ok = ProjectSpec.model_validate(
-        _valid_project_kwargs(allow_remote_inference=True)
-    )
+    hosted_ok = ProjectSpec.model_validate(_valid_project_kwargs(allow_remote_inference=True))
     assert hosted_ok.allow_remote_inference is True
-    local_refused = ProjectSpec.model_validate(
-        _valid_project_kwargs(allow_remote_inference=False)
-    )
+    local_refused = ProjectSpec.model_validate(_valid_project_kwargs(allow_remote_inference=False))
     assert local_refused.allow_remote_inference is False
     # The workflow enforces consent server-side for non-local inference.
     import inspect
@@ -119,21 +115,15 @@ def test_scan_intensity_derives_cycles_from_named_profiles():
 
     assert SCAN_PROFILES["extra_light"].cycles == 1
     assert SCAN_PROFILES["ultra_heavy"].cycles == 12
-    spec = ProjectSpec.model_validate(
-        _valid_project_kwargs(scan_profile="extra_light", cycles=1)
-    )
+    spec = ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="extra_light", cycles=1))
     assert spec.cycles == 1
-    custom = ProjectSpec.model_validate(
-        _valid_project_kwargs(scan_profile="custom", cycles=9)
-    )
+    custom = ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="custom", cycles=9))
     assert custom.cycles == 9
     # A mismatched explicit cycle count against a named profile is rejected.
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        ProjectSpec.model_validate(
-            _valid_project_kwargs(scan_profile="extra_light", cycles=9)
-        )
+        ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="extra_light", cycles=9))
 
 
 def test_dashboard_markup_defaults_to_extra_light_and_five_agent_teams():
@@ -171,7 +161,7 @@ def test_dashboard_readiness_and_consent_visibility():
     schema = _schema()
     after = schema.split("allow_remote_inference")[1][:200]
     assert "def: false" in after, "remote-inference consent must default off"
-    assert 'inferenceMode' in setup, "readiness must distinguish local vs hosted inference"
+    assert "inferenceMode" in setup, "readiness must distinguish local vs hosted inference"
 
 
 def test_project_summary_counts_cycle_evidence_without_inventing_checks():

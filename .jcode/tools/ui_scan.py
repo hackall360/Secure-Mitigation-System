@@ -253,7 +253,7 @@ async def drive(
             raise SystemExit(f"Could not launch {target} from prod setup: {launch}")
         if profile:
             picked = await js(
-                f"(() => {{ const b = document.querySelector(`.oseg [data-v=\"{profile}\"]`);"
+                f'(() => {{ const b = document.querySelector(`.oseg [data-v="{profile}"]`);'
                 " if (!b) return 'no-mode'; b.click(); return 'ok'; })()"
             )
             if picked != "ok":
@@ -303,7 +303,9 @@ async def drive(
             )
         for _ in range(600):
             await asyncio.sleep(1)
-            if await js("!!document.getElementById('result') && !document.getElementById('result').hidden"):
+            if await js(
+                "!!document.getElementById('result') && !document.getElementById('result').hidden"
+            ):
                 break
         else:
             raise SystemExit("Result never rendered (600s).")
@@ -405,7 +407,12 @@ def drive_firefox(
                 base, "POST", f"/session/{session}/execute/sync", {"script": script, "args": []}
             )["value"]
 
-        wd_request(base, "POST", f"/session/{session}/url", {"url": f"http://localhost:{port}/web/prod-setup.html"})
+        wd_request(
+            base,
+            "POST",
+            f"/session/{session}/url",
+            {"url": f"http://localhost:{port}/web/prod-setup.html"},
+        )
         deadline = time.time() + 60
         while time.time() < deadline:
             if execute("return document.getElementById('launch') !== null"):
@@ -415,8 +422,12 @@ def drive_firefox(
             f"(() => {{ const c = [...document.querySelectorAll('.c-fx')]"
             f".find((b) => b.dataset.key === '{target}');"
             " if (!c) return 'no-card'; c.click();"
-            + (f" const sp = document.querySelector(`.oseg [data-v=\"{profile}\"]`);"
-               " if (!sp) return 'no-mode'; sp.click();" if profile else "")
+            + (
+                f' const sp = document.querySelector(`.oseg [data-v="{profile}"]`);'
+                " if (!sp) return 'no-mode'; sp.click();"
+                if profile
+                else ""
+            )
             + " const l = document.getElementById('launch');"
             " if (l.disabled) return 'launch-disabled'; l.click(); return 'clicked'; })()"
         )
@@ -461,7 +472,9 @@ def drive_firefox(
             )
         for _ in range(600):
             time.sleep(1)
-            if execute("return !!document.getElementById('result') && !document.getElementById('result').hidden"):
+            if execute(
+                "return !!document.getElementById('result') && !document.getElementById('result').hidden"
+            ):
                 break
         else:
             raise SystemExit("Result never rendered (600s).")
@@ -503,7 +516,10 @@ def main() -> int:
         action="store_true",
         help="Check keyboard navigation and responsive layouts before the scan",
     )
-    parser.add_argument("--profile", choices=["extra_light", "light", "medium", "heavy", "super_heavy", "ultra_heavy", "custom"])
+    parser.add_argument(
+        "--profile",
+        choices=["extra_light", "light", "medium", "heavy", "super_heavy", "ultra_heavy", "custom"],
+    )
     parser.add_argument(
         "--browser",
         default="auto",
@@ -554,7 +570,11 @@ def main() -> int:
                     pass
         print(json.dumps(result, indent=2))
         print(f"Screenshot: {args.shot}", file=sys.stderr)
-        return 0 if "passed" in result["status"].lower() or "verified" in result["status"].lower() else 1
+        return (
+            0
+            if "passed" in result["status"].lower() or "verified" in result["status"].lower()
+            else 1
+        )
     chrome_bin = find_browser_binary(requested, CHROME_CANDIDATES[requested])
     if not chrome_bin:
         raise SystemExit(
@@ -590,7 +610,11 @@ def main() -> int:
         )
         print(json.dumps(result, indent=2))
         print(f"Screenshot: {args.shot}", file=sys.stderr)
-        return 0 if "passed" in result["status"].lower() or "verified" in result["status"].lower() else 1
+        return (
+            0
+            if "passed" in result["status"].lower() or "verified" in result["status"].lower()
+            else 1
+        )
     finally:
         for proc in (chrome, server):
             try:

@@ -196,9 +196,8 @@ def test_mcp_cli_snippet_rejects_unknown_suffix(monkeypatch, tmp_path, capsys):
 
 def test_mcp_dashboard_controls_exist():
     """M2 dashboard parity: snippet source mode + SOURCES.snippet schema render."""
-    from pathlib import Path as _Path
-
     import re
+    from pathlib import Path as _Path
 
     root = _Path(__file__).resolve().parents[1]
     html = (root / "web/prod-setup.html").read_text()
