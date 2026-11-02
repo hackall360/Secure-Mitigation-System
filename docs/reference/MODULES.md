@@ -31,8 +31,8 @@ for the repo map and [guides/DEVELOPMENT.md](../guides/DEVELOPMENT.md) for setup
 
 | File | Role |
 |---|---|
-| `static/fx.js` | Motion layer: cursor glow + parallax vars, stage data-flow pulses (WAAPI only, CSP-safe). |
-| `static/panels.js` | Scan-timeline markers fed by `writeLine(team, msg)` in `static/app.js` (max 100). |
+| `web/js/ui/legend.js` + `web/js/ui/stage-bar.js` (+ `web/js/stream/choreography.js` graph effects) | Motion layer: legend `pulse()` agent-chip awake/talk on graph `speak`, `StageBar.set/finish` phase states, choreography `flowPath`/`wave` map effects (WAAPI/CSS only, CSP-safe); wired by `web/js/pages/demo.js` + `web/js/pages/console.js` interp `stage` handlers. |
+| `web/js/ui/activity.js` (`SMS.views.Timeline`) | Scan-timeline markers: one `.mk` marker per `interp.line` ev fed by page `onLine` handlers, newest right, `data-exit` on probe exits, `stage-start` on phase change (max 900). |
 
 ## Test support
 

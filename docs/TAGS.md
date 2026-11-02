@@ -16,7 +16,7 @@ branch is superseded; this doc replaces `TAGS_NOTES.md`.
   filters via `.filter` loop).
 - `web/*.html`: elements carry `data-feature` audit hooks
   (space-separated where one DOM id serves several tags). Attributes only —
-  no markup, style, or script changes. `app.css`/all `static/*.js` contain
+  no markup, style, or script changes. `web/css/*`/all `web/js/**/*.js` contain
   zero `data-feature` references (test-pinned). New `demo-*` controls added
   by later waves are cli-only tags (no hook) unless the registry gives them
   a ui id — the checker enforces the DOM subset.

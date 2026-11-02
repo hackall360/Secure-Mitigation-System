@@ -56,7 +56,7 @@ harness**:
 - Per-session containers, snapshots, and networks are removed afterward.
 
 Bundled fixtures (Node, PHP, MySQL targets in `targets/`) keep the whole loop
-deterministic. The dashboard (`static/`) and CLI (`main.py --scan`) share one
+deterministic. The dashboard (`web/` at `/web/`) and CLI (`main.py --scan`) share one
 workflow (`library/workflows/`). Technical detail: `docs/HOW_IT_WORKS.md`.
 
 Supporting systems: persona-voiced red/blue agents with safe chatter, a live
@@ -92,7 +92,7 @@ library/shared/      Shared helpers
 main.py              CLI (--scan/--research/--research-scanners), FastAPI, WebSocket
 sms_cli.py           Non-interactive CLI presentation (tables/JSON for scan reports)
 tui.py               Terminal UI (in-process workflow via emit bridge)
-static/              Dashboard v2 (app.js, index.html, app.css)
+web/                 Dashboard v3 (js/, css/, pages/; served at /web/*)
 web/                 Dashboard v3 (js/, css/, pages/; served at /web/*)
 docker/              Pinned-base images (target/verifier/binary) + harness runner
 modules/             Alias shim: modules.x.y resolves to canonical library.x.y
