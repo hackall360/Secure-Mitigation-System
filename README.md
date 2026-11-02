@@ -24,17 +24,24 @@ New here? Start with the plain guide: [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS
 
 ## How the loop works
 
-One scan runs these steps. Nothing is skipped.
+A bare `--scan` runs a single finding loop: context compression, vault
+recall, baseline, one red/blue cycle, regression + re-probe, receipt.
+Nothing in that loop is skipped. The multi-pass ladder in the diagram
+(Pass 1–4) runs only with `--sweep-passes N`, where N=1..4 selects a
+prefix of `SWEEP_PASSES`: 1=standard (common CVE sink patterns),
+2=+deep (encoding/coercion/truncation), 3=+threat-actor (logic abuse +
+novel synthesis), 4=+chain (multi-step logic-abuse chains).
 
 ```mermaid
 flowchart TD
     SRC["fixture source / project snapshot / compiled binary"] --> CMP["Context compression<br/>dedup + prune + budget (saves tokens)"]
     CMP --> VLT{"Encrypted vault lookup<br/>KNOWN_ARCHETYPE vs NOVEL_SURFACE"}
     VLT --> BASE["baseline: trusted normal-input checks<br/>(must pass)"]
-    BASE --> P1["Pass 1 COMMON<br/>known CVE sink patterns"]
-    P1 --> P2["Pass 2 DEEP MUTATION<br/>encoding / coercion / truncation"]
+    BASE --> P1["Pass 1 STANDARD<br/>known CVE sink patterns"]
+    P1 --> P2["Pass 2 DEEP<br/>encoding / coercion / truncation"]
     P2 --> P3["Pass 3 THREAT-ACTOR<br/>logic abuse + novel zero-day synthesis"]
-    P3 --> RED["RED agent (Muse Spark)<br/>finding + verification probe"]
+    P3 --> P4["Pass 4 CHAIN<br/>multi-step logic-abuse chains"]
+    P4 --> RED["RED agent (Muse Spark)<br/>finding + verification probe"]
     RED --> PROBE{"sandbox probe<br/>exit 0 = reached<br/>exit 1 = blocked<br/>exit 2 = inconclusive"}
     PROBE -- 0 --> BLUE["BLUE agent (Muse Wonder)<br/>minimal patch / binary mitigation rules"]
     PROBE -- 1/2 --> FAIL["not_confirmed / failed<br/>fail closed"]
@@ -104,13 +111,13 @@ python main.py --ai-demo --scan-profile extra_light --output-dir reports
 python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, SQL injection"
 ```
 
-Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`, `sms_verify_receipt`, `sms_scan_status`), `--sweep-passes 3`, `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
+Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`, `sms_verify_receipt`, `sms_scan_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
 
 ## 3-minute demo guide
 
 **The dashboard (30 seconds).** Open `web/index.html` (Start), pick a Demo (`web/demo-setup.html`) or Production (`web/prod-setup.html`) setup, then Launch into `demo.html` or `console.html`. The console shows a live radial system map with team-colored agents (red offense, blue defense, green build, purple verified), the `stagebar` phase strip, and comms/activity logs streaming in real time. The header scoreboard totals session messages, findings, patches, and verified runs; run options (sweep depth, profile, research, binary) come from the setup schema. Panel map: [`docs/reference/DASHBOARD.md`](docs/reference/DASHBOARD.md).
 
-**The showcase (90 seconds).** Run `python main.py --list-targets`, then run the bundled demo. Watch the pass steps (Common, Deep, Threat-actor), the Vault recall badge on a repeat run, and the Context compression badge.
+**The showcase (90 seconds).** Run `python main.py --list-targets`, then run the bundled demo. Watch the pass steps (Standard, Deep, Threat-actor, Chain), the Vault recall badge on a repeat run, and the Context compression badge.
 
 **Your own target (90 seconds).** Scan a repo, sweep `binary_argv_echo`, or call `sms_scan_source` and check it with `sms_verify_receipt`.
 
