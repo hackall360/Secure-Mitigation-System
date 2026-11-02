@@ -103,6 +103,27 @@ def test_dashboard_api_contracts():
         }
 
 
+def test_snippet_filename_map_single_sourced():
+    """C1 identity pin: TUI default snippet filenames ARE the bridge canonicals.
+
+    Two maps with the same keys but different values (snippet.* vs app.*)
+    are a drift vector: the executor runs /workspace/<baseline filename>,
+    so any surface inventing its own default filename silently misnames the
+    executed file. Both surfaces must resolve through
+    mcp_bridge.SNIPPET_FILENAME_BY_LANGUAGE.
+    """
+    from modules.services import mcp_bridge
+
+    assert mcp_bridge.SNIPPET_FILENAME_BY_LANGUAGE == {
+        "javascript": "app.js",
+        "python": "app.py",
+        "php": "index.php",
+    }
+    import tui
+
+    assert tui._SNIPPET_FILENAME_BY_LANGUAGE is mcp_bridge.SNIPPET_FILENAME_BY_LANGUAGE
+
+
 def test_tui_all_modes_reach_workflows():
     import inspect
 

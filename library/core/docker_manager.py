@@ -17,14 +17,15 @@ from requests.exceptions import ReadTimeout
 import docker
 from modules.core.checks import validate_verifier_script
 from modules.core.config import PurpleBoxConfig
-from modules.core.registry import BASE_DIR, Target
-from modules.services.projects import (
+from modules.core.project_models import (
+    MAX_BINARY_BYTES,
     MAX_PROJECT_BYTES,
     MAX_PROJECT_FILE_BYTES,
     MAX_PROJECT_FILES,
     ProjectSnapshot,
     ProjectSpec,
 )
+from modules.core.registry import BASE_DIR, Target
 
 
 class SandboxError(RuntimeError):
@@ -519,10 +520,9 @@ class DockerSandboxManager:
     @staticmethod
     def _create_binary_tar(files: list[tuple[str, bytes, int]]) -> bytes:
         """Tar archive for binary staging: strict basenames, capped total."""
-        from modules.services.binary_intake import BINARY_MAX_BYTES
 
         total = sum(len(content) for _, content, _ in files)
-        if total > BINARY_MAX_BYTES + 65_536:
+        if total > MAX_BINARY_BYTES + 65_536:
             raise ValueError("Binary staging archive exceeds the intake budget.")
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode="w") as archive:

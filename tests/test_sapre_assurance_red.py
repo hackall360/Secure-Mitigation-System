@@ -19,6 +19,40 @@ import subprocess
 import sys
 
 
+def test_s1b_import_direction_core_never_reaches_up():
+    """C2/P3: layered direction — library/core imports only library/{core,shared}
+    (+ stdlib). services/workflows sit ABOVE core; a core->services edge is an
+    upward leak even when acyclic (the cycle test above cannot see it).
+
+    Allowed core-internal exception: none currently. Allowed services.projects
+    types exception from the VV item is NOT yet exercised — if a core module
+    ever needs it, extend ALLOWED verbatim with the file:line + reason.
+    """
+    import ast
+    import pathlib
+
+    ALLOWED: dict[str, set[str]] = {}
+    violations = []
+    for path in pathlib.Path("library/core").rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.ImportFrom) and node.module):
+                continue
+            mod = node.module.replace("library.", "modules.", 1)
+            if not mod.startswith("modules."):
+                continue
+            top = mod.split(".")[1] if len(mod.split(".")) > 1 else ""
+            if top in ("core", "shared"):
+                continue
+            if str(path) in ALLOWED and mod in ALLOWED[str(path)]:
+                continue
+            violations.append(f"{path}:{node.lineno} imports {node.module}")
+    assert not violations, "core reaches above its layer:\n" + "\n".join(violations)
+
+
 def test_s1_no_package_import_cycles():
     import ast
     import pathlib
