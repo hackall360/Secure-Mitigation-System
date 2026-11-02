@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-BINARY_MAX_BYTES = 8 * 1024 * 1024
+from modules.core.project_models import MAX_BINARY_BYTES as BINARY_MAX_BYTES
+
 BINARY_CONTRACT_MAX_CHARS = 8_192
 
 _ELF_MAGIC = b"\x7fELF"
