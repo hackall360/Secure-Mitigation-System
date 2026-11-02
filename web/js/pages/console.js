@@ -102,6 +102,7 @@
       onLine: (team, msg, payload) => onLine(team, msg, payload),
       onResult: (p) => onResult(p, label),
       onGraph: (p) => onGraph(p),
+      onSnapshot: (p) => onSnapshot(p),
       onRefuse: (type, msg) => {
         const text = type === 'busy' ? 'Scan refused: another scan holds the server lock. Wait for it to finish, then run again.' : `${msg || 'Invalid request.'} Fix the highlighted fields, then run again.`;
         onLine('system', text);
@@ -188,6 +189,14 @@
   }
 
   /* ================= stream handlers ================= */
+  function onSnapshot(p) {
+    // Connect-time server state frame: hydrate status chips only, never a stream line.
+    const c = (p && p.chips) || {};
+    if (c.server) chip('chip-server', c.server === 'busy' ? 'warn' : 'ok', c.server === 'busy' ? 'Orchestrator busy' : 'Orchestrator');
+    if (c.docker) chip('chip-docker', c.docker === 'ready' ? 'ok' : 'error', { ready: 'Docker', images_missing: 'Images missing', unavailable: 'Docker offline' }[c.docker] || 'Docker');
+    if (c.key) chip('chip-key', c.key === 'ok' ? 'ok' : 'warn', c.key === 'ok' ? 'Muse' : 'No API key');
+  }
+
   function onGraph(p) {
     // Optional server topology: { type: 'graph', nodes: [{id,label,kind,parent}], links: [...] }
     (p.nodes || []).forEach((n) => graph.addNode(n));
