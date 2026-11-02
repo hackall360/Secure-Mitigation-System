@@ -4,6 +4,10 @@ Owner: Jcode agent. This file is the work queue. Check items off as they land.
 Conventions: `[ ]` not done, `[/]` partial, `[.]` in-progress, `[x]` done.
 Every item names its files and its proof.
 
+## WW. Music-generation DawDreamer harness (brief 2026-11-01-closed-loop-guidance-music-generation; branch feature/music-generation-harness)
+
+- [x] WW1. Closed-loop fixture DONE + committed (no merge/push): `video-demo/music-generation/test_generator.py` (RenderEngine 44100/512 + Faust 440 Hz sine DSP, 3 s render, scipy wav write) + `video-demo/music-generation/GUIDANCE_MATRIX.md` (A/B/C ledger, all `[x]`). Env: fixture-local `.venv` (dawdreamer 0.9.0, numpy 2.5.4, scipy 1.18.1; system python3 untouched per PEP 668). Proof: py_compile exit 0, live run exit 0 (132300 frames, peak 0.5012), `test_render.wav` 1058458 bytes / 44100 Hz (132300, 2) float32 (wav artifact is repo-ignored, regenerates via `.venv/bin/python test_generator.py`); `dev.py check` All checks passed.
+
 ## BB. Repo remodel (brief 2026-10-31-refactor-directive)
 
 - [x] BB0. Lead: briefs filed, baseline gate green pre-change, 5 read-only surveys fanned out + released, plan set in `docs/REFACTOR_PLAN.md`. Proof: `.jcode/briefs/2026-10-31-refactor-directive.md`, `2026-10-31-refactor-rubric.md`; gate green 21:05 (pre-move).
