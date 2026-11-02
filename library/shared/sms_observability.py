@@ -85,7 +85,9 @@ def shutdown() -> None:
 
 
 def _now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + f".{int(time.time() % 1 * 1000):03d}Z"
+    return (
+        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + f".{int(time.time() % 1 * 1000):03d}Z"
+    )
 
 
 def _redact(value: Any) -> Any:
@@ -100,7 +102,9 @@ def _redact(value: Any) -> Any:
 
 def _looks_secret(key: str, value: Any = None) -> bool:
     lowered = key.lower()
-    if any(token in lowered for token in ("api_key", "apikey", "token", "secret", "password", "auth")):
+    if any(
+        token in lowered for token in ("api_key", "apikey", "token", "secret", "password", "auth")
+    ):
         return True
     if isinstance(value, str) and len(value) >= 12:
         marker = value[:7].lower().replace("_", "-")
@@ -167,7 +171,9 @@ def log(aspect: Aspect | str, event: str, message: str = "", **fields: Any) -> N
         base["fields"] = clean
     _append("logs", name, base)
     if mode == "dev":
-        for detail_event, detail_fields in _dev_details(event, clean if isinstance(clean, dict) else {}):
+        for detail_event, detail_fields in _dev_details(
+            event, clean if isinstance(clean, dict) else {}
+        ):
             _append(
                 "logs",
                 name,
@@ -192,7 +198,14 @@ def record_metric(aspect: Aspect | str, name: str, value: float | int, unit: str
     _append(
         "metrics",
         aspect_name,
-        {"ts": _now(), "aspect": aspect_name, "event": name, "mode": mode, "value": value, "unit": unit},
+        {
+            "ts": _now(),
+            "aspect": aspect_name,
+            "event": name,
+            "mode": mode,
+            "value": value,
+            "unit": unit,
+        },
     )
 
 

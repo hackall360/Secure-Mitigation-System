@@ -4,6 +4,8 @@
 
 __version__ = "0.1.0"
 
+import hashlib as _hashlib
+import time as _time
 from typing import Literal
 
 from docker.errors import DockerException
@@ -26,13 +28,16 @@ from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_compress import CompressionReport, compress_context
-import hashlib as _hashlib
-import time as _time
-
 from modules.shared.sms_observability import (
     get_aspect as _get_aspect,
+)
+from modules.shared.sms_observability import (
     log as _obs_log,
+)
+from modules.shared.sms_observability import (
     record_metric as _obs_metric,
+)
+from modules.shared.sms_observability import (
     trace as _obs_trace,
 )
 
@@ -380,7 +385,9 @@ async def execute_purple_workflow(
                 sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
             )
             result.traces["baseline"] = baseline.output
-            _obs_log(_OBS_FIXTURE, "baseline", "baseline checks finished", exit_code=baseline.exit_code)
+            _obs_log(
+                _OBS_FIXTURE, "baseline", "baseline checks finished", exit_code=baseline.exit_code
+            )
             _obs_metric(_OBS_FIXTURE, "baseline.exit_code", baseline.exit_code, unit="count")
             if baseline.exit_code != 0:
                 raise SandboxError("Original fixture failed its trusted normal-input checks.")
@@ -418,7 +425,11 @@ async def execute_purple_workflow(
                     "system",
                     f"[phase vault] {vault_answer.status} "
                     f"({vault_answer.record_count} prior records"
-                    + (f" in {','.join(vault_answer.namespaces)}" if vault_answer.namespaces else "")
+                    + (
+                        f" in {','.join(vault_answer.namespaces)}"
+                        if vault_answer.namespaces
+                        else ""
+                    )
                     + ").",
                 )
             except Exception as exc:
@@ -444,11 +455,20 @@ async def execute_purple_workflow(
             )
             result.pre_exit_code = pre.exit_code
             _obs_log(
-                _OBS_FIXTURE, "probe_built", "probe built",
+                _OBS_FIXTURE,
+                "probe_built",
+                "probe built",
                 bytes=len(finding.verification_script_python.encode("utf-8")),
-                script_sha256=_hashlib.sha256(finding.verification_script_python.encode("utf-8")).hexdigest(),
+                script_sha256=_hashlib.sha256(
+                    finding.verification_script_python.encode("utf-8")
+                ).hexdigest(),
             )
-            _obs_metric(_OBS_FIXTURE, "probe_built.bytes", len(finding.verification_script_python.encode("utf-8")), unit="bytes")
+            _obs_metric(
+                _OBS_FIXTURE,
+                "probe_built.bytes",
+                len(finding.verification_script_python.encode("utf-8")),
+                unit="bytes",
+            )
             _obs_log(_OBS_FIXTURE, "probe_exit", "probe exited", exit_code=pre.exit_code)
             _obs_metric(_OBS_FIXTURE, "probe_exit.exit_code", pre.exit_code, unit="count")
             result.traces["before"] = pre.output
@@ -488,8 +508,18 @@ async def execute_purple_workflow(
                     + (f"\n\nGrounded intel:\n{research_digest}" if research_digest else ""),
                 )
                 result.patch = patch
-                _obs_log(_OBS_FIXTURE, "patch_written", "patch written", lines=len(patch.patched_file_content.splitlines()))
-                _obs_metric(_OBS_FIXTURE, "patch_written.lines", len(patch.patched_file_content.splitlines()), unit="count")
+                _obs_log(
+                    _OBS_FIXTURE,
+                    "patch_written",
+                    "patch written",
+                    lines=len(patch.patched_file_content.splitlines()),
+                )
+                _obs_metric(
+                    _OBS_FIXTURE,
+                    "patch_written.lines",
+                    len(patch.patched_file_content.splitlines()),
+                    unit="count",
+                )
                 result.diff = validate_patch(target, source, patch.patched_file_content)
                 await log("blue", patch.sanitization_strategy)
                 await log("blue", result.diff)
@@ -544,9 +574,17 @@ async def execute_purple_workflow(
                 result.traces["after_probe_regression"] = final_health.output
                 if final_health.exit_code != 0:
                     result.regression_passed = False
-                    raise PatchRejected("Target failed normal-input checks after the boundary probe.")
+                    raise PatchRejected(
+                        "Target failed normal-input checks after the boundary probe."
+                    )
                 result.status = "verified" if post.exit_code == 1 else "failed"
-                _obs_log(_OBS_FIXTURE, "reprobe_exit", "reprobe exited", exit_code=post.exit_code, status=result.status)
+                _obs_log(
+                    _OBS_FIXTURE,
+                    "reprobe_exit",
+                    "reprobe exited",
+                    exit_code=post.exit_code,
+                    status=result.status,
+                )
                 _obs_metric(_OBS_FIXTURE, "reprobe_exit.exit_code", post.exit_code, unit="count")
                 if result.status == "verified" and result.patch is not None:
                     result.receipt = build_verdict_receipt(
@@ -630,10 +668,17 @@ async def execute_purple_workflow(
                         pass
         _obs_log(_OBS_FIXTURE, "verdict", "verdict reached", status=result.status)
         _obs_metric(_OBS_FIXTURE, "verdict.count", 1, unit="count")
-        _obs_metric(_OBS_FIXTURE, "verdict.seconds", round(_time.monotonic() - _obs_scan_started, 3), unit="seconds")
+        _obs_metric(
+            _OBS_FIXTURE,
+            "verdict.seconds",
+            round(_time.monotonic() - _obs_scan_started, 3),
+            unit="seconds",
+        )
         await log("system", f"[done] {result.message}")
         if sandbox is not None and result.cleanup_ok:
-            await log("system", "[phase cleanup] Session containers, snapshots, and network removed.")
+            await log(
+                "system", "[phase cleanup] Session containers, snapshots, and network removed."
+            )
         return result
 
 

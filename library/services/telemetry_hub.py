@@ -121,9 +121,7 @@ class TelemetryBatcher:
         batch_size = len(pending)
         coalesced = max(0, batch_size - len(pending[-self._max_events :]))
         obs_record_metric(_TELEMETRY_ASPECT, "telemetry_batch.size", batch_size, unit="count")
-        obs_record_metric(
-            _TELEMETRY_ASPECT, "telemetry_batch.coalesced", coalesced, unit="count"
-        )
+        obs_record_metric(_TELEMETRY_ASPECT, "telemetry_batch.coalesced", coalesced, unit="count")
         frame = {
             "type": "telemetry_batch",
             "team": "telemetry",
