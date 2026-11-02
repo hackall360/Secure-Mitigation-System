@@ -54,11 +54,14 @@ def snippet_baseline_key(arguments: McpSnippetArguments) -> str:
     return _MCP_LANGUAGE_BASELINE_KEY[arguments.normalized_language()]
 
 
-_MCP_LANGUAGE_FILENAME: dict[str, str] = {
+#: Canonical language -> executed baseline filename (C1: single source of
+#: truth; main.py executor + tui.py import this instead of duplicating).
+SNIPPET_FILENAME_BY_LANGUAGE: dict[str, str] = {
     "javascript": "app.js",
     "python": "app.py",
     "php": "index.php",
 }
+_MCP_LANGUAGE_FILENAME = SNIPPET_FILENAME_BY_LANGUAGE
 _MCP_LANGUAGE_COMMAND: dict[str, tuple[str, ...]] = {
     "javascript": ("node", "/workspace/app.js"),
     "python": ("python3", "/workspace/app.py"),
@@ -411,7 +414,7 @@ def snippet_target(args: McpSnippetArguments) -> Target:
     language = args.normalized_language()
     return Target(
         key="mcp_snippet",
-        filename=_MCP_LANGUAGE_FILENAME[language],
+        filename=SNIPPET_FILENAME_BY_LANGUAGE[language],
         title="MCP snippet submission",
         description="External MCP client snippet; Docker evidence decides.",
         command=_MCP_LANGUAGE_COMMAND[language],
