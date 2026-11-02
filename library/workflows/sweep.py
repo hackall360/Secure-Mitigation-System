@@ -423,6 +423,33 @@ async def execute_sweep_scan(
                 passed.regression_passed = True
                 await log("red", f"[sweep {pass_id}] Probe blocked; pass is clear.")
                 continue
+            # Chain link PRE probes run on the PRISTINE target (before the
+            # patch is requested and before replace_target): link A/B "pre"
+            # exits must observe the unpatched boundary, or the ChainLink
+            # pre/post pairs mislabel post-patch exits as pre-patch evidence.
+            link_scripts = (
+                _chain_link_probes(finding.verification_script_python)
+                if pass_id == "chain"
+                else None
+            )
+            link_a_pre = link_b_pre = None
+            if link_scripts is not None:
+                link_a_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[0])
+                result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}.",
+                )
+                if link_a_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
+                link_b_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[1])
+                result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
+                await log(
+                    "blue",
+                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}.",
+                )
+                if link_b_pre.inconclusive:
+                    raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
             await log(
                 "blue",
                 f"[sweep {pass_id}] Requesting a sanitization patch from "
@@ -458,23 +485,7 @@ async def execute_sweep_scan(
             )
             passed.post_exit_code = post.exit_code
             if pass_id == "chain":
-                link_scripts = _chain_link_probes(finding.verification_script_python)
-                link_a_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[0])
-                result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
-                await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}.",
-                )
-                if link_a_pre.inconclusive:
-                    raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
-                link_b_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[1])
-                result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
-                await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}.",
-                )
-                if link_b_pre.inconclusive:
-                    raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
+                assert link_a_pre is not None and link_b_pre is not None
                 link_a_post = await blocking(
                     sandbox.run_isolated_verifier, network, link_scripts[0]
                 )

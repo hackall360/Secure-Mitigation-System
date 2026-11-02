@@ -169,7 +169,7 @@ def load_config() -> PurpleBoxConfig:
                     {
                         s.strip().lower()
                         for s in os.getenv("PURPLEBOX_RESEARCH_SCANNERS", "").split(",")
-                        if s.strip().lower() in ALLOWED_RESEARCH_SCANNERS
+                        if s.strip()
                     }
                 )
             ),

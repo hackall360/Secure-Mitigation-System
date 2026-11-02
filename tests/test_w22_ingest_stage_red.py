@@ -46,9 +46,14 @@ def test_intake_clone_true_uses_staging_container_not_host():
         def create(self, *a, **k):
             calls["created"] = (a, k)
             stage = MagicMock()
+            # Wave-3 argv-list clone (commit 0fa5b5c): 1 git-presence probe +
+            # 4 steps (rm, clone, fetch, checkout). The mock must serve all 5.
             stage.exec_run.side_effect = [
                 {"exit_code": 0, "output": b"git present"},
+                {"exit_code": 0, "output": b"cleaned"},
                 {"exit_code": 0, "output": b"cloned"},
+                {"exit_code": 0, "output": b"fetched"},
+                {"exit_code": 0, "output": b"checked out"},
             ]
             tar_stream = [_real_tar_bytes()]
             stage.get_archive.side_effect = lambda path: (tar_stream, {})

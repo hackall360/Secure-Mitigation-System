@@ -123,11 +123,11 @@ def mutation_gate_passed(verification: SnapshotVerification | Mapping[str, Any] 
     if isinstance(mutations, Mapping):
         try:
             return int(mutations.get("exit_code")) == 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
     try:
         return int(mutations.exit_code) == 0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return False
 
 
@@ -152,11 +152,11 @@ def property_gate_passed(verification: SnapshotVerification | Mapping[str, Any] 
     if isinstance(properties, Mapping):
         try:
             return int(properties.get("exit_code")) == 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
     try:
         return int(properties.exit_code) == 0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return False
 
 
@@ -184,7 +184,7 @@ def repeat_stability_passed(verification: SnapshotVerification | Mapping[str, An
             regression["exit_code"] if isinstance(regression, Mapping) else regression.exit_code
         )
         second = int(repeat["exit_code"] if isinstance(repeat, Mapping) else repeat.exit_code)
-    except (TypeError, ValueError, AttributeError):
+    except (TypeError, ValueError, OverflowError, AttributeError):
         return False
     return first == second
 
