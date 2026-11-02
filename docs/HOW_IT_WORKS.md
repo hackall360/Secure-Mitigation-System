@@ -38,8 +38,11 @@ binary path).
 - `library/core/` — the engine room: Muse transport, prompts, Docker
   sandbox, patch guards, fixture registry, pricing, profiles.
   (`docs/REFACTOR_PLAN.md` has the full per-file map.)
-- `library/workflows/` — the five verification loops: fixture, 3-pass sweep
-  (common, deep mutation, threat-actor), binary sweep, project workflow,
+- `library/workflows/` — the five verification loops: fixture, 4-pass sweep
+  (standard: common CVE patterns; deep: edge cases and input-mutation
+  handling; threat-actor: logic abuse + technical exploitation; chain:
+  multi-step logic-abuse chains that bare single loops miss),
+  binary sweep, project workflow,
   CVE triage with reachability scoring.
 - `library/intel/` — keyless threat intel (OSV, CIRCL, GitHub Advisory,
   EPSS, KEV): paced, size-capped, never raises, host-only. Intel grounds

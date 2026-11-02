@@ -22,8 +22,8 @@ BASETEN = replace(
 @pytest.mark.parametrize(
     "key,red,blue",
     [
-        ("economy", "muse-spark-1.3", "muse-spark-1.3"),
-        ("balanced", "muse-spark-1.3", "muse-wonder-1.0"),
+        ("economy", "muse-spark-1.3-contributor", "muse-spark-1.3-contributor"),
+        ("balanced", "muse-spark-1.3-contributor", "muse-wonder-1.0"),
         ("quality", "muse-wonder-1.0", "muse-wonder-1.0"),
     ],
 )
@@ -86,7 +86,7 @@ def test_socket_uses_chosen_profile(monkeypatch):
             if first["type"] != "result":
                 assert first["team"] == "system"  # hello preamble precedes result
                 assert socket.receive_json()["type"] == "result"
-    assert seen["models"] == ("muse-spark-1.3", "muse-spark-1.3")
+    assert seen["models"] == ("muse-spark-1.3-contributor", "muse-spark-1.3-contributor")
 
 
 @pytest.mark.parametrize("profile", ["gpt-4", "muse-wonder-1.0", "x" * 50])

@@ -649,7 +649,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     async def readiness_lifespan(application: FastAPI):
         try:
             settings = config or load_config()
-            snapshot = _health_report(settings)
+            snapshot = _health_report(settings, scan_lock=application.state.scan_lock)
             print(
                 "[SYSTEM] Secure Mitigation System ready: "
                 f"inference={snapshot['inference_mode']} "
@@ -2027,6 +2027,34 @@ async def ai_demo_runner(
     )
 
 
+def _ingest_refusal_message(ingest_repo: object, commit_hash: object) -> str:
+    """Honest refusal for unimplemented repo-intake scan paths (F-01/F-02).
+
+    The intake-snapshot path needs a real clone inside Docker staging, which
+    is not implemented (Phase-1 validation only per repo_intake.py). Running
+    the fixture loop instead would verify the WRONG bytes while reporting
+    the repo verified — false-success. Refuse fail-closed: name the URL
+    host + commit prefix only (never full secrets), and point at --project
+    on a local checkout of that commit.
+    """
+    from urllib.parse import urlparse as _urlparse
+
+    try:
+        host = _urlparse(str(ingest_repo)).hostname or str(ingest_repo)
+    except Exception:
+        host = str(ingest_repo)
+    commit = str(commit_hash or "")
+    prefix = commit[:12] if commit else "(none)"
+    return (
+        "Repo-intake scan is not yet implemented: Docker staging clone for "
+        f"repo host {host!r} at commit {prefix} is Phase-1 validation only "
+        "(see modules/services/repo_intake.py). Running the bundled fixture "
+        "loop instead would report the wrong bytes as this repo's verdict, "
+        "so the scan is refused (fail-closed). Actionable next step: check "
+        f"out commit {prefix} locally and scan it with --project."
+    )
+
+
 async def cli_runner(
     target_key: str | None,
     output_dir: Path | None = None,
@@ -2047,6 +2075,9 @@ async def cli_runner(
 ) -> int:
     use_color: bool | None = None
     json_mode = out_format == "json"
+
+    if ingest_repo is not None or commit_hash is not None:
+        raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash))
 
     def _out(message: str):
         # --format json keeps stdout machine-pure (report only); all chatter
@@ -2097,7 +2128,7 @@ async def cli_runner(
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
             summary = _build_cve_summary_markdown(project, settings, cve_result)
             run_dir = write_run_report(output_dir, report, summary)
-            print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
+            _out(f"[SYSTEM] Report: {run_dir / 'report.json'}")
         return 0 if cve_result.success else 1
     if project is None:
         with Spinner("Verifying fixture boundary"):
@@ -2154,7 +2185,7 @@ async def cli_runner(
         report = {"notice": NOTICE, "license_url": LICENSE_URL, **user_report}
         summary = _build_summary_markdown(target_key, project, settings, result)
         run_dir = write_run_report(output_dir, report, summary, diff=result.diff or "")
-        print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
+        _out(f"[SYSTEM] Report: {run_dir / 'report.json'}")
     return 0 if result.success else 1
 
 
@@ -2442,8 +2473,21 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     return "\n".join(lines)
 
 
-def _health_report(settings: PurpleBoxConfig) -> dict:
-    """Readiness snapshot for --health (table or redacted JSON). Never raises."""
+def _health_report(settings: PurpleBoxConfig, *, scan_lock=None) -> dict:
+    """Readiness snapshot for --health (table or redacted JSON). Never raises.
+
+    scan_lock is the live WS scan lock (asyncio.Lock): when provided, busy
+    reports lock.locked(). Plain --health CLI runs with no server instance,
+    so the None default keeps False — truthful idle, not a guess.
+    """
+    if scan_lock is not None:
+        try:
+            busy = bool(scan_lock.locked())
+        except Exception:
+            busy = False
+    else:
+        # No server running in the CLI context; False is truthful idle here.
+        busy = False
     try:
         settings.validate()
     except ConfigurationError as exc:
@@ -2488,7 +2532,7 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
         "default_profile": default_profile(settings),
         "scan_profiles": scan_profiles,
         "docker": docker_report,
-        "busy": False,
+        "busy": busy,
     }
 
 
@@ -3067,31 +3111,20 @@ def main() -> int:
                 )
             )
         if args.ingest_repo:
-            # Wave 4 repo intake (Phase 1): validate the URL + pinned commit
-            # through RepoIntakeSpec (ValueError -> argparse exit 2), then
-            # run the standard fixture scan surface. The Docker staging
-            # clone lands in a later wave; cli_runner carries the pair
-            # through as ingest_repo/commit_hash kwargs.
+            # F-01/F-02 honest refusal: validate first (exit 2 on bad input),
+            # then refuse — never run the fixture loop. A fixture scan would
+            # verify the WRONG bytes while reporting the repo's verdict.
             try:
                 from modules.services.repo_intake import RepoIntakeSpec
 
                 RepoIntakeSpec(url=args.ingest_repo, commit_hash=args.commit_hash)
             except ValueError:
                 parser.error("Invalid ingest settings. Use an https:// URL and a 40-hex commit.")
-            return asyncio.run(
-                cli_runner(
-                    args.scan,
-                    args.output_dir,
-                    args.profile,
-                    args.research,
-                    args.research_scanners,
-                    ingest_repo=args.ingest_repo,
-                    commit_hash=args.commit_hash,
-                    out_format=out_format,
-                    show_usage=args.show_usage,
-                    sweep_passes=args.sweep_passes,
-                )
+            print(
+                _ingest_refusal_message(args.ingest_repo, args.commit_hash),
+                file=sys.stderr,
             )
+            return 2
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
         uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
         return 0

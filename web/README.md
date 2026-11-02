@@ -98,7 +98,10 @@ password). They run as fake runs until the orchestrator lists the same keys.
 ## Backend contract (unchanged from v2)
 
 `GET /api/health`, `GET /api/targets`, `WS /ws/combat/:target`, `WS /ws/project`, `WS /ws/demo`,
-`WS /ws/binary`, `POST /mcp` (`tools/call submit_code_snippet`). Messages are `{team, msg}`,
+`WS /ws/binary`, `WS /ws/system` (explicit-refuse stub: origin-checked,
+then replies `{type:"invalid", team:"system", msg}` noting the system-snapshot
+endpoint is proposed/not available, and closes with code 1008),
+`POST /mcp` (`tools/call submit_code_snippet`). Messages are `{team, msg}`,
 `{type:"result", …}`, `{type:"busy"|"invalid", msg}`. The stage rules are the v2 `advanceStage()`
 rules.
 
