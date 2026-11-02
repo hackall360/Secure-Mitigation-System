@@ -41,3 +41,27 @@ screen action. Each stem is one speakable line of at most 200 chars.
 ## Beat 7 - Close (2:45-3:00, stage: cleanup, stem: demo-close)
 - On screen: tagline card plus repo link; session containers, snapshots, and network removed.
 - Narration: "Evidence, not opinion. Secure Mitigation System, open source at the repo link below. Try your own target next."
+
+## Machine driver
+
+`scripts/demo_driver.py` (stdlib only: `urllib`, `json`, `argparse`, `time`;
+mirrors `scripts/mcp_client_demo.py` localhost + short-timeout patterns) is
+the machine substrate that auto-advances these beats without clicks, for a
+future agent presenter step. It parses the 7 `## Beat N` headers above with
+the same regexes as `tests/test_demo_beats_red.py`, so driver and contract
+test can never drift.
+
+- `python scripts/demo_driver.py --dry-run` (default): prints the timed beat
+  plan with cumulative `T+Xs` timestamps, validates total <= 180.0 s, exit 0.
+- `python scripts/demo_driver.py --live --base http://127.0.0.1:PORT`:
+  `/ws/demo` is a websocket, so the driver does NOT post beats to it.
+  Instead it prints a `T+Xs: <stage> — <narration>` schedule the operator
+  follows with sleep pacing (`--pace 0` disables sleeps), busy-polling
+  `GET /api/health` between beats to prove the server is alive. Fail closed
+  (non-zero exit) when the server is unreachable.
+- `python scripts/demo_driver.py --check-beats`: asserts doc beats ==
+  `web/js/stream/scenario.js` BEATS 1:1 (range/stage/stem/narration), exits
+  non-zero on drift.
+
+No-audio guarantee: the driver NEVER renders audio, NEVER contacts a TTS
+server, and NEVER spawns a browser. Stems stay printable text.
