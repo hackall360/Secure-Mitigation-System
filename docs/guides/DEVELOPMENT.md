@@ -263,7 +263,7 @@ Not yet exercised: real Muse inference, which is blocked until a key is supplied
 ## Model configuration
 
 **Current defaults (2026-10-28, user has no Baseten key):** `https://api.meta.ai/v1`, red
-`muse-spark-1.3`, blue `muse-wonder-1.0`, timeout 180 s. Real scans with the user's Meta key:
+`muse-spark-1.3-contributor`, blue `muse-wonder-1.0`, timeout 180 s. Real scans with the user's Meta key:
 node_query_sink, php_command_sink (Spark for both roles) and mysql_insecure_conf all `verified`,
 exit 0, 0 leftovers, 58-75 s each. Pricing per 1M output tokens: Spark $4.25, Wonder $20.
 
@@ -301,7 +301,7 @@ update `META_MUSE_BASE_URL` and both model lines by hand (copy from `example.env
 
 ## First real end-to-end scan (2026-10-28)
 
-With the user's Meta key, `.env` set to `https://api.meta.ai/v1`, red `muse-spark-1.3`, blue `muse-wonder-1.0`:
+With the user's Meta key, `.env` set to `https://api.meta.ai/v1`, red `muse-spark-1.3-contributor`, blue `muse-wonder-1.0`:
 - `test_harness.py --api`: PASS (live red and blue responses match their schemas).
 - `main.py --scan node_query_sink`: exit 0, `verified`. Red found `new Function` injection
   (payload `0 || "a"=="a"` returned 2 rows instead of 0). Blue added one line,
