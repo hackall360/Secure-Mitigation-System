@@ -255,3 +255,22 @@ be physical. Verified: gate green after `web/` migration (contract suite).
 Wrong assumption: "one surviving running target per scan = untracked leak in `close()`" — so the fix must be more tracking.
 Evidence: instrumented 1-, 2-, and 4-fixture runs with a `close()` spy all showed `tracked=1 net=1` and converged to zero residue for the spied sessions (`80c6d59d`, `013e3fd2`, `642933f5`, `3ab1e2ab`, `9f8e5c4d`, plus the full 4-fixture trace `795baeba/fd5dad2c/dca3513e/f1658f28`); `keep_tracked` (round 6 + F-01) covers transient-`remove` failures and `close()` surfaces persistent failure as `SandboxError` with the session label instead of dropping it. The survivors correlate with no code path — single runs converge, sequential runs intermittently leave one `Up` target that was demonstrably tracked at `close()` time with `cleanup_ok=True`.
 Lesson: after `close()` returns success, a container that still shows `Up` is a daemon-side slow/stuck reaping outside the tracked contract, not an ownership bug. The reconciler is `main.py --cleanup` (label-filtered `remove_stale_resources` — removed 19+6 here, verified 0/0). Do not add more tracking; re-run `--cleanup` after proof batches and move on. Genuine leaks would show `cleanup_ok=False` or `SandboxError`, which never occurred in any instrumented run.
+
+## 2026-11-02 — closed-loop session traps (competition-lockdown closeout)
+
+- **Trap: `ruff check` flip-flops between "All checks passed" and I001 after moving an import.**
+  Wrong assumption: one `--fix` run settles import sorting.
+  Evidence: moving `_SNIPPET_LANGUAGE_BY_SUFFIX` into the top-level `mcp_bridge` import block needed two `--fix` passes plus a manual merge of the resulting duplicate `from modules.services.mcp_bridge import (...)` blocks; `format --check` stayed green throughout while `check` flipped. Fix pattern: merge duplicate from-blocks by hand, re-run `check`, repeat until stable (3 consecutive greens), then gate.
+  Lesson: after touching top-level imports, run `ruff check` in a loop until it passes 3x; a single green is not stable.
+- **Trap: wall-clock correlation lies across the Docker boundary (D1).**
+  Wrong assumption: container `Created` timestamps share the shell clock, so "created 7s before run start" means "from another run".
+  Evidence: shell `date` said 15:09 PST while the daemon stamped 16:08 for the same instant (~59 min skew). Session-label grouping (`--filter label=purplebox.session=<id>`) is the only valid attribution; timestamps across the boundary are not comparable.
+  Lesson: never attribute containers by time; always group by session label.
+- **Trap: pytest runs inside `dev.py check` can flake once and pass twice.**
+  Wrong assumption: one red gate = real regression, must fix before merging.
+  Evidence: final gate showed `1 failed, 1029 passed`, then two consecutive full runs (direct pytest + full gate) went 1030 green with no code change. No test was touched; the failure line was not captured (grep found no FAILED block — output buffering).
+  Lesson: on a single-test gate red with no failure block captured, re-run the suite before touching code; two consecutive greens bracket a flake. Record it; do not chase it.
+- **Trap: the write tool can report success on a file that never lands.**
+  Wrong assumption: `write` replying "Created ..." means the file exists.
+  Evidence (prior session, still true): two `edit` calls failed "old_string not found", then `read` said "File not found" — the create never landed. Shell heredoc worked first try.
+  Lesson: after `write` of a NEW file, verify with `ls`/`read` before editing it.
