@@ -649,7 +649,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     async def readiness_lifespan(application: FastAPI):
         try:
             settings = config or load_config()
-            snapshot = _health_report(settings)
+            snapshot = _health_report(settings, scan_lock=application.state.scan_lock)
             print(
                 "[SYSTEM] Secure Mitigation System ready: "
                 f"inference={snapshot['inference_mode']} "
@@ -2128,7 +2128,7 @@ async def cli_runner(
             report = {"notice": NOTICE, "license_url": LICENSE_URL, **cve_result.model_dump()}
             summary = _build_cve_summary_markdown(project, settings, cve_result)
             run_dir = write_run_report(output_dir, report, summary)
-            print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
+            _out(f"[SYSTEM] Report: {run_dir / 'report.json'}")
         return 0 if cve_result.success else 1
     if project is None:
         with Spinner("Verifying fixture boundary"):
@@ -2185,7 +2185,7 @@ async def cli_runner(
         report = {"notice": NOTICE, "license_url": LICENSE_URL, **user_report}
         summary = _build_summary_markdown(target_key, project, settings, result)
         run_dir = write_run_report(output_dir, report, summary, diff=result.diff or "")
-        print(f"[SYSTEM] Report: {run_dir / 'report.json'}")
+        _out(f"[SYSTEM] Report: {run_dir / 'report.json'}")
     return 0 if result.success else 1
 
 
@@ -2473,8 +2473,21 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     return "\n".join(lines)
 
 
-def _health_report(settings: PurpleBoxConfig) -> dict:
-    """Readiness snapshot for --health (table or redacted JSON). Never raises."""
+def _health_report(settings: PurpleBoxConfig, *, scan_lock=None) -> dict:
+    """Readiness snapshot for --health (table or redacted JSON). Never raises.
+
+    scan_lock is the live WS scan lock (asyncio.Lock): when provided, busy
+    reports lock.locked(). Plain --health CLI runs with no server instance,
+    so the None default keeps False — truthful idle, not a guess.
+    """
+    if scan_lock is not None:
+        try:
+            busy = bool(scan_lock.locked())
+        except Exception:
+            busy = False
+    else:
+        # No server running in the CLI context; False is truthful idle here.
+        busy = False
     try:
         settings.validate()
     except ConfigurationError as exc:
@@ -2519,7 +2532,7 @@ def _health_report(settings: PurpleBoxConfig) -> dict:
         "default_profile": default_profile(settings),
         "scan_profiles": scan_profiles,
         "docker": docker_report,
-        "busy": False,
+        "busy": busy,
     }
 
 
