@@ -168,5 +168,19 @@
     progress() { return this.lines.length ? this.i / this.lines.length : 0; }
   }
 
-  SMS.scenario = { script, result, vocabFor, Replay };
+  // BEATS — pure data mirror of docs/DEMO_SCRIPT.md (3-minute beat sheet).
+  // Stage keys MUST stay inside STAGE_META (web/js/core/palette.js), the only
+  // stages caption() in web/js/pages/demo.js understands. Stems are TEXT-ONLY
+  // (booth seed 6420 @ t0.3): never render audio from this array.
+  const BEATS = [
+    { range: '0:00-0:15', stage: 'probe', stem: 'demo-hook', narration: 'Watch this probe hit a live target in Docker and come back exit zero. The boundary is reachable, and we can prove it.' },
+    { range: '0:15-0:45', stage: 'analysis', stem: 'demo-red', narration: 'Red maps the surface with Cartographer, then Bloodhound follows tainted input from the route into an unsanitized sink.' },
+    { range: '0:45-1:15', stage: 'patch', stem: 'demo-blue', narration: 'Blue answers with the smallest fix that holds: a parameterized query plus an allow list, nothing else touched.' },
+    { range: '1:15-1:45', stage: 'regression', stem: 'demo-flip', narration: 'Same probe, fresh target. Exit zero becomes exit one, regression still green, and the Notary chains the receipt.' },
+    { range: '1:45-2:15', stage: 'sandbox', stem: 'demo-replay', narration: 'On a repeat visit the vault replays a prior fix, as in case C34, cutting a fresh investigation down to one retry cycle.' },
+    { range: '2:15-2:45', stage: 'cleanup', stem: 'demo-honest', narration: 'Tokens, cost, and compression stay visible. When proof is inconclusive the harness says exit two and fails closed.' },
+    { range: '2:45-3:00', stage: 'cleanup', stem: 'demo-close', narration: 'Evidence, not opinion. Secure Mitigation System, open source at the repo link below. Try your own target next.' }
+  ];
+
+  SMS.scenario = { script, result, vocabFor, Replay, BEATS };
 })();

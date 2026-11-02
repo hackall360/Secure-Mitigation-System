@@ -2027,6 +2027,73 @@ async def ai_demo_runner(
     )
 
 
+async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, settings=None):
+    """Clone an intake repo in Docker staging and build a ProjectSpec.
+
+    Fail closed (LAW 4/10J): validation errors, clone failures, and empty
+    trees raise ValueError with an actionable message (host + commit prefix
+    only, never credentials). The snapshot tree materializes into an
+    owner-only temp dir so the project workflow scans the CLONED bytes.
+    """
+    import tempfile
+    from pathlib import Path as _Path
+
+    from modules.core.docker_manager import DockerSandboxManager
+    from modules.services.repo_intake import (
+        RepoIntakeSpec,
+        detect_runtime,
+        intake_repo_to_snapshot,
+    )
+
+    try:
+        spec = RepoIntakeSpec(url=ingest_repo, commit_hash=commit_hash)
+    except ValueError as err:
+        raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash)) from err
+    emit_progress("system", f"Cloning {spec.url} at {spec.commit_hash[:12]} in Docker staging")
+    try:
+        # Clone phase: runtime is unknown until the tree lands, so pass a
+        # placeholder argv (manifest only); the real runtime is detected
+        # from the cloned tree below.
+        snapshot = intake_repo_to_snapshot(
+            spec,
+            runtime_command=["true"],
+            file_list=None,
+            clone=True,
+            sandbox=DockerSandboxManager(settings or load_config()),
+        )
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash)) from exc
+    tree = {k[5:]: v for k, v in snapshot.files.items() if k.startswith("tree/")}
+    if not tree:
+        raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash))
+    staged = _Path(tempfile.mkdtemp(prefix="sms-ingest-")).resolve()
+    staged.chmod(0o700)
+    for rel, content in tree.items():
+        # Untrusted remote bytes: never let absolute paths or ".." escape
+        # the staged dir (defense in depth over the intake strip).
+        clean = rel.lstrip("/").replace("\\", "/")
+        parts = [p for p in clean.split("/") if p not in ("", ".", "..")]
+        if not parts:
+            continue
+        dest = staged.joinpath(*parts)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content if isinstance(content, bytes) else str(content).encode())
+    runtime = detect_runtime(sorted(tree))
+    test_command = list(runtime)
+    return ProjectSpec.model_validate(
+        {
+            "path": str(staged),
+            "command": runtime,
+            "test_command": test_command,
+            "contract": f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. Preserve the public API. Only sanitize untrusted input.",
+            "scan_profile": "custom",
+            "cycles": 1,
+        }
+    )
+
+
 def _ingest_refusal_message(ingest_repo: object, commit_hash: object) -> str:
     """Honest refusal for unimplemented repo-intake scan paths (F-01/F-02).
 
@@ -2077,7 +2144,33 @@ async def cli_runner(
     json_mode = out_format == "json"
 
     if ingest_repo is not None or commit_hash is not None:
-        raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash))
+        # Wave 2.1 (P2-6, 1B +0.5): real intake wiring. Validate first, clone
+        # inside Docker staging (fail closed on any error), materialize the
+        # cloned tree into a 0700 temp dir, detect the runtime, and continue
+        # down the existing project-scan path on the CLONED bytes.
+        def _ingest_emit(team, message):
+            print(f"[{team.upper():6}] {message}", flush=True, file=sys.stderr)
+
+        project = await _ingest_repo_to_project(
+            ingest_repo, commit_hash, _ingest_emit, settings=None
+        )
+        return await cli_runner(
+            target_key,
+            output_dir,
+            profile,
+            research,
+            research_scanners,
+            project=project,
+            ingest_repo=None,
+            commit_hash=None,
+            cve_scan=cve_scan,
+            deep_assessment=deep_assessment,
+            offline_cve=offline_cve,
+            fast_lane=fast_lane,
+            out_format=out_format,
+            show_usage=show_usage,
+            sweep_passes=sweep_passes,
+        )
 
     def _out(message: str):
         # --format json keeps stdout machine-pure (report only); all chatter

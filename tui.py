@@ -680,30 +680,25 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         result = await _project_workflow.execute_project_workflow(spec, emit)
         return _summarize_result("project", result), result
     if mode == "ingest":
-        from urllib.parse import urlparse as _urlparse
-
+        # Wave 2.1 (P2-6, 1B +0.5): real intake wiring — clone in Docker
+        # staging, then run the project workflow on the CLONED bytes.
+        import main as main_mod
         from modules.services.repo_intake import RepoIntakeSpec
 
         url = _state_field(state, "ingest_repo")
         commit = _state_field(state, "ingest_commit", "commit_hash")
         spec = RepoIntakeSpec(url=url, commit_hash=commit)  # ValueError -> fail closed
-        host = _urlparse(spec.url).hostname or spec.url
-        prefix = spec.commit_hash[:12]
-        await emit(
-            "system",
-            f"system: repo-intake scan refused — Docker staging clone for "
-            f"{host} at commit {prefix} is not yet implemented (Phase-1 "
-            f"validation only); running the fixture loop instead would "
-            f"report the wrong bytes as the repo verdict. Check out commit "
-            f"{prefix} locally and scan it with --project.",
+
+        async def _tui_ingest_emit(team, message):
+            await emit(team, message)
+
+        project = await main_mod._ingest_repo_to_project(
+            spec.url, spec.commit_hash, _tui_ingest_emit
         )
-        raise ValueError(
-            f"Repo-intake scan is not yet implemented for repo host {host!r} "
-            f"at commit {prefix} (Phase-1 validation only per "
-            f"modules/services/repo_intake.py). The Docker staging clone "
-            f"does not exist yet, so refusing fail-closed instead of "
-            f"running the fixture loop against the wrong bytes."
-        )
+        from modules.workflows import project_workflow as _project_workflow
+
+        result = await _project_workflow.execute_project_workflow(project, emit)
+        return _summarize_result("ingest", result), result
     if mode == "demo":
         import main as main_mod
         from modules.core.config import load_config
