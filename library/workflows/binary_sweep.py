@@ -12,6 +12,8 @@ of the trusted harness inside the air-gapped sandbox, never on the host.
 
 from __future__ import annotations
 
+import time
+
 from docker.errors import DockerException
 
 from modules.core.agents import (
@@ -28,9 +30,15 @@ from modules.services.binary_telemetry import summarize_profile
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_compress import compress_context
+from modules.shared.sms_observability import get_aspect as _get_aspect
+from modules.shared.sms_observability import log as _obs_log
+from modules.shared.sms_observability import record_metric as _obs_metric
+from modules.shared.sms_observability import trace as _obs_trace
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.sweep import SWEEP_PASSES, SweepPassResult, SweepScanResult
 from modules.workflows.workflow import build_verdict_receipt
+
+_OBS_BINARY = _get_aspect("workflows.binary")
 
 BINARY_BASELINE_SCRIPT = """import sys, urllib.request, urllib.parse
 params = urllib.parse.urlencode({"argv": "", "stdin": "hello"})
@@ -114,239 +122,338 @@ async def execute_binary_sweep(
         p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
 
-    try:
-        settings = config or load_config()
-        require_api_key(settings)
-        muse = muse_factory(settings)
-        sandbox = await blocking(sandbox_factory, settings)
-        await blocking(sandbox.require_base_images)
-        await blocking(sandbox.require_binary_image)
-        await log(
-            "system",
-            "[phase baseline] Creating an internal Docker network and immutable binary snapshot.",
-        )
-        network = await blocking(sandbox.create_isolated_network)
-        profile = await blocking(sandbox.binary_static_profile, network, spec.blob)
-        result.traces["profile"] = profile[:2000]
-        summary = summarize_profile(profile)
-        compressed_profile = compress_context(profile, filename=spec.filename)
-        result.compression = compressed_profile
+    _obs_binary_started = time.monotonic()
+    with _obs_trace(_OBS_BINARY, "binary_sweep"):
         try:
-            from modules.intel.sms_vault import query_vault
-
-            vault_answer = query_vault(profile)
-            result.vault_recall = vault_answer.status
-            result.vault_namespaces = vault_answer.namespaces
+            _obs_log(_OBS_BINARY, "sweep_start", "binary sweep started", target=spec.filename)
+            _obs_metric(_OBS_BINARY, "sweep_start.count", 1, unit="count")
+            settings = config or load_config()
+            require_api_key(settings)
+            muse = muse_factory(settings)
+            sandbox = await blocking(sandbox_factory, settings)
+            await blocking(sandbox.require_base_images)
+            await blocking(sandbox.require_binary_image)
             await log(
                 "system",
-                f"[phase vault] {vault_answer.status} "
-                f"({vault_answer.record_count} prior binary profiles).",
+                "[phase baseline] Creating an internal Docker network and immutable binary snapshot.",
             )
-        except Exception as exc:
-            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
-            result.vault_recall = "VAULT_UNAVAILABLE"
-        await log(
-            "system",
-            f"[phase profile] Static reversing profile collected in-sandbox "
-            f"(format={summary.get('format')}, signals={len(summary.get('signals', []))}, "
-            f"profile {compressed_profile.raw_tokens_estimated}->"
-            f"{compressed_profile.compressed_tokens_sent} tokens).",
-        )
-        container, snapshot = await blocking(sandbox.start_binary_harness, network, spec.blob)
-        baseline = await blocking(sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT)
-        result.traces["baseline"] = baseline.output
-        if baseline.exit_code != 0:
-            raise SandboxError("Binary harness failed its trusted baseline checks.")
-        result.baseline_passed = True
-        await log(
-            "system",
-            "[phase baseline] Binary harness is ready; baseline checks passed.",
-        )
+            network = await blocking(sandbox.create_isolated_network)
+            profile = await blocking(sandbox.binary_static_profile, network, spec.blob)
+            result.traces["profile"] = profile[:2000]
+            _obs_log(
+                _OBS_BINARY,
+                "profile",
+                "static profile collected",
+                bytes=len(profile.encode("utf-8")),
+            )
+            _obs_metric(
+                _OBS_BINARY,
+                "profile.bytes",
+                len(profile.encode("utf-8")),
+                unit="bytes",
+            )
+            summary = summarize_profile(profile)
+            compressed_profile = compress_context(profile, filename=spec.filename)
+            result.compression = compressed_profile
+            try:
+                from modules.intel.sms_vault import query_vault
 
-        for pass_id in selected:
-            passed = SweepPassResult(pass_id=pass_id)
-            result.pass_results.append(passed)
+                vault_answer = query_vault(profile)
+                result.vault_recall = vault_answer.status
+                result.vault_namespaces = vault_answer.namespaces
+                await log(
+                    "system",
+                    f"[phase vault] {vault_answer.status} "
+                    f"({vault_answer.record_count} prior binary profiles).",
+                )
+            except Exception as exc:
+                await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+                result.vault_recall = "VAULT_UNAVAILABLE"
             await log(
-                "red", f"[sweep {pass_id}] Binary pass over {spec.filename} ({spec.binary_format})."
+                "system",
+                f"[phase profile] Static reversing profile collected in-sandbox "
+                f"(format={summary.get('format')}, signals={len(summary.get('signals', []))}, "
+                f"profile {compressed_profile.raw_tokens_estimated}->"
+                f"{compressed_profile.compressed_tokens_sent} tokens).",
             )
-            finding = await muse.run_red_team_pass_analysis(
-                pass_id,
-                spec.filename,
-                f"STATIC PROFILE:\n{profile}\n\nCONTRACT:\n{spec.contract}",
-                spec.contract,
-            )
-            passed.finding = finding
-            await log(
-                "red",
-                f"[sweep {pass_id}] {finding.vulnerability_class} at "
-                f"{finding.sink_location}: {finding.analysis_summary}",
-            )
-            pre = await blocking(
-                sandbox.run_isolated_verifier, network, finding.verification_script_python
-            )
-            passed.pre_exit_code = pre.exit_code
-            result.traces[f"{pass_id}:before"] = pre.output
-            await log(
-                "red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}. {pre.output}"
-            )
-            await log(
-                "red",
-                chatter(
-                    "red_proof",
-                    persona="Breakwater",
-                    path=spec.filename,
-                    code=pre.exit_code,
-                    seed=hash(pass_id) % 1000,
-                ),
-            )
-            if pre.inconclusive:
-                raise SandboxError(f"Binary sweep pass {pass_id} verifier was inconclusive.")
-            if pre.exit_code == 1:
-                passed.cleared = True
-                passed.regression_passed = True
-                await log("red", f"[sweep {pass_id}] Probe blocked; pass is clear.")
-                continue
-            await log(
-                "blue",
-                f"[sweep {pass_id}] Requesting mitigation rules from {settings.blue_team_model}.",
-            )
-            patch = await muse.run_blue_team_sanitizer(
-                spec.filename,
-                profile,
-                finding,
-                pre.output,
-                spec.contract + _BLUE_MITIGATION_SUFFIX,
-            )
-            passed.patch = patch
-            mitigation = extract_mitigation_rules(patch)
-            passed.diff = mitigation
-            await log("blue", patch.sanitization_strategy)
-            container, snapshot = await blocking(
-                sandbox.replace_binary_harness,
-                container,
-                snapshot,
-                network,
-                mitigation=mitigation,
-            )
-            regression = await blocking(
+            container, snapshot = await blocking(sandbox.start_binary_harness, network, spec.blob)
+            baseline = await blocking(
                 sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
             )
-            result.traces[f"{pass_id}:regression"] = regression.output
-            if regression.exit_code != 0:
-                raise PatchRejected(
-                    f"Binary sweep pass {pass_id} mitigated harness failed baseline."
-                )
-            passed.regression_passed = True
-            post = await blocking(
-                sandbox.run_isolated_verifier, network, finding.verification_script_python
+            result.traces["baseline"] = baseline.output
+            _obs_log(
+                _OBS_BINARY,
+                "baseline",
+                "baseline checks finished",
+                exit_code=baseline.exit_code,
             )
-            passed.post_exit_code = post.exit_code
-            result.traces[f"{pass_id}:after"] = post.output
+            _obs_metric(_OBS_BINARY, "baseline.exit_code", baseline.exit_code, unit="count")
+            if baseline.exit_code != 0:
+                raise SandboxError("Binary harness failed its trusted baseline checks.")
+            result.baseline_passed = True
             await log(
-                "blue",
-                f"[sweep {pass_id}] Post-mitigation check exited {post.exit_code}. {post.output}",
+                "system",
+                "[phase baseline] Binary harness is ready; baseline checks passed.",
             )
-            if post.inconclusive:
-                raise SandboxError(
-                    f"Binary sweep pass {pass_id} post-mitigation verifier was inconclusive."
-                )
-            final_health = await blocking(
-                sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
-            )
-            result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
-            if final_health.exit_code != 0:
-                passed.regression_passed = False
-                raise PatchRejected(
-                    f"Binary sweep pass {pass_id} harness failed checks after the probe."
-                )
-            if post.exit_code != 1:
-                result.status = "failed"
-                result.message = (
-                    f"Binary sweep pass {pass_id} probe still reaches the sink after mitigation."
-                )
-                break
-            passed.receipt = build_verdict_receipt(
-                fixture=f"binary:{spec.filename}",
-                pre_exit_code=pre.exit_code,
-                post_exit_code=post.exit_code,
-                regression_passed=passed.regression_passed,
-                patch_content=mitigation,
-            )
-        result.cumulative_diff = "\n".join(p.diff for p in result.pass_results if p.diff)
-        if result.status != "failed":
-            if all(p.holds for p in result.pass_results):
-                result.status = "verified"
-                result.message = (
-                    "All binary sweep passes hold: every confirmed boundary is "
-                    "mitigated and harness checks passed. Review the mitigation rules."
-                )
-                try:
-                    from modules.intel.sms_vault import VaultNamespace, commit_verified
 
-                    commit_verified(
-                        namespace=VaultNamespace.RED,
-                        source=profile,
-                        payload={
-                            "kind": "binary_profile",
-                            "fixture": spec.filename,
-                            "format": spec.binary_format,
-                            "signals": summarize_profile(profile).get("signals", []),
-                        },
+            for pass_id in selected:
+                with _obs_trace(_OBS_BINARY, f"pass.{pass_id}"):
+                    passed = SweepPassResult(pass_id=pass_id)
+                    _obs_log(_OBS_BINARY, "pass_start", "binary pass started", pass_id=pass_id)
+                    _obs_metric(_OBS_BINARY, "pass_start.count", 1, unit="count")
+                    result.pass_results.append(passed)
+                    await log(
+                        "red",
+                        f"[sweep {pass_id}] Binary pass over {spec.filename} ({spec.binary_format}).",
                     )
-                    if result.cumulative_diff:
+                    finding = await muse.run_red_team_pass_analysis(
+                        pass_id,
+                        spec.filename,
+                        f"STATIC PROFILE:\n{profile}\n\nCONTRACT:\n{spec.contract}",
+                        spec.contract,
+                    )
+                    passed.finding = finding
+                    _obs_log(
+                        _OBS_BINARY,
+                        "probe_built",
+                        "pass probe built",
+                        pass_id=pass_id,
+                        bytes=len(finding.verification_script_python.encode("utf-8")),
+                    )
+                    _obs_metric(
+                        _OBS_BINARY,
+                        "probe_built.bytes",
+                        len(finding.verification_script_python.encode("utf-8")),
+                        unit="bytes",
+                    )
+                    await log(
+                        "red",
+                        f"[sweep {pass_id}] {finding.vulnerability_class} at "
+                        f"{finding.sink_location}: {finding.analysis_summary}",
+                    )
+                    pre = await blocking(
+                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    )
+                    passed.pre_exit_code = pre.exit_code
+                    result.traces[f"{pass_id}:before"] = pre.output
+                    _obs_log(
+                        _OBS_BINARY,
+                        "probe_exit",
+                        "pass probe exited",
+                        pass_id=pass_id,
+                        exit_code=pre.exit_code,
+                        inconclusive=pre.inconclusive,
+                    )
+                    _obs_metric(_OBS_BINARY, "probe_exit.exit_code", pre.exit_code, unit="count")
+                    await log(
+                        "red",
+                        f"[sweep {pass_id}] Boundary check exited {pre.exit_code}. {pre.output}",
+                    )
+                    await log(
+                        "red",
+                        chatter(
+                            "red_proof",
+                            persona="Breakwater",
+                            path=spec.filename,
+                            code=pre.exit_code,
+                            seed=hash(pass_id) % 1000,
+                        ),
+                    )
+                    if pre.inconclusive:
+                        raise SandboxError(
+                            f"Binary sweep pass {pass_id} verifier was inconclusive."
+                        )
+                    if pre.exit_code == 1:
+                        passed.cleared = True
+                        passed.regression_passed = True
+                        await log("red", f"[sweep {pass_id}] Probe blocked; pass is clear.")
+                        _obs_log(
+                            _OBS_BINARY,
+                            "pass_verdict",
+                            "pass cleared",
+                            pass_id=pass_id,
+                            cleared=True,
+                        )
+                        _obs_metric(_OBS_BINARY, "pass_verdict.count", 1, unit="count")
+                        continue
+                    await log(
+                        "blue",
+                        f"[sweep {pass_id}] Requesting mitigation rules from {settings.blue_team_model}.",
+                    )
+                    patch = await muse.run_blue_team_sanitizer(
+                        spec.filename,
+                        profile,
+                        finding,
+                        pre.output,
+                        spec.contract + _BLUE_MITIGATION_SUFFIX,
+                    )
+                    passed.patch = patch
+                    mitigation = extract_mitigation_rules(patch)
+                    passed.diff = mitigation
+                    _obs_log(
+                        _OBS_BINARY,
+                        "patch_written",
+                        "pass mitigation written",
+                        pass_id=pass_id,
+                        rules=len(mitigation.splitlines()),
+                        bytes=len(mitigation.encode("utf-8")),
+                    )
+                    _obs_metric(
+                        _OBS_BINARY,
+                        "patch_written.rules",
+                        len(mitigation.splitlines()),
+                        unit="count",
+                    )
+                    await log("blue", patch.sanitization_strategy)
+                    container, snapshot = await blocking(
+                        sandbox.replace_binary_harness,
+                        container,
+                        snapshot,
+                        network,
+                        mitigation=mitigation,
+                    )
+                    regression = await blocking(
+                        sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
+                    )
+                    result.traces[f"{pass_id}:regression"] = regression.output
+                    if regression.exit_code != 0:
+                        raise PatchRejected(
+                            f"Binary sweep pass {pass_id} mitigated harness failed baseline."
+                        )
+                    passed.regression_passed = True
+                    post = await blocking(
+                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    )
+                    passed.post_exit_code = post.exit_code
+                    result.traces[f"{pass_id}:after"] = post.output
+                    _obs_log(
+                        _OBS_BINARY,
+                        "reprobe_exit",
+                        "pass reprobe exited",
+                        pass_id=pass_id,
+                        exit_code=post.exit_code,
+                        inconclusive=post.inconclusive,
+                    )
+                    _obs_metric(_OBS_BINARY, "reprobe_exit.exit_code", post.exit_code, unit="count")
+                    await log(
+                        "blue",
+                        f"[sweep {pass_id}] Post-mitigation check exited {post.exit_code}. {post.output}",
+                    )
+                    if post.inconclusive:
+                        raise SandboxError(
+                            f"Binary sweep pass {pass_id} post-mitigation verifier was inconclusive."
+                        )
+                    final_health = await blocking(
+                        sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
+                    )
+                    result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
+                    if final_health.exit_code != 0:
+                        passed.regression_passed = False
+                        raise PatchRejected(
+                            f"Binary sweep pass {pass_id} harness failed checks after the probe."
+                        )
+                    if post.exit_code != 1:
+                        result.status = "failed"
+                        result.message = f"Binary sweep pass {pass_id} probe still reaches the sink after mitigation."
+                        break
+                    passed.receipt = build_verdict_receipt(
+                        fixture=f"binary:{spec.filename}",
+                        pre_exit_code=pre.exit_code,
+                        post_exit_code=post.exit_code,
+                        regression_passed=passed.regression_passed,
+                        patch_content=mitigation,
+                    )
+                    _obs_log(
+                        _OBS_BINARY,
+                        "pass_verdict",
+                        "pass holds",
+                        pass_id=pass_id,
+                        status=passed.holds,
+                    )
+                    _obs_metric(_OBS_BINARY, "pass_verdict.count", 1, unit="count")
+            result.cumulative_diff = "\n".join(p.diff for p in result.pass_results if p.diff)
+            if result.status != "failed":
+                if all(p.holds for p in result.pass_results):
+                    result.status = "verified"
+                    result.message = (
+                        "All binary sweep passes hold: every confirmed boundary is "
+                        "mitigated and harness checks passed. Review the mitigation rules."
+                    )
+                    try:
+                        from modules.intel.sms_vault import VaultNamespace, commit_verified
+
                         commit_verified(
-                            namespace=VaultNamespace.BLUE,
-                            source=result.cumulative_diff,
+                            namespace=VaultNamespace.RED,
+                            source=profile,
                             payload={
-                                "kind": "binary_mitigation",
+                                "kind": "binary_profile",
                                 "fixture": spec.filename,
-                                "passes": [p.pass_id for p in result.pass_results],
+                                "format": spec.binary_format,
+                                "signals": summarize_profile(profile).get("signals", []),
                             },
                         )
-                    await log("system", "[phase vault] Binary profile + rules committed.")
-                except Exception as exc:
-                    await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
-            else:
-                result.status = "failed"
-                result.message = "One or more binary sweep passes did not hold."
-    except PatchRejected as exc:
-        result.status, result.message = "rejected", str(exc)
-    except (ConfigurationError, AgentError, SandboxError, ValueError, BinaryRejected) as exc:
-        result.status, result.message = "error", str(exc)
-    except DockerException:
-        result.status, result.message = (
-            "error",
-            "Docker operation failed. Check the daemon and base images.",
-        )
-    except Exception as exc:
-        result.status, result.message = (
-            "error",
-            f"Binary sweep failed ({type(exc).__name__}); no verified mitigation produced.",
-        )
-    finally:
-        try:
-            if sandbox is not None:
-                try:
-                    await blocking(sandbox.close)
-                except Exception as exc:
-                    result.cleanup_ok = False
-                    result.status = "error"
-                    result.message = (
-                        str(exc)
-                        if isinstance(exc, SandboxError)
-                        else "Docker cleanup failed; inspect session resources."
-                    )
+                        if result.cumulative_diff:
+                            commit_verified(
+                                namespace=VaultNamespace.BLUE,
+                                source=result.cumulative_diff,
+                                payload={
+                                    "kind": "binary_mitigation",
+                                    "fixture": spec.filename,
+                                    "passes": [p.pass_id for p in result.pass_results],
+                                },
+                            )
+                        await log("system", "[phase vault] Binary profile + rules committed.")
+                    except Exception as exc:
+                        await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
+                else:
+                    result.status = "failed"
+                    result.message = "One or more binary sweep passes did not hold."
+        except PatchRejected as exc:
+            result.status, result.message = "rejected", str(exc)
+        except (ConfigurationError, AgentError, SandboxError, ValueError, BinaryRejected) as exc:
+            result.status, result.message = "error", str(exc)
+        except DockerException:
+            result.status, result.message = (
+                "error",
+                "Docker operation failed. Check the daemon and base images.",
+            )
+        except Exception as exc:
+            result.status, result.message = (
+                "error",
+                f"Binary sweep failed ({type(exc).__name__}); no verified mitigation produced.",
+            )
         finally:
-            if muse is not None:
-                calls = getattr(muse, "usage", None)
-                if isinstance(calls, list):
-                    result.usage = ScanUsage(calls=calls)
-                    result.total_tokens = result.usage.total_tokens
-                    result.cost_usd = result.usage.cost_usd
-                try:
-                    await muse.aclose()
-                except Exception:
-                    pass
+            _obs_log(_OBS_BINARY, "verdict", "binary verdict reached", status=result.status)
+            _obs_metric(_OBS_BINARY, "verdict.count", 1, unit="count")
+            _obs_metric(
+                _OBS_BINARY,
+                "binary_sweep.seconds",
+                round(time.monotonic() - _obs_binary_started, 3),
+                unit="seconds",
+            )
+            try:
+                if sandbox is not None:
+                    try:
+                        await blocking(sandbox.close)
+                    except Exception as exc:
+                        result.cleanup_ok = False
+                        result.status = "error"
+                        result.message = (
+                            str(exc)
+                            if isinstance(exc, SandboxError)
+                            else "Docker cleanup failed; inspect session resources."
+                        )
+            finally:
+                if muse is not None:
+                    calls = getattr(muse, "usage", None)
+                    if isinstance(calls, list):
+                        result.usage = ScanUsage(calls=calls)
+                        result.total_tokens = result.usage.total_tokens
+                        result.cost_usd = result.usage.cost_usd
+                    try:
+                        await muse.aclose()
+                    except Exception:
+                        pass
     await log("system", f"[done] {result.message}")
     if sandbox is not None and result.cleanup_ok:
         await log("system", "[phase cleanup] Session containers, snapshots, and network removed.")

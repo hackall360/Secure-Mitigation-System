@@ -3,6 +3,7 @@
 How to work in this repo.
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) — environment, Docker, traps
+- [OBSERVABILITY.md](OBSERVABILITY.md) — dev/prod modes, JSONL layout, schemas
 - [PROJECTS.md](PROJECTS.md) — project intake and runtime requirements
 - [WORKFLOWS.md](WORKFLOWS.md) — routines, habits, agent workflows
 

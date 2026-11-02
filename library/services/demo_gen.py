@@ -20,11 +20,16 @@ __version__ = "0.1.0"
 
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated, Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.services.projects import ProjectSpec
 from modules.shared.sms_budget import check_payload_budget
 
@@ -117,6 +122,9 @@ VULN_TYPES: dict[str, str] = {
     "log4shell": "Log4Shell (CVE-2021-44228)",
     "log4j": "Log4Shell (CVE-2021-44228)",
 }
+
+
+_DEMO_ASPECT = get_aspect("services.demo")
 
 
 class BuildIntent(BaseModel):
@@ -276,6 +284,9 @@ async def generate_demo_project(
     1..8 (None means keep them all). seed is a plain variation nonce for
     reproducibility. All three ride the payload as demo_size/flaw_count/
     seed. Invalid values never raise: they clamp or fall back.
+
+    LAW 4: only counts, sizes, and the size label are logged — never the
+    brief text, vuln names, intel context, or generated sources.
     """
     wanted = [str(v)[:120] for v in (vulns or [])][:8] or list(DEFAULT_DEMO_VULNS)
     try:
@@ -299,25 +310,69 @@ async def generate_demo_project(
         "intel_context": [dict(c) for c in intel_context[:20]],
         "response_schema": DemoProjectFiles.model_json_schema(),
     }
-    check_payload_budget(payload, max_payload_bytes, "Demo generation")
-    files = await client._request(
-        client.config.red_team_model,
-        DEMO_GEN_SYSTEM_PROMPT,
-        payload,
-        DemoProjectFiles,
-        role="demo_project_generation",
-        max_payload_bytes=max_payload_bytes,
+    # Sizes only (brief/vuln/intel text never logged): the payload byte
+    # size rides the budget check below, flaw counts ride the milestones.
+    obs_log(
+        _DEMO_ASPECT,
+        "demo.generate.start",
+        message="demo generation started",
+        demo_size=demo_size,
+        flaw_requested=count,
+        intel_records=len(payload["intel_context"]),
     )
-    # Fail fast at the generation boundary: a syntactically invalid file
-    # would otherwise crash the caller (or the CLI ai-demo path) with a bare
-    # SyntaxError far from its cause. Name the file so the green builder can
-    # report and recover.
-    for label, source in (("app.py", files.app_py), ("test_contract.py", files.test_contract_py)):
-        try:
-            compile(source, label, "exec")
-        except (SyntaxError, ValueError) as exc:
-            raise ValueError(f"Demo generation produced invalid {label}: {exc}") from exc
-    return files
+    started = time.monotonic()
+    status = "ok"
+    try:
+        with obs_trace(_DEMO_ASPECT, "demo.generate"):
+            check_payload_budget(payload, max_payload_bytes, "Demo generation")
+            files = await client._request(
+                client.config.red_team_model,
+                DEMO_GEN_SYSTEM_PROMPT,
+                payload,
+                DemoProjectFiles,
+                role="demo_project_generation",
+                max_payload_bytes=max_payload_bytes,
+            )
+            # Fail fast at the generation boundary: a syntactically invalid file
+            # would otherwise crash the caller (or the CLI ai-demo path) with a bare
+            # SyntaxError far from its cause. Name the file so the green builder can
+            # report and recover.
+            for label, source in (
+                ("app.py", files.app_py),
+                ("test_contract.py", files.test_contract_py),
+            ):
+                try:
+                    compile(source, label, "exec")
+                except (SyntaxError, ValueError) as exc:
+                    raise ValueError(f"Demo generation produced invalid {label}: {exc}") from exc
+    except Exception:
+        status = "error"
+        raise
+    else:
+        return files
+    finally:
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        fields: dict[str, Any] = {
+            "status": status,
+            "demo_size": demo_size,
+            "flaw_requested": count,
+        }
+        if status != "error":
+            try:
+                fields["flaw_notes"] = len(files.flaw_notes)
+                fields["cve_inspiration"] = len(files.cve_inspiration)
+                fields["app_bytes"] = len(files.app_py.encode("utf-8"))
+            except Exception:
+                pass
+        # Counts and byte sizes only — generated sources stay out of the log.
+        obs_log(
+            _DEMO_ASPECT,
+            "demo.generate.result",
+            message="demo generation finished",
+            duration_ms=duration_ms,
+            **fields,
+        )
+        obs_record_metric(_DEMO_ASPECT, "demo.generate.duration_ms", duration_ms, unit="ms")
 
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,64}$")

@@ -18,17 +18,81 @@ Never raises: any failure degrades to [].
 from __future__ import annotations
 
 import base64
+import functools
 import json
 import os
 import random
 import time
 import urllib.parse
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.intel.scanner_binaries import ScannerRecord
 from modules.shared.sms_http import paced_request_json
 
 USER_AGENT = "Secure-Mitigation-System/0.1 dtrack-client"
 MAX_BODY_BYTES = 8 * 1024 * 1024
+
+_SCANNERS_ASPECT = get_aspect("intel.scanners")
+
+
+def _observed(operation: str):
+    """Decorator: trace one dtrack step, log counts + degraded reason.
+
+    LAW 4: counts, operation name, and fixed failure reasons only — never
+    BOM contents, finding text, or the API key (the sibling runner pattern
+    also logs degraded="" on a clean zero-finding run). Bodies untouched.
+    """
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            started = time.monotonic()
+            degraded = False
+            reason = ""
+            count = 0
+            try:
+                with obs_trace(_SCANNERS_ASPECT, operation):
+                    result = fn(*args, **kwargs)
+            except Exception:
+                degraded = True
+                reason = "error"
+                raise
+            else:
+                if isinstance(result, list):
+                    count = len(result)
+                elif isinstance(result, dict):
+                    components = result.get("components")
+                    count = len(components) if isinstance(components, list) else 1
+                elif result is None:
+                    count = 0
+                    degraded = True
+                    reason = "unconfigured_or_failed"
+                elif result is not None:
+                    count = 1
+                if not degraded and not count:
+                    reason = ""
+            finally:
+                duration_ms = round((time.monotonic() - started) * 1000, 3)
+                obs_log(
+                    _SCANNERS_ASPECT,
+                    f"{operation}.result",
+                    message=f"{operation} finished",
+                    count=count,
+                    degraded=degraded,
+                    reason=reason,
+                    duration_ms=duration_ms,
+                )
+                obs_record_metric(
+                    _SCANNERS_ASPECT, f"{operation}.duration_ms", duration_ms, unit="ms"
+                )
+            return result
+
+        return inner
+
+    return wrap
 
 
 def configured() -> tuple[str, str] | None:
@@ -72,6 +136,7 @@ def _request(
     return result if isinstance(result, (dict, list)) else None
 
 
+@_observed("dtrack_build_bom")
 def build_bom(project_name: str, packages: list[tuple[str, str]]) -> dict:
     """Minimal CycloneDX 1.5 BOM from (name, version) pairs."""
     components = [
@@ -122,6 +187,7 @@ def parse_dtrack_findings(payload: dict | list) -> list[ScannerRecord]:
     return out
 
 
+@_observed("dtrack_scan")
 def scan_packages(
     project_name: str,
     packages: list[tuple[str, str]],

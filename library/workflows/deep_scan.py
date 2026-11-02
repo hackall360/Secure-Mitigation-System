@@ -10,14 +10,20 @@ still requires isolated Docker probe evidence before any patch is proposed.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+import time
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.shared.sms_http import paced_get_json, paced_post_json
 
 OSV_QUERY_URL = "https://api.osv.dev/v1/querybatch"
@@ -122,6 +128,50 @@ class StaticFinding:
     cwe: str
 
 
+_CVE_ASPECT = get_aspect("workflows.cve")
+
+
+def _observed_counts(operation: str):
+    """Decorator: trace one pure scan step, log item count + duration.
+
+    LAW 4: counts and the operation name only — never file contents,
+    finding snippets, or dependency versions. Sibling of the
+    scanner/research runner decorators (single decorator line).
+    """
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            started = time.monotonic()
+            count = 0
+            try:
+                with obs_trace(_CVE_ASPECT, operation):
+                    result = fn(*args, **kwargs)
+            except Exception:
+                raise
+            else:
+                try:
+                    count = len(result)
+                except TypeError:
+                    count = 0
+            finally:
+                duration_ms = round((time.monotonic() - started) * 1000, 3)
+                obs_log(
+                    _CVE_ASPECT,
+                    f"{operation}.result",
+                    message=f"{operation} finished",
+                    count=count,
+                    duration_ms=duration_ms,
+                )
+                obs_record_metric(_CVE_ASPECT, f"{operation}.duration_ms", duration_ms, unit="ms")
+            return result
+
+        return inner
+
+    return wrap
+
+
+@_observed_counts("static_scan")
 def run_static_scan(files: Mapping[str, str], *, max_findings: int = 200) -> list[StaticFinding]:
     """Run deterministic regex-based static signals over text files."""
     compiled = [
@@ -160,6 +210,7 @@ _MANIFEST_PATTERNS = {
 }
 
 
+@_observed_counts("extract_dependencies")
 def extract_dependencies(files: Mapping[str, str]) -> list[dict[str, str]]:
     """Extract dependency inventory from common lockfiles/manifests (best-effort)."""
     deps: list[dict[str, str]] = []

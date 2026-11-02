@@ -32,6 +32,11 @@ import asyncio
 import time
 from typing import Any, Awaitable, Callable
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import record_metric as obs_record_metric
+
+_TELEMETRY_ASPECT = get_aspect("services.telemetry")
+
 # Coalescing window bounds (seconds). Spec: batch at 100–250 ms.
 MIN_WINDOW_S = 0.10
 MAX_WINDOW_S = 0.25
@@ -111,10 +116,16 @@ class TelemetryBatcher:
             pending, self._pending = self._pending, []
         if not pending:
             return
+        # LAW 4: counts only — never event payloads, team strings are
+        # the fixed "telemetry" label emitted below, not caller data.
+        batch_size = len(pending)
+        coalesced = max(0, batch_size - len(pending[-self._max_events :]))
+        obs_record_metric(_TELEMETRY_ASPECT, "telemetry_batch.size", batch_size, unit="count")
+        obs_record_metric(_TELEMETRY_ASPECT, "telemetry_batch.coalesced", coalesced, unit="count")
         frame = {
             "type": "telemetry_batch",
             "team": "telemetry",
-            "count": len(pending),
+            "count": batch_size,
             "events": pending[-self._max_events :],
             "ts": time.time(),
         }

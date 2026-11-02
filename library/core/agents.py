@@ -23,6 +23,13 @@ from modules.core.prompts import (
     RED_TEAM_SYSTEM_PROMPT,
     RED_THREAT_ACTOR_SYSTEM_PROMPT,
 )
+from modules.shared.sms_observability import get_aspect as _get_aspect
+from modules.shared.sms_observability import log as _obs_log
+from modules.shared.sms_observability import record_metric as _obs_metric
+from modules.shared.sms_observability import trace as _obs_trace
+
+_OBS_AGENTS = _get_aspect("core.agents")
+
 
 # Alias for branding migration; both names refer to the same config type.
 SecureMitigationSystemConfig = PurpleBoxConfig
@@ -174,6 +181,26 @@ def _parse_retry_after(value: str | None) -> float | None:
         return max(float(value.strip()), 0.0)
     except (TypeError, ValueError):
         return None
+
+
+def _obs_report_call(role: str, calls: list[CallUsage]) -> None:
+    """Log one model-call milestone + numeric metrics (never prompt text)."""
+    if not calls:
+        _obs_log(_OBS_AGENTS, "call", "model call finished", role=role)
+        return
+    last = calls[-1]
+    _obs_log(
+        _OBS_AGENTS,
+        "call",
+        "model call finished",
+        role=role,
+        model=last.model,
+    )
+    _obs_metric(_OBS_AGENTS, "tokens_in", last.prompt_tokens, unit="tokens")
+    _obs_metric(_OBS_AGENTS, "tokens_out", last.completion_tokens, unit="tokens")
+    _obs_metric(_OBS_AGENTS, "seconds", round(last.seconds, 3), unit="seconds")
+    if last.cost_usd is not None:
+        _obs_metric(_OBS_AGENTS, "cost_usd", last.cost_usd, unit="usd")
 
 
 class MetaMuseClient:
@@ -377,17 +404,21 @@ class MetaMuseClient:
     async def run_red_team_analysis(
         self, filename: str, source_code: str, contract: str = ""
     ) -> RedTeamFinding:
-        return await self._request(
-            self.config.red_team_model,
-            RED_TEAM_SYSTEM_PROMPT,
-            {
-                "filename": filename,
-                "source": source_code,
-                "fixture_contract": contract,
-            },
-            RedTeamFinding,
-            role="red",
-        )
+        with _obs_trace(_OBS_AGENTS, "red"):
+            _obs_log(_OBS_AGENTS, "call_start", "model call started", role="red")
+            result = await self._request(
+                self.config.red_team_model,
+                RED_TEAM_SYSTEM_PROMPT,
+                {
+                    "filename": filename,
+                    "source": source_code,
+                    "fixture_contract": contract,
+                },
+                RedTeamFinding,
+                role="red",
+            )
+            _obs_report_call("red", self.usage)
+            return result
 
     async def run_red_team_pass_analysis(
         self, pass_id: str, filename: str, source_code: str, contract: str = ""
@@ -403,18 +434,22 @@ class MetaMuseClient:
             system = RED_TEAM_SYSTEM_PROMPT
         else:
             raise AgentError(f"Unknown sweep pass: {pass_id}.")
-        return await self._request(
-            self.config.red_team_model,
-            system,
-            {
-                "filename": filename,
-                "source": source_code,
-                "fixture_contract": contract,
-                "sweep_pass": pass_id,
-            },
-            RedTeamFinding,
-            role="red",
-        )
+        with _obs_trace(_OBS_AGENTS, "red-pass"):
+            _obs_log(_OBS_AGENTS, "call_start", "model call started", role="red")
+            result = await self._request(
+                self.config.red_team_model,
+                system,
+                {
+                    "filename": filename,
+                    "source": source_code,
+                    "fixture_contract": contract,
+                    "sweep_pass": pass_id,
+                },
+                RedTeamFinding,
+                role="red",
+            )
+            _obs_report_call("red", self.usage)
+            return result
 
     async def run_blue_team_sanitizer(
         self,
@@ -424,48 +459,60 @@ class MetaMuseClient:
         verifier_output: str,
         contract: str = "",
     ) -> BlueTeamPatch:
-        return await self._request(
-            self.config.blue_team_model,
-            BLUE_TEAM_SYSTEM_PROMPT,
-            {
-                "filename": filename,
-                "source": source_code,
-                "finding": finding.model_dump(),
-                "verification_evidence": verifier_output,
-                "fixture_contract": contract,
-            },
-            BlueTeamPatch,
-            role="blue",
-        )
+        with _obs_trace(_OBS_AGENTS, "blue"):
+            _obs_log(_OBS_AGENTS, "call_start", "model call started", role="blue")
+            result = await self._request(
+                self.config.blue_team_model,
+                BLUE_TEAM_SYSTEM_PROMPT,
+                {
+                    "filename": filename,
+                    "source": source_code,
+                    "finding": finding.model_dump(),
+                    "verification_evidence": verifier_output,
+                    "fixture_contract": contract,
+                },
+                BlueTeamPatch,
+                role="blue",
+            )
+            _obs_report_call("blue", self.usage)
+            return result
 
     async def run_red_research(
         self, sink_description: str, intel_records: list[dict]
     ) -> RedResearchDigest:
         """Research-only: grounded attack patterns for one sink. No work product."""
-        return await self._request(
-            self.config.red_team_model,
-            RED_RESEARCH_SYSTEM_PROMPT,
-            {
-                "sink_description": sink_description[:2000],
-                "intel_records": intel_records[:20],
-                "note": "Research only. Do not produce findings, patches, or scripts.",
-            },
-            RedResearchDigest,
-            role="red-research",
-        )
+        with _obs_trace(_OBS_AGENTS, "red-research"):
+            _obs_log(_OBS_AGENTS, "call_start", "model call started", role="red-research")
+            result = await self._request(
+                self.config.red_team_model,
+                RED_RESEARCH_SYSTEM_PROMPT,
+                {
+                    "sink_description": sink_description[:2000],
+                    "intel_records": intel_records[:20],
+                    "note": "Research only. Do not produce findings, patches, or scripts.",
+                },
+                RedResearchDigest,
+                role="red-research",
+            )
+            _obs_report_call("red-research", self.usage)
+            return result
 
     async def run_blue_research(
         self, sink_description: str, intel_records: list[dict]
     ) -> BlueResearchDigest:
         """Research-only: grounded fix patterns for one sink. Never a patch."""
-        return await self._request(
-            self.config.blue_team_model,
-            BLUE_RESEARCH_SYSTEM_PROMPT,
-            {
-                "sink_description": sink_description[:2000],
-                "intel_records": intel_records[:20],
-                "note": "Research only. Do not produce patches or file content.",
-            },
-            BlueResearchDigest,
-            role="blue-research",
-        )
+        with _obs_trace(_OBS_AGENTS, "blue-research"):
+            _obs_log(_OBS_AGENTS, "call_start", "model call started", role="blue-research")
+            result = await self._request(
+                self.config.blue_team_model,
+                BLUE_RESEARCH_SYSTEM_PROMPT,
+                {
+                    "sink_description": sink_description[:2000],
+                    "intel_records": intel_records[:20],
+                    "note": "Research only. Do not produce patches or file content.",
+                },
+                BlueResearchDigest,
+                role="blue-research",
+            )
+            _obs_report_call("blue-research", self.usage)
+            return result

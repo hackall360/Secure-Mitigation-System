@@ -5,11 +5,17 @@
 from __future__ import annotations
 
 import datetime
+import functools
+import time
 from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.core.agents import MetaMuseClient
 from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config, require_api_key
 from modules.intel.research import epss_score, kev_lookup
@@ -222,6 +228,64 @@ def _enrich_reach_signals(summary: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+_CVE_ASPECT = get_aspect("workflows.cve")
+
+
+def _observed_cve_scan(fn):
+    """Trace one CVE scan: start milestone, verdict counts, duration.
+
+    LAW 4: only counts, status, and the fast-lane flag are logged — never
+    file contents, CVE text, or summaries. Async-aware variant of the
+    sibling scanner/research decorator (single decorator line, no body
+    re-indentation). No-op safe when uninitialized.
+    """
+
+    @functools.wraps(fn)
+    async def inner(*args, **kwargs):
+        fast_lane = bool(kwargs.get("fast_lane", False))
+        started = time.monotonic()
+        obs_log(
+            _CVE_ASPECT,
+            "cve_scan.start",
+            message="CVE scan started",
+            fast_lane=fast_lane,
+        )
+        status = "completed"
+        try:
+            with obs_trace(_CVE_ASPECT, "execute_cve_scan"):
+                report = await fn(*args, **kwargs)
+        except Exception:
+            status = "error"
+            raise
+        else:
+            try:
+                status = getattr(report, "status", "completed")
+            except Exception:
+                status = "completed"
+            return report
+        finally:
+            duration_ms = round((time.monotonic() - started) * 1000, 3)
+            fields: dict[str, Any] = {"status": status, "fast_lane": fast_lane}
+            if status != "error":
+                try:
+                    fields["static_findings"] = len(report.static_findings)
+                    fields["dependencies"] = len(report.dependencies)
+                    fields["cve_records"] = len(report.vulnerabilities)
+                except Exception:
+                    pass
+            obs_log(
+                _CVE_ASPECT,
+                "cve_scan.verdict",
+                message="CVE scan finished",
+                duration_ms=duration_ms,
+                **fields,
+            )
+            obs_record_metric(_CVE_ASPECT, "cve_scan.verdict.duration_ms", duration_ms, unit="ms")
+
+    return inner
+
+
+@_observed_cve_scan
 async def execute_cve_scan(
     project: ProjectSpec | Mapping[str, str] | str,
     emit: Emit,

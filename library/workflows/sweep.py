@@ -12,6 +12,7 @@ non-root, read-only roots) is untouched.
 
 from __future__ import annotations
 
+import time as _time
 from typing import Literal
 
 from docker.errors import DockerException
@@ -32,8 +33,14 @@ from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_compress import CompressionReport, compress_context
+from modules.shared.sms_observability import get_aspect as _get_aspect
+from modules.shared.sms_observability import log as _obs_log
+from modules.shared.sms_observability import record_metric as _obs_metric
+from modules.shared.sms_observability import trace as _obs_trace
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.workflow import build_verdict_receipt
+
+_OBS_SWEEP = _get_aspect("workflows.sweep")
 
 SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor", "chain")
 SweepPassId = Literal["standard", "deep", "threat_actor", "chain"]
@@ -324,308 +331,399 @@ async def execute_sweep_scan(
         p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
     ]
 
-    try:
-        if target_key not in TARGETS_REGISTRY:
-            raise ValueError("Unknown fixture. Choose one of the registered targets.")
-        if target_key == "binary_argv_echo":
-            raise ValueError(
-                "binary_argv_echo is a compiled ELF fixture: use the binary harness "
-                "path (execute_binary_sweep), not the source sweep."
-            )
-        settings = config or load_config()
-        require_api_key(settings)
-        target = TARGETS_REGISTRY[target_key]
-        source = target.read_source()
-        current_source = source
-        compressed = compress_context(source, filename=target.filename)
-        result.compression = compressed
-        result.compression_reports = [compressed]
-        await log(
-            "system",
-            f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
-            f"{compressed.compressed_tokens_sent} tokens "
-            f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
-        )
+    _obs_sweep_started = _time.monotonic()
+    with _obs_trace(_OBS_SWEEP, "sweep"):
         try:
-            from modules.intel.sms_vault import query_vault
-
-            vault_answer = query_vault(source)
-            result.vault_recall = vault_answer.status
-            result.vault_namespaces = vault_answer.namespaces
-            result.vault_statuses = [vault_answer.status]
+            _obs_log(_OBS_SWEEP, "sweep_start", "sweep started", target=target_key)
+            _obs_metric(_OBS_SWEEP, "sweep_start.count", 1, unit="count")
+            if target_key not in TARGETS_REGISTRY:
+                raise ValueError("Unknown fixture. Choose one of the registered targets.")
+            if target_key == "binary_argv_echo":
+                raise ValueError(
+                    "binary_argv_echo is a compiled ELF fixture: use the binary harness "
+                    "path (execute_binary_sweep), not the source sweep."
+                )
+            settings = config or load_config()
+            require_api_key(settings)
+            target = TARGETS_REGISTRY[target_key]
+            source = target.read_source()
+            current_source = source
+            compressed = compress_context(source, filename=target.filename)
+            result.compression = compressed
+            result.compression_reports = [compressed]
             await log(
                 "system",
-                f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
+                f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+                f"{compressed.compressed_tokens_sent} tokens "
+                f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
             )
-        except Exception as exc:
-            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
-            result.vault_recall = "VAULT_UNAVAILABLE"
-        muse = muse_factory(settings)
-        sandbox = await blocking(sandbox_factory, settings)
-        await blocking(sandbox.require_base_images)
-        await log(
-            "system",
-            "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
-        )
-        network = await blocking(sandbox.create_isolated_network)
-        container, snapshot = await blocking(
-            sandbox.start_cloneable_target, network, target, source
-        )
-        baseline = await blocking(
-            sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
-        )
-        result.traces["baseline"] = baseline.output
-        if baseline.exit_code != 0:
-            raise SandboxError("Original fixture failed its trusted normal-input checks.")
-        result.baseline_passed = True
-        await log(
-            "system",
-            "[phase baseline] Original fixture is ready; normal-input checks passed.",
-        )
+            try:
+                from modules.intel.sms_vault import query_vault
 
-        cumulative_diffs: list[str] = []
-        for pass_id in selected:
-            label = _PASS_LABEL[pass_id]
-            passed = SweepPassResult(pass_id=pass_id)
-            result.pass_results.append(passed)
-            await log("red", f"[sweep {pass_id}] {label}.")
-            finding = await muse.run_red_team_pass_analysis(
-                pass_id, target.filename, current_source, target.contract
-            )
-            passed.finding = finding
-            await log(
-                "red",
-                f"[sweep {pass_id}] {finding.vulnerability_class} at "
-                f"{finding.sink_location}: {finding.analysis_summary}",
-            )
-            pre = await blocking(
-                sandbox.run_isolated_verifier, network, finding.verification_script_python
-            )
-            passed.pre_exit_code = pre.exit_code
-            result.traces[f"{pass_id}:before"] = pre.output
-            await log("red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}.")
-            await log(
-                "red",
-                chatter(
-                    "red_proof",
-                    persona="Breakwater",
-                    path=target.filename,
-                    code=pre.exit_code,
-                    seed=hash(pass_id) % 1000,
-                ),
-            )
-            if pre.inconclusive:
-                raise SandboxError(
-                    f"Sweep pass {pass_id} verifier was inconclusive; no patch was requested."
-                )
-            if pre.exit_code == 1:
-                passed.cleared = True
-                passed.regression_passed = True
-                await log("red", f"[sweep {pass_id}] Probe blocked; pass is clear.")
-                continue
-            # Chain link PRE probes run on the PRISTINE target (before the
-            # patch is requested and before replace_target): link A/B "pre"
-            # exits must observe the unpatched boundary, or the ChainLink
-            # pre/post pairs mislabel post-patch exits as pre-patch evidence.
-            link_scripts = (
-                _chain_link_probes(finding.verification_script_python)
-                if pass_id == "chain"
-                else None
-            )
-            link_a_pre = link_b_pre = None
-            if link_scripts is not None:
-                link_a_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[0])
-                result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
+                vault_answer = query_vault(source)
+                result.vault_recall = vault_answer.status
+                result.vault_namespaces = vault_answer.namespaces
+                result.vault_statuses = [vault_answer.status]
                 await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}.",
+                    "system",
+                    f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
                 )
-                if link_a_pre.inconclusive:
-                    raise SandboxError(f"Sweep pass {pass_id} link-A probe was inconclusive.")
-                link_b_pre = await blocking(sandbox.run_isolated_verifier, network, link_scripts[1])
-                result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
-                await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}.",
-                )
-                if link_b_pre.inconclusive:
-                    raise SandboxError(f"Sweep pass {pass_id} link-B probe was inconclusive.")
+            except Exception as exc:
+                await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+                result.vault_recall = "VAULT_UNAVAILABLE"
+            muse = muse_factory(settings)
+            sandbox = await blocking(sandbox_factory, settings)
+            await blocking(sandbox.require_base_images)
             await log(
-                "blue",
-                f"[sweep {pass_id}] Requesting a sanitization patch from "
-                f"{settings.blue_team_model}.",
+                "system",
+                "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
             )
-            patch = await muse.run_blue_team_sanitizer(
-                target.filename, current_source, finding, pre.output, target.contract
+            network = await blocking(sandbox.create_isolated_network)
+            container, snapshot = await blocking(
+                sandbox.start_cloneable_target, network, target, source
             )
-            passed.patch = patch
-            passed.diff = validate_patch(target, current_source, patch.patched_file_content)
-            cumulative_diffs.append(passed.diff)
-            current_source = patch.patched_file_content
-            await log("blue", patch.sanitization_strategy)
-            container, _ = await blocking(
-                sandbox.replace_target,
-                container,
-                snapshot,
-                network,
-                target,
-                patch.patched_file_content,
-            )
-            regression = await blocking(
+            baseline = await blocking(
                 sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
             )
-            result.traces[f"{pass_id}:regression"] = regression.output
-            if regression.exit_code != 0:
-                raise PatchRejected(
-                    f"Sweep pass {pass_id} patched fixture failed trusted normal-input regression."
-                )
-            passed.regression_passed = True
-            post = await blocking(
-                sandbox.run_isolated_verifier, network, finding.verification_script_python
+            result.traces["baseline"] = baseline.output
+            _obs_log(
+                _OBS_SWEEP,
+                "baseline",
+                "baseline checks finished",
+                exit_code=baseline.exit_code,
             )
-            passed.post_exit_code = post.exit_code
-            if pass_id == "chain":
-                assert link_a_pre is not None and link_b_pre is not None
-                link_a_post = await blocking(
-                    sandbox.run_isolated_verifier, network, link_scripts[0]
-                )
-                result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
-                await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}.",
-                )
-                if link_a_post.inconclusive:
-                    raise SandboxError(
-                        f"Sweep pass {pass_id} link-A post-patch probe was inconclusive."
-                    )
-                link_b_post = await blocking(
-                    sandbox.run_isolated_verifier, network, link_scripts[1]
-                )
-                result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
-                await log(
-                    "blue",
-                    f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}.",
-                )
-                if link_b_post.inconclusive:
-                    raise SandboxError(
-                        f"Sweep pass {pass_id} link-B post-patch probe was inconclusive."
-                    )
-                passed.chain_links = [
-                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                    ChainLink(pre_exit=link_a_pre.exit_code, post_exit=link_a_post.exit_code),
-                    ChainLink(pre_exit=link_b_pre.exit_code, post_exit=link_b_post.exit_code),
-                ]
-            else:
-                passed.chain_links = [
-                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                    ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
-                ]
-            result.traces[f"{pass_id}:after"] = post.output
+            _obs_metric(_OBS_SWEEP, "baseline.exit_code", baseline.exit_code, unit="count")
+            if baseline.exit_code != 0:
+                raise SandboxError("Original fixture failed its trusted normal-input checks.")
+            result.baseline_passed = True
             await log(
-                "blue",
-                f"[sweep {pass_id}] Post-patch boundary check exited {post.exit_code}.",
+                "system",
+                "[phase baseline] Original fixture is ready; normal-input checks passed.",
             )
-            if post.inconclusive:
-                raise SandboxError(f"Sweep pass {pass_id} post-patch verifier was inconclusive.")
-            final_health = await blocking(
-                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
-            )
-            result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
-            if final_health.exit_code != 0:
-                passed.regression_passed = False
-                raise PatchRejected(
-                    f"Sweep pass {pass_id} target failed normal-input checks after the probe."
-                )
-            if post.exit_code != 1:
-                result.status = "failed"
-                result.message = (
-                    f"Sweep pass {pass_id} probe still reaches the sink after patching."
-                )
-                break
-            passed.receipt = build_verdict_receipt(
-                fixture=target_key,
-                pre_exit_code=pre.exit_code,
-                post_exit_code=post.exit_code,
-                regression_passed=passed.regression_passed,
-                patch_content=patch.patched_file_content,
-            )
-        result.cumulative_diff = "\n".join(cumulative_diffs)
-        if result.status != "failed":
-            if all(p.holds for p in result.pass_results):
-                result.status = "verified"
-                result.message = (
-                    "All sweep passes hold: every confirmed boundary is blocked and "
-                    "trusted normal-input checks passed. Review the candidate diff."
-                )
-                try:
-                    from modules.intel.sms_vault import VaultNamespace, commit_verified
 
-                    for passed in result.pass_results:
-                        if passed.finding is not None and passed.pre_exit_code == 0:
+            cumulative_diffs: list[str] = []
+            for pass_id in selected:
+                with _obs_trace(_OBS_SWEEP, f"pass.{pass_id}"):
+                    label = _PASS_LABEL[pass_id]
+                    passed = SweepPassResult(pass_id=pass_id)
+                    result.pass_results.append(passed)
+                    await log("red", f"[sweep {pass_id}] {label}.")
+                    _obs_log(_OBS_SWEEP, "pass_start", "pass started", pass_id=pass_id)
+                    _obs_metric(_OBS_SWEEP, "pass_start.count", 1, unit="count")
+                    finding = await muse.run_red_team_pass_analysis(
+                        pass_id, target.filename, current_source, target.contract
+                    )
+                    passed.finding = finding
+                    _obs_log(
+                        _OBS_SWEEP,
+                        "probe_built",
+                        "pass probe built",
+                        pass_id=pass_id,
+                        bytes=len(finding.verification_script_python.encode("utf-8")),
+                    )
+                    _obs_metric(
+                        _OBS_SWEEP,
+                        "probe_built.bytes",
+                        len(finding.verification_script_python.encode("utf-8")),
+                        unit="bytes",
+                    )
+                    await log(
+                        "red",
+                        f"[sweep {pass_id}] {finding.vulnerability_class} at "
+                        f"{finding.sink_location}: {finding.analysis_summary}",
+                    )
+                    pre = await blocking(
+                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    )
+                    passed.pre_exit_code = pre.exit_code
+                    result.traces[f"{pass_id}:before"] = pre.output
+                    _obs_log(
+                        _OBS_SWEEP,
+                        "probe_exit",
+                        "pass probe exited",
+                        pass_id=pass_id,
+                        exit_code=pre.exit_code,
+                        inconclusive=pre.inconclusive,
+                    )
+                    _obs_metric(_OBS_SWEEP, "probe_exit.exit_code", pre.exit_code, unit="count")
+                    await log("red", f"[sweep {pass_id}] Boundary check exited {pre.exit_code}.")
+                    await log(
+                        "red",
+                        chatter(
+                            "red_proof",
+                            persona="Breakwater",
+                            path=target.filename,
+                            code=pre.exit_code,
+                            seed=hash(pass_id) % 1000,
+                        ),
+                    )
+                    if pre.inconclusive:
+                        raise SandboxError(
+                            f"Sweep pass {pass_id} verifier was inconclusive; no patch was requested."
+                        )
+                    if pre.exit_code == 1:
+                        passed.cleared = True
+                        passed.regression_passed = True
+                        await log("red", f"[sweep {pass_id}] Probe blocked; pass is clear.")
+                        _obs_log(
+                            _OBS_SWEEP,
+                            "pass_verdict",
+                            "pass cleared",
+                            pass_id=pass_id,
+                            cleared=True,
+                        )
+                        _obs_metric(_OBS_SWEEP, "pass_verdict.count", 1, unit="count")
+                        continue
+                    # Chain link PRE probes run on the PRISTINE target (before the
+                    # patch is requested and before replace_target): link A/B "pre"
+                    # exits must observe the unpatched boundary, or the ChainLink
+                    # pre/post pairs mislabel post-patch exits as pre-patch evidence.
+                    link_scripts = (
+                        _chain_link_probes(finding.verification_script_python)
+                        if pass_id == "chain"
+                        else None
+                    )
+                    link_a_pre = link_b_pre = None
+                    if link_scripts is not None:
+                        link_a_pre = await blocking(
+                            sandbox.run_isolated_verifier, network, link_scripts[0]
+                        )
+                        result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
+                        await log(
+                            "blue",
+                            f"[sweep {pass_id}] Link A (primitive) exited {link_a_pre.exit_code}.",
+                        )
+                        if link_a_pre.inconclusive:
+                            raise SandboxError(
+                                f"Sweep pass {pass_id} link-A probe was inconclusive."
+                            )
+                        link_b_pre = await blocking(
+                            sandbox.run_isolated_verifier, network, link_scripts[1]
+                        )
+                        result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
+                        await log(
+                            "blue",
+                            f"[sweep {pass_id}] Link B (sink) exited {link_b_pre.exit_code}.",
+                        )
+                        if link_b_pre.inconclusive:
+                            raise SandboxError(
+                                f"Sweep pass {pass_id} link-B probe was inconclusive."
+                            )
+                    await log(
+                        "blue",
+                        f"[sweep {pass_id}] Requesting a sanitization patch from "
+                        f"{settings.blue_team_model}.",
+                    )
+                    patch = await muse.run_blue_team_sanitizer(
+                        target.filename, current_source, finding, pre.output, target.contract
+                    )
+                    passed.patch = patch
+                    passed.diff = validate_patch(target, current_source, patch.patched_file_content)
+                    _obs_log(
+                        _OBS_SWEEP,
+                        "patch_written",
+                        "pass patch written",
+                        pass_id=pass_id,
+                        lines=len(patch.patched_file_content.splitlines()),
+                        bytes=len(patch.patched_file_content.encode("utf-8")),
+                    )
+                    _obs_metric(
+                        _OBS_SWEEP,
+                        "patch_written.lines",
+                        len(patch.patched_file_content.splitlines()),
+                        unit="count",
+                    )
+                    cumulative_diffs.append(passed.diff)
+                    current_source = patch.patched_file_content
+                    await log("blue", patch.sanitization_strategy)
+                    container, _ = await blocking(
+                        sandbox.replace_target,
+                        container,
+                        snapshot,
+                        network,
+                        target,
+                        patch.patched_file_content,
+                    )
+                    regression = await blocking(
+                        sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                    )
+                    result.traces[f"{pass_id}:regression"] = regression.output
+                    if regression.exit_code != 0:
+                        raise PatchRejected(
+                            f"Sweep pass {pass_id} patched fixture failed trusted normal-input regression."
+                        )
+                    passed.regression_passed = True
+                    post = await blocking(
+                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    )
+                    passed.post_exit_code = post.exit_code
+                    if pass_id == "chain":
+                        assert link_a_pre is not None and link_b_pre is not None
+                        link_a_post = await blocking(
+                            sandbox.run_isolated_verifier, network, link_scripts[0]
+                        )
+                        result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
+                        await log(
+                            "blue",
+                            f"[sweep {pass_id}] Link A post-patch exited {link_a_post.exit_code}.",
+                        )
+                        if link_a_post.inconclusive:
+                            raise SandboxError(
+                                f"Sweep pass {pass_id} link-A post-patch probe was inconclusive."
+                            )
+                        link_b_post = await blocking(
+                            sandbox.run_isolated_verifier, network, link_scripts[1]
+                        )
+                        result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
+                        await log(
+                            "blue",
+                            f"[sweep {pass_id}] Link B post-patch exited {link_b_post.exit_code}.",
+                        )
+                        if link_b_post.inconclusive:
+                            raise SandboxError(
+                                f"Sweep pass {pass_id} link-B post-patch probe was inconclusive."
+                            )
+                        passed.chain_links = [
+                            ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                            ChainLink(
+                                pre_exit=link_a_pre.exit_code, post_exit=link_a_post.exit_code
+                            ),
+                            ChainLink(
+                                pre_exit=link_b_pre.exit_code, post_exit=link_b_post.exit_code
+                            ),
+                        ]
+                    else:
+                        passed.chain_links = [
+                            ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                            ChainLink(pre_exit=pre.exit_code, post_exit=post.exit_code),
+                        ]
+                    result.traces[f"{pass_id}:after"] = post.output
+                    _obs_log(
+                        _OBS_SWEEP,
+                        "reprobe_exit",
+                        "pass reprobe exited",
+                        pass_id=pass_id,
+                        exit_code=post.exit_code,
+                        inconclusive=post.inconclusive,
+                    )
+                    _obs_metric(_OBS_SWEEP, "reprobe_exit.exit_code", post.exit_code, unit="count")
+                    await log(
+                        "blue",
+                        f"[sweep {pass_id}] Post-patch boundary check exited {post.exit_code}.",
+                    )
+                    if post.inconclusive:
+                        raise SandboxError(
+                            f"Sweep pass {pass_id} post-patch verifier was inconclusive."
+                        )
+                    final_health = await blocking(
+                        sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                    )
+                    result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
+                    if final_health.exit_code != 0:
+                        passed.regression_passed = False
+                        raise PatchRejected(
+                            f"Sweep pass {pass_id} target failed normal-input checks after the probe."
+                        )
+                    if post.exit_code != 1:
+                        result.status = "failed"
+                        result.message = (
+                            f"Sweep pass {pass_id} probe still reaches the sink after patching."
+                        )
+                        break
+                    passed.receipt = build_verdict_receipt(
+                        fixture=target_key,
+                        pre_exit_code=pre.exit_code,
+                        post_exit_code=post.exit_code,
+                        regression_passed=passed.regression_passed,
+                        patch_content=patch.patched_file_content,
+                    )
+                    _obs_log(
+                        _OBS_SWEEP,
+                        "pass_verdict",
+                        "pass holds",
+                        pass_id=pass_id,
+                        status=passed.holds,
+                    )
+                    _obs_metric(_OBS_SWEEP, "pass_verdict.count", 1, unit="count")
+            result.cumulative_diff = "\n".join(cumulative_diffs)
+            if result.status != "failed":
+                if all(p.holds for p in result.pass_results):
+                    result.status = "verified"
+                    result.message = (
+                        "All sweep passes hold: every confirmed boundary is blocked and "
+                        "trusted normal-input checks passed. Review the candidate diff."
+                    )
+                    try:
+                        from modules.intel.sms_vault import VaultNamespace, commit_verified
+
+                        for passed in result.pass_results:
+                            if passed.finding is not None and passed.pre_exit_code == 0:
+                                commit_verified(
+                                    namespace=VaultNamespace.RED,
+                                    source=source,
+                                    payload={
+                                        "kind": "sweep_boundary",
+                                        "fixture": target_key,
+                                        "pass_id": passed.pass_id,
+                                        "sink": passed.finding.sink_location,
+                                    },
+                                )
+                        if result.cumulative_diff:
                             commit_verified(
-                                namespace=VaultNamespace.RED,
-                                source=source,
+                                namespace=VaultNamespace.BLUE,
+                                source=result.cumulative_diff,
                                 payload={
-                                    "kind": "sweep_boundary",
+                                    "kind": "sweep_patch",
                                     "fixture": target_key,
-                                    "pass_id": passed.pass_id,
-                                    "sink": passed.finding.sink_location,
+                                    "passes": [p.pass_id for p in result.pass_results],
                                 },
                             )
-                    if result.cumulative_diff:
-                        commit_verified(
-                            namespace=VaultNamespace.BLUE,
-                            source=result.cumulative_diff,
-                            payload={
-                                "kind": "sweep_patch",
-                                "fixture": target_key,
-                                "passes": [p.pass_id for p in result.pass_results],
-                            },
-                        )
-                    await log("system", "[phase vault] Sweep findings committed.")
-                except Exception as exc:
-                    await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
-            else:
-                result.status = "failed"
-                result.message = "One or more sweep passes did not hold after patching."
-    except PatchRejected as exc:
-        result.status, result.message = "rejected", str(exc)
-    except (ConfigurationError, AgentError, SandboxError, ValueError) as exc:
-        result.status, result.message = "error", str(exc)
-    except DockerException:
-        result.status, result.message = (
-            "error",
-            "Docker operation failed. Check the daemon and base images.",
-        )
-    except Exception as exc:
-        result.status, result.message = (
-            "error",
-            f"Sweep failed ({type(exc).__name__}); no verified patch produced.",
-        )
-    finally:
-        try:
-            if sandbox is not None:
-                try:
-                    await blocking(sandbox.close)
-                except Exception as exc:
-                    result.cleanup_ok = False
-                    result.status = "error"
-                    result.message = (
-                        str(exc)
-                        if isinstance(exc, SandboxError)
-                        else "Docker cleanup failed; inspect session resources."
-                    )
+                        await log("system", "[phase vault] Sweep findings committed.")
+                    except Exception as exc:
+                        await log("system", f"[phase vault] Commit skipped ({type(exc).__name__}).")
+                else:
+                    result.status = "failed"
+                    result.message = "One or more sweep passes did not hold after patching."
+        except PatchRejected as exc:
+            result.status, result.message = "rejected", str(exc)
+        except (ConfigurationError, AgentError, SandboxError, ValueError) as exc:
+            result.status, result.message = "error", str(exc)
+        except DockerException:
+            result.status, result.message = (
+                "error",
+                "Docker operation failed. Check the daemon and base images.",
+            )
+        except Exception as exc:
+            result.status, result.message = (
+                "error",
+                f"Sweep failed ({type(exc).__name__}); no verified patch produced.",
+            )
         finally:
-            if muse is not None:
-                calls = getattr(muse, "usage", None)
-                if isinstance(calls, list):
-                    result.usage = ScanUsage(calls=calls)
-                    result.total_tokens = result.usage.total_tokens
-                    result.cost_usd = result.usage.cost_usd
-                try:
-                    await muse.aclose()
-                except Exception:
-                    pass
+            _obs_log(_OBS_SWEEP, "verdict", "sweep verdict reached", status=result.status)
+            _obs_metric(_OBS_SWEEP, "verdict.count", 1, unit="count")
+            try:
+                if sandbox is not None:
+                    try:
+                        await blocking(sandbox.close)
+                    except Exception as exc:
+                        result.cleanup_ok = False
+                        result.status = "error"
+                        result.message = (
+                            str(exc)
+                            if isinstance(exc, SandboxError)
+                            else "Docker cleanup failed; inspect session resources."
+                        )
+            finally:
+                if muse is not None:
+                    calls = getattr(muse, "usage", None)
+                    if isinstance(calls, list):
+                        result.usage = ScanUsage(calls=calls)
+                        result.total_tokens = result.usage.total_tokens
+                        result.cost_usd = result.usage.cost_usd
+                    try:
+                        await muse.aclose()
+                    except Exception:
+                        pass
     await log("system", f"[done] {result.message}")
     if sandbox is not None and result.cleanup_ok:
         await log("system", "[phase cleanup] Session containers, snapshots, and network removed.")
