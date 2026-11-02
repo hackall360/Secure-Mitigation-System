@@ -196,3 +196,10 @@ def test_readme_links_technical_breakdown():
         "CommsFeed",
     ):
         assert marker in breakdown, marker
+
+
+def test_readme_hackathon_new_work_section():
+    text = README.read_text(encoding="utf-8")
+    assert "## Meta Hackathon" in text
+    for marker in ("Oct 27", "Nov 4", "muse-spark-1.3-contributor", "0.14.0", "Greenhouse"):
+        assert marker in text, marker
