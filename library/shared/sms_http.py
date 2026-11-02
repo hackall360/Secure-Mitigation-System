@@ -106,7 +106,7 @@ def _clamp_tries(tries: int) -> int:
     """Coerce to a bounded retry count. Never raises: garbage -> 3."""
     try:
         value = int(tries)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 3
     return min(max(value, MIN_TRIES), MAX_TRIES)
 
@@ -115,7 +115,7 @@ def _clamp_max_bytes(max_bytes: int) -> int:
     """Coerce to a bounded response cap. Never raises: garbage -> default."""
     try:
         value = int(max_bytes)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return DEFAULT_MAX_BYTES
     return min(max(value, MIN_MAX_BYTES), MAX_MAX_BYTES)
 

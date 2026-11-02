@@ -4,6 +4,17 @@ One growing map per `docs/guides/WORKFLOWS.md`. Highest value first: the
 wrong assumption, then what the evidence actually showed. Link new entries
 here, not in scattered notes.
 
+## Overnight int(inf) OverflowError class (2026-11-01, branch feature/overnight-verify)
+
+- **Trap: `int()` on untrusted numerics raises `OverflowError`, not `ValueError` — and every `(TypeError, ValueError)` guard in the repo missed it.**
+  Wrong assumption: "Invalid values never raise: they clamp or fall back" + `except (TypeError, ValueError)` covers all garbage. `int("abc")` and `int(None)` do raise those — but `int(float("inf"))` raises `OverflowError: cannot convert float infinity to integer`, which escapes. `float()` never has this problem (inf is a valid float); only `int()` does.
+  Evidence: 5 RED-first fixes, same shape, all proven with OverflowError in-trace on unmodified code: transport clamps (`sms_http._clamp_tries/_clamp_max_bytes`), `_leader_decision_message` + `generate_demo_project` counters, 7 `/ws/demo` parsing guards (hostile browser JSON: `json.loads` decodes literal `Infinity`/`1e999` to inf via allow_nan default; the socket died `ClosedResourceError` instead of fail-closed defaults), 5 fail-closed evidence-gate guards (Mapping-form evidence from deserialized JSON; the gates crashed instead of returning False), 4 MCP `max_passes`/stamp-cycles guards (raw-Infinity POST body; HTTP contract is clean `-32602`, not a scan). Fixed shape: `except (TypeError, ValueError, OverflowError)`. Files: `library/shared/sms_http.py`, `library/services/project_agents.py`, `library/services/demo_gen.py`, `main.py`, `library/workflows/project_workflow.py`; tests `test_transport_bounds_red.py`, `test_int_overflow_red.py`, `test_ws_demo_inf_red.py`, `test_evidence_gates_inf_red.py`, `test_mcp_inf_red.py`.
+  Lesson: any `int()` on network/JSON-adjacent input must catch `OverflowError` too. `float()` sites need no fix. Audit with: grep for `except (TypeError, ValueError)` near `int(`, then prove inf-reachability per site (pydantic-validated ints and int-only callers are safe by construction — verify, don't harden).
+- **Trap (tooling): the `write` tool can report success on a new file that never lands — verify with `ls`/`read` before editing it.**
+  Wrong assumption: `write` replying "Created ..." means the file exists with that content.
+  Evidence: two `edit` calls on `tests/test_int_overflow_red.py` failed "old_string not found", then `read` said "File not found" and `ls` confirmed absence — the create never landed despite the success message. Shell heredoc (`cat > file <<EOF`) worked first try; existing-file edits in the same session were fine.
+  Lesson: after `write` of a NEW file, verify existence before editing; if edits mysteriously miss, re-check existence rather than retrying.
+
 ## Ascendancy Wave 2 RED tests (2026-10-30, branch feature/30-wave-ascendancy)
 
 - **Trap: a module-level `import` of a not-yet-existing module makes pytest report ERROR, not FAIL — and 2 such files abort the whole session.**
@@ -238,3 +249,28 @@ occupies the `tui` import name, so only a `tui/` package dir breaks the gate.
 cleanly and the gate stays green. Rule refined: physical dirs are allowed
 unless a same-named top-level module exists; `tui/` stays a map, `web/` may
 be physical. Verified: gate green after `web/` migration (contract suite).
+
+## 2026-11-02 — intermittent session-container survivors are daemon-side, not a tracking bug (D1 closed-loop)
+
+Wrong assumption: "one surviving running target per scan = untracked leak in `close()`" — so the fix must be more tracking.
+Evidence: instrumented 1-, 2-, and 4-fixture runs with a `close()` spy all showed `tracked=1 net=1` and converged to zero residue for the spied sessions (`80c6d59d`, `013e3fd2`, `642933f5`, `3ab1e2ab`, `9f8e5c4d`, plus the full 4-fixture trace `795baeba/fd5dad2c/dca3513e/f1658f28`); `keep_tracked` (round 6 + F-01) covers transient-`remove` failures and `close()` surfaces persistent failure as `SandboxError` with the session label instead of dropping it. The survivors correlate with no code path — single runs converge, sequential runs intermittently leave one `Up` target that was demonstrably tracked at `close()` time with `cleanup_ok=True`.
+Lesson: after `close()` returns success, a container that still shows `Up` is a daemon-side slow/stuck reaping outside the tracked contract, not an ownership bug. The reconciler is `main.py --cleanup` (label-filtered `remove_stale_resources` — removed 19+6 here, verified 0/0). Do not add more tracking; re-run `--cleanup` after proof batches and move on. Genuine leaks would show `cleanup_ok=False` or `SandboxError`, which never occurred in any instrumented run.
+
+## 2026-11-02 — closed-loop session traps (competition-lockdown closeout)
+
+- **Trap: `ruff check` flip-flops between "All checks passed" and I001 after moving an import.**
+  Wrong assumption: one `--fix` run settles import sorting.
+  Evidence: moving `_SNIPPET_LANGUAGE_BY_SUFFIX` into the top-level `mcp_bridge` import block needed two `--fix` passes plus a manual merge of the resulting duplicate `from modules.services.mcp_bridge import (...)` blocks; `format --check` stayed green throughout while `check` flipped. Fix pattern: merge duplicate from-blocks by hand, re-run `check`, repeat until stable (3 consecutive greens), then gate.
+  Lesson: after touching top-level imports, run `ruff check` in a loop until it passes 3x; a single green is not stable.
+- **Trap: wall-clock correlation lies across the Docker boundary (D1).**
+  Wrong assumption: container `Created` timestamps share the shell clock, so "created 7s before run start" means "from another run".
+  Evidence: shell `date` said 15:09 PST while the daemon stamped 16:08 for the same instant (~59 min skew). Session-label grouping (`--filter label=purplebox.session=<id>`) is the only valid attribution; timestamps across the boundary are not comparable.
+  Lesson: never attribute containers by time; always group by session label.
+- **Trap: pytest runs inside `dev.py check` can flake once and pass twice.**
+  Wrong assumption: one red gate = real regression, must fix before merging.
+  Evidence: final gate showed `1 failed, 1029 passed`, then two consecutive full runs (direct pytest + full gate) went 1030 green with no code change. No test was touched; the failure line was not captured (grep found no FAILED block — output buffering).
+  Lesson: on a single-test gate red with no failure block captured, re-run the suite before touching code; two consecutive greens bracket a flake. Record it; do not chase it.
+- **Trap: the write tool can report success on a file that never lands.**
+  Wrong assumption: `write` replying "Created ..." means the file exists.
+  Evidence (prior session, still true): two `edit` calls failed "old_string not found", then `read` said "File not found" — the create never landed. Shell heredoc worked first try.
+  Lesson: after `write` of a NEW file, verify with `ls`/`read` before editing it.

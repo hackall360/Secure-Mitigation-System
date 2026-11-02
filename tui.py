@@ -20,6 +20,9 @@ import sys
 import threading
 from dataclasses import dataclass, field
 
+# C1: canonical snippet suffix map lives in mcp_bridge (single source of truth).
+from modules.services.mcp_bridge import SNIPPET_LANGUAGE_BY_SUFFIX as _SNIPPET_LANGUAGE_BY_SUFFIX
+
 try:  # Windows fallback: curses may be absent; plain-text mode covers that.
     import curses
 except ImportError:  # pragma: no cover - platform dependent
@@ -122,15 +125,6 @@ def prompt_line(prompt: str, default: str = "", input_func=input) -> str:
         return default
     text = str(typed).strip()
     return text if text else default
-
-
-_SNIPPET_LANGUAGE_BY_SUFFIX = {
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".py": "python",
-    ".php": "php",
-}
 
 
 def _state_mode(state: TuiState) -> str:

@@ -118,10 +118,13 @@ def test_h1_fully_patched_chain_sweep_verifies():
 
     On buggy code the middle link reads (a_pre=0, b_pre=0) -> post 0 ->
     sweep 'failed' despite a full patch. Fixed code must verify.
+    Codes are positional per verifier call; chain-pass order is
+    pre, link_a_pre, link_b_pre, regression, post, link_a_post,
+    link_b_post, final-health (pres run pre-patch).
     """
     from modules.workflows.sweep import execute_sweep_scan
 
-    codes = [0] + [0, 0, 1, 0] * 3 + [0, 0, 1, 0, 0, 1, 1, 0]
+    codes = [0] + [0, 0, 1, 0] * 3 + [0, 0, 0, 0, 1, 1, 1, 0]
     sandbox = FakeFixtureSandbox(codes)
     muse = H1FakeMuse()
     result = asyncio.new_event_loop().run_until_complete(

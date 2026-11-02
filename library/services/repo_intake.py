@@ -23,6 +23,13 @@ from urllib.parse import urlparse
 _INGEST_DIGEST_DOMAIN = b"purplebox-repo-intake-manifest-v1\0"
 _COMMIT_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
 
+# Shell-active characters: rejected from intake URLs as defense-in-depth.
+# The clone path below uses argv-list exec (no shell), so these bytes could
+# not execute there — but a future caller routing a URL through a shell
+# must not inherit a live injection. `rm`, separators, substitution,
+# quoting, globbing, and whitespace are all refused.
+_SHELL_METACHARS = frozenset("$`;&|(){}[]!#*?~<>\\'\"\n\r\t ")
+
 # LAW 4/10I: detection is pure string matching over file names and file
 # contents. It never executes, never opens host paths, never touches the
 # network. Adversarial names (``requirements.txt; rm -rf /``) only match on
@@ -56,12 +63,17 @@ class RepoIntakeSpec:
     def __post_init__(self) -> None:
         parsed = urlparse(self.url) if isinstance(self.url, str) else None
         host = (parsed.hostname or "") if parsed is not None else ""
+        bad = (
+            next((c for c in self.url if c in _SHELL_METACHARS), None)
+            if isinstance(self.url, str)
+            else None
+        )
         if (
             parsed is None
             or parsed.scheme != "https"
             or not host
             or any(part in ("", ".", "..") for part in host.split("."))
-            or " " in self.url
+            or bad is not None
         ):
             raise ValueError("repo URL must be an https:// remote")
         commit = self.commit_hash
@@ -356,12 +368,17 @@ def _clone_in_staging(
             ["sh", "-c", "command -v git >/dev/null || (apt-get update && apt-get install -y git)"],
             timeout=clone_timeout_seconds,
         )
-        clone_cmd = [
-            "sh",
-            "-c",
-            f"rm -rf {clone_dir} && git clone --depth 1 {spec.url} {clone_dir} && git -C {clone_dir} fetch --depth 1 origin {spec.commit_hash} && git -C {clone_dir} checkout {spec.commit_hash}",
-        ]
-        cloned = stage.exec_run(clone_cmd, timeout=clone_timeout_seconds)
+        # No shell: every step is an argv-list exec so URL/commit bytes are
+        # always git argv elements, never shell text. A hostile remote
+        # (metachars rejected above as defense-in-depth) cannot execute
+        # here even if validation were bypassed.
+        for step in (
+            ["rm", "-rf", clone_dir],
+            ["git", "clone", "--depth", "1", spec.url, clone_dir],
+            ["git", "-C", clone_dir, "fetch", "--depth", "1", "origin", spec.commit_hash],
+            ["git", "-C", clone_dir, "checkout", spec.commit_hash],
+        ):
+            cloned = stage.exec_run(step, timeout=clone_timeout_seconds)
         if isinstance(cloned, dict):
             code, _out = cloned.get("exit_code", 1), cloned.get("output", b"")
         else:

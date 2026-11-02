@@ -465,14 +465,20 @@ class DockerSandboxManager:
 
     def replace_target(self, previous, snapshot: str, network, target: Target, source: str):
         # Fresh process and immutable filesystem; no pkill or shell command interpolation.
+        keep_tracked = False
         try:
             previous.remove(force=True)
         except NotFound:
-            # Already reaped (cancel/disconnect path removed it); still untrack below.
+            # Already reaped (cancel/disconnect path removed it); untrack below.
             pass
-        finally:
-            if previous in self.containers:
-                self.containers.remove(previous)
+        except DockerException:
+            # Transient daemon failure: LEAVE the container tracked so the
+            # session close() retries the reap. Untracking here would leak a
+            # running target the session can no longer see (correctness audit
+            # round 6: one running target per scan survived this way).
+            keep_tracked = True
+        if not keep_tracked and previous in self.containers:
+            self.containers.remove(previous)
         return self.start_cloneable_target(network, target, source, base_image=snapshot)
 
     def run_isolated_verifier(self, network, script: str) -> VerificationResult:
@@ -601,13 +607,18 @@ class DockerSandboxManager:
 
     def replace_binary_harness(self, previous, snapshot: str, network, *, mitigation: str = ""):
         """Restart the harness on the same snapshot with new mitigation rules."""
+        keep_tracked = False
         try:
             previous.remove(force=True)
         except NotFound:
             pass
-        finally:
-            if previous in self.containers:
-                self.containers.remove(previous)
+        except DockerException:
+            # Same keep-tracked rule as replace_target (round 6): a transient
+            # daemon failure must not untrack a still-running harness, or the
+            # session close() can never retry the reap (F-01).
+            keep_tracked = True
+        if not keep_tracked and previous in self.containers:
+            self.containers.remove(previous)
         return self.start_binary_harness_from_snapshot(snapshot, network, mitigation=mitigation)
 
     def start_binary_harness_from_snapshot(self, snapshot: str, network, *, mitigation: str = ""):

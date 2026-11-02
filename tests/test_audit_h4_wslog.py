@@ -109,9 +109,9 @@ async def test_h4_sweep_logs_hide_probe_output():
     emit, messages = _collector()
     # chain pass exercises link_a/link_b pre+post: baseline + 3 normal passes
     # of (pre, regression, post, final-health) + chain pass of (pre,
-    # regression, post, link_a_pre, link_b_pre, link_a_post, link_b_post,
-    # final-health). Verdict-agnostic: H1 owns sweep flow; H4 only pins that
-    # the live feed never carries raw verifier stdout.
+    # link_a_pre, link_b_pre, regression, post, link_a_post, link_b_post,
+    # final-health) — pres run pre-patch. Verdict-agnostic: H1 owns sweep
+    # flow; H4 only pins that the live feed never carries raw verifier stdout.
     codes = [0] + [0, 0, 1, 0] * 3 + [0, 0, 0, 0, 0, 0, 0, 0]
     sandbox = _SentinelSandbox(codes)
     muse = SweepFakeMuse()

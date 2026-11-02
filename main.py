@@ -29,6 +29,9 @@ from modules.core.profiles import ProfileError, apply_profile, available_profile
 from modules.core.registry import BASE_DIR, TARGETS_REGISTRY
 from modules.core.scan_profiles import SCAN_PROFILES
 from modules.services.mcp_bridge import (
+    SNIPPET_LANGUAGE_BY_SUFFIX as _SNIPPET_LANGUAGE_BY_SUFFIX,
+)
+from modules.services.mcp_bridge import (
     SNIPPET_TOOL_NAME,
     handle_mcp_request,
     jsonrpc_error,
@@ -610,17 +613,17 @@ async def run_demo_build(
     if scan_profile == "custom" and cycles is not None:
         try:
             dump["cycles"] = max(1, min(20, int(cycles)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     if scan_profile == "ultra_heavy":
         try:
             dump["red_agents"] = max(1, min(12, int(red_agents)))
             dump["blue_agents"] = max(1, min(12, int(blue_agents)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     try:
         dump["context_budget"] = max(1024, min(131072, int(context_budget)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     dump["allow_remote_inference"] = not intel_offline or settings.inference_mode == "local"
     spec = _Spec.model_validate(dump)
@@ -798,12 +801,26 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             return
         await socket.accept()
         lock = application.state.scan_lock
-        if lock.locked():
+        # F-02 atomic busy: the old shape (one locked() check, then a long
+        # snapshot/docker-status gap, then unconditional `async with lock`)
+        # let two callers both see "free" and serialize instead of the
+        # loser getting busy. The re-check immediately before acquire runs
+        # with no awaits between check and acquire, which is atomic within
+        # one event-loop step: exactly one winner, the loser gets busy now.
+        _busy_acquired = False
+        if not lock.locked():
+            if not lock.locked():
+                await lock.acquire()
+                _busy_acquired = True
+        if not _busy_acquired:
             await socket.send_json(
                 {"team": "system", "msg": "Another scan is already running.", "type": "busy"}
             )
             await socket.close(code=1013)
             return
+        # This task now owns the lock; release so the `async with lock`
+        # below (which wraps the whole scan body) acquires normally.
+        lock.release()
 
         from modules.services.chatter import socket_emit as _socket_emit
         from modules.services.telemetry_hub import build_snapshot as _build_snapshot
@@ -990,7 +1007,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         demo_cycles = (
                             None if demo_cycles is None else max(1, min(20, int(demo_cycles)))
                         )
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_cycles = None
                     try:
                         demo_red = max(1, min(12, int(request.get("red_agents", 5))))
@@ -998,7 +1015,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         demo_budget = max(
                             1024, min(131072, int(request.get("context_budget", 32768)))
                         )
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_red, demo_blue, demo_budget = 5, 5, 32768
                     demo_size = str(request.get("demo_size", "") or "")
                     if demo_size not in ("small", "standard"):
@@ -1006,12 +1023,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     try:
                         _flaw = request.get("flaw_count", None)
                         demo_flaw_count = None if _flaw is None else max(1, min(8, int(_flaw)))
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_flaw_count = None
                     try:
                         _seed = request.get("seed", None)
                         demo_seed = None if _seed is None else int(_seed)
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         demo_seed = None
                 except (ValueError, TimeoutError, WebSocketDisconnect):
                     await socket.send_json(
@@ -1041,10 +1058,22 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 )
             else:
                 if target_key == "binary_argv_echo":
-                    raise ValueError(
-                        "binary_argv_echo is a compiled ELF fixture: use the Binary "
-                        "sweep mode (/ws/binary) or --binary-target, not the fixture socket."
+                    # Fail-closed redirect (LAW 4): the ELF fixture is not UTF-8
+                    # source, so the fixture socket must refuse it with the same
+                    # invalid-frame contract the project/demo/binary branches use
+                    # — never an unhandled ValueError that drops the socket.
+                    await socket.send_json(
+                        {
+                            "type": "invalid",
+                            "team": "system",
+                            "msg": (
+                                "binary_argv_echo is a compiled ELF fixture: use the Binary "
+                                "sweep mode (/ws/binary) or --binary-target, not the fixture socket."
+                            ),
+                        }
                     )
+                    await socket.close(code=1008)
+                    return
                 if sweep_depth is not None:
                     coroutine = execute_sweep_scan(
                         target_key, emit, config=scan_config, max_passes=sweep_depth
@@ -1205,11 +1234,22 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         status_code=200,
                     )
                 lock = application.state.scan_lock
-                if lock.locked():
+                # V2 atomic busy (F-02 shape, WS fixed in resilience): the old
+                # locked()-check-then-await-gap-then-acquire lets two callers
+                # both pass and serialize. The re-check immediately before
+                # acquire has no awaits between, so exactly one winner holds
+                # the lock and the loser gets -32001 deterministically.
+                _mcp_hold = False
+                if not lock.locked():
+                    if not lock.locked():
+                        await lock.acquire()
+                        _mcp_hold = True
+                if not _mcp_hold:
                     return JSONResponse(
                         jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
                         status_code=200,
                     )
+                lock.release()
                 live_arguments = params.get("arguments") or {}
                 if tool_name == "sms_scan_source":
                     try:
@@ -1217,7 +1257,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         if target not in TARGETS_REGISTRY:
                             raise ValueError(f"Unknown target: {target!r}.")
                         max_passes = int(live_arguments.get("max_passes") or 1)
-                    except (ValueError, TypeError) as exc:
+                    except (ValueError, TypeError, OverflowError) as exc:
                         return JSONResponse(
                             jsonrpc_error(rpc_id, -32602, f"Invalid scan arguments: {exc}."),
                             status_code=200,
@@ -1344,11 +1384,19 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     status_code=200,
                 )
             lock = application.state.scan_lock
-            if lock.locked():
+            # V2 atomic busy: same exactly-one-winner guard as the scan
+            # branch above and the WS socket path (F-02 shape).
+            _snippet_hold = False
+            if not lock.locked():
+                if not lock.locked():
+                    await lock.acquire()
+                    _snippet_hold = True
+            if not _snippet_hold:
                 return JSONResponse(
                     jsonrpc_error(rpc_id, -32001, "Another scan is already running."),
                     status_code=200,
                 )
+            lock.release()
             messages: list[str] = []
 
             async def _emit(team: str, message: str) -> None:
@@ -1415,15 +1463,6 @@ def _mcp_scan_response(rpc_id: object, structured: dict) -> JSONResponse:
 
 
 app = create_app()
-
-
-_SNIPPET_LANGUAGE_BY_SUFFIX = {
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".py": "python",
-    ".php": "php",
-}
 
 
 async def mcp_snippet_runner(
@@ -1607,7 +1646,7 @@ def mcp_stdio_runner() -> int:
             target = str(arguments.get("target") or "")
             try:
                 max_passes = int(arguments.get("max_passes") or 1)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 max_passes = 1
 
             async def _emit_source(team: str, message: str) -> None:
@@ -1692,7 +1731,7 @@ def mcp_stdio_runner() -> int:
                 try:
                     max_passes_raw = arguments.get("max_passes") or 3
                     max_passes_bin = int(max_passes_raw)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     max_passes_bin = 3
                 result = asyncio.run(
                     _scan_binary_run(
@@ -1912,7 +1951,7 @@ async def ai_demo_runner(
     elif cycles is not None:
         try:
             _dump["cycles"] = max(1, min(20, int(cycles)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     _dump["red_agents"] = red_agents
     _dump["blue_agents"] = blue_agents

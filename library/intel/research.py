@@ -362,19 +362,30 @@ KEV_CATALOG_URL = (
 # maps uppercased CVE id -> raw catalog item. Only a successfully parsed
 # catalog populates it — transport failures and malformed payloads leave it
 # None so the next call retries.
+# F-04 TTL: the catalog updates daily; a process-lifetime cache would serve
+# stale KEV data forever on a long-lived server. Entries expire after
+# KEV_CACHE_TTL_SECONDS so the next lookup refetches.
 _KEV_CACHE: dict[str, dict] | None = None
+_KEV_CACHE_FETCHED_AT: float = 0.0
+KEV_CACHE_TTL_SECONDS = 24 * 3600
 
 
 def _kev_cache_clear() -> None:
     """Reset the KEV catalog cache (test helper; production never calls it)."""
-    global _KEV_CACHE
+    global _KEV_CACHE, _KEV_CACHE_FETCHED_AT
     _KEV_CACHE = None
+    _KEV_CACHE_FETCHED_AT = 0.0
 
 
 def _kev_catalog() -> dict[str, dict] | None:
-    """Fetch (once) and index the CISA KEV catalog. None on any failure."""
-    global _KEV_CACHE
-    if _KEV_CACHE is not None:
+    """Fetch (once per TTL) and index the CISA KEV catalog. None on any failure."""
+    global _KEV_CACHE, _KEV_CACHE_FETCHED_AT
+    import time as _time
+
+    if (
+        _KEV_CACHE is not None
+        and (_time.monotonic() - _KEV_CACHE_FETCHED_AT) < KEV_CACHE_TTL_SECONDS
+    ):
         return _KEV_CACHE
     try:
         from library.shared.sms_http import MAX_MAX_BYTES
@@ -395,6 +406,7 @@ def _kev_catalog() -> dict[str, dict] | None:
         if key and key not in index:
             index[key] = item
     _KEV_CACHE = index
+    _KEV_CACHE_FETCHED_AT = _time.monotonic()
     return index
 
 

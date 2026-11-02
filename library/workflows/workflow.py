@@ -314,6 +314,10 @@ class ScanResult(BaseModel):
     compression: CompressionReport = Field(default_factory=CompressionReport)
     vault_recall: str = ""
     vault_namespaces: list[str] = []
+    # F-07: records whether the post-verified vault commit succeeded. A
+    # commit failure never changes the Docker-backed verdict, but without
+    # this flag the next scan silently recalls NOVEL instead of KNOWN.
+    vault_committed: bool = False
 
     @property
     def success(self) -> bool:
@@ -544,7 +548,9 @@ async def execute_purple_workflow(
                         },
                     )
                     await log("system", "[phase vault] Verified finding + patch committed.")
+                    result.vault_committed = True
                 except Exception as exc:
+                    result.vault_committed = False
                     await log(
                         "system",
                         f"[phase vault] Commit skipped ({type(exc).__name__}).",

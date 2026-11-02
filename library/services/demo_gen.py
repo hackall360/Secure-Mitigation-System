@@ -280,13 +280,13 @@ async def generate_demo_project(
     wanted = [str(v)[:120] for v in (vulns or [])][:8] or list(DEFAULT_DEMO_VULNS)
     try:
         count = len(wanted) if flaw_count is None else max(1, min(8, int(flaw_count)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         count = len(wanted)
     wanted = wanted[:count]
     demo_size = size if size in ("small", "standard") else "standard"
     try:
         nonce: int | None = None if seed is None else int(seed)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         nonce = None
     brief = str(build_brief or "")[:500] or DEFAULT_DEMO_BRIEF
     payload = {
