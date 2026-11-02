@@ -2,7 +2,7 @@
 
 Root `AGENTS.md` is the project map (harness-neutral). This file is the
 Jcode-harness half of the split: model, machine, and computer specifics that
-other harnesses (`.claude/`, etc.) should replace with their own, not copy.
+other harnesses should replace with their own, not copy.
 
 ## Harness + model
 
@@ -13,7 +13,7 @@ other harnesses (`.claude/`, etc.) should replace with their own, not copy.
   prompt:"<repo path, branch, exact task, no-write vs write>"` — OMIT `model:`
   so the worker inherits this session's proven coordinator route. Do NOT pass
   `model:"muse-spark-1.3-contributor"`: the router reads a bare id as
-  `claude:<id>` (Anthropic) and refuses (11 refusals 2026-11-01). Workers in
+  a different-provider request (Anthropic) and refuses (11 refusals 2026-11-01). Workers in
   normal mode never spawn sub-agents; spawner owns the merge; writers get
   isolated git worktrees (`git worktree add /tmp/wt-<role> <branch>`),
   readers share the checkout; remove worktrees when done.

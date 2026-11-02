@@ -79,7 +79,7 @@ launch redirects to its setup page.
 
 ```
 v3/
-├─ AGENTS.md  CLAUDE.md  README.md
+├─ AGENTS.md  README.md
 ├─ index.html  demo-setup.html  prod-setup.html  demo.html  console.html  visualizer.html
 ├─ favicon.svg
 ├─ css/

@@ -50,8 +50,8 @@ sub-agents aggressively (up to 10 at once, typically 3–5):
   `swarm spawn label:"<short role>"
   prompt:"<tight brief: repo path, branch, exact task, no-write vs write>"`.
   Do NOT pass `model:"muse-spark-1.3-contributor"` (or any bare Meta id):
-  the router interprets a bare id as an Anthropic request
-  (`claude:muse-spark-1.3-contributor`) and refuses rather than
+  the router interprets a bare id as a different-provider request
+  (Anthropic) and refuses rather than
   substituting — 11 refusals recorded 2026-11-01 (TRAPS swarm-spawn
   entry). Only pin `model:` when `list_models` shows the exact route-prefixed
   id for a *different* provider; copying the bare contributor id verbatim
