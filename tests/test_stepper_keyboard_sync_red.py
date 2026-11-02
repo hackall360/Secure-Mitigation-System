@@ -19,7 +19,6 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 import pytest
@@ -31,7 +30,8 @@ from ui_scan import start_server, wd_request  # noqa: E402
 
 GD_PORT = 19601
 pytestmark = pytest.mark.skipif(
-    shutil.which("geckodriver") is None, reason="geckodriver required for real-browser stepper proof"
+    shutil.which("geckodriver") is None,
+    reason="geckodriver required for real-browser stepper proof",
 )
 
 STEP_SCRIPT = """(() => {
@@ -66,16 +66,29 @@ def _drive(port: int) -> dict:
             base,
             "POST",
             "/session",
-            {"capabilities": {"alwaysMatch": {"browserName": "firefox", "moz:firefoxOptions": {"args": ["-headless"]}}}},
+            {
+                "capabilities": {
+                    "alwaysMatch": {
+                        "browserName": "firefox",
+                        "moz:firefoxOptions": {"args": ["-headless"]},
+                    }
+                }
+            },
         )["value"]["sessionId"]
 
         def run_js(script: str):
-            return wd_request(base, "POST", f"/session/{session}/execute/sync", {"script": script, "args": []})["value"]
+            return wd_request(
+                base, "POST", f"/session/{session}/execute/sync", {"script": script, "args": []}
+            )["value"]
 
-        run_js(f"window.location.href = 'http://127.0.0.1:{port}/web/prod-setup.html'; return true;")
+        run_js(
+            f"window.location.href = 'http://127.0.0.1:{port}/web/prod-setup.html'; return true;"
+        )
         deadline = time.time() + 30
         while time.time() < deadline:
-            if run_js("return document.querySelector('[data-key=\"sweep_passes\"] input') !== null"):
+            if run_js(
+                "return document.querySelector('[data-key=\"sweep_passes\"] input') !== null"
+            ):
                 break
             time.sleep(0.5)
         return _json.loads(run_js(f"return ({STEP_SCRIPT})"))
@@ -97,4 +110,6 @@ def test_keyboard_stepper_echoes_value_while_focused():
         server.terminate()
         server.wait(timeout=15)
     assert result["focused"] is True
-    assert result["display"] == "2", f"focused stepper must echo the bumped value, got {result['display']!r}"
+    assert result["display"] == "2", (
+        f"focused stepper must echo the bumped value, got {result['display']!r}"
+    )

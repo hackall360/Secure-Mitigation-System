@@ -8,10 +8,8 @@ one JSON record. Never touches port 8000."""
 
 import argparse
 import json
-import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -83,7 +81,7 @@ VISUAL_CHECKS = """(() => {
   // Demo visual controls (no-ops on console page: must exist only on demo.html).
   out.demo_only = ['btn-pause', 'btn-director'].map((id) => !!document.getElementById(id));
   return JSON.stringify(out);
-})()""";
+})()"""
 
 
 DEMO_VISUAL_CHECKS = """(() => {
@@ -104,15 +102,17 @@ DEMO_VISUAL_CHECKS = """(() => {
   const verdict = document.getElementById('verdict');
   out.verdict_rendered = !verdict.hidden && document.getElementById('v-title').textContent.length > 0;
   return JSON.stringify(out);
-})()""";
+})()"""
 
 
 def run_browser(browser, port):
     if browser == "firefox":
         from v3_live_e2e import Firefox
+
         b = Firefox()
     else:
         from v3_live_e2e import Chrome
+
         b = Chrome()
     try:
         # Fail-closed guard: no launch -> visuals redirect to their setup pages.
@@ -123,9 +123,11 @@ def run_browser(browser, port):
         time.sleep(1)
         demo_guard_url = b.url()
         # Seed a fake launch so the console visual boots its HUD without a backend run.
-        seed = ("(() => { SMS.launch.save({ page: 'console', kind: 'fake', mode: 'fixture',"
-                " fixture: 'node_query_sink', title: 't', request: { path: '/ws/combat/node_query_sink' },"
-                " topo: { type: 'profile' } }); return 'seeded'; })()")
+        seed = (
+            "(() => { SMS.launch.save({ page: 'console', kind: 'fake', mode: 'fixture',"
+            " fixture: 'node_query_sink', title: 't', request: { path: '/ws/combat/node_query_sink' },"
+            " topo: { type: 'profile' } }); return 'seeded'; })()"
+        )
         b.go(f"http://localhost:{port}/web/prod-setup.html")
         time.sleep(2)
         b.js(seed)
@@ -138,14 +140,14 @@ def run_browser(browser, port):
         b.go(f"http://localhost:{port}/web/demo-setup.html")
         time.sleep(2)
         demo = json.loads(b.js(CHECKS))
-        b.go(f"http://localhost:{port}/web/console.html")
-        time.sleep(1)
-        # Console without a launch handoff redirects to its setup page (fail-closed UX).
-        console_redirect = b.url()
         # Fake-run visual: seed a fake demo launch, operate speed/pause/director.
-        b.js(("(() => { SMS.launch.save({ page: 'demo', kind: 'fake', mode: 'fixture',"
-              " fixture: 'node_query_sink', title: 't', request: { path: '/ws/combat/node_query_sink' },"
-              " topo: { type: 'profile' } }); return 'seeded'; })()"))
+        b.js(
+            (
+                "(() => { SMS.launch.save({ page: 'demo', kind: 'fake', mode: 'fixture',"
+                " fixture: 'node_query_sink', title: 't', request: { path: '/ws/combat/node_query_sink' },"
+                " topo: { type: 'profile' } }); return 'seeded'; })()"
+            )
+        )
         b.go(f"http://localhost:{port}/web/demo.html")
         time.sleep(3)
         demo_visual = None
@@ -168,12 +170,15 @@ def main():
         raise SystemExit("Port 8000 belongs to a foreign process here; pick another.")
     server = ui_scan.start_server(args.port, offline=True)
     try:
-        prod, demo, console_url, demo_guard_url, visual, demo_visual = run_browser(args.browser, args.port)
+        prod, demo, console_url, demo_guard_url, visual, demo_visual = run_browser(
+            args.browser, args.port
+        )
     finally:
         server.terminate()
         server.wait(timeout=15)
     modes_ok = len(prod["modes"]) == 7 and all(
-        m["checked"] == "true" and m["launch"] for m in prod["modes"])
+        m["checked"] == "true" and m["launch"] for m in prod["modes"]
+    )
     checks = {
         "seven_modes_select": modes_ok,
         "mode_titles_launch_labels": all(m["title"] != "—" or True for m in prod["modes"]),
@@ -181,7 +186,8 @@ def main():
         "research_toggle_flips": prod.get("research_on") is True,
         "request_preview_nonempty": prod["req_len"] > 20,
         "console_ids_present": all(prod["console_ids"]),
-        "demo_cards_select": len(demo["cards"]) >= 7 and all(c["checked"] == "true" for c in demo["cards"]),
+        "demo_cards_select": len(demo["cards"]) >= 7
+        and all(c["checked"] == "true" for c in demo["cards"]),
         "demo_src_toggles": {s["src"] for s in demo["srcs"]} == {"live", "fake"},
         "console_guards_setup": console_url.endswith("prod-setup.html"),
         "console_boots_seeded": True,
@@ -200,9 +206,17 @@ def main():
         and demo_visual["director_flipped"] is True
         and demo_visual["verdict_rendered"] is True
     )
-    record = {"browser": args.browser, "prod": prod, "demo": demo, "visual": visual,
-              "demo_visual": demo_visual, "console_url": console_url,
-              "demo_guard_url": demo_guard_url, "checks": checks, "pass": all(checks.values())}
+    record = {
+        "browser": args.browser,
+        "prod": prod,
+        "demo": demo,
+        "visual": visual,
+        "demo_visual": demo_visual,
+        "console_url": console_url,
+        "demo_guard_url": demo_guard_url,
+        "checks": checks,
+        "pass": all(checks.values()),
+    }
     print(json.dumps(record, indent=2))
     return 0 if record["pass"] else 1
 
