@@ -15,10 +15,16 @@ Sources: https://osv.dev (OSV API, no key) and NVD API 2.0
 
 from __future__ import annotations
 
+import functools
 import os
 import re
+import time
 from typing import Any, Mapping, Sequence
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.shared.sms_http import paced_get_json
 from modules.shared.sms_records import sanitize_cve_id
 
@@ -30,7 +36,64 @@ NVD_SEARCH_MAX_BYTES = 4 * 1024 * 1024
 NVD_LOOKUP_MAX_BYTES = 2 * 1024 * 1024
 OSV_LOOKUP_MAX_BYTES = 2 * 1024 * 1024
 
+_SEARCH_ASPECT = get_aspect("intel.search")
 
+
+def _observed_lookup(operation: str):
+    """Decorator: trace one intel lookup, log count + degraded reason.
+
+    LAW 4: only CVE ids (already bounded/sanitized at the call site),
+    counts, and fixed failure reasons are logged — never intel payload
+    text. Bodies untouched (decorator lines only). Sibling of the
+    research/scanner runner decorators.
+    """
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            started = time.monotonic()
+            degraded = False
+            reason = ""
+            count = 0
+            try:
+                with obs_trace(_SEARCH_ASPECT, operation):
+                    result = fn(*args, **kwargs)
+            except Exception:
+                degraded = True
+                reason = "error"
+                raise
+            else:
+                if isinstance(result, list):
+                    count = len(result)
+                elif isinstance(result, dict):
+                    vulns = result.get("vulnerabilities")
+                    count = len(vulns) if isinstance(vulns, list) else 1
+                elif result is not None:
+                    count = 1
+                reason = "" if count else "empty"
+                degraded = not count
+            finally:
+                duration_ms = round((time.monotonic() - started) * 1000, 3)
+                obs_log(
+                    _SEARCH_ASPECT,
+                    f"{operation}.result",
+                    message=f"{operation} finished",
+                    count=count,
+                    degraded=degraded,
+                    reason=reason,
+                    duration_ms=duration_ms,
+                )
+                obs_record_metric(
+                    _SEARCH_ASPECT, f"{operation}.duration_ms", duration_ms, unit="ms"
+                )
+            return result
+
+        return inner
+
+    return wrap
+
+
+@_observed_lookup("nvd_search")
 def nvd_search(
     keyword: str,
     *,
@@ -57,6 +120,7 @@ def nvd_search(
     )
 
 
+@_observed_lookup("nvd_lookup")
 def nvd_lookup(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any]:
     """Fetch one NVD record by CVE ID."""
     cve_id = cve_id.strip().upper()[:32]
@@ -127,6 +191,7 @@ def summarize_nvd_search(payload: Mapping[str, Any], *, limit: int = 10) -> list
     return out
 
 
+@_observed_lookup("osv_lookup")
 def osv_lookup_by_cve(cve_id: str, *, timeout: float = 30.0) -> dict[str, Any] | None:
     """Fetch an OSV record by CVE alias (OSV indexes CVE IDs directly).
 
@@ -153,6 +218,17 @@ async def intel_for_demo(
     """Gather recent CVE context for AI demo generation (blocking network in thread)."""
     import asyncio as _asyncio
 
+    theme_count = len(list(themes)[:6])
+    obs_log(
+        _SEARCH_ASPECT,
+        "intel_for_demo.start",
+        message="demo intel gather started",
+        theme_count=theme_count,
+        per_theme=per_theme,
+    )
+    started = time.monotonic()
+    status = "ok"
+
     def _fetch() -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for theme in themes[:6]:
@@ -163,4 +239,29 @@ async def intel_for_demo(
                 out.append({"theme": theme, "error": f"{type(exc).__name__}"})
         return out[:30]
 
-    return await _asyncio.to_thread(_fetch)
+    try:
+        with obs_trace(_SEARCH_ASPECT, "intel_for_demo"):
+            gathered = await _asyncio.to_thread(_fetch)
+    except Exception:
+        status = "error"
+        raise
+    else:
+        return gathered
+    finally:
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        fields: dict[str, Any] = {"status": status, "theme_count": theme_count}
+        if status != "error":
+            try:
+                fields["record_count"] = len(gathered)
+            except Exception:
+                pass
+        # LAW 4: theme names are caller-supplied words, not intel text, but
+        # only their count is logged — never gathered CVE text.
+        obs_log(
+            _SEARCH_ASPECT,
+            "intel_for_demo.result",
+            message="demo intel gather finished",
+            duration_ms=duration_ms,
+            **fields,
+        )
+        obs_record_metric(_SEARCH_ASPECT, "intel_for_demo.duration_ms", duration_ms, unit="ms")
