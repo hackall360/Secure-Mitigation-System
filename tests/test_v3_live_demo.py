@@ -69,7 +69,10 @@ node = pytest.mark.skipif(shutil.which("node") is None, reason="node required")
 def _run(frames):
     res = subprocess.run(
         ["node", "-e", HARNESS, str(ROOT / "web/js/pages/demo.js"), json.dumps(frames)],
-        capture_output=True, text=True, timeout=20, check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
     )
     return json.loads(res.stdout)
 
@@ -82,11 +85,22 @@ def test_live_launch_opens_real_session_not_replay():
 
 @node
 def test_graph_frames_add_nodes_and_links():
-    out = _run([
-        {"type": "graph", "nodes": [{"id": "fn:login", "label": "login", "kind": "function", "parent": "app.js"}],
-         "links": [{"source": "fn:login", "target": "app.js"}]},
-        {"type": "topology", "nodes": [{"id": "db", "label": "db", "kind": "service"}], "links": []},
-    ])
+    out = _run(
+        [
+            {
+                "type": "graph",
+                "nodes": [
+                    {"id": "fn:login", "label": "login", "kind": "function", "parent": "app.js"}
+                ],
+                "links": [{"source": "fn:login", "target": "app.js"}],
+            },
+            {
+                "type": "topology",
+                "nodes": [{"id": "db", "label": "db", "kind": "service"}],
+                "links": [],
+            },
+        ]
+    )
     assert out["hasGraph"]
     assert out["nodes"] == ["fn:login", "db"]
     assert out["links"] == [["fn:login", "app.js", "call"]]
