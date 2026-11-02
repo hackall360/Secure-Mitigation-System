@@ -196,3 +196,17 @@ def test_readme_links_technical_breakdown():
         "CommsFeed",
     ):
         assert marker in breakdown, marker
+
+
+def test_readme_hackathon_new_work_section():
+    text = README.read_text(encoding="utf-8")
+    assert "## Meta Hackathon" in text
+    for marker in ("Oct 27", "Nov 4", "muse-spark-1.3-contributor", "0.14.0", "Greenhouse"):
+        assert marker in text, marker
+
+
+def test_load_table_and_system_decision_documented():
+    text = (ROOT / "docs" / "LOAD_TABLE.md").read_text(encoding="utf-8")
+    assert "1083" in text
+    assert "/ws/system" in text
+    assert "fail-closed" in text

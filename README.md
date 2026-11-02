@@ -142,6 +142,35 @@ Supply-chain attacks show the cost. Shai-Hulud and php2shell, plus steady npm an
 
 ~90% of this code was written with Meta Muse models: red, blue, and green agents plus the Docker loop and dashboard, all under human review. Docker exits decide each verdict, not model claims.
 
+## Meta Hackathon: what was built here (Oct 27 – Nov 4)
+
+Everything below was built during the hackathon window on the 0.x line (current `0.14.0`).
+Prior work is the fixture/loop skeleton; the hackathon turned it into a product.
+
+- **Red/blue/green agent loop on Meta models.** Red default `muse-spark-1.3-contributor`
+  (fast triage), blue default `muse-wonder-1.0` (deep patch); per-token pricing and the
+  economy/balanced/quality profiles live in `library/core/pricing.py` and
+  `library/core/profiles.py`. Greenhouse (`library/services/demo_gen.py`) is a third
+  Muse role: it authors novel vulnerable demo services from live threat-intel summaries,
+  so `--ai-demo` exercises the loop on targets no human wrote.
+- **Evidence-gated verification.** Docker exit codes (`0` reached / `1` held /
+  `2` inconclusive) plus trusted normal-input regression decide every `verified` claim;
+  `VerdictReceipt` binds the fix SHA-256 to the exact exits. Four sweep passes
+  (standard, deep, threat-actor, chain) plus a binary-review path and a CVE reachability
+  triage share the same gate. Nothing ships on model opinion.
+- **Tri-surface product.** CLI (`main.py`), TUI (`tui.py`), Web UI (`web/` cinematic
+  presenter + console + setup/demo switches), MCP bridge, and Python library stay in
+  sync; headless Firefox/Chrome E2E plus 1000+ RED-first tests guard every surface.
+  Dev/prod observability (`logs/<signal>/<aspect>.jsonl`, dev ~10x detail) is stdlib-only.
+- **Showcase rig.** `video-demo/` holds a local ChatTTS narration booth, a clean-room
+  PipeWire capture node + gamescope sandbox + isolated-audio scripts, and a
+  DawDreamer/Faust DSP score factory — built during the hackathon as dev tooling for
+  the 3-minute demo (see `docs/DEMO_SCRIPT.md` for the timed beat sheet).
+- **Agentic autonomy.** Vault recall replays prior patches onto renamed schemas for
+  cents; the 4-pass sweep and chain synthesis run without human step-through; fail-closed
+  contracts (honest refusals, JSON-stdout purity, per-session Docker cleanup) hold under
+  fault. Human review gates every merge (`feature → develop → main`, green gate only).
+
 ## Why Muse?
 
 We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Per-token prices live in `library/core/pricing.py`: Spark runs about a third of Wonder on input and a fifth on output, so the split saves money. Our tests ran on the hackathon's small credit pool. Docker scores each verdict, so bigger models would add cost, not quality.

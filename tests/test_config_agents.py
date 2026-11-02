@@ -234,3 +234,77 @@ async def test_transient_status_retries_once_then_fails_without_exposing_body(st
         assert len(called) == 2
     finally:
         await client.aclose()
+
+
+# --- Rubric P1-2 (2B +1.0): open-weight Muse Spark Open verification (RED-FIRST) ---
+
+
+def test_spark_open_config_validates_on_baseten():
+    """config.py already accepts meta-models/muse-spark-open-1026 on Baseten.
+
+    Passes pre-fix; pins the validation path next to the cost-accounting fix.
+    """
+    replace(
+        PurpleBoxConfig(),
+        red_team_model="meta-models/muse-spark-open-1026",
+        meta_base_url="https://inference.baseten.co/v1",
+    ).validate()
+
+
+def test_spark_open_cost_lookup_returns_finite_usd():
+    """RED-FIRST: pricing.py had no spark-open entry (KeyError pre-fix).
+
+    estimate_cost() degrades to None via .get() and ScanUsage totals go None;
+    only a direct table lookup crashes. Both paths must be finite post-fix.
+    """
+    from modules.core.pricing import PRICES_PER_MILLION, estimate_cost, usage_from_response
+
+    for model in ("meta-models/muse-spark-open-1026", "meta-models/muse-spark-open"):
+        PRICES_PER_MILLION[model]  # KeyError pre-fix
+        cost = estimate_cost(model, 1_000, 0, 500)
+        assert cost is not None and cost > 0 and cost < float("inf")
+        call = usage_from_response(
+            "red",
+            model,
+            {"usage": {"prompt_tokens": 1_000, "completion_tokens": 500}},
+            1.0,
+        )
+        assert call.cost_usd is not None and call.cost_usd > 0 and call.cost_usd < float("inf")
+
+
+async def test_spark_open_red_team_mocked_transport_smoke():
+    """HTTP-boundary-only smoke (httpx.MockTransport, same pattern as above).
+
+    The unit under test (MetaMuseClient.run_red_team_analysis) is real; only
+    the wire is canned. Asserts the request body carries the spark-open model
+    id and the parsed result shape is intact.
+    """
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        assert str(request.url) == "https://inference.baseten.co/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer unit-test-key"
+        body = json.loads(request.content)
+        assert body["model"] == "meta-models/muse-spark-open-1026"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(FINDING)}}]
+            },
+        )
+
+    config = replace(
+        PurpleBoxConfig(),
+        meta_api_key="unit-test-key",
+        meta_base_url="https://inference.baseten.co/v1",
+        red_team_model="meta-models/muse-spark-open-1026",
+    )
+    client = MetaMuseClient(config, transport=httpx.MockTransport(handle))
+    try:
+        result = await client.run_red_team_analysis("app.js", "test source")
+        assert isinstance(result, RedTeamFinding)
+        assert "sys.exit(0)" in result.verification_script_python
+        assert len(requests) == 1
+    finally:
+        await client.aclose()
