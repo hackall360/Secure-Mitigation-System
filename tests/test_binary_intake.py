@@ -240,13 +240,13 @@ def test_binary_dashboard_controls_exist():
                 self.ids.add(found)
 
     parser = Elements()
-    parser.feed((root / "static/index.html").read_text())
-    for control in (
-        "mode-binary",
-        "binary-form",
-        "binary-file",
-        "binary-filename",
-        "binary-contract",
-        "binary-errors",
-    ):
+    parser.feed((root / "web/prod-setup.html").read_text())
+    for control in ("x-findings", "y-findings", "cfg-errors"):
         assert control in parser.ids, control
+    schema = (root / "web/js/options/schema.js").read_text()
+    assert "binary: { type: 'file'" in schema
+    block = schema[schema.index("binary: { label: 'Binary'") :]
+    block = block[: block.index("},") + 1]
+    assert "'/ws/binary'" in block
+    for field in ("binary", "filename", "contract"):
+        assert f"'{field}'" in block, field
