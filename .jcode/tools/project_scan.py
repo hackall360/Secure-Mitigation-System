@@ -315,18 +315,31 @@ def main():
         help="Exercise pure-Python source imports instead of HTTP in deterministic mode",
     )
     args = parser.parse_args()
+    parser.add_argument(
+        "--observability-mode",
+        choices=["dev", "prod"],
+        default=None,
+        help="Observability verbosity (default: PURPLEBOX_OBSERVABILITY_MODE or prod)",
+    )
+    args = parser.parse_args()
+    from library.shared import sms_observability as _obs
+
+    _obs.init(root="logs", mode=args.observability_mode)
     if args.live and args.source_import_probes:
         parser.error("--source-import-probes requires deterministic mode")
     args.output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    asyncio.run(
-        run(
-            args.output_dir.resolve(),
-            live=args.live,
-            cycles=args.cycles,
-            source_import=args.source_import_probes,
-            scan_profile=args.scan_profile,
+    try:
+        asyncio.run(
+            run(
+                args.output_dir.resolve(),
+                live=args.live,
+                cycles=args.cycles,
+                source_import=args.source_import_probes,
+                scan_profile=args.scan_profile,
+            )
         )
-    )
+    finally:
+        _obs.shutdown()
 
 
 if __name__ == "__main__":

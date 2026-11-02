@@ -84,5 +84,19 @@ async def main() -> int:
     return 0 if all(results) else 1
 
 
+def _obs_main() -> int:
+    """offline_scan entry: observability lifecycle around the deterministic loop."""
+    import sys as _sys
+
+    _sys.path.insert(0, ".")
+    from library.shared import sms_observability as _obs
+
+    _obs.init(root="logs", mode=None)
+    try:
+        return asyncio.run(main())
+    finally:
+        _obs.shutdown()
+
+
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    raise SystemExit(_obs_main())
