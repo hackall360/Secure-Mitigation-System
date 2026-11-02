@@ -21,6 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from library.core.registry import TARGETS_REGISTRY, Target
 from library.core.version import APP_VERSION
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
+
+_MCP_ASPECT = get_aspect("services.mcp")
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 MCP_SNIPPET_MAX_BYTES = 65_536
@@ -387,20 +393,64 @@ MCP_TOOLS: list[dict[str, Any]] = [
 
 def validate_snippet_arguments(raw: dict[str, Any]) -> McpSnippetArguments:
     """Validate raw tool arguments; raises ValueError with a safe message."""
+    import time as _time
+
+    # LAW 4: field presence + byte sizes + language label only. Never log
+    # the snippet bytes, filename verbatim is bounded, contract never logged.
+    raw = raw if isinstance(raw, dict) else {}
     try:
-        args = McpSnippetArguments.model_validate(raw)
-    except Exception as exc:
-        raise ValueError(f"Invalid snippet arguments: {type(exc).__name__}.") from exc
-    language = args.normalized_language()
-    if language not in MCP_ALLOWED_LANGUAGES:
-        raise ValueError(
-            f"Unsupported language {args.language!r}; "
-            f"choose one of {', '.join(MCP_ALLOWED_LANGUAGES)}."
+        source_bytes = len(str(raw.get("source", "") or "").encode("utf-8"))
+    except Exception:
+        source_bytes = -1
+    obs_log(
+        _MCP_ASPECT,
+        "submit_code_snippet.start",
+        message="submit_code_snippet submission received",
+        language=str(raw.get("language", ""))[:32],
+        source_bytes=source_bytes,
+    )
+    started = _time.monotonic()
+    try:
+        with obs_trace(_MCP_ASPECT, "submit_code_snippet"):
+            try:
+                args = McpSnippetArguments.model_validate(raw)
+            except Exception as exc:
+                raise ValueError(f"Invalid snippet arguments: {type(exc).__name__}.") from exc
+            language = args.normalized_language()
+            if language not in MCP_ALLOWED_LANGUAGES:
+                raise ValueError(
+                    f"Unsupported language {args.language!r}; "
+                    f"choose one of {', '.join(MCP_ALLOWED_LANGUAGES)}."
+                )
+            if "/" in args.filename or "\\" in args.filename or args.filename.startswith("."):
+                raise ValueError("Filename must be a bare filename, no paths.")
+            if len(args.source.encode("utf-8")) > MCP_SNIPPET_MAX_BYTES:
+                raise ValueError("Source exceeds the 64 KiB snippet budget.")
+    except ValueError:
+        duration_ms = round((_time.monotonic() - started) * 1000, 3)
+        obs_log(
+            _MCP_ASPECT,
+            "submit_code_snippet.verdict",
+            message="submit_code_snippet rejected",
+            accepted=False,
+            duration_ms=duration_ms,
         )
-    if "/" in args.filename or "\\" in args.filename or args.filename.startswith("."):
-        raise ValueError("Filename must be a bare filename, no paths.")
-    if len(args.source.encode("utf-8")) > MCP_SNIPPET_MAX_BYTES:
-        raise ValueError("Source exceeds the 64 KiB snippet budget.")
+        obs_record_metric(_MCP_ASPECT, "submit_code_snippet.duration_ms", duration_ms, unit="ms")
+        obs_record_metric(_MCP_ASPECT, "submit_code_snippet.status.rejected", 1, unit="count")
+        raise
+    duration_ms = round((_time.monotonic() - started) * 1000, 3)
+    obs_log(
+        _MCP_ASPECT,
+        "submit_code_snippet.verdict",
+        message="submit_code_snippet accepted for scan",
+        accepted=True,
+        language=args.normalized_language(),
+        source_bytes=len(args.source.encode("utf-8")),
+        contract_chars=len(args.contract),
+        duration_ms=duration_ms,
+    )
+    obs_record_metric(_MCP_ASPECT, "submit_code_snippet.duration_ms", duration_ms, unit="ms")
+    obs_record_metric(_MCP_ASPECT, "submit_code_snippet.status.accepted", 1, unit="count")
     return args
 
 
