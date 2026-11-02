@@ -29,12 +29,13 @@ the directory map lives in a doc + `__init__` re-exports, not in moved files.
 
 ## web/ — dashboard + server surface (map, no move)
 
-- `static/` (index.html shell, app.js, app.css, graph.js, fx.js, panels.js,
-  favicon.svg): stays at `static/` — pinned by `dev.py` (`node --check
-  `web/js/**`, smoke `GET /web/*`) and `main.py` StaticFiles mount +
-  a dozen tests. Map: `web/static/` ≡ `static/`.
+- `web/` (WebUI v3: pages, js/, css/, tools/): served by `main.py` at
+  `/web/*` with `/` + `/web/` redirecting to `/web/index.html` — pinned by
+  `dev.py` (`node --check web/js/**`, smoke `GET /web/*`) and the
+  `test_v2_dashboard_gone_after_cutover` 404 pins. Map: `web/server/` ≡
+  `main.py` serving section. (v2 `static/` retired 2026-11-02; see TODO ZZ.)
 - Server surface in `main.py` (create_app, `/api/*`, `/ws/*`, `/mcp`,
-  `--serve/--port`, StaticFiles mount at `static/`): stays in `main.py` —
+  `--serve/--port`, StaticFiles mount at `/web`): stays in `main.py` —
   ~10 test files `import main` + monkeypatch `main.*` targets; a move would
   rewrite the whole test seam layer. Map: `web/server/` ≡ `main.py`
   serving section (~ll. 600–1400). Documented in `docs/web/`.

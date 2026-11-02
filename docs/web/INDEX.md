@@ -1,15 +1,16 @@
-# web/ — dashboard + server surface (physical v3 dir + pinned v2 static/)
+# web/ — dashboard + server surface (WebUI v3 only)
 
-`web/` is the physical WebUI v3 tree (2026-11-01 migration, branch
-`feature/webui-v3-migration`): 6 pages + `js/` + `css/` + `tools/` copied
-verbatim from the v3 source with license headers intact. The asset pipeline
-invariant holds: never hand-edit `<!-- assets:begin -->` blocks — route all
-JS/CSS changes through `web/tools/manifest.json` + `web/tools/sync_assets.py`
-(`--check` in CI/contract tests). `static/` (v2 single-page dashboard) stays
-pinned: `dev.py check` runs `node --check` over `web/js/**/*.js` and smoke-tests
-`GET /static/*`; ~12 test files assert on `static/` contents.
+`web/` is the WebUI v3 site (v3-only cutover 2026-11-02, brief
+`2026-11-02-v3-only-cutover`): 6 pages + `js/` + `css/` + `tools/`. The
+asset pipeline invariant holds: never hand-edit `<!-- assets:begin -->`
+blocks — route all JS/CSS changes through `web/tools/manifest.json` +
+`web/tools/sync_assets.py` (`--check` in CI/contract tests). `main.py`
+serves `/` → 307 `/web/index.html`, explicit `/web/*.html` page routes,
+and the `/web` static mount; `dev.py check` smoke-tests the site via
+`GET /` + `/api/targets` + `/web/index.html` + `/web/console.html` +
+`/web/js/core/palette.js` + `/web/css/core/tokens.css`.
 
-## web/v3/ ≡ `web/` (migrated 2026-11-01, served at `/web/*`)
+## web/ pages (served at `/web/*`)
 
 | path | what | source |
 |---|---|---|
@@ -25,24 +26,22 @@ pinned: `dev.py check` runs `node --check` over `web/js/**/*.js` and smoke-tests
 | `web/tools/manifest.json` + `sync_assets.py` | single source of asset order; regenerates blocks | v3 verbatim |
 | `web/AGENTS.md` + `web/README.md` | v3 contributor guide + page flow | v3 verbatim |
 
-## web/static/ ≡ `static/` (pinned v2, do not move)
+## v2 dashboard retired (2026-11-02, do not resurrect)
 
-| file | what | why web |
-|---|---|---|
-| `web/index.html` | start page: picks demo vs production setup | page structure |
-| `web/js/` | WS client, render, HUD wiring, toggles | behavior |
-| `web/css/` | token-CSS (no Tailwind, offline-safe) | style |
-| `web/js/ui/` | canvas phase graph + timeline + result views | visualization |
-| `web/js/pages/` | one controller per page (start, setup, console, demo) | behavior split |
-| `web/favicon.svg` | icon (smoke-tested) | asset |
+The pinned v2 single-page dashboard (old top-level asset dir, formerly
+served under the v2 routes) was removed in the v3-only cutover
+(2026-11-02). No v2 asset directory exists; `GET /v2/` and the old v2
+asset URLs return 404, pinned by `test_v2_dashboard_gone_after_cutover`
+in `tests/test_webui_v3_contract.py`. History lives in TODO ZZ.
 
 ## web/server/ ≡ `main.py` serving section (pinned, do not move)
 
-`create_app` + `mount("/web", ...)` (~l.663),
-v3 page routes `/web/*.html` (~l.683), `/api/health|/api/targets` (~ll.699-710),
-WS executors `run_socket` + connect-time `{type:snapshot}` hydration (~ll.752-880),
-`combat/project_combat/demo_build/binary_combat` (~ll.1114+),
-`POST /mcp` + `--mcp` STDIO (~ll.1133+, ~1480+), `--serve/--port`.
+`create_app` + `mount("/web", ...)` (~l.707),
+`/` → 307 `/web/index.html` + `/web/` → 307 + v3 page routes
+`/web/*.html` (~ll.682-702), `/api/health|/api/targets` (~ll.709-720),
+WS executors `run_socket` + connect-time `{type:snapshot}` hydration (~ll.763-880),
+`combat/project_combat/binary_combat` (`/ws/combat/...`, ~ll.1164+),
+`POST /mcp` + `--mcp` STDIO (~l.1208+, ~ll.2550+), `--serve/--port`.
 WS frame contract: `{team,msg,ts?,type:log}` (`socket_emit` in
 `library/services/chatter.py`), `{type:snapshot}` (`build_snapshot` in
 `library/services/telemetry_hub.py`), `{type:result|busy|invalid|graph}`.

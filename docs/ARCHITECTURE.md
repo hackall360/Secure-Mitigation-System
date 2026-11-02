@@ -268,7 +268,7 @@ library/services/demo_gen.py           AI-built demo project generation
 library/core/patches.py     Patch guards, unified diffs
 library/core/docker_manager.py         Images, isolated runtimes, deadlines, cleanup
 library/core/checks.py      Normal-input + egress checks
-static/                     Dashboard (app.js, index.html, app.css)
+web/                        Dashboard v3 (js/, css/, pages/; served at /web/*)
 targets/                    Three intentionally vulnerable fixtures
 tests/                      Unit + API tests
 .jcode/tools/               dev.py, offline_scan.py, ui_scan.py, scans
