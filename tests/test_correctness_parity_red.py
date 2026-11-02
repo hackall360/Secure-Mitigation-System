@@ -88,7 +88,7 @@ def test_dashboard_api_contracts():
     app = main.create_app(PurpleBoxConfig(meta_api_key="k"))
     with TestClient(app, base_url="http://localhost") as client:
         health = client.get("/api/health").json()
-        assert health["version"] == "0.13.1"
+        assert health["version"] == "0.14.0"
         assert health["inference_ready"] is True
         assert health["api_key_configured"] is True
         assert health["docker"]["state"] == "ready"
