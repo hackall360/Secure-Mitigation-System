@@ -66,3 +66,10 @@ Phase 0 baseline (LAW 10A): gate green pre-change 2026-11-02 ~18:58 UTC — **10
 | D-01 | — | docs-only (no code change) | `web/js` showcase fixtures + `/ws/system` dead-end + tags.py loose needles: cactus items are doc-hedged/proposed-marked; NOT defects to fix in code | reader report | DEFER (docs note only) |
 
 Ruled OUT (reader claim disproven by code): R-01 "binary hardcodes 3 passes with no knob" — FALSE: CLI/WS/MCP all thread `max_passes` (`main.py:1360/1790`, default 3 is the documented harness contract since chain evidence is source-only). R-02 "`--format json` polluted by Report print" as P1 — real but P2 (table-mode `[SYSTEM]` line only; json branch already routes chatter to stderr except one legacy print). R-03 "TUI ingest stub scans fixture" as mere stub — UPGRADED: it is F-02 false-success (reports ingest verified while scanning a fixture). R-04 "`--health busy hardcoded`" — CONFIRMED as F-04.
+
+## Finalize 2026-11-02 ~19:46 UTC — sweep closed, all lines in sync
+
+- Feature branch `feature/systems-assurance-sweep` fully merged → deleted (local). No worktrees remain (`git worktree list` = home checkout only). No agents remain (all writers stopped/retired).
+- `develop` == `origin/develop` == `main` == `origin/main` (`aef40fe`). Home = `develop`, tree CLEAN.
+- Gate at ship: 1063 passed + 2 skipped, All checks passed. Red default `muse-spark-1.3-contributor`, version `0.14.0` on all surfaces.
+- Deferred to post-ship (unchanged from directive scope): Stages 4–7 live/chaos/concurrency qualification; Stages 1–3 are VERIFIED_ZERO_DELTA for audited surfaces.
