@@ -108,7 +108,7 @@ Green builds a new flawed service from live intel. Red breaks it in Docker. Blue
 
 ## 3-minute demo guide
 
-**The dashboard (30 seconds).** Open `#/` to land, `#/demo` for the guided path, or `#/live` for real-time runs. The run card shows a live phase graph (red attack, blue defense, green build, purple verified). The header scoreboard totals agents, flaws, patches, and verified runs. HUD toggles switch sweep, profile, research, compression, vault, differential, and binary panels. Panel map: [`docs/reference/DASHBOARD.md`](docs/reference/DASHBOARD.md).
+**The dashboard (30 seconds).** Open `web/index.html` (Start), pick a Demo (`web/demo-setup.html`) or Production (`web/prod-setup.html`) setup, then Launch into `demo.html` or `console.html`. The console shows a live radial system map with team-colored agents (red offense, blue defense, green build, purple verified), the `stagebar` phase strip, and comms/activity logs streaming in real time. The header scoreboard totals session messages, findings, patches, and verified runs; run options (sweep depth, profile, research, binary) come from the setup schema. Panel map: [`docs/reference/DASHBOARD.md`](docs/reference/DASHBOARD.md).
 
 **The showcase (90 seconds).** Run `python main.py --list-targets`, then run the bundled demo. Watch the pass steps (Common, Deep, Threat-actor), the Vault recall badge on a repeat run, and the Context compression badge.
 

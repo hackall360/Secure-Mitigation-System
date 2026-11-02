@@ -143,7 +143,10 @@
       run(c) {
         const { g, sink, fileId, lower, text } = c;
         const tgt = sink || fileId || 'core';
-        if (/bounded sanitation|applied|patch(ed)? (applied|ready)/.test(lower)) {
+        // Live backend announces the patch as a unified diff (library/workflows/workflow.py
+        // `log("blue", result.diff)`); the wording branch covers older/mock streams.
+        const isDiff = /^--- a\/[^\n]*\n\+\+\+ b\//.test(text);
+        if (/bounded sanitation|applied|patch(ed)? (applied|ready)/.test(lower) || (isDiff && !c.it.patched)) {
           c.it.patched = true;
           c.it.stats.patches += 1;
           const gl = c.it.topo && c.it.topo.guardLink;

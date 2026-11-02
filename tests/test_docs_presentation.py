@@ -193,6 +193,6 @@ def test_readme_links_technical_breakdown():
         "network_mode",
         "PURPLEBOX_VAULT_DIR",
         "verify_receipt",
-        "writeLine",
+        "CommsFeed",
     ):
         assert marker in breakdown, marker

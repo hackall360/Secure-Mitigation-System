@@ -47,14 +47,19 @@ def test_disconnect_cancels_workflow_and_another_scan_is_rejected(monkeypatch):
 def test_ui_and_registry_work_without_key_or_docker():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         response = client.get("/")
-        assert response.status_code == 200 and "Boundary auditor" in response.text
-        assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+        assert response.status_code in (200, 307)
+        page = client.get("/web/index.html").text
+        assert "Secure Mitigation System" in page
+        assert (
+            "frame-ancestors 'none'"
+            in client.get("/web/index.html").headers["content-security-policy"]
+        )
         assert len(client.get("/api/targets").json()) == 5
         assert "binary_argv_echo" in client.get("/api/targets").json()
         assert "node_chain_link" in client.get("/api/targets").json()
         assert client.get("/api/health").json()["api_key_configured"] is False
-        assert client.get("/static/app.js").status_code == 200
-        assert client.get("/static/app.css").status_code == 200
+        assert client.get("/web/js/core/palette.js").status_code == 200
+        assert client.get("/web/css/core/tokens.css").status_code == 200
 
 
 def test_dns_rebinding_host_rejected():
@@ -136,20 +141,26 @@ def test_socket_redaction_failure_fails_closed(monkeypatch):
 
 def test_dashboard_exposes_interactive_dark_theme_controls():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
-        page = client.get("/").text
+        page = client.get("/web/console.html").text
         for element in (
-            'id="pipeline"',
-            'id="target-list"',
-            'id="diff"',
-            'data-filter="red"',
+            'id="stagebar"',
+            'id="timeline"',
+            'id="graph"',
+            'role="tab"',
             'name="color-scheme" content="dark"',
-            'id="toast"',
         ):
             assert element in page
-        script = client.get("/static/app.js").text
         # Untrusted model output must be rendered as text, never parsed as HTML.
-        assert "innerHTML" not in script and "insertAdjacentHTML" not in script
-        assert "prefers-reduced-motion" in client.get("/static/app.css").text
+        for js in (
+            "link.js",
+            "ui/comms-feed.js",
+            "ui/terminal.js",
+            "ui/hex-stream.js",
+            "ui/stream-meter.js",
+        ):
+            script = client.get(f"/web/js/{js}").text
+            assert ".innerHTML" not in script and ".insertAdjacentHTML" not in script
+        assert "prefers-reduced-motion" in client.get("/web/css/core/motion.css").text
 
 
 def test_demo_route_registered_and_rejects_origin_mismatch():

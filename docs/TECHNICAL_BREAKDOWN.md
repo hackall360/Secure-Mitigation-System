@@ -88,7 +88,7 @@ lengths and exit codes leave the loop (LAW 4).
 
 `main.py` WS executors (`run_socket` l.735, `combat` l.1080,
 `project_combat` l.1084, `demo_build` l.1088, `binary_combat` l.1093) stream
-granular team events. `static/app.js` renders them: `writeLine(team, text)`
+granular team events. `web/js/ui/comms-feed.js` renders them: `CommsFeed.append(team, text)`
 (l.291) appends chatter, `advanceStage(team, text)` (l.345) moves the phase
 graph, `buildRoster` (l.230) seats the red/blue/green crews, `renderDiff`
 (l.623) + `showResult` (l.1081) present the patch and verdict. The same

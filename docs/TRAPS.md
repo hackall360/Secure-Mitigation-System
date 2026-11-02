@@ -225,7 +225,7 @@ dirs — `docs/{web,tui,mcp}/INDEX.md` maps are the form. Same reason root
 
 Wrong assumption: `swarm spawn model:"muse-spark-1.3-contributor"` (or
 `model:"inherit"`) reaches the Meta route. What the evidence showed: the
-router built `request 'claude:muse-spark-1.3-contributor'`, Anthropic
+router built a different-provider request for `muse-spark-1.3-contributor`, Anthropic
 rejected it, and spawn refused 11x rather than substitute. Correct route per
 `swarm list_models` is the openai-compatible `meta-muse` route with the
 jcode credential — but the spawn path did not honor it from this session.

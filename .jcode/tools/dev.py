@@ -90,7 +90,7 @@ def check():
     python("-m", "ruff", "check", ".", ".jcode/tools")
     python("-m", "ruff", "format", "--check", ".", ".jcode/tools")
     python("-m", "compileall", "-q", "-x", r"/(\.git|\.venv)/", ".")
-    scripts = ["static/app.js", "targets/node_query_sink/app.js"]
+    scripts = ["targets/node_query_sink/app.js"]
     scripts += sorted(str(p.relative_to(ROOT)) for p in ROOT.glob("web/js/**/*.js"))
     for script in scripts:
         run("node", "--check", script)
@@ -129,20 +129,27 @@ def smoke():
         for path in (
             "/",
             "/api/targets",
-            "/static/app.js",
-            "/static/app.css",
-            "/static/favicon.svg",
+            "/web/index.html",
+            "/web/console.html",
+            "/web/js/core/palette.js",
+            "/web/css/core/tokens.css",
         ):
             with opener.open(base + path, timeout=3) as response:
                 body = response.read()
                 if response.status != 200 or not body:
                     raise RuntimeError(f"Empty or unsuccessful response: {path}")
                 if path == "/api/targets":
-                    expected = {"node_query_sink", "php_command_sink", "mysql_insecure_conf"}
+                    expected = {
+                        "node_query_sink",
+                        "php_command_sink",
+                        "mysql_insecure_conf",
+                        "node_chain_link",
+                        "binary_argv_echo",
+                    }
                     if set(json.loads(body)) != expected:
                         raise RuntimeError("Development server returned unexpected fixtures.")
             print(f"PASS: GET {path}")
-        print("PASS: real localhost server, key-free health, dashboard and static assets")
+        print("PASS: real localhost server, key-free health, dashboard and web assets")
     finally:
         process.terminate()
         try:

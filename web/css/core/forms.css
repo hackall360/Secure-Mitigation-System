@@ -82,3 +82,5 @@ input[type="file"] { font: 500 11.5px var(--mono); color: var(--muted); }
 /* request preview */
 .reqprev { margin: 0; padding: 9px 10px; border-radius: 8px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); font: 400 10.5px/1.5 var(--mono); color: #a9bdd6; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; }
 .reqprev .rk { color: var(--teal); }
+/* CSP-safe replacement for inline margin on the request-preview eyebrow. */
+.eyebrow-gap { margin-bottom: 6px; }

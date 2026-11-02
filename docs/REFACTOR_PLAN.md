@@ -31,7 +31,7 @@ the directory map lives in a doc + `__init__` re-exports, not in moved files.
 
 - `static/` (index.html shell, app.js, app.css, graph.js, fx.js, panels.js,
   favicon.svg): stays at `static/` — pinned by `dev.py` (`node --check
-  static/app.js`, smoke `GET /static/*`) and `main.py` StaticFiles mount +
+  `web/js/**`, smoke `GET /web/*`) and `main.py` StaticFiles mount +
   a dozen tests. Map: `web/static/` ≡ `static/`.
 - Server surface in `main.py` (create_app, `/api/*`, `/ws/*`, `/mcp`,
   `--serve/--port`, StaticFiles mount at `static/`): stays in `main.py` —
