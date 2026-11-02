@@ -19,6 +19,13 @@ PRICES_PER_MILLION: dict[str, tuple[float, float, float]] = {
     "muse-spark-1.1": (0.15, 1.25, 4.25),
     "muse-spark-1.3-contributor": (0.002, 0.10, 0.20),
     "muse-spark-1.2-contributor": (0.002, 0.10, 0.20),
+    # PROVISIONAL estimates for the open-weight Muse Spark Open release served by
+    # a hosted provider (Baseten/Modal). No partner per-token rate card exists yet.
+    # Assumption: pegged at ~3x the contributor tier (same cheap hosted-inference
+    # order of magnitude as the neighboring open entries above). Re-baseline both
+    # rows against the published Baseten/Modal rate card before quoting real runs.
+    "meta-models/muse-spark-open": (0.006, 0.30, 0.60),
+    "meta-models/muse-spark-open-1026": (0.006, 0.30, 0.60),
 }
 
 

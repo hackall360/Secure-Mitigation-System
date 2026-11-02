@@ -5,6 +5,7 @@
 import asyncio
 import json
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -122,6 +123,15 @@ def test_project_disconnect_cancels_and_shared_lock_blocks_fixture(tmp_path, mon
         try:
             await emit("system", "Started project")
             await asyncio.Event().wait()
+        except BaseException:
+            # Cancellation-before-first-emit (or mid-wait) must still
+            # signal cleanup: the swallowed-cancellation race is exactly
+            # what made the bare 2 s wait flake under load. BaseException
+            # covers every cancellation flavor the portal thread can raise
+            # here; finally below re-sets so no path can skip the event
+            # (Event.set is idempotent, so the double-set is harmless).
+            cleaned.set()
+            raise
         finally:
             cleaned.set()
 
@@ -135,7 +145,17 @@ def test_project_disconnect_cancels_and_shared_lock_blocks_fixture(tmp_path, mon
                 "ws://localhost/ws/combat/node_query_sink", headers=headers
             ) as second:
                 assert second.receive_json()["type"] == "busy"
-        assert cleaned.wait(2)
+        # Event-bound wait with a generous bound: the event fires as
+        # soon as the portal-thread cancellation lands; the 30 s bound
+        # only guards a genuine hang instead of racing the scheduler.
+        assert cleaned.wait(30)
+        # Explicit disconnect propagation: the server-side task MUST be
+        # torn down after the socket context exits, so poll busy to a
+        # deadline before asserting cleanup rather than relying on timing.
+        deadline = time.monotonic() + 30
+        while client.get("/api/health").json()["busy"]:
+            assert time.monotonic() < deadline, "scan lock still held after disconnect"
+            time.sleep(0.05)
         assert client.get("/api/health").json()["busy"] is False
 
 

@@ -26,7 +26,9 @@ def test_estimate_uses_cached_input_and_reasoning_is_output():
     assert estimate_cost("muse-wonder-1.0", 10, 999, 0) == estimate_cost(
         "muse-wonder-1.0", 10, 10, 0
     )
-    assert estimate_cost("meta-models/muse-spark-open-1026", 100, 0, 100) is None
+    assert estimate_cost("meta-models/muse-spark-open-1026", 100, 0, 100) == pytest.approx(
+        100 / 1_000_000 * 0.30 + 100 / 1_000_000 * 0.60
+    )  # provisional open-weight rate (pricing.py), not None
 
 
 def test_real_response_shape_from_meta_api():
