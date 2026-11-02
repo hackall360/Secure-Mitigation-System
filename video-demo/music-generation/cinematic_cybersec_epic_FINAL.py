@@ -1,4 +1,4 @@
-"""Cinematic Cyberpunk / Darksynth Epic v3 REMIX v2: 180 s structured composition.
+"""Cinematic Cyberpunk / Darksynth Epic FINAL: 180 s structured composition.
 
 v3 base (pad / bass / drums / arp, Dm -> Bb -> C arc) PLUS three feature voices:
   5. LASER LEAD (52-120 s): pitch-swept saw zaps on a refilled pattern with
@@ -47,7 +47,7 @@ never guessed):
     + `main()` entry. Sequencer windows + macro plans kept from the draft.
 
 Run from this directory with the fixture venv:
-    ./.venv/bin/python cinematic_cybersec_epic_v3_remix_v2.py
+    ./.venv/bin/python cinematic_cybersec_epic_FINAL.py
 """
 
 # NOTE: within third-party imports, dawdreamer must stay first: it must be
@@ -66,7 +66,7 @@ BPM = 110.0
 BEAT_SECONDS = 60.0 / BPM
 TOTAL_SECONDS = 180.0
 TOTAL_FRAMES = int(TOTAL_SECONDS * SAMPLE_RATE)
-OUTPUT_NAME = "cinematic_cybersec_epic_v3_remix_v2.wav"
+OUTPUT_NAME = "cinematic_cybersec_epic_FINAL.wav"
 
 
 def mtof(midi_note: float) -> float:
@@ -172,7 +172,7 @@ process = tone * 0.5 <: si.bus(2);
 
 # Refill: the user's D---DDC-C--D-E-A--- degrees, gaps filled with passing
 # tones so the zap lead stays present: D D E D D C B C D E D E A - A -.
-# 16 eighth slots, 12 sounding (was 7) — same D5/C5/E5/A4/B4 family.
+# 16 eighth slots, 14 sounding (was 7) — same D5/C5/E5/A4/B4 family.
 LASER_FREQS = (587.33, 523.25, 659.25, 493.88, 440.00)
 LASER_BAR = (0, 0, 2, 0, 0, 1, 3, 1, 0, 2, 0, 2, 4, None, 4, None)
 # D D C D D C E D E E E C D C — user cowbell degrees, eighth notes (unchanged).
