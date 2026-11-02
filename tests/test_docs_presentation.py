@@ -210,3 +210,14 @@ def test_load_table_and_system_decision_documented():
     assert "1083" in text
     assert "/ws/system" in text
     assert "fail-closed" in text
+
+
+def test_readme_try_it_lists_all_setup_prerequisites():
+    """Bare-metal container (2026-11-02) proved node is required: slim image
+    has no node, so the gate's node --check step and Node fixtures fail
+    without it. README Try-it must name all three prerequisites."""
+    text = README.read_text(encoding="utf-8")
+    try_it = text.split("## Try it", 1)[1].split("##", 1)[0]
+    assert "Python 3.12" in try_it
+    assert "Docker" in try_it
+    assert "Node.js" in try_it or "Node" in try_it
