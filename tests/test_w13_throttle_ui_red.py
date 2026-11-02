@@ -115,18 +115,23 @@ async def test_sweep_with_throttled_muse_reports_rate_limit_error(monkeypatch):
 
 
 def test_ui_renders_throttle_events_with_explicit_error():
-    """Text-level UI contract: log frames reach writeLine; errors get labels."""
+    """Text-level UI contract: log frames reach the comms pipeline; errors get labels."""
     from pathlib import Path
 
-    app_js = Path(__file__).resolve().parents[1] / "static" / "app.js"
-    source = app_js.read_text(encoding="utf-8")
-    # WS log frames reach the timeline through writeLine ...
-    assert "writeLine(payload.team, payload.msg)" in source
-    # ... every team (unknown included) lands in the system timeline, never dropped ...
-    assert "append(logs.system" in source
-    # ... the verdict card shows the message text explicitly ...
-    assert "el('result-message').textContent = payload.message" in source
+    root = Path(__file__).resolve().parents[1]
+    console = (root / "web" / "js" / "pages" / "console.js").read_text(encoding="utf-8")
+    view = (root / "web" / "js" / "ui" / "result-view.js").read_text(encoding="utf-8")
+    dom = (root / "web" / "js" / "ui" / "dom.js").read_text(encoding="utf-8")
+    # WS log frames reach the comms/activity/timeline pipeline ...
+    assert "comms.add(ev)" in console
+    assert "activity.add(ev)" in console and "timeline.add(ev)" in console
+    # ... rate-limit text routes to the error box ...
+    assert "cfg-errors" in console
+    # ... toast() surfaces transient notices ...
+    assert "function toast(" in dom and "toast(" in console
+    # ... the verdict sheet shows the message text explicitly ...
+    assert "r-msg" in view
     # ... with an explicit could-not-complete label for error status ...
-    assert "error: 'Scan could not complete'" in source
+    assert "error: 'Scan could not complete'" in view
     # ... and refusal/busy states keep their specific next step.
-    assert "Scan refused: another scan holds the server lock" in source
+    assert "Scan refused: another scan holds the server lock" in console

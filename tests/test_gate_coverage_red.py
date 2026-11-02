@@ -52,7 +52,7 @@ def test_check_node_checks_every_web_js(gate):
     module, _, run_calls, _ = gate
     module.check()
     checked = set(node_checked(run_calls))
-    expected = {"static/app.js", "targets/node_query_sink/app.js"}
+    expected = {"targets/node_query_sink/app.js"}
     expected |= {str(p.relative_to(ROOT)) for p in (ROOT / "web/js").rglob("*.js")}
     assert expected, "web/js glob must not be empty"
     missing = expected - checked

@@ -189,15 +189,15 @@ To use the configuration, edit `.env` privately and export it as described above
 
 ## Web UI (dark, interactive dashboard)
 
-Files: `static/index.html`, `static/app.css`, `static/app.js`. No build step, no
-external fonts/CDNs (the CSP is `default-src 'self'`). Features: clickable target
-cards (keys `1`-`3`, arrows, `Enter` runs, `Esc` stops), a 7-stage pipeline driven
-by matching workflow log text in `advanceStage()` in `app.js`, per-team traces
-with copy buttons, filterable activity timeline, result facts, and a colored
-candidate diff. All model output is inserted with `textContent` only; a test in
-`tests/test_web.py` forbids `innerHTML`.
+Files: `web/index.html`, `web/console.html`, `web/js/`, `web/css/`. No build step, no
+external fonts/CDNs (the CSP is `default-src 'self'`). Features: setup pages with
+fixture cards and a request preview, a Launch handoff to the console, a 7-stage
+bar driven by workflow stream lines, per-team comms with copy buttons, a
+filterable activity timeline, result facts, and a candidate diff. All model output
+is inserted with `textContent` only; a test in `tests/test_web.py` forbids
+`.innerHTML` in the stream widgets.
 
-Trap: pipeline stages are inferred from message strings emitted in `modules/workflows/workflow.py`.
+Trap: stages are inferred from message strings emitted in `modules/workflows/workflow.py`.
 If you reword those `log(...)` messages, update `advanceStage()` too, or the
 pipeline will stop advancing (the scan itself still works).
 
@@ -361,9 +361,10 @@ in the tree (former commit `82e702c`) and then in **all history**:
 ### `.jcode/tools/ui_scan.py`
 
 Real-browser acceptance check: `.venv/bin/python .jcode/tools/ui_scan.py TARGET [--browser chrome|chromium|edge|brave|firefox] [--offline]`.
-It starts the server with only the key from `.env`, drives the dashboard in the
-requested headless browser, prints the result card as JSON and saves a screenshot.
-`--offline` swaps only Muse for the known outputs, so it has no API cost.
+It starts the server with only the key from `.env`, opens the v3 production setup
+page in the requested headless browser, picks the fixture card, clicks Launch,
+waits for the live verdict on console.html, prints it as JSON and saves a
+screenshot. `--offline` swaps only Muse for the known outputs, so it has no API cost.
 
 Browser matrix. Chrome, Chromium, Edge, and Brave all speak the Chrome DevTools
 Protocol, so they share one drive path; `--browser` picks the binary by PATH plus
@@ -412,22 +413,14 @@ the post-patch probe was blocked, and cleanup left zero containers. The dashboar
 reported 11,647 tokens across two calls and estimated cost $0.041. Model pricing is
 an estimate, not an invoice. Screenshot was checked at desktop width.
 
-### Dashboard workspace design (0.3.0)
+### Console workspace design (v3-only)
 
-The dashboard remains a dependency-free, CSP-safe document. `static/index.html`
-owns semantic sections and every existing control ID. `static/app.js` owns scan
-state and `setSourceMode()`. Mode radios use roving tabindex and arrow/Home/End
-keys per https://www.w3.org/WAI/ARIA/apg/patterns/radio/. Arrow navigation keeps
-focus on the radio, while clicking Green build preserves focus-to-brief.
-
-`static/app.css` ends with the **Verification workspace** presentation layer.
-It intentionally leaves earlier scan-state selectors in place, including error,
-verified, disabled, hidden, and reduced-motion protections. Its palette uses navy
-surfaces and seaglass selection accents, with red/blue reserved for teams. The
-workspace rail becomes a sticky compact navigation bar below 760px. All four
-trace areas are keyboard-focusable. No remote fonts, assets, or dependencies are
-needed. Version `0.3.0` adds section navigation and accessible mode interaction,
-with the same version in `main.APP_VERSION`, the dashboard, and README badge.
+The WebUI v3 console (`web/console.html`) remains a dependency-free, CSP-safe
+document. Mode buttons use roving tabindex and arrow keys; tabs switch the right
+pane (Inspect, Comms, Activity, Result) with `aria-selected` kept in sync. The
+log and comms streams are focusable `role="log"` regions. Reduced-motion
+overrides live in `web/css/core/motion.css`. No remote fonts, assets, or
+dependencies are needed.
 
 Run the real browser matrix from the repository root:
 

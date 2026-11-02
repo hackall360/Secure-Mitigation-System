@@ -195,35 +195,21 @@ def test_mcp_cli_snippet_rejects_unknown_suffix(monkeypatch, tmp_path, capsys):
 
 
 def test_mcp_dashboard_controls_exist():
-    """M2 dashboard parity: MCP mode button + snippet form controls render."""
-    from html.parser import HTMLParser
+    """M2 dashboard parity: snippet source mode + SOURCES.snippet schema render."""
     from pathlib import Path as _Path
 
+    import re
+
     root = _Path(__file__).resolve().parents[1]
-
-    class Elements(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.ids = set()
-
-        def handle_starttag(self, tag, attrs):
-            ids = dict(attrs).get("id")
-            if ids:
-                self.ids.add(ids)
-
-    parser = Elements()
-    parser.feed((root / "static/index.html").read_text())
-    for control in (
-        "mode-mcp",
-        "mcp-form",
-        "mcp-language",
-        "mcp-filename",
-        "mcp-source",
-        "mcp-contract",
-        "mcp-errors",
-        "mcp-result",
-    ):
-        assert control in parser.ids, control
+    html = (root / "web/prod-setup.html").read_text()
+    assert 'data-mode="snippet"' in html
+    schema = (root / "web/js/options/schema.js").read_text()
+    assert "SOURCES" in schema
+    block = schema[schema.index("snippet:") :]
+    block = block[: block.index("},") + 1]
+    for field in ("language", "filename", "source", "contract"):
+        assert f"'{field}'" in block or f'"{field}"' in block or field in block, field
+    assert "POST /mcp" in schema or re.search(r"endpoint.*POST /mcp", schema)
 
 
 def test_mcp_snippet_baseline_mapping():

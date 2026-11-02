@@ -663,7 +663,6 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     application.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
     )
-    application.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
     application.state.scan_lock = asyncio.Lock()
 
     @application.middleware("http")
@@ -678,9 +677,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    # WebUI v3 is the primary site (brief 2026-11-02-v3-webui-reconcile): `/`
-    # and `/web/` land on the v3 start page; the v2 dashboard moves to `/v2/`
-    # (its assets stay at absolute /static/* so nothing else changes).
+    # WebUI v3 is the site (brief 2026-11-02-v3-only-cutover): `/`
+    # and `/web/` land on the v3 start page.
     @application.get("/")
     async def index():
         return RedirectResponse("/web/index.html", status_code=307)
@@ -688,10 +686,6 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     @application.get("/web/")
     async def web_root():
         return RedirectResponse("/web/index.html", status_code=307)
-
-    @application.get("/v2/")
-    async def dashboard_v2():
-        return FileResponse(BASE_DIR / "static" / "index.html")
 
     # WebUI v3 multi-page entry points (AGENTS.md §3 page flow). Served from
     # web/ so v3 asset URLs stay relative.

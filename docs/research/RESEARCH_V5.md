@@ -96,7 +96,7 @@ a keyless JSON endpoint is verified.
 ## Lane 6 — Inward freshness audit (blowfish; 6 findings, full text pending)
 
 Blowfish grep-verified writers vs readers across `modules/`, `main.py`,
-`sms_cli.py`, `tui.py`, `static/app.js`; ruff F401 clean. Six findings with
+`sms_cli.py`, `tui.py`, `web/js/`; ruff F401 clean. Six findings with
 file:line pins recorded; full text pending re-send. Wave 5 SPEC must verify
 each finding against source before citing it.
 

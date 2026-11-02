@@ -54,7 +54,7 @@ def serve(port: int, output: Path):
         print(
             json.dumps(
                 {
-                    "url": f"http://localhost:{port}/v2/",
+                    "url": f"http://localhost:{port}/web/prod-setup.html",
                     "path": str(project),
                     "image": config.target_base_image,
                     "command": ["python3", "app.py"],

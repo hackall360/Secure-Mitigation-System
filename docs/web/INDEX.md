@@ -6,7 +6,7 @@ verbatim from the v3 source with license headers intact. The asset pipeline
 invariant holds: never hand-edit `<!-- assets:begin -->` blocks — route all
 JS/CSS changes through `web/tools/manifest.json` + `web/tools/sync_assets.py`
 (`--check` in CI/contract tests). `static/` (v2 single-page dashboard) stays
-pinned: `dev.py check` runs `node --check static/app.js` and smoke-tests
+pinned: `dev.py check` runs `node --check` over `web/js/**/*.js` and smoke-tests
 `GET /static/*`; ~12 test files assert on `static/` contents.
 
 ## web/v3/ ≡ `web/` (migrated 2026-11-01, served at `/web/*`)
@@ -29,16 +29,16 @@ pinned: `dev.py check` runs `node --check static/app.js` and smoke-tests
 
 | file | what | why web |
 |---|---|---|
-| `static/index.html` | shell: routes `#/` `#/demo` `#/live`, scoreboard, HUD, panels | page structure |
-| `static/app.js` | WS client, render, HUD wiring, toggles | behavior |
-| `static/app.css` | token-CSS v2 (no Tailwind, offline-safe) | style |
-| `static/graph.js` | canvas-2D phase graph + timeline fallback | visualization |
-| `static/fx.js`, `static/panels.js` | effects + panel builders | behavior split |
-| `static/favicon.svg` | icon (smoke-tested) | asset |
+| `web/index.html` | start page: picks demo vs production setup | page structure |
+| `web/js/` | WS client, render, HUD wiring, toggles | behavior |
+| `web/css/` | token-CSS (no Tailwind, offline-safe) | style |
+| `web/js/ui/` | canvas phase graph + timeline + result views | visualization |
+| `web/js/pages/` | one controller per page (start, setup, console, demo) | behavior split |
+| `web/favicon.svg` | icon (smoke-tested) | asset |
 
 ## web/server/ ≡ `main.py` serving section (pinned, do not move)
 
-`create_app` + `application.mount("/static", ...)` + `mount("/web", ...)` (~l.663),
+`create_app` + `mount("/web", ...)` (~l.663),
 v3 page routes `/web/*.html` (~l.683), `/api/health|/api/targets` (~ll.699-710),
 WS executors `run_socket` + connect-time `{type:snapshot}` hydration (~ll.752-880),
 `combat/project_combat/demo_build/binary_combat` (~ll.1114+),

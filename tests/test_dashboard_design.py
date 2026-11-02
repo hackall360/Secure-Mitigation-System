@@ -1,6 +1,6 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Dashboard navigation and harness migration contracts."""
+"""Dashboard navigation and harness migration contracts (v3-only)."""
 
 import ast
 import importlib.util
@@ -22,33 +22,7 @@ def test_offline_browser_bootstrap_imports_current_modules():
     exec(compile(ast.Module(body=imports, type_ignores=[]), "bootstrap", "exec"), {})
 
 
-def test_workspace_has_real_section_navigation_and_accessible_logs():
-    from html.parser import HTMLParser
-
-    class Elements(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.nodes = []
-
-        def handle_starttag(self, tag, attrs):
-            self.nodes.append((tag, dict(attrs)))
-
-    parser = Elements()
-    parser.feed((ROOT / "static/index.html").read_text())
-    ids = [attrs["id"] for _, attrs in parser.nodes if "id" in attrs]
-    assert len(ids) == len(set(ids))
-    links = [attrs["href"] for tag, attrs in parser.nodes if tag == "a"]
-    for section in ("configure", "pipeline-title", "agent-traces", "telemetry-title"):
-        assert f"#{section}" in links
-        assert section in ids
-    for log in ("red-log", "blue-log", "sys-log", "comms-log"):
-        attrs = next(attrs for _, attrs in parser.nodes if attrs.get("id") == log)
-        assert attrs["tabindex"] == "0"
-        assert attrs["role"] == "log"
-
-
-def test_pass_chip_present_in_scan_status_area():
-    """RED: live pass chip renders next to the scan status element."""
+def _elements(page):
     from html.parser import HTMLParser
 
     class Elements(HTMLParser):
@@ -65,33 +39,51 @@ def test_pass_chip_present_in_scan_status_area():
                 attrs["_text"] = attrs.get("_text", "") + data
 
     parser = Elements()
-    parser.feed((ROOT / "static/index.html").read_text())
-    chip = next(
-        (attrs for _, attrs in parser.nodes if attrs.get("id") == "pass-chip"),
-        None,
-    )
-    assert chip is not None, "static/index.html must contain #pass-chip"
-    assert "Pass" in chip.get("_text", "")
-    status_index = next(
-        i for i, (_, attrs) in enumerate(parser.nodes) if attrs.get("id") == "status"
-    )
-    chip_index = next(
-        i for i, (_, attrs) in enumerate(parser.nodes) if attrs.get("id") == "pass-chip"
-    )
-    assert abs(chip_index - status_index) < 12
+    parser.feed((ROOT / "web" / page).read_text())
+    return parser.nodes
+
+
+def test_workspace_has_real_section_navigation_and_accessible_logs():
+    nodes = _elements("console.html")
+    ids = [attrs["id"] for _, attrs in nodes if "id" in attrs]
+    assert len(ids) == len(set(ids))
+    # Section rail + tabs navigate the workspace.
+    tabs = [attrs["id"] for _, attrs in nodes if attrs.get("role") == "tab"]
+    for tab in ("tab-comms", "tab-log", "tab-result"):
+        assert tab in tabs
+    for pane in ("pane-comms", "pane-log", "pane-result"):
+        assert pane in ids
+    # Stream panes are live regions, focusable and labelled.
+    for log in ("comms", "log"):
+        attrs = next(attrs for _, attrs in nodes if attrs.get("id") == log)
+        assert attrs["role"] == "log"
+        assert attrs["tabindex"] == "0"
+
+
+def test_pass_state_renders_in_scoreboard_summary():
+    """Sweep pass state renders in the run-summary sheet next to the verdict."""
+    js = (ROOT / "web/js/ui/result-view.js").read_text()
+    assert "pass_results" in js
+    assert "passes hold" in js
+    schema = (ROOT / "web/js/options/schema.js").read_text()
+    assert "sweep_passes" in schema
+    assert "+ threat-actor pass" in schema
 
 
 def test_app_js_updates_pass_chip_on_sweep_lines():
-    """RED: app.js render path handles sweep pass start/done strings."""
-    js = (ROOT / "static/app.js").read_text()
-    assert "pass-chip" in js
-    assert "sweep (standard|deep|threat_actor)" in js or "[sweep " in js
-    assert "threat_actor" in js
-    assert "Pass done" in js
+    """Scoreboard verdict sheet renders per-pass hold counts from pass_results."""
+    js = (ROOT / "web/js/ui/result-view.js").read_text()
+    assert "pass_results" in js
+    assert "passes hold" in js
+    schema = (ROOT / "web/js/options/schema.js").read_text()
+    assert "sweep_passes" in schema
+    assert "threat-actor" in schema
 
 
 def test_app_js_directs_binary_fixture_to_binary_mode():
-    """RED: binary_argv_echo in demo/fixture mode shows Binary sweep notice."""
-    js = (ROOT / "static/app.js").read_text()
-    assert "binary_argv_echo" in js
-    assert "Binary sweep mode" in js
+    """binary_argv_echo in fixture mode shows the ELF badge and binary lens."""
+    demo = (ROOT / "web/js/pages/setup-demo.js").read_text()
+    assert "binary_argv_echo" in demo
+    assert "ELF" in demo
+    prod = (ROOT / "web/js/pages/setup-prod.js").read_text()
+    assert "binary_argv_echo" in prod and "ELF" in prod

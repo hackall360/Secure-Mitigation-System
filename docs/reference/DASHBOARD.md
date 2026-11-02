@@ -1,101 +1,67 @@
 # Dashboard panels and hooks map
 
-`static/app.js` owns all DOM writes and network calls; `fx.js` and `panels.js`
-are side-effect-scoped layers. CSP-safe throughout: `textContent` and
-`setAttribute` only, no `innerHTML`, no `eval`, no inline handlers.
+`web/js/pages/` owns all per-page DOM writes and network calls;
+`web/js/ui/` widgets are side-effect-scoped layers fed by
+`web/js/stream/interpreter.js`. CSP-safe throughout: `h()` in
+`web/js/ui/dom.js` sets `textContent` and `setAttribute` only, no
+`.innerHTML` assignments in `web/js/`, no `eval`, no inline handlers.
 
 ## Layers
 
 | File | Hooks in / out |
 |---|---|
-| `static/app.js` | Owns `writeLine(team, msg)`, WebSocket fan-out (`/ws/project`, `/ws/combat/{target}`), all `fetch()` and `addEventListener` wiring. |
-| `static/graph.js` | Phase-graph renderer in: `SMSGraph.update({stage} | {result})` from `setStage`/`showResult`. Out: none (canvas only, decorative). Canvas-2D force layout, team colors (green/red/blue/purple), edge particles, purple freeze on verified, `prefers-reduced-motion` static. |
-| `static/fx.js` | Motion layer in: cursor glow, parallax CSS vars, stage data-flow pulses. Out: none (visual only). WAAPI + rAF-throttled, transform/opacity only, honors `prefers-reduced-motion`. Companion CSS at tail of `static/app.css`. |
-| `static/panels.js` | Timeline markers in: `writeLine(team, msg)` calls from `app.js`. Out: marker strip (max 100 markers). Doubles as the graph fallback path: stays mounted and rendering even when `SMSGraph` is off (`isFallback()`). |
+| `web/js/pages/start.js` | Mode selection + version panel + ambient map. In: `SMS.link.probe()`, `SMS.topology.profile()`. Out: links to `demo-setup.html` / `prod-setup.html` / `visualizer.html` (`data-key` 1/2/3 shortcuts). |
+| `web/js/pages/setup-demo.js` | Demo selection. In: `O.OptionForm` (`demo-opts`, `demo-build-opts`), `SMS.topology.profile()`. Out: `SMS.launch.save({page:'demo', kind, mode, fixture, request, topo, grow, values, summary})` → `demo.html`. |
+| `web/js/pages/setup-prod.js` | Production selection (7 sources). In: `O.OptionForm` (src/run/prop forms), `O.compile()`, `SMS.topology.{profile,project,fromSource,fromBinary,fromSystem}()`. Out: `SMS.launch.save({page:'console', kind:'live'|'fake', ...})` → `console.html`; binaries via `L.putBlob('binary', buf)` (IndexedDB `sms-v3`/`blobs`). |
+| `web/js/pages/demo.js` | Cinematic presenter. Owns `run()`, `onLine`, `onResult` → `showVerdict`, `onClose`, `onGraph`, `onSnapshot`. All `addEventListener` wiring for director/labels/fullscreen/speed/pause keys. |
+| `web/js/pages/console.js` | Production workspace. Owns `start()`, `onLine`, `onResult` → `V.renderResult`, `onClose`, `onGraph`, `onSnapshot`, `showTab`, `runSnippet` (MCP). All tab/filter/tool wiring (`t-fit`, `t-dir`, `t-labels`, `t-flow`, `t-comms`, `t-sweep`, `t-png`). |
+| `web/js/pages/visualizer.js` | Backend-free test bench. In: `?lens=` / `?scenario=` query params. Out: none (no network, nothing sent). |
+| `web/js/core/handoff.js` | Launch handoff. In: setup pages call `SMS.launch.save()` (sessionStorage `sms.v3.launch`); binaries via `putBlob`/`getBlob`. Out: `SMS.launch.load()` + `topology(launch)` → `{topo, buf}` on the visual page; wrong `page` redirects to its setup page. |
+| `web/js/stream/link.js` | Orchestrator client. In: `probe()` (`GET /api/targets`, `/api/health`), `Session(path, body, handlers)`, `mcpSnippet` (`POST /mcp` JSON-RPC `submit_code_snippet`), `query()` (`?sweep_passes`, `research`, `profile`). Out: `onOpen` / `onLine(team,msg)` / `onResult` / `onGraph` / `onSnapshot` / `onRefuse` / `onClose` / `onError`. |
+| `web/js/stream/interpreter.js` | Stream → HUD normalizer. In: `load(topo, {grow})`, `line(team, msg, meta)` per socket frame. Out: normalized `ev` (`{seq, at, team, speaker, to, toLabel, label, text, body, stage, exit}`) + `stage`/`result` events; drives graph choreography and `interp.stats` (findings/patches/verified). |
+| `web/js/ui/dom.js` | Shared helpers. In: nothing. Out: `h(tag, cls, text, attrs)`, `stamp`, `counter`, `toast`, `elapsed`, `scramble` for every widget and page. |
+| `web/js/ui/stage-bar.js` | `StageBar(root, {onPick})`: seven phases (`sandbox … cleanup` from `P.STAGES`/`P.STAGE_META`). In: `interp` `stage` events → `set(stage)`; verdict → `finish(ok)`. Out: click → `onPick(stage)` (console filters activity). |
+| `web/js/ui/comms-feed.js` | `CommsFeed(root)`: chat rows per event. In: `add(ev)`, `setFilter(set)` (legend family filter), `clear()`. Out: none (map bubbles are drawn by the engine from the same `ev`). Caps at 120 rows. |
+| `web/js/ui/terminal.js` | `Terminal(root)`: typed stdout lines. In: `push(team, text)` (prompt swaps `sandbox` → team family), `clear()`. Out: none (demo-only `#term`; queue of 12, 60 rows max, instant when `prefers-reduced-motion`). |
+| `web/js/ui/hex-stream.js` | `HexStream(root)`: hexdump of the real bytes of each message. In: `push(team, text)` (first 16 bytes via `TextEncoder`), `clear()`. Out: none (demo-only `#hex`, decorative but true, 18 rows max). |
+| `web/js/ui/activity.js` | Console log + timeline (`SMS.views`). `ActivityLog(root)`: `add(ev)` / `setTeam` / `setStage` / `reveal(seq)` / `visibleText()` (copy button). `Timeline(root, {onPick})`: one `.mk` marker per event, newest right; gap spacers sized by real log-scale time, `data-exit` on probe exits, `stage-start` on phase change. In: `onLine` evs. Out: marker click → `onPick(ev)` → Activity tab + `reveal`. |
+| `web/js/ui/result-view.js` | Console Result pane (`SMS.views`). `renderResult(p, {source, started})` + `summarize(p)` (`pre`/`post`/`receipt`/`recs`) + `redact(evidence)` (withholds `verification_script_python`, truncates long `output`). In: `onResult` payload. Out: `#r-facts` rows (Baseline, pre/post probe, Regression, Receipt, chain, Cleanup, Sweep), `#r-diff` patch spans, `#r-usage` cost list, `#r-cycles` per-cycle/research `<details>`; feeds `dl-json`/`dl-receipt`/`dl-patch`/`cp-diff`. |
+| `web/js/ui/inspector.js` | Console Inspect pane (`SMS.views.renderInspect(root, graph.describe(id), {events, topo})`). In: graph `select` events. Out: none (agent card: personality/role/messages/recent traffic; node card: kind/ring/state/path/links/attack-path/touching events). Null select → hint text. |
 
-## Guidance routes, scoreboard, HUD (2026-10-30)
+## Launch handoff (setup → visual)
 
-Hash routes in the single served shell — no server route churn, deep-linkable,
-back-button safe. Modes sync to the route; every control keeps its id/handler.
+No query-string run key: setup pages `SMS.launch.save()` a launch object to
+sessionStorage (`sms.v3.launch`: `{page:'demo'|'console', kind:'live'|'fake',
+mode, fixture, title, filename?, request:{path, body?, mcp?, binary?},
+topo:{type:'profile'|'project'|'source'|'binary'|'system', ...},
+grow?, values?, summary}`) then navigate to `demo.html` / `console.html`,
+which `SMS.launch.load()` on boot and redirect to their setup page when the
+launch is missing or for the other page. Binary bytes exceed sessionStorage,
+so `setup-prod.js` stashes them with `L.putBlob('binary', buf)` (IndexedDB
+`sms-v3` / `blobs`) and `topology()` rehydrates `{topo, buf}` via
+`SMS.topology.fromBinary`; `console.js` base64s the bytes (`bytesToB64`) into
+the first `/ws/binary` frame (8 MiB cap, magic-checked server-side).
 
-| Route / surface | DOM ids | Render fn | Source |
+| Step | DOM ids | Render fn | Source |
 |---|---|---|---|
-| `#/` landing | `view-landing` | `applyRoute`/`bootRoutes` (`app.js`) | Static hero; links to `#/demo` / `#/live`. |
-| `#/demo` happy path | `view-demo` | `applyRoute` + `setSourceMode('demo')` | Bundled fixtures + Green build (`demo`, `demo-build` modes). |
-| `#/live` real-time | `view-live` | `applyRoute` + `setSourceMode('project')` | Project / MCP / binary (`project`, `mcp`, `binary` modes). |
-| Phase graph | `phase-graph` | `SMSGraph.init/update/kick` (`graph.js`) | Stage/result events; `isFallback()` true only when canvas bind fails. |
-| Scoreboard | `scoreboard`, `score-agents`, `score-vulns`, `score-patches`, `score-verified` | `renderScoreboard` (`app.js`) | Roster presence + result outcomes (pre_probe_exit, diff, verified). Session-only, no backend call. |
-| HUD toggles | `hud-toggle-sweep/profile/research/compression/vault/differential/binary` | `bootRoutes` hud wiring (`app.js`) | Each flips an existing surface (sweep select, profile row, research checkbox, fact rows, cycle reports, binary mode). No dead controls. |
+| Start cards | `ver-btn`, `orch`, `lenses`, `fams` | `start.js` (`showLens`, version facts, `SMS.link.probe()` chip) | `index.html` → `demo-setup.html` / `prod-setup.html` / `visualizer.html` |
+| Demo setup | `targets`, `demo-opts`, `demo-build-opts`, `req`, `summary`, `launch`, `src-live`, `src-fake` | `setup-demo.js` (`pick`/`setSource`/`request`/`start`) | `O.compile('fixture'\|'build', …)` → `WS {path}` + body preview, or fake-run note |
+| Prod setup | `fixture-list`, `src-opts`, `run-opts`, `prop-opts`, `req`, `summary`, `launch`, `fake` | `setup-prod.js` (`setMode`/`preview`/`compile`/`launch`/`fake`) | `O.compile(mode, …)` per `O.SOURCES[mode]`; snippet/binary/system parse findings boxes (`s-`/`x-`/`y-findings`), provenance `#prov` |
+| Demo visual | `comms`, `term`, `hex`, `stagebar`, `cap-*`, `st-*`, `verdict` (`v-pre`/`v-post`/`v-reg`/`v-sha`/`v-diff`) | `demo.js` (`run`/`onLine`/`onResult`/`showVerdict`/`onClose`) | Live `Session(request.path, request.body)` or `scenario.Replay(script(key, topo), result(key, topo))` |
+| Console visual | `rail` (`r-target`/`r-sum`), `stagebar`, `graph`, `timeline`, `comms`, `log`, `inspect`, `result` (`r-facts`/`r-diff`/`r-usage`/`r-cycles`), `history`, scoreboard `sc-*` | `console.js` (`begin`/`start`/`onLine`/`onResult`/`onClose`/`resetRun`/`showTab`) | Live `Session` (+ `runSnippet` for `mcp:true` snippet mode) or `Replay`; `?sweep_passes`/`research` via `link.query()` |
 
-## Key hooks (`app.js`)
+## Key hooks (v3)
 
 | Hook | Role |
 |---|---|
-| `writeLine(team, text)` | Single chokepoint for feed lines; `panels.js` taps it for markers |
-| `fetch('/api/targets')` + `fetch('/api/health')` | Bootstraps fixture list and readiness |
-| `run-btn` / `stop-btn` click | `startScan` / `stopScan` |
-| `.mode` buttons click | Source mode switch (fixture vs project) |
-| `project-scan-profile` change | `updateScanProfile` |
-| `allow-remote` change | Remote-inference consent toggle |
-| `download-btn` click | Evidence download |
-| WebSocket `onmessage` | Routes `payload.team`/`payload.msg` to `writeLine`; unreadable events get a system line |
-| `socket.onerror` / close | System lines; server finishes cleanup before next scan |
-
-## MCP snippet panel (Milestone 2)
-`POST /mcp` (Streamable HTTP JSON-RPC) exposes `submit_code_snippet`;
-the dashboard `MCP snippet` mode posts the same call and renders the
-structured result inline. No WebSocket involved.
-
-| Fact / panel | DOM ids | Render fn | Source fields |
-|---|---|---|---|
-| MCP snippet form | `mcp-form`, `mcp-language`, `mcp-filename`, `mcp-source`, `mcp-contract`, `mcp-errors`, `mcp-result` | `submitMcpSnippet` (`app.js`) | `fetch('/mcp')` JSON-RPC `tools/call submit_code_snippet`; result text `status/pre_probe_exit/post_probe_exit/receipt sha12`. |
-
-## Sweep depth selector (Milestone 3)
-
-Fixture scans accept `?sweep_passes=2|3` (mirrors `--sweep-passes`); absent/1
-keeps the legacy single loop. `summaryEvidence` rolls `pass_results` into the
-shared summary shape (`N/M passes hold`, per-pass reachable/blocked counts).
-
-| Fact / panel | DOM ids | Render fn | Source fields |
-|---|---|---|---|
-| Sweep depth | `sweep-passes` | `socketQuery` (`app.js`) | `?sweep_passes=2|3` on `/ws/combat/{key}`; value `1` sends nothing. |
-| Pass summary | `result-meta` | `renderResultMeta` via `summaryEvidence` | `pass_results[]` (`pass_id`, `pre/post_exit_code`, `cleared`, `receipt`, `regression_passed`). |
-
-## Binary sweep panel (Milestone 4)
-
-`/ws/binary` takes the validated binary as a base64 first frame (`blob_b64`,
-bare `filename`, `contract`; 8 MiB cap, magic-checked server-side) and runs
-the binary 4-pass sweep over the shared socket flow; `summaryEvidence`
-renders `pass_results` the same way as source sweeps.
-
-| Fact / panel | DOM ids | Render fn | Source fields |
-|---|---|---|---|
-| Binary mode | `mode-binary`, `binary-form`, `binary-file`, `binary-filename`, `binary-contract`, `binary-errors` | `submitBinary` (`app.js`) | FileReader → base64 → first WS frame on `/ws/binary`; per-field client validation. |
-
-## Wave 2 (SPEC 14.8) panels (`renderW2v2`, `static/app.js:807`)
-
-All collectors are defensive (optional fields, odd shapes degrade to null,
-never throw). DOM ids verified in `static/index.html:202-217`.
-
-| Fact / panel | DOM ids | Render fn | Source fields |
-|---|---|---|---|
-| Verdict receipt (`Verdict receipt` row) | `fact-receipt`, `download-receipt-btn` | `w2v2Receipt` (`app.js`) | `result.receipt` (VerdictReceipt) or first `cycle.receipt` (CycleReceipt); legacy `verdict_receipt`. Text: `fixture`, `probe pre/post`, `regression passed` (or `baseline/patched` exits), `differential passed`, `properties passed`, `sha <12>`, `chain ok/broken` (W7: `w2v2Chain` reads `chain_ok` else `prev_receipt_sha` link; render only). Button downloads live receipt as JSON (license notice wrapper); hidden when no receipt. |
-| Receipt chain (`Receipt chain` row + verify badge) | `fact-receipt-chain`, `receipt-chain-badge` (`status` verified/failed/idle) | `w2v2Chain` + `renderW2v2` (`app.js`) | Same receipt record; badge text `chain verified` / `chain broken` / `chain unknown`, `data-state` follows. |
-| Guard rationales | `fact-guards`, `guard-rationales` + `guard-list` | `w2v2Guards` (`app.js:707`) | Top-level `guard_rationale`, then each cycle `evidence.replacement_validation.guard_rationale` / `evidence.guard_rationale` (`guard_id`/`reason`/`trigger`); legacy `guard_rationales` list. Max 3 cycles, max 8 shown; wrap unhidden only when non-empty. |
-| Fast-lane topping | `fact-topping`, `fast-lane-topping` + `topping-list` | `w2v2Topping` (`app.js:747`) | First 10 `vulnerabilities[]` with `queue_evidence` or `reach_score`: `id`/`cves[0]`, `queue_evidence` (else `reach N`), `fixed_versions[0]`, `KEV-listed`, `EPSS x.xx`, `reach_evidence[]` sub-list. |
-| Mutation probes | `fact-mutations`, `mutation-evidence` + `mutation-text` | `w2v2Mutation` (`app.js:766`) | Cycle `evidence.{patched,pre}_verification.mutations` `ExecutionEvidence` (`N/M held|failed (exit N)` parsed from output); legacy `mutation_evidence`/`mutations` dict. Wrap unhidden only when present. |
-
-## Wave 5 (SPEC 14.9) — no new panels
-
-Verified via `static/app.js` + `static/index.html` grep 2026-10-29: SPEC 14.9
-adds no panels, DOM ids, or render functions. Freshness/template state flows
-through existing surfaces only:
-
-| Behavior | Existing panel | How it shows |
-|---|---|---|
-| Queue freshness | Fast-lane topping (`w2v2Topping`, `app.js:747`) | Same `queue_evidence` string; stale-dated signals render as `kev:absent` / `epss:absent` — no freshness badge or date text (stamps are internal). |
-| EUVD exclusion | None | Fail-closed assert only; no panel or feed line. |
-| Solver-shape guard | Guard rationales (`w2v2Guards`, `app.js:707`) | Same `{guard_id, reason, trigger}` rows; `solver_synthesized_shape` appears as another `guard_id` value. |
-| Frozen mutation pool | Mutation probes (`w2v2Mutation`, `app.js:766`) | Drift surfaces only as the existing failed-mutation `N/M` text; no digest shown. |
+| `SMS.launch.save/load/topology` (`core/handoff.js`) | Single chokepoint for setup → visual handoff; `load()` miss or wrong `page` redirects to setup |
+| `SMS.link.probe()` (`stream/link.js`) | Bootstraps fixture list + readiness (`{online, ready, keyOk, docker, inferenceMode, health, targets, notes}`); never throws |
+| `new SMS.link.Session(path, body, handlers)` | One live socket; routes `result`/`invalid`/`busy`/`graph`/`snapshot`/`telemetry_batch`/`msg` frames to handlers |
+| `interp.line(team, msg, payload)` (`stream/interpreter.js`) | Single chokepoint for feed lines; widgets (`comms`, `activity`, `timeline`, `term`, `hex`) tap the returned `ev` |
+| `#launch` / `#fake` click | `setup-prod.js` `launch()` (validates via `OptionForm.validate`, disabled until `probe().ready`) vs `fake()` (same lens, scripted events, no backend) |
+| `stagebar` click | `StageBar onPick` → console `setStageFilter` → `activity.setStage` (+ `#stage-filter-note`); demo `StageBar` has no `onPick` |
+| `[data-f]` / `#copy-log` click | Activity team filter (`all`/`red`/`blue`/`purple`/`green`/`yellow`/`orange`) / copy visible rows |
+| WebSocket `onmessage` | Unparseable frame → `onLine('system', …)`; `snapshot` hydrates chips/counters only, never a stream line |
+| `onResult` payload | Probe exits (`pre_probe_exit`/`post_probe_exit`), `regression_passed`, `receipt`/`verdict_receipt` (chain via `summarize`), `pass_results` sweep tally, `candidate.patch`/`cumulative_diff` |
 
 Related: [MODULES.md](MODULES.md), [CLI.md](CLI.md).

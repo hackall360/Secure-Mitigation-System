@@ -190,11 +190,10 @@ def test_web_dir_root_serves_v3_index():
         assert resp.headers["location"] == "/web/index.html"
 
 
-def test_v2_dashboard_kept_at_v2_path():
+def test_v2_dashboard_gone_after_cutover():
     with TestClient(_client(), base_url="http://localhost") as client:
-        resp = client.get("/v2/")
-        assert resp.status_code == 200 and "Boundary auditor" in resp.text
-        assert client.get("/static/app.js").status_code == 200
+        assert client.get("/v2/", follow_redirects=False).status_code == 404
+        assert client.get("/static/app.js", follow_redirects=False).status_code == 404
 
 
 def test_v3_pages_have_no_inline_style_attributes():

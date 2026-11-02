@@ -771,31 +771,38 @@ def test_chatter_fuzz_basename_and_determinism():
 
 
 def test_arena_name_lists_match_backend_wrap_order():
+    """v3 keeps the roster in web/js/core/palette.js as AGENTS [{id, team}].
+
+    The v2 flat RED_NAMES/BLUE_NAMES consts are gone with static/app.js, so
+    this parses the AGENTS ids grouped by team and compares them against the
+    backend red_persona(i)/blue_persona(i) wrap order. v3 has no CHATTER_RE
+    speaking-light regex (agents.js owns speak state on the SpiderGraph, and
+    palette.js exposes namesIn() for speaker matching instead), so the
+    CHATTER_RE half is dropped.
+    """
     import json
+    import re
     from pathlib import Path
 
     from modules.core.personas import blue_persona, red_persona
 
-    js = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
-    for var in ("RED_NAMES", "BLUE_NAMES"):
-        start = js.index(f"const {var} = ")
-        raw = js[start : js.index("];", start) + 1]
-        names = json.loads(raw[raw.index("[") :].replace("'", '"'))
-        assert len(names) == 12, (var, len(names))
-        backend = (
-            [red_persona(i).name for i in range(1, 13)]
-            if var == "RED_NAMES"
-            else [blue_persona(i).name for i in range(1, 13)]
-        )
-        assert names == backend, (var, names)
-    # CHATTER_RE still covers every roster name so speaking lights fire
-    import re
-
-    m = re.search(r"const CHATTER_RE = /(.*?)/;", js)
-    assert m
-    rx = re.compile(m.group(1))
-    for i in range(1, 13):
-        assert rx.search(red_persona(i).name) and rx.search(blue_persona(i).name)
+    js = (Path(__file__).resolve().parents[1] / "web" / "js" / "core" / "palette.js").read_text()
+    start = js.index("const AGENTS = ")
+    raw = js[start : js.index("];", start) + 1]
+    agents = json.loads(re.sub(r"(\w+):", r'"\1":', raw[raw.index("["):].replace("'", '"')))
+    red = [a["id"] for a in agents if a["team"] == "red"]
+    blue = [a["id"] for a in agents if a["team"] == "blue"]
+    # v3 seats each family with its leader first, then the five backend
+    # workers in order: backend red_persona/blue_persona cycle 5 names, so
+    # workers == backend 1..5 exactly (leader excluded).
+    assert red[0] == "Warlord" and blue[0] == "Warden", (red[0], blue[0])
+    assert red[1:] == [red_persona(i).name for i in range(1, 6)], (red, "red")
+    assert blue[1:] == [blue_persona(i).name for i in range(1, 6)], (blue, "blue")
+    leaders = {a["id"] for a in agents if a.get("leader") and a["team"] in ("red", "blue")}
+    assert leaders == {"Warlord", "Warden"}, leaders
+    # v3 speaker matching lives in palette.js, not a CHATTER_RE regex:
+    # namesIn/speakerFor cover roster-name matching for speaking lights.
+    assert "namesIn" in js and "speakerFor" in js
 
 
 def test_redacted_history_and_chatter_ephemerality():

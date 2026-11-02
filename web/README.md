@@ -163,7 +163,7 @@ time.
 All paths are relative. Serve this folder as static files:
 
 * `python3 -m http.server` from this folder gives you fake runs only (no orchestrator), or
-* drop it into the server's static directory and make `/` redirect to `/static/index.html`. v2
+* drop it into the server's web directory: it is served at `/web/` with `/` redirecting to `/web/index.html`. v2
   served `index.html` at `/` with absolute `/static/...` assets, and v3's relative paths need
   the page URL to sit next to the assets.
 
