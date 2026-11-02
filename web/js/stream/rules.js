@@ -31,6 +31,13 @@
     if (team === 'blue' && t.startsWith('requesting a sanitization patch')) return 'patch';
     if (t.includes('starting a fresh target from the patched snapshot')) return 'regression';
     if (t.includes('session containers, snapshots, and network removed')) return 'cleanup';
+    // Real backend lines carry a "[phase …]" / "[sweep …]" tag prefix; match the body too.
+    const b = t.replace(/^\[[^\]]*\]\s*/, '');
+    if (team === 'red' && b.startsWith('analyzing')) return 'analysis'; // workflow.py:378
+    if (b.startsWith('static reversing profile collected')) return 'analysis'; // binary_sweep.py:150
+    if (b.includes('binary harness is ready; baseline checks passed') && current < 2) return 'baseline'; // binary_sweep.py:163
+    if (team === 'blue' && b.startsWith('requesting a sanitization patch')) return 'patch'; // workflow.py:451, sweep.py:453
+    if (b.includes('post-patch boundary check exited')) return 'regression'; // workflow.py:497, sweep.py:524
     return null;
   }
 
