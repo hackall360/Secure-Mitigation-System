@@ -64,13 +64,12 @@ def test_deep_prompt_covers_mutation_classes():
 def test_dashboard_pass_badge_and_telemetry_ids_exist():
     from pathlib import Path
 
-    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
-    js = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
-    assert "sweep-passes" in html
-    assert "fact-compression" in html
-    assert "fact-vault" in html
-    assert "sweep_summary" in js
-    assert "fact-vault" in js
+    root = Path(__file__).resolve().parents[1]
+    schema = (root / "web/js/options/schema.js").read_text()
+    assert "sweep_passes" in schema
+    view = (root / "web/js/ui/result-view.js").read_text()
+    assert "compression" in view
+    assert "vault" in view.lower() or "Vault recall" in view
 
 
 def test_tui_sweep_mode_reports_depth():

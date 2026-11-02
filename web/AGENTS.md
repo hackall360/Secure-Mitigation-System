@@ -79,7 +79,7 @@ launch redirects to its setup page.
 
 ```
 v3/
-├─ AGENTS.md  CLAUDE.md  README.md
+├─ AGENTS.md  README.md
 ├─ index.html  demo-setup.html  prod-setup.html  demo.html  console.html  visualizer.html
 ├─ favicon.svg
 ├─ css/
@@ -370,7 +370,7 @@ Bump `version`/`date` and append to `changes` in `js/core/version.js`. The start
 Version info panel reads from it.
 
 ### 8.14 Wire into the Python server
-Serve this folder statically (e.g. at `/static/`) and redirect `/` to `/static/index.html`.
+Serve this folder statically at `/web/` and redirect `/` to `/web/index.html`.
 All asset paths are relative. `/api/*`, `/ws/*` and `/mcp` must stay on the same origin.
 
 ### 8.15 Add a lens (e.g. "mobile app" or "cloud account")

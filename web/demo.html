@@ -108,11 +108,11 @@
     <aside class="d-right" aria-label="Communications">
       <section class="glass brackets d-comms-wrap">
         <div class="panel-title"><h2><span class="live-dot"></span>Agent comms</h2><span class="eyebrow" id="msg-count">0 msgs</span></div>
-        <div id="comms" class="comms d-comms" role="log" aria-live="polite"></div>
+        <div id="comms" class="comms d-comms" role="log" aria-live="polite" tabindex="0" aria-label="Agent messages"></div>
       </section>
       <section class="glass d-term-wrap">
         <div class="panel-title"><h3>stdout // orchestrator</h3><span class="eyebrow">raw stream</span></div>
-        <div id="term" class="term d-term" aria-hidden="true"></div>
+        <div id="term" class="term d-term" role="log" aria-live="off" tabindex="0" aria-label="Raw orchestrator lines"></div>
       </section>
     </aside>
 

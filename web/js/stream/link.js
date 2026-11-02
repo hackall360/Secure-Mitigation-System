@@ -84,7 +84,11 @@
         if (payload.type === 'result') { this.result = payload; this.h.onResult && this.h.onResult(payload); }
         else if (payload.type === 'invalid' || payload.type === 'busy') { this.reason = payload.type; this.h.onRefuse && this.h.onRefuse(payload.type, payload.msg || '', payload); }
         else if (payload.type === 'graph' || payload.type === 'topology') { this.h.onGraph && this.h.onGraph(payload); }
-        else this.h.onLine && this.h.onLine(payload.team, payload.msg, payload);
+        // Connect-time hydration frame (server telemetry_hub.build_snapshot): state, not a stream line.
+        else if (payload.type === 'snapshot') { this.snapshot = payload; this.h.onSnapshot && this.h.onSnapshot(payload); }
+        // Coalesced telemetry burst: replay each event as its own real line, in order.
+        else if (payload.type === 'telemetry_batch') { (payload.events || []).forEach((e) => { if (e && e.msg) this.h.onLine && this.h.onLine(e.team || 'telemetry', e.msg, e); }); }
+        else if (payload.msg !== undefined && payload.msg !== null) this.h.onLine && this.h.onLine(payload.team, payload.msg, payload);
       };
       this.ws.onerror = () => { this.h.onError && this.h.onError(); };
       this.ws.onclose = () => { this.h.onClose && this.h.onClose({ cancelled: this.cancelled, reason: this.reason, result: this.result }); };

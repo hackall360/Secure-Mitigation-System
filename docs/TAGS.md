@@ -14,7 +14,7 @@ branch is superseded; this doc replaces `TAGS_NOTES.md`.
   reached by delegation (mode buttons via `button.dataset.mode`, chips via
   `chip(`, timeline via `getElementById('scan-timeline')` in panels.js/graph.js,
   filters via `.filter` loop).
-- `static/index.html`: elements carry `data-feature` audit hooks
+- `web/*.html`: elements carry `data-feature` audit hooks
   (space-separated where one DOM id serves several tags). Attributes only —
   no markup, style, or script changes. `app.css`/all `static/*.js` contain
   zero `data-feature` references (test-pinned). New `demo-*` controls added

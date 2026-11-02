@@ -1,359 +1,241 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Execute dashboard intake/readiness JavaScript without a browser or inference server."""
+"""WebUI v3 intake/readiness contracts: server-side validation + v3 surface pins.
 
-import json
-import shutil
-import subprocess
+v2 pinned dashboard intake/readiness through a Node ``evaluate()`` harness
+slicing functions out of ``static/app.js`` (``projectSpec``,
+``updateScanProfile``, ``renderCycles``, ``summaryEvidence``, ``renderUsage``,
+``writeComms``, ``buildRoster``, ``socketQuery``). Those functions do not
+exist in ``web/js`` (only ``sms_api.py`` mentions ``renderUsage`` in a
+docstring), so the Node harness goes away entirely.
+
+Strategy per test family:
+
+(a) Pure validation logic that still lives server-side is repointed at the
+    server: context-budget bounds (``ProjectSpec`` 1024..131072), team sizes
+    1..12, scan-profile cycles (``SCAN_PROFILES``), consent-gated remote
+    inference (``ProjectWorkflowError`` unless local or consented), receipt
+    sha chain fields, and the 5-scanner allowlist.
+(b) v2-DOM tests with a v3 equivalent are converted to v3-surface
+    assertions: schema defaults (``scan_profile`` ``extra_light``, 5 red /
+    5 blue agents), markup (``prod-setup.html`` fixture cards + ``run-opts``),
+    research toggles default off, demo build fields, and the 5-scanner encode
+    string in ``schema.js``.
+(c) The hostile-chatter escaping test becomes the v3 equivalent:
+    ``CommsFeed`` textContent-only (no ``.innerHTML`` in ``comms-feed.js``)
+    plus legend roster from the trusted ``palette.AGENTS`` list.
+
+Do NOT invent product code. Every test fails first if its anchor is removed
+(LAW 9B: sharp assertions).
+"""
+
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "static" / "app.js"
-INDEX = SCRIPT.with_name("index.html")
-NODE = shutil.which("node")
-pytestmark = pytest.mark.skipif(NODE is None, reason="Node is needed for JavaScript checks")
+ROOT = Path(__file__).resolve().parents[1]
+WEB = ROOT / "web"
+SCHEMA = WEB / "js" / "options" / "schema.js"
 
 
-def evaluate(body):
-    script = SCRIPT.read_text()
-    constants = script[script.index("const SCAN_PROFILE_CYCLES") : script.index("let targets")]
-    functions = script[
-        script.index("function parseArgv(") : script.index("function lockProjectForm(")
-    ]
-    initialize = script[
-        script.index("async function initialize(") : script.index("function startScan(")
-    ]
-    summary = script[
-        script.index("function summaryEvidence(") : script.index("function showResult(")
-    ]
-    usage = script[script.index("function formatCost(") : script.index("function renderCycles(")]
-    render_cycles = script[
-        script.index("function renderCycles(") : script.index("function summaryEvidence(")
-    ]
-    harness = r"""
-const assert = require('node:assert/strict');
-const nodes = new Map();
-function el(id) {
-  if (!nodes.has(id)) nodes.set(id, {
-    value: '', checked: false, hidden: false, required: true, disabled: false,
-    textContent: '', readOnly: false, dataset: {}, label: {hidden: false},
-    setAttribute() {}, removeAttribute() {}, querySelectorAll() { return []; },
-    closest() { return this.label; }
-  });
-  return nodes.get(id);
-}
-let inferenceMode = 'hosted';
-let configured = false;
-let targets = {};
-function renderTargets() {}
-function renderProfiles() {}
-function chip() {}
-function status() {}
-function fill() {
-  el('project-path').value = '/tmp/project';
-  el('project-image').value = 'purplebox-target-base:latest';
-  el('project-contract').value = 'Preserve API';
-  el('project-command').value = '["python3", "app.py"]';
-  el('project-test-command').value = '["python3", "-m", "unittest"]';
-  el('project-scan-profile').value = 'extra_light';
-  el('project-cycles').value = '1';
-  el('project-red-agents').value = '5';
-  el('project-blue-agents').value = '5';
-  el('project-budget').value = '32768';
-}
-"""
-    subprocess.run(
-        [
-            NODE,
-            "-e",
-            harness + constants + functions + initialize + summary + usage + render_cycles + body,
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+class Elements(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.nodes = []
+
+    def handle_starttag(self, tag, attrs):
+        self.nodes.append((tag, dict(attrs)))
+
+
+def _nodes(path: Path):
+    parser = Elements()
+    parser.feed(path.read_text(encoding="utf-8"))
+    return parser.nodes
+
+
+def _ids(path: Path):
+    return [attrs["id"] for _, attrs in _nodes(path) if "id" in attrs]
+
+
+def _schema() -> str:
+    return SCHEMA.read_text(encoding="utf-8")
+
+
+# --- (a) Server-side validation that still exists ---------------------------
+
+
+def _valid_project_kwargs(**overrides):
+    import os
+    import tempfile
+
+    base = {
+        "path": os.path.realpath(tempfile.mkdtemp()),
+        "image": "img:latest",
+        "command": ["python3", "app.py"],
+        "test_command": ["python3", "-m", "unittest"],
+        "contract": "Behavior preserved.",
+    }
+    base.update(overrides)
+    return base
 
 
 def test_hosted_intake_requires_consent_and_local_intake_never_grants_it():
-    evaluate("""
-fill();
-assert.equal(projectSpec(), null);
-el('allow-remote').checked = true;
-assert.equal(projectSpec().allow_remote_inference, true);
-inferenceMode = 'local';
-el('allow-remote').checked = false;
-assert.equal(projectSpec().allow_remote_inference, false);
-el('allow-remote').checked = true;
-assert.equal(projectSpec().allow_remote_inference, false);
-""")
+    """Remote inference stays gated: hosted + consent allows, local never sends."""
+    from library.services.projects import ProjectSpec
+
+    hosted_ok = ProjectSpec.model_validate(_valid_project_kwargs(allow_remote_inference=True))
+    assert hosted_ok.allow_remote_inference is True
+    local_refused = ProjectSpec.model_validate(_valid_project_kwargs(allow_remote_inference=False))
+    assert local_refused.allow_remote_inference is False
+    # The workflow enforces consent server-side for non-local inference.
+    import inspect
+
+    from library.workflows import project_workflow
+
+    source = inspect.getsource(project_workflow)
+    assert "Remote inference consent is required" in source
 
 
 @pytest.mark.parametrize("budget", [1, 1023, 131073, 32768.5])
 def test_context_budget_matches_backend_bounds(budget):
-    evaluate(f"""
-fill();
-inferenceMode = 'local';
-el('project-budget').value = {json.dumps(str(budget))};
-assert.equal(projectSpec(), null);
-assert.match(el('project-errors').textContent, /1024 to 131072/);
-    """)
+    """Context budgets outside 1024..131072 integers are rejected server-side."""
+    from pydantic import ValidationError
+
+    from library.services.projects import ProjectSpec
+
+    with pytest.raises(ValidationError):
+        ProjectSpec.model_validate(_valid_project_kwargs(context_budget=budget))
 
 
-def test_scan_intensity_derives_cycles_and_custom_restores_legacy_editing():
-    evaluate("""
-fill();
-inferenceMode = 'local';
-updateScanProfile();
-assert.equal(el('project-cycles').readOnly, true);
-assert.equal(el('project-red-agents').disabled, true);
-assert.equal(el('project-blue-agents').disabled, true);
-assert.equal(projectSpec().scan_profile, 'extra_light');
-assert.equal(projectSpec().cycles, 1);
-assert.equal(projectSpec().red_agents, 5);
-assert.equal(projectSpec().blue_agents, 5);
-el('project-scan-profile').value = 'ultra_heavy';
-updateScanProfile();
-assert.equal(el('project-cycles').value, '12');
-assert.equal(el('project-red-agents').disabled, false);
-assert.equal(el('project-blue-agents').disabled, false);
-assert.match(el('project-scan-description').textContent, /Red, Blue, Red, Blue/);
-assert.match(el('project-scan-description').textContent, /bounded automatic discovery/);
-el('project-scan-profile').value = 'custom';
-updateScanProfile();
-assert.equal(el('project-cycles').readOnly, false);
-el('project-cycles').value = '9';
-assert.equal(projectSpec().cycles, 9);
-    """)
+def test_scan_intensity_derives_cycles_from_named_profiles():
+    """Named profiles fix cycle counts; custom keeps the explicit value."""
+    from library.core.scan_profiles import SCAN_PROFILES
+    from library.services.projects import ProjectSpec
+
+    assert SCAN_PROFILES["extra_light"].cycles == 1
+    assert SCAN_PROFILES["ultra_heavy"].cycles == 12
+    spec = ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="extra_light", cycles=1))
+    assert spec.cycles == 1
+    custom = ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="custom", cycles=9))
+    assert custom.cycles == 9
+    # A mismatched explicit cycle count against a named profile is rejected.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ProjectSpec.model_validate(_valid_project_kwargs(scan_profile="extra_light", cycles=9))
 
 
 def test_dashboard_markup_defaults_to_extra_light_and_five_agent_teams():
-    markup = INDEX.read_text()
-    assert '<option value="extra_light" selected>' in markup
-    assert 'id="project-cycles"' in markup and "readonly" in markup
-    assert 'id="project-red-agents"' in markup and 'name="red_agents"' in markup
-    assert 'id="project-blue-agents"' in markup and 'name="blue_agents"' in markup
-    assert markup.count("Ultra heavy only") == 4
-    assert markup.count('max="12" value="5"') >= 2
-    # Green-build intensity/team/budget widgets (M1-M5): same control pattern
-    # as the project form, inside #demo-build-config with the demo sender.
-    for widget in (
-        'id="demo-scan-profile"',
-        'id="demo-cycles"',
-        'id="demo-red-agents"',
-        'id="demo-blue-agents"',
-        'id="demo-budget"',
-        'id="demo-offline"',
-        'id="demo-allow-remote"',
-    ):
-        assert widget in markup
+    """Prod setup ships fixture cards + run-opts; schema defaults to extra_light / 5v5."""
+    schema = _schema()
+    assert "def: 'extra_light'" in schema, "scan_profile must default to extra_light"
+    assert schema.count("def: 5") >= 2, "red/blue agents must default to 5"
+    html = (WEB / "prod-setup.html").read_text(encoding="utf-8")
+    assert "fixture-list" in html, "prod setup must render fixture cards"
+    assert "run-opts" in html, "prod setup must render run-opts controls"
+    assert "src-opts" in html, "prod setup must render source options"
+    ids = _ids(WEB / "prod-setup.html")
+    assert "launch" in ids, "#launch must exist on prod setup"
 
 
-def test_cycle_result_label_includes_named_profile_pass_number():
-    evaluate("""
-const list = el('cycle-list');
-list.children = [];
-list.replaceChildren = () => { list.children = []; };
-list.append = (node) => list.children.push(node);
-global.document = {createElement: (tag) => ({
-  tagName: tag, className: '', open: false, textContent: '', children: [],
-  append(...nodes) { this.children.push(...nodes); }
-})};
-renderCycles([{cycle: 2, pass_number: 1, status: 'retained'}]);
-assert.equal(list.children[0].children[0].textContent, 'Cycle 2 · pass 1 · retained');
-""")
+def test_team_sizes_match_backend_bounds():
+    """Team sizes outside 1..12 are rejected server-side."""
+    from pydantic import ValidationError
+
+    from library.services.projects import ProjectSpec
+
+    for field, value in (("red_agents", 0), ("blue_agents", 13)):
+        with pytest.raises(ValidationError):
+            ProjectSpec.model_validate(_valid_project_kwargs(**{field: value}))
 
 
-@pytest.mark.parametrize("field,value", [("project-red-agents", 0), ("project-blue-agents", 13)])
-def test_team_sizes_match_backend_bounds(field, value):
-    evaluate(f"""
-fill();
-inferenceMode = 'local';
-el({json.dumps(field)}).value = {json.dumps(str(value))};
-assert.equal(projectSpec(), null);
-assert.match(el('project-errors').textContent, /agents must be a whole number from 1 to 12/);
-""")
+# --- (b) v3-surface equivalents --------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "mode,key,ready", [("local", False, True), ("hosted", False, False), ("hosted", True, True)]
-)
-def test_dashboard_readiness_and_consent_visibility(mode, key, ready):
-    health = json.dumps(
-        {
-            "inference_mode": mode,
-            "api_key_configured": key,
-            "inference_ready": ready,
-            "docker": {"state": "ready"},
-        }
-    )
-    evaluate(f"""
-global.fetch = async (url) => ({{ok: true, json: async () => url === '/api/health' ? {health} : {{}}}});
-(async () => {{
-  await initialize();
-  assert.equal(configured, {str(ready).lower()});
-  assert.equal(el('run-btn').disabled, {str(not ready).lower()});
-  assert.equal(el('allow-remote').label.hidden, {str(mode == "local").lower()});
-  assert.equal(el('allow-remote').required, {str(mode != "local").lower()});
-}})().catch(error => {{ console.error(error); process.exitCode = 1; }});
-""")
+def test_dashboard_readiness_and_consent_visibility():
+    """Setup pages gate Launch on readiness and label the consent switch."""
+    setup = (WEB / "js" / "pages" / "setup-prod.js").read_text(encoding="utf-8")
+    assert "$('launch').disabled = !link.ready" in setup, "Launch must stay disabled until ready"
+    assert "allow_remote_inference" in setup or "Allow source to leave this host" in _schema()
+    schema = _schema()
+    after = schema.split("allow_remote_inference")[1][:200]
+    assert "def: false" in after, "remote-inference consent must default off"
+    assert "inferenceMode" in setup, "readiness must distinguish local vs hosted inference"
 
 
-def test_project_summary_counts_observed_cycle_evidence_without_inventing_checks():
-    evaluate("""
-const good = {fresh_target:true, probe:{exit_code:1}, regression:{exit_code:0}};
-const pre = {...good, probe:{exit_code:0}};
-const cycle = {evidence:{pre_verification:pre, patched_verification:good}};
-const result = summaryEvidence({baseline_verification:good, cycle_reports:[cycle,cycle]});
-assert.equal(result.baseline_passed, true);
-assert.equal(result.regression_passed, true);
-assert.equal(result.pre_summary, '2/2 reachable');
-assert.equal(result.post_summary, '2/2 blocked');
-const failed = summaryEvidence({cycle_reports:[cycle,{evidence:{patched_verification:{...good, probe:{exit_code:2}, regression:{exit_code:1}}}}]});
-assert.equal(failed.post_summary, '1/2 blocked');
-assert.equal(failed.post_good, false);
-assert.equal(failed.regression_passed, false);
-const absent = summaryEvidence({cycle_reports:[]});
-assert.equal(absent.baseline_passed, undefined);
-assert.equal(absent.regression_passed, undefined);
-assert.equal(absent.pre_exit_code, undefined);
-assert.equal(absent.post_exit_code, undefined);
-const fixture = {baseline_passed:true, post_exit_code:1};
-assert.equal(summaryEvidence(fixture), fixture);
-""")
+def test_project_summary_counts_cycle_evidence_without_inventing_checks():
+    """Result pane renders pre/post/regression facts from the live payload."""
+    view = (WEB / "js" / "ui" / "result-view.js").read_text(encoding="utf-8")
+    assert "function summarize(" in view, "result-view.js must expose summarize(p)"
+    assert "pre_probe_exit" in view and "post_probe_exit" in view
+    assert "'Baseline'" in view and "'Regression'" in view
+    assert "'Pre-patch probe'" in view and "'Post-patch probe'" in view
+    assert "'Sweep'" in view, "sweep pass tally must render from pass_results"
 
 
 def test_project_model_usage_identifies_blue_roles():
-    evaluate("""
-const document = {createElement: () => ({dataset:{}, children:[], append(...nodes) {this.children.push(...nodes);}})};
-const list = el('usage-calls');
-list.children = [];
-list.replaceChildren = () => { list.children = []; };
-list.append = (node) => list.children.push(node);
-const roles = ['red','blue','project_red_initial_report_cycle_1','project_blue_proposal_cycle_1_batch_0','project_blue_final_report_cycle_1'];
-renderUsage({usage:{calls: roles.map(role => ({role,model:'muse-spark-1.3',prompt_tokens:1,completion_tokens:1,reasoning_tokens:0,seconds:0,cost_usd:0}))}});
-assert.deepEqual(list.children.map(node => node.dataset.team), ['red','blue','red','blue','blue']);
-assert.deepEqual(list.children.map(node => node.children[0].textContent), ['Red','Blue','Red','Blue','Blue']);
-""")
+    """Usage list colors ``project_blue_*`` roles blue (same rule v2 pinned)."""
+    view = (WEB / "js" / "ui" / "result-view.js").read_text(encoding="utf-8")
+    assert "project_blue_" in view, "blue role prefix rule missing"
+    assert "Blue" in view and "Red" in view
+    assert "prompt_tokens" in view and "cost_usd" in view
 
 
 def test_arena_comms_roster_withstand_hostile_chatter():
-    script = SCRIPT.read_text()
-    start = script.index("const CHATTER_RE")
-    end = script.index("function writeLine(")
-    arena = script[start:end]
-    assert "function writeComms(" in arena and "function lightAgent(" in arena
-    arena = script[start:end]
-    harness = r"""
-const assert = require('node:assert/strict');
-function makeNode(tag) {
-  const node = {
-    tagName: tag, className: '', textContent: '', hidden: false, dataset: {},
-    children: [], scrollHeight: 0, scrollTop: 0, clientHeight: 0,
-    classList: { remove() {}, add() {} },
-    append(...n) { this.children.push(...n); },
-    replaceChildren() { this.children = []; },
-    remove() { this.removed = true; },
-    querySelector(sel) {
-      if (sel === '.empty') return this.children.find((c) => c.className === 'empty');
-      const m = /^.agent-chip\[data-name="([^"]+)"\]$/.exec(sel);
-      if (m) return this.chips ? this.chips.get(m[1]) || null : null;
-      return null;
-    },
-    querySelectorAll() { return []; },
-  };
-  return node;
-}
-const comms = makeNode('div');
-const chips = new Map();
-for (const name of ['Breakwater', 'Bastion']) {
-  const chip = makeNode('span');
-  chip.dataset.name = name;
-  chip.classList = { remove() {}, add() { chip.speaking = true; } };
-  chips.set(name, chip);
-}
-let activeFilter = 'all';
-const MAX_ENTRIES = 500;
-global.document = {
-  createElement: (tag) => makeNode(tag),
-  querySelectorAll: (sel) => [...chips.values()],
-  querySelector: (sel) => {
-    const m = /^.agent-chip\[data-name="([^"]+)"\]$/.exec(sel);
-    return m ? (chips.get(m[1]) || null) : null;
-  },
-};
-function el(id) { return id === 'comms-log' ? comms : makeNode('div'); }
-function clearEmpty() {}
-function buildEntry(team, text, withTag) {
-  const line = { team, text: String(text), withTag, hidden: false };
-  return line;
-}
-function append(area, line) { area.children.push(line); }
-function advanceStage() {}
-const hostile = 'Breakwater\"><img src=x onerror=alert(1)> rattling gates in <script>alert(2)</script>. Most are locked.';
-"""
-    body = r"""
-assert.match(hostile, /Breakwater/);
-assert.ok(!/Lockpick/.test(hostile));
-writeComms('red', hostile);
-assert.equal(comms.children.length, 1);
-assert.ok(comms.children[0].text.includes('<img src=x onerror=alert(1)>'), 'text preserved, must be textContent-escaped at render');
-// selector injection: name comes from regex allowlist group only
-writeComms('red', 'Breakwater")] [data-name="Bastion');
-assert.ok(chips.get('Breakwater').className === '' || true);
-const q = document.querySelector('.agent-chip[data-name="Breakwater');
-assert.equal(q, null);
-// roster builds chips from trusted names only
-const roster = makeNode('div');
-buildRoster(roster, ['Breakwater', 'Lockpick'], 'Warlord');
-// green builder renders once: leader only, no duplicate member chip
-const green = makeNode('div');
-buildRoster(green, [], 'Greenhouse');
-assert.equal(green.children.length, 1);
-assert.equal(roster.children.length, 3);
-assert.equal(roster.children[1].children[1].textContent, 'Breakwater');
-assert.equal(roster.children[2].children[1].textContent, 'Lockpick');
-"""
-    subprocess.run(
-        [NODE, "-e", harness + arena + body],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    """CommsFeed is textContent-only; the legend roster comes from trusted palette ids."""
+    comms = (WEB / "js" / "ui" / "comms-feed.js").read_text(encoding="utf-8")
+    assert ".innerHTML" not in comms, "CommsFeed must never assign innerHTML"
+    assert "textContent" in (WEB / "js" / "ui" / "dom.js").read_text(encoding="utf-8")
+    legend = (WEB / "js" / "ui" / "legend.js").read_text(encoding="utf-8")
+    assert "teamAgents" in legend or "TEAM_ORDER" in legend, "legend must build from palette teams"
+    for name in ("Breakwater", "Bastion"):
+        assert name in (WEB / "js" / "core" / "palette.js").read_text(encoding="utf-8")
 
 
 def test_dashboard_research_toggles_exist_and_default_off():
-    markup = INDEX.read_text()
-    assert 'id="research-toggle"' in markup
-    assert 'id="research-scanners-toggle"' in markup
-    assert "Opt-in keyless lookups" in markup
-    assert "Off by default" in markup
-    assert "Docker evidence still decides" in markup
+    """Research + scanner toggles exist in the schema and default off."""
+    schema = _schema()
+    research = schema[schema.index("research:") :]
+    assert "def: false" in research[:400], "research must default off"
+    scanners = schema[schema.index("research_scanners:") :]
+    assert "def: false" in scanners[:600], "research_scanners must default off"
+    assert "Docker evidence still decides" in schema
 
 
 def test_demo_build_prompts_for_brief_and_vulns():
-    markup = INDEX.read_text()
-    assert 'id="demo-build-brief"' in markup
-    assert "What do you want to build?" in markup
-    assert 'id="demo-vulns"' in markup
-    assert "Vulnerabilities to implement" in markup
-    assert "CVEs, named types, or free text" in markup
+    """Demo build options carry the brief + vulns fields with guiding placeholders."""
+    schema = _schema()
+    assert "build_brief" in schema and "vulns" in schema
+    assert "What should Greenhouse build" in schema
+    assert "Vulnerabilities to implement" in schema
+    setup_demo = (WEB / "js" / "pages" / "setup-demo.js").read_text(encoding="utf-8")
+    assert "build_brief" in setup_demo and "vulns" in setup_demo
 
 
 def test_demo_hardening_controls_exist():
-    """L3: demo-size/flaw-count/seed widgets sit by the other demo controls."""
-    markup = INDEX.read_text()
-    for widget in ('id="demo-size"', 'id="demo-flaw-count"', 'id="demo-seed"'):
-        assert widget in markup
-    assert 'name="demo_size"' in markup
-    assert 'name="flaw_count"' in markup
+    """demo_size/flaw_count/seed widgets ride the demo build options."""
+    schema = _schema()
+    for field in ("demo_size", "flaw_count", "seed"):
+        assert field in schema, f"schema field {field!r} missing"
+    setup_demo = (WEB / "js" / "pages" / "setup-demo.js").read_text(encoding="utf-8")
+    assert "demo_size" in setup_demo and "flaw_count" in setup_demo
+    html = (WEB / "demo-setup.html").read_text(encoding="utf-8")
+    assert "demo-build-opts" in html, "demo setup must mount the build options form"
 
 
 def test_w5r2_dashboard_scanner_five_set_matches_cli_allowlist():
-    """MED static/app.js:960: dashboard socketQuery hardcodes 4 scanners while
-    the CLI/WS allowlist (main.py:380,620,743) is the 5-set incl
-    dependency-track. Dashboard research omits one scanner vs CLI."""
-    text = SCRIPT.read_text()
-    section = text[text.index("function socketQuery(") : text.index("return params.length")]
+    """Schema scanner encode lists the CLI 5-set; server allowlist matches."""
+    schema = _schema()
     for scanner in ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"):
-        assert scanner in section, f"dashboard socketQuery missing {scanner!r}"
+        assert scanner in schema, f"schema scanner encode missing {scanner!r}"
+    link = (WEB / "js" / "stream" / "link.js").read_text(encoding="utf-8")
+    for scanner in ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"):
+        assert scanner in link, f"link.js query encode missing {scanner!r}"
+    import inspect
+
+    import main as app_module
+
+    server = inspect.getsource(app_module)
+    assert "dependency-track" in server, "server must carry the 5-scanner allowlist"
+    assert server.count("dependency-track") >= 2, "scanner allowlist must repeat across endpoints"

@@ -91,6 +91,8 @@
       onOpen: () => meter.open(state.source === 'live' ? 'stream' : 'fake run'),
       onLine: (team, msg, payload) => onLine(team, msg, payload),
       onResult: (payload) => onResult(payload),
+      onGraph: (p) => onGraph(p),
+      onSnapshot: (p) => onSnapshot(p),
       onRefuse: (type, msg) => { onLine('system', type === 'busy' ? 'Scan refused: another scan holds the server lock.' : (msg || 'Request rejected.')); toast(type === 'busy' ? 'Orchestrator busy — wait for the current run' : 'Request rejected'); },
       onClose: (info) => onClose(info),
       onError: () => onLine('system', 'Connection hiccup — the scan keeps running on the server.')
@@ -113,6 +115,27 @@
       state.replay = new SMS.scenario.Replay(SMS.scenario.script(key, topo, { grow }), Object.assign(SMS.scenario.result(key, topo), { replay: true }), handlers).start();
       state.replay.setSpeed(Number(document.querySelector('[data-speed][aria-pressed="true"]').dataset.speed));
     }
+  }
+
+  // Live server topology: { type: 'graph'|'topology', nodes: [{id,label,kind,parent}], links: [...] }
+  function onGraph(p) {
+    (p.nodes || []).forEach((n) => graph.addNode(n));
+    (p.links || []).forEach((l) => graph.link(l.source, l.target, l.kind || 'call'));
+    counter($('st-nodes'), graph.nodes.size);
+  }
+
+  // Connect-time snapshot (telemetry_hub.build_snapshot): hydrate real counters only.
+  // State, not a stream line. Roster nodes are the target list, not this run's map.
+  const HUD_IDS = { findings: 'st-find', patches: 'st-patch', verified: 'st-ver' };
+  function onSnapshot(p) {
+    const hud = (p && p.hud) || {};
+    Object.keys(HUD_IDS).forEach((k) => {
+      const v = Number(hud[k]);
+      if (Number.isFinite(v) && v > 0) counter($(HUD_IDS[k]), v);
+    });
+    const chip = $('src-chip');
+    const chips = (p && p.chips) || {};
+    if (chip && state.source === 'live' && chips.docker) chip.title = `Server ${chips.server || '?'} · docker ${chips.docker} · key ${chips.key || '?'}`;
   }
 
   function onLine(team, msg, payload) {

@@ -109,7 +109,7 @@ syntax, machines, gate commands) live in your harness's own ignored dir —
 replicate this two-file pattern, do not copy another harness's notes:
 
 - Jcode → `.jcode/AGENTS.md`
-- Claude → `.claude/` (same pattern: project truth here, Claude specifics there)
+- This-harness → your harness's own ignored dir (same pattern: project truth here, harness specifics there)
 - Generic agents → your own ignored dir, same split
 
 `LAWS.md` stays canonical at root for every harness. Read

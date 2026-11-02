@@ -95,8 +95,13 @@ def test_binary_sweep_result_carries_compression_and_vault():
 def test_dashboard_lists_binary_fixture():
     from pathlib import Path
 
-    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
-    assert "binary" in html.lower()
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "web" / "prod-setup.html").read_text()
+    assert 'data-mode="binary"' in html
+    assert "ELF" in html
+    setup_js = (root / "web" / "js" / "pages" / "setup-prod.js").read_text()
+    assert "binary_argv_echo" in setup_js
+    assert "'ELF'" in setup_js or '"ELF"' in setup_js
 
 
 def test_source_workflows_refuse_binary_fixture():

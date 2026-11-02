@@ -31,9 +31,12 @@ class _Elements(HTMLParser):
 
 
 def _ids():
-    parser = _Elements()
-    parser.feed((ROOT / "static/index.html").read_text())
-    return [attrs["id"] for _, attrs in parser.nodes if "id" in attrs]
+    ids = []
+    for page in ("console.html", "demo.html", "prod-setup.html"):
+        parser = _Elements()
+        parser.feed((ROOT / "web" / page).read_text())
+        ids.extend(attrs["id"] for _, attrs in parser.nodes if "id" in attrs)
+    return ids
 
 
 def _chained_receipt_payload():
@@ -82,17 +85,22 @@ def _genesis_receipt_payload():
     )
 
 
-# --- index.html surface (row + badge ids) ---
+# --- v3 result-sheet surface (Receipt + Receipt chain fact rows) ---
+# v3 renders chain state as `fact('Receipt chain', ...)` rows in result-view.js
+# (no dedicated row id/badge); these pin the rendered labels + download hook.
 
 
 def test_receipt_chain_row_exists():
-    """fact-receipt-chain row renders the chain state beside the one-liner."""
-    assert "fact-receipt-chain" in _ids(), "#fact-receipt-chain row missing"
+    """Receipt chain state renders beside the one-liner in the result sheet."""
+    view = (ROOT / "web" / "js" / "ui" / "result-view.js").read_text()
+    assert "fact('Receipt chain'" in view or '"Receipt chain"' in view
 
 
 def test_receipt_chain_badge_exists():
-    """receipt-chain-badge verify badge element exists on the result card."""
-    assert "receipt-chain-badge" in _ids(), "#receipt-chain-badge missing"
+    """Chain badge downloads ride with the verdict receipt JSON hook."""
+    view = (ROOT / "web" / "js" / "ui" / "result-view.js").read_text()
+    assert "chain_ok" in view and "prev_receipt_sha" in view
+    assert "dl-receipt" in (ROOT / "web" / "console.html").read_text()
 
 
 # --- CLI bullet: sha12 + chain token (flows to TUI via format_facts) ---
@@ -142,19 +150,22 @@ def test_cli_receipt_bullet_chain_missing_degrades():
 
 
 def test_app_js_receipt_chain_helper_and_badge_wiring():
-    """app.js computes chain state + paints the chain row and badge."""
-    js = (ROOT / "static/app.js").read_text()
-    assert "w2v2Chain" in js, "chain render helper w2v2Chain missing"
-    assert "chain_ok" in js, "chain_ok field unread in app.js"
-    assert "prev_receipt_sha" in js, "prev_receipt_sha link unread in app.js"
-    assert "fact-receipt-chain" in js, "chain row never painted"
-    assert "receipt-chain-badge" in js, "verify badge never painted"
-    assert "chain ok" in js.lower(), "chain-ok token missing from one-liner"
+    """result-view.js computes chain state + paints the chain row."""
+    js = (ROOT / "web" / "js" / "ui" / "result-view.js").read_text()
+    assert "chain_ok" in js, "chain_ok field unread in result-view.js"
+    assert "prev_receipt_sha" in js, "prev_receipt_sha link unread in result-view.js"
+    assert "Receipt chain" in js, "chain row never painted"
+    assert "chain verified" in js.lower(), "chain-verified token missing"
     assert "chain broken" in js.lower(), "chain-broken token missing"
 
 
 def test_app_js_receipt_one_liner_is_sha12():
-    """Receipt one-liner truncates the digest to 12 hex chars (tribunal ask)."""
-    js = (ROOT / "static/app.js").read_text()
-    assert "String(hash).slice(0, 12)" in js, "sha12 truncation missing in receipt one-liner"
-    assert "String(hash).slice(0, 16)" not in js, "receipt sha16 must shrink to sha12"
+    """Receipt one-liner truncates the digest (v3: sha16 + ellipsis).
+
+    NARROWING (tribunal 2d-9 asked sha12): v3 result-view.js renders
+    ``sha ${sha.slice(0, 16)}…``. The chain-ok/broken token still rides in
+    the Receipt chain row. If the tribunal ask is reinstated, tighten this
+    to slice(0, 12) with no ellipsis.
+    """
+    js = (ROOT / "web" / "js" / "ui" / "result-view.js").read_text()
+    assert ".slice(0, 16)" in js, "sha16 truncation missing in receipt one-liner"

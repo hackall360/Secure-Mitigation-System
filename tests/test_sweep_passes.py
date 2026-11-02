@@ -184,26 +184,15 @@ def test_sweep_cli_flag_reaches_controller(monkeypatch):
 
 
 def test_sweep_dashboard_controls_exist():
-    """M3 dashboard parity: sweep pass selector + per-pass stage rows render."""
-    from html.parser import HTMLParser
+    """M3 dashboard parity: sweep depth option + per-pass hold line + stage bar."""
     from pathlib import Path as _Path
 
     root = _Path(__file__).resolve().parents[1]
-
-    class Elements(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.ids = set()
-
-        def handle_starttag(self, tag, attrs):
-            found = dict(attrs).get("id")
-            if found:
-                self.ids.add(found)
-
-    parser = Elements()
-    parser.feed((root / "static/index.html").read_text())
-    for control in ("sweep-passes", "pipeline"):
-        assert control in parser.ids, control
+    schema = (root / "web/js/options/schema.js").read_text()
+    assert "sweep_passes" in schema
+    view = (root / "web/js/ui/result-view.js").read_text()
+    assert "passes hold" in view
+    assert 'id="stagebar"' in (root / "web/console.html").read_text()
 
 
 def test_sweep_ws_query_param_reaches_controller(monkeypatch):

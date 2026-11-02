@@ -2,14 +2,14 @@
 # Run one real scan by driving the dashboard in a headless browser; prints the result card as JSON and saves a screenshot.
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""Usage: ui_scan.py TARGET [--profile economy|balanced|quality] [--port 8797] [--shot PATH] [--offline]
+"""Usage: ui_scan.py TARGET [--scan-profile extra_light|light|medium] [--port 8797] [--shot PATH] [--offline]
        [--browser auto|chrome|chromium|edge|brave|firefox] [--geckodriver-port PORT]
 
 Starts the real server (only META_MUSE_API_KEY from .env, all other settings default),
-opens the dashboard in the requested headless browser, selects TARGET, clicks Run
-verification, waits for the result card and prints it. --offline swaps only
-MetaMuseClient for the known fixture outputs (no API cost). Real mode spends Meta API
-credit (about $0.05-0.15).
+opens the v3 production setup page in the requested headless browser, picks the
+TARGET fixture card, clicks Launch, waits for the live verdict on console.html and
+prints it. --offline swaps only MetaMuseClient for the known fixture outputs (no API
+cost). Real mode spends Meta API credit (about $0.05-0.15).
 
 Chrome-family browsers are driven over the DevTools protocol. Firefox speaks no CDP,
 so it is driven over WebDriver via a local geckodriver (stdlib urllib only).
@@ -98,48 +98,33 @@ def find_browser_binary(variant: str, candidates: list[str]) -> str | None:
 # Built with String.fromCharCode(10) on purpose: a "\n" here would be turned into a real
 # newline by Python and break the JavaScript regular expression (a real bug hit once).
 READOUT = """JSON.stringify({
-  status: document.getElementById('status').textContent,
-  stages: [...document.querySelectorAll('#pipeline li')].map((l) => l.dataset.state || '-'),
-  facts: [...document.querySelectorAll('.facts dd')].map((d) => d.textContent),
-  diff: document.getElementById('diff-stats').textContent,
-  elapsed: document.getElementById('elapsed').textContent,
-  profile: (document.querySelector('.profile[aria-checked="true"]') || {}).dataset?.key || null,
-  cost: document.getElementById('usage-cost').textContent,
-  tokens: document.getElementById('usage-tokens').textContent,
-  calls: [...document.querySelectorAll('#usage-calls li')].map(
-    (l) => l.innerText.split(String.fromCharCode(10)).join(' | ')),
+  status: document.getElementById('r-title').textContent,
+  summary: document.getElementById('r-msg').textContent,
+  stages: [...document.querySelectorAll('#stagebar .stg')].map((l) => l.dataset.state || '-'),
+  facts: [...document.querySelectorAll('#r-sum dd')].map((d) => d.textContent),
+  elapsed: document.getElementById('sc-time').textContent,
+  profile: (document.querySelector('.oseg [aria-checked="true"]') || {}).dataset?.v || null,
+  diff: (document.getElementById('diff') || {}).textContent || '',
 })"""
 
 
 # Real-page assertions shared by both browser engines, before starting the scan.
+# Console rail: tabs switch the right pane; the log stream accepts keyboard focus.
 DESIGN_CHECK = """(async () => {
   const check = (ok, message) => { if (!ok) throw new Error(message); };
-  const mode = document.getElementById('mode-demo');
-  mode.click(); mode.focus();
-  mode.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
-  check(document.getElementById('mode-demo-build').getAttribute('aria-checked') === 'true',
-    'ArrowRight must select Green build');
-  check(document.activeElement.id === 'mode-demo-build', 'Arrow navigation must retain radio focus');
-  check(!document.getElementById('demo-build-config').hidden, 'Green fields must be visible');
-  document.getElementById('mode-project').click();
-  check(!document.getElementById('project-form').hidden, 'Project fields must be visible');
-  document.getElementById('mode-demo').click();
-  check(!document.getElementById('demo-config').hidden, 'Demo targets must be restored');
-  check([...document.querySelectorAll('.mode')].filter(n => n.tabIndex === 0).length === 1,
-    'Mode switch needs one tab stop');
-  for (const link of document.querySelectorAll('.workspace-rail nav a')) {
-    const section = document.querySelector(link.getAttribute('href'));
-    check(section, 'Navigation target must exist');
-    link.click();
+  for (const tab of ['tab-inspect', 'tab-comms', 'tab-log', 'tab-result']) {
+    const pane = document.getElementById(document.getElementById(tab).getAttribute('aria-controls'));
+    check(pane, 'Tab target must exist: ' + tab);
+    document.getElementById(tab).click();
     await new Promise(resolve => setTimeout(resolve, 50));
-    check(location.hash === link.hash, 'Navigation must reach its actual section');
+    check(!pane.hidden, 'Tab must reveal its pane: ' + tab);
+    check(document.getElementById(tab).getAttribute('aria-selected') === 'true', 'Tab must select: ' + tab);
   }
-  check(document.querySelectorAll('.workspace-rail nav a').length === 4, 'Four section links');
-  for (const id of ['red-log', 'blue-log', 'sys-log', 'comms-log']) {
+  document.getElementById('tab-inspect').click();
+  for (const id of ['comms', 'log']) {
     const log = document.getElementById(id);
-    log.focus(); check(document.activeElement === log, 'Logs must accept keyboard focus');
+    log.focus(); check(document.activeElement === log, 'Logs must accept keyboard focus: ' + id);
   }
-  document.getElementById('mode-demo').focus();
   window.scrollTo({top: 0, behavior: 'instant'});
   return true;
 })()"""
@@ -147,19 +132,12 @@ DESIGN_CHECK = """(async () => {
 LAYOUT_CHECK = """(() => {
   const width = document.documentElement.clientWidth;
   if (document.documentElement.scrollWidth > width + 1) throw new Error('Page overflows');
-  for (const selector of ['.mode', '.target', '.workspace-rail nav a', '#run-btn']) {
+  for (const selector of ['.c-mode', '.c-fx', '.c-tabs [role="tab"]', '#launch']) {
     for (const node of document.querySelectorAll(selector)) {
+      if (!node.getClientRects().length) continue;
       const r = node.getBoundingClientRect();
       if (r.width < 1 || r.left < -1 || r.right > width + 1)
         throw new Error('Unreachable control: ' + selector);
-    }
-  }
-  for (const mode of ['demo-build', 'project', 'demo']) {
-    document.querySelector('[data-mode="' + mode + '"]').click();
-    for (const node of document.querySelectorAll('.field input, .field select, .field textarea')) {
-      if (!node.getClientRects().length) continue;
-      const r = node.getBoundingClientRect();
-      if (r.left < -1 || r.right > width + 1) throw new Error('Form control overflows: ' + node.id);
     }
   }
   window.scrollTo({top: 0, behavior: 'instant'});
@@ -259,8 +237,35 @@ async def drive(
             deviceScaleFactor=1,
             mobile=False,
         )
-        await call("Page.navigate", url=f"http://localhost:{port}/")
+        await call("Page.navigate", url=f"http://localhost:{port}/web/prod-setup.html")
         await asyncio.sleep(2)
+        if design_check:
+            # Design check runs on the live console: launch first, then check.
+            await js("document.documentElement.classList.add('x-expert')")
+        launch = await js(
+            f"(() => {{ const c = [...document.querySelectorAll('.c-fx')]"
+            f".find((b) => b.dataset.key === '{target}');"
+            " if (!c) return 'no-card'; c.click();"
+            " const l = document.getElementById('launch');"
+            " if (l.disabled) return 'launch-disabled'; l.click(); return 'clicked'; })()"
+        )
+        if launch != "clicked":
+            raise SystemExit(f"Could not launch {target} from prod setup: {launch}")
+        if profile:
+            picked = await js(
+                f'(() => {{ const b = document.querySelector(`.oseg [data-v="{profile}"]`);'
+                " if (!b) return 'no-mode'; b.click(); return 'ok'; })()"
+            )
+            if picked != "ok":
+                raise SystemExit(f"Scan profile {profile} not offered on prod setup.")
+        await asyncio.sleep(1)
+        # Handoff lands on console.html; wait for the console HUD before checks.
+        for _ in range(60):
+            if await js("!!document.getElementById('stagebar')"):
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise SystemExit("Console page never loaded after Launch.")
         if design_check:
             await js(DESIGN_CHECK)
             for width in (1440, 768, 390, 320):
@@ -286,7 +291,7 @@ async def drive(
                 features=[{"name": "prefers-reduced-motion", "value": "reduce"}],
             )
             await js(
-                "if (getComputedStyle(document.querySelector('.node')).animationName !== 'none') "
+                "if (getComputedStyle(document.getElementById('graph')).animationName !== 'none') "
                 "throw new Error('Reduced motion not honored')"
             )
             await call(
@@ -296,16 +301,14 @@ async def drive(
                 deviceScaleFactor=1,
                 mobile=False,
             )
-        await js(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
-        if profile:
-            await js(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
-        if await js("document.getElementById('run-btn').disabled"):
-            raise SystemExit("Run button is disabled; check the API key and Docker chips.")
-        await js("document.getElementById('run-btn').click()")
         for _ in range(600):
             await asyncio.sleep(1)
-            if not await js("document.getElementById('result-panel').hidden"):
+            if await js(
+                "!!document.getElementById('result') && !document.getElementById('result').hidden"
+            ):
                 break
+        else:
+            raise SystemExit("Result never rendered (600s).")
         result = json.loads(await js(READOUT))
         image = await call("Page.captureScreenshot", format="png", captureBeyondViewport=True)
         shot.write_bytes(base64.b64decode(image["data"]))
@@ -404,12 +407,39 @@ def drive_firefox(
                 base, "POST", f"/session/{session}/execute/sync", {"script": script, "args": []}
             )["value"]
 
-        wd_request(base, "POST", f"/session/{session}/url", {"url": f"http://localhost:{port}/"})
+        wd_request(
+            base,
+            "POST",
+            f"/session/{session}/url",
+            {"url": f"http://localhost:{port}/web/prod-setup.html"},
+        )
         deadline = time.time() + 60
         while time.time() < deadline:
-            if execute("return document.getElementById('run-btn') !== null"):
+            if execute("return document.getElementById('launch') !== null"):
                 break
             time.sleep(0.5)
+        clicked = execute(
+            f"(() => {{ const c = [...document.querySelectorAll('.c-fx')]"
+            f".find((b) => b.dataset.key === '{target}');"
+            " if (!c) return 'no-card'; c.click();"
+            + (
+                f' const sp = document.querySelector(`.oseg [data-v="{profile}"]`);'
+                " if (!sp) return 'no-mode'; sp.click();"
+                if profile
+                else ""
+            )
+            + " const l = document.getElementById('launch');"
+            " if (l.disabled) return 'launch-disabled'; l.click(); return 'clicked'; })()"
+        )
+        if clicked != "clicked":
+            raise SystemExit(f"Could not launch {target} from prod setup: {clicked}")
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if execute("return !!document.getElementById('stagebar')"):
+                break
+            time.sleep(0.5)
+        else:
+            raise SystemExit("Console page never loaded after Launch.")
         if design_check:
             checked = wd_request(
                 base,
@@ -440,18 +470,14 @@ def drive_firefox(
             wd_request(
                 base, "POST", f"/session/{session}/window/rect", {"width": 1440, "height": 2200}
             )
-        execute(f"document.querySelector('.target[data-key=\"{target}\"]').click()")
-        if profile:
-            execute(f"document.querySelector('.profile[data-key=\"{profile}\"]').click()")
-        if execute("return document.getElementById('run-btn').disabled"):
-            raise SystemExit("Run button is disabled; check the API key and Docker chips.")
-        execute("document.getElementById('run-btn').click()")
         for _ in range(600):
             time.sleep(1)
-            if execute("return !document.getElementById('result-panel').hidden"):
+            if execute(
+                "return !!document.getElementById('result') && !document.getElementById('result').hidden"
+            ):
                 break
         else:
-            raise SystemExit("Result panel never appeared (600s).")
+            raise SystemExit("Result never rendered (600s).")
         result = json.loads(execute(f"return ({READOUT})"))
         shot.write_bytes(
             base64.b64decode(wd_request(base, "GET", f"/session/{session}/screenshot")["value"])
@@ -490,7 +516,10 @@ def main() -> int:
         action="store_true",
         help="Check keyboard navigation and responsive layouts before the scan",
     )
-    parser.add_argument("--profile", choices=["economy", "balanced", "quality"])
+    parser.add_argument(
+        "--profile",
+        choices=["extra_light", "light", "medium", "heavy", "super_heavy", "ultra_heavy", "custom"],
+    )
     parser.add_argument(
         "--browser",
         default="auto",
@@ -541,7 +570,11 @@ def main() -> int:
                     pass
         print(json.dumps(result, indent=2))
         print(f"Screenshot: {args.shot}", file=sys.stderr)
-        return 0 if result["status"] == "Boundary check passed" else 1
+        return (
+            0
+            if "passed" in result["status"].lower() or "verified" in result["status"].lower()
+            else 1
+        )
     chrome_bin = find_browser_binary(requested, CHROME_CANDIDATES[requested])
     if not chrome_bin:
         raise SystemExit(
@@ -577,7 +610,11 @@ def main() -> int:
         )
         print(json.dumps(result, indent=2))
         print(f"Screenshot: {args.shot}", file=sys.stderr)
-        return 0 if result["status"] == "Boundary check passed" else 1
+        return (
+            0
+            if "passed" in result["status"].lower() or "verified" in result["status"].lower()
+            else 1
+        )
     finally:
         for proc in (chrome, server):
             try:

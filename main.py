@@ -13,7 +13,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -663,8 +663,6 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     application.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
     )
-    application.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-    application.mount("/web", StaticFiles(directory=BASE_DIR / "web"), name="webui-v3")
     application.state.scan_lock = asyncio.Lock()
 
     @application.middleware("http")
@@ -679,12 +677,18 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    # WebUI v3 is the site (brief 2026-11-02-v3-only-cutover): `/`
+    # and `/web/` land on the v3 start page.
     @application.get("/")
     async def index():
-        return FileResponse(BASE_DIR / "static" / "index.html")
+        return RedirectResponse("/web/index.html", status_code=307)
+
+    @application.get("/web/")
+    async def web_root():
+        return RedirectResponse("/web/index.html", status_code=307)
 
     # WebUI v3 multi-page entry points (AGENTS.md §3 page flow). Served from
-    # web/ so v3 asset URLs stay relative; the v2 dashboard keeps `/`.
+    # web/ so v3 asset URLs stay relative.
     for _v3_page in (
         "index.html",
         "console.html",
@@ -697,6 +701,10 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         @application.get(f"/web/{_v3_page}")
         async def _web_page(_v3_page=_v3_page):
             return FileResponse(BASE_DIR / "web" / _v3_page)
+
+    # Mounted AFTER the explicit /web/ routes: a mount registered first shadows
+    # `/web/` (StaticFiles has html=False, so it would 404 instead of redirect).
+    application.mount("/web", StaticFiles(directory=BASE_DIR / "web"), name="webui-v3")
 
     @application.get("/api/targets")
     async def list_targets():
@@ -1170,6 +1178,32 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     async def binary_combat(socket: WebSocket):
         """Binary sweep: validated ELF/Mach-O/PE bytes in the first frame, 4-pass loop."""
         await run_socket(socket, target_key="__binary__")
+
+    @application.websocket("/ws/system")
+    async def system_snapshot(socket: WebSocket):
+        """v3 System-snapshot source: no backend exists yet, so refuse explicitly.
+
+        Fail closed (LAW 4/10J) with the v3 `invalid` frame instead of a silent
+        404 handshake failure, so the UI shows an actionable reason.
+        """
+        expected_origin = (
+            f"{'https' if socket.url.scheme == 'wss' else 'http'}://{socket.headers.get('host')}"
+        )
+        if socket.headers.get("origin") != expected_origin:
+            await socket.close(code=1008)
+            return
+        await socket.accept()
+        await socket.send_json(
+            {
+                "type": "invalid",
+                "team": "system",
+                "msg": (
+                    "System snapshot verification is not available on this server yet "
+                    "(proposed endpoint). Use Fake run, or pick Project/Ingest/Binary."
+                ),
+            }
+        )
+        await socket.close(code=1008)
 
     @application.post("/mcp")
     async def mcp_endpoint(request: Request):
