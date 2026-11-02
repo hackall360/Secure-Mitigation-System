@@ -680,35 +680,30 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         result = await _project_workflow.execute_project_workflow(spec, emit)
         return _summarize_result("project", result), result
     if mode == "ingest":
+        from urllib.parse import urlparse as _urlparse
+
         from modules.services.repo_intake import RepoIntakeSpec
-        from modules.services.sms_api import build_ingest_event, build_telemetry_event
 
         url = _state_field(state, "ingest_repo")
         commit = _state_field(state, "ingest_commit", "commit_hash")
         spec = RepoIntakeSpec(url=url, commit_hash=commit)  # ValueError -> fail closed
-        ingest_evt = build_ingest_event(repo_url=spec.url, sha=spec.commit_hash)
-        await emit(ingest_evt["team"], ingest_evt["msg"])
-        from modules.workflows.workflow import execute_purple_workflow as _execute_ingest_scan
-
-        fixture_key = state.fixture_key
-        await emit("system", f"system: ingest proven on fixture {fixture_key}")
-        result = await _execute_ingest_scan(fixture_key, emit)
-        try:
-            compression = getattr(result, "compression", None)
-            raw = int(getattr(compression, "raw_tokens_estimated", 0) or 0)
-            sent = int(getattr(compression, "compressed_tokens_sent", 0) or 0)
-            ratio = float(getattr(compression, "compression_ratio", 0.0) or 0.0)
-            telemetry_evt = build_telemetry_event(
-                raw=raw,
-                sent=sent,
-                savings_pct=round(ratio * 100.0, 1),
-                novel=0,
-                known=0,
-            )
-            await emit(telemetry_evt["team"], telemetry_evt["msg"])
-        except (TypeError, ValueError, AttributeError):
-            pass
-        return _summarize_result("ingest", result), result
+        host = _urlparse(spec.url).hostname or spec.url
+        prefix = spec.commit_hash[:12]
+        await emit(
+            "system",
+            f"system: repo-intake scan refused — Docker staging clone for "
+            f"{host} at commit {prefix} is not yet implemented (Phase-1 "
+            f"validation only); running the fixture loop instead would "
+            f"report the wrong bytes as the repo verdict. Check out commit "
+            f"{prefix} locally and scan it with --project.",
+        )
+        raise ValueError(
+            f"Repo-intake scan is not yet implemented for repo host {host!r} "
+            f"at commit {prefix} (Phase-1 validation only per "
+            f"modules/services/repo_intake.py). The Docker staging clone "
+            f"does not exist yet, so refusing fail-closed instead of "
+            f"running the fixture loop against the wrong bytes."
+        )
     if mode == "demo":
         import main as main_mod
         from modules.core.config import load_config
