@@ -612,3 +612,11 @@ Context: six engineering stages + SAPRE + architectural audit landed on this bra
 - [ ] VV-E3. `video-demo/TTSServer/` + `video-demo/desktop-capture/` (prior branches, NOT on this branch): ship with this branch, separately, or never? This branch never touched them; confirm they stay out of the ship diff.
 - [ ] VV-E4. Daemon-kill mid-verdict recovery drill (chaos handoff item): authorized to run against an isolated daemon (would orphan the 16 pre-existing sessions otherwise), or explicitly deferred to post-ship ops?
 - [ ] VV-E5. 100-scan soak for residue statistics (qualification handoff): run overnight pre-ship, or accept the bounded-mechanism evidence (cap/TTL/close-idempotency) and defer soak to post-ship reliability?
+
+## XX. v3 WebUI primary site + live wiring (brief 2026-11-02-v3-webui-reconcile; branch feature/v3-webui-reconcile)
+
+- [x] XX1. Copy audit: `web/` matches external `~/Downloads/SMS-WebUI-complete/SMS-WebUI/v3` (only diffs: version.js mapping comment, ruff-formatted sync_assets.py, no .github). Root cause of "none of the site": `/` still served v2. Proof: `diff -rq` transcript.
+- [x] XX2. Serving: `/` + `/web/` -> 307 `/web/index.html`; v2 kept intact at `/v2/` (assets unchanged at /static/*); `/web` mount moved below explicit routes (mount-first shadowed `/web/`); ui_scan/project_ui_scan repointed to `/v2/`. Files: `main.py`, `tests/test_web.py` (path only, assertions unchanged), `.jcode/tools/ui_scan.py`, `.jcode/tools/project_ui_scan.py`. Proof: 5 RED -> green in `tests/test_webui_v3_contract.py`; gate 1036 passed (`b0cb606`).
+- [x] XX3. Clean-room: inline `style=` (dropped by CSP style-src 'self') -> classes `l-tag-*`, `eyebrow-gap`; `/ws/system` dead endpoint -> explicit `invalid` refusal (fail closed). Proof: same tests.
+- [x] XX4. Live frames: `link.js` routed server `snapshot` + `telemetry_batch` as blank `onLine(undefined)` -> now `onSnapshot` + per-event lines. Files: `web/js/stream/link.js`, `tests/test_v3_link_frames.py`. Proof: RED (blank line) -> green.
+- [.] XX5. Sub-agent writers (worktrees /tmp/wt-v3-demo, /tmp/wt-v3-console): demo onGraph/onSnapshot + console onSnapshot chips + rules.js stageOf vs real backend phrases. Remains: merge, gate, live browser proof (LAW 11).
