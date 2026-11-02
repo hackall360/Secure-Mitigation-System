@@ -165,7 +165,9 @@ All paths are relative. Serve this folder as static files:
 * `python3 -m http.server` from this folder gives you fake runs only (no orchestrator), or
 * drop it into the server's web directory: it is served at `/web/` with `/` redirecting to `/web/index.html`. v2
   served `index.html` at `/` with absolute `/static/...` assets, and v3's relative paths need
-  the page URL to sit next to the assets.
+  the page URL to sit next to the assets. (v2, which served `index.html`
+  at `/` with absolute `/static/...` assets, was retired 2026-11-02;
+  `/v2/` and `/static/*` now 404.)
 
 Opening `demo.html` straight from disk (`file://`) works for fake runs.
 

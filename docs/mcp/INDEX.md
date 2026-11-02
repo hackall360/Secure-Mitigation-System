@@ -13,7 +13,7 @@ form). Pins:
 | library API | `library/services/sms_api.py` | `scan_source`, `scan_binary`, `query_vault_stats`, `verify_receipt` |
 | STDIO server | `main.py --mcp` | 5-tool handshake (`sms_*`) |
 | HTTP endpoint | `main.py POST /mcp` | Streamable HTTP JSON-RPC, language allowlist + 64 KiB cap |
-| dashboard mode | `static/` MCP mode + form + POST client | same envelope as STDIO |
+| dashboard snippet mode | `web/prod-setup.html:88` (`data-mode="snippet"`) + `SOURCES.snippet` in `web/js/options/schema.js` + `runSnippet` in `web/js/pages/console.js` + `mcpSnippet` in `web/js/stream/link.js` | same envelope as STDIO |
 | terminal demo | `scripts/mcp_client_demo.py` | `tui/demo-client` member too (shared surface) |
 
 New code goes in `library/services/`; this map is the `mcp/` index.

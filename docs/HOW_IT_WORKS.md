@@ -50,14 +50,14 @@ binary path).
   async/HTTP/budget/record/redact/scan-parse/text utilities.
 - `main.py` — one entry point: CLI flags, FastAPI + WebSocket server,
   MCP over STDIO and HTTP. `tui.py` + `sms_cli.py` — the terminal surface.
-  `static/` + `scripts/mcp_client_demo.py` — dashboard and demo client.
+  `web/` + `scripts/mcp_client_demo.py` — dashboard and demo client.
 - Category maps with file-level indexes: `web/` in `docs/web/INDEX.md`,
   `tui/` in `docs/tui/INDEX.md`, `mcp/` in `docs/mcp/INDEX.md`.
 
 ## Surfaces (all five stay in sync)
 
 CLI (`main.py --scan --sweep-passes --binary-target --mcp ...`), TUI
-(`tui.py`), Web UI (`static/` at `/`), MCP (`POST /mcp`, `--mcp` STDIO),
+(`tui.py`), Web UI (`web/` at `/web/`), MCP (`POST /mcp`, `--mcp` STDIO),
 Python library (`from library.services.sms_api import scan_source`).
 
 ## Reference
