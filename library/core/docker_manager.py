@@ -6,6 +6,7 @@ import hashlib
 import io
 import re
 import tarfile
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -26,6 +27,12 @@ from modules.core.project_models import (
     ProjectSpec,
 )
 from modules.core.registry import BASE_DIR, Target
+from modules.shared.sms_observability import get_aspect as _get_aspect
+from modules.shared.sms_observability import log as _obs_log
+from modules.shared.sms_observability import record_metric as _obs_metric
+from modules.shared.sms_observability import trace as _obs_trace
+
+_OBS_DOCKER = _get_aspect("core.docker")
 
 
 class SandboxError(RuntimeError):
@@ -228,14 +235,16 @@ class DockerSandboxManager:
                 )
 
     def require_base_images(self) -> None:
-        self.client.ping()
-        for tag in (self.config.target_base_image, self.config.verifier_base_image):
-            try:
-                self.client.images.get(tag)
-            except ImageNotFound as exc:
-                raise SandboxError(
-                    "Base images are missing. Run python main.py --init-images first."
-                ) from exc
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "require_base_images"):
+            self.client.ping()
+            for tag in (self.config.target_base_image, self.config.verifier_base_image):
+                try:
+                    self.client.images.get(tag)
+                except ImageNotFound as exc:
+                    raise SandboxError(
+                        "Base images are missing. Run python main.py --init-images first."
+                    ) from exc
 
     def _options(self, role: str) -> dict:
         memory = "128m" if role == "verifier" else self.config.container_mem_limit
@@ -339,16 +348,26 @@ class DockerSandboxManager:
         return stream.getvalue()
 
     def create_isolated_network(self):
-        network = self.client.networks.create(
-            name=f"{self.config.network_prefix}_{self.session_id[:12]}",
-            driver="bridge",
-            internal=True,
-            enable_ipv6=False,
-            options={"com.docker.network.bridge.gateway_mode_ipv4": "isolated"},
-            labels={"purplebox.session": self.session_id},
-        )
-        self.networks.append(network)
-        return network
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "create_network"):
+            network = self.client.networks.create(
+                name=f"{self.config.network_prefix}_{self.session_id[:12]}",
+                driver="bridge",
+                internal=True,
+                enable_ipv6=False,
+                options={"com.docker.network.bridge.gateway_mode_ipv4": "isolated"},
+                labels={"purplebox.session": self.session_id},
+            )
+            self.networks.append(network)
+            _obs_log(_OBS_DOCKER, "network_create", "isolated network created")
+            _obs_metric(_OBS_DOCKER, "network_create.count", 1, unit="count")
+            _obs_metric(
+                _OBS_DOCKER,
+                "create_network.seconds",
+                round(time.monotonic() - _obs_started, 3),
+                unit="seconds",
+            )
+            return network
 
     def _snapshot(self, base: str, directory: str, filename: str, content: str, role: str) -> str:
         # Staging containers NEVER start. Injection precedes the read-only runtime.
@@ -449,73 +468,109 @@ class DockerSandboxManager:
     def start_cloneable_target(
         self, network, target: Target, source: str, *, base_image: str | None = None
     ):
-        snapshot = self._snapshot(
-            base_image or self.config.target_base_image,
-            "/workspace",
-            target.filename,
-            source,
-            "target",
-        )
-        container = self._runtime(snapshot, network, "target", list(target.command))
-        ready = container.exec_run(["python3", "-c", READY_SCRIPT])
-        if ready.exit_code != 0:
-            raise SandboxError(
-                "Target did not become ready; patch may contain a syntax or startup error."
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "start_target"):
+            snapshot = self._snapshot(
+                base_image or self.config.target_base_image,
+                "/workspace",
+                target.filename,
+                source,
+                "target",
             )
-        return container, snapshot
+            container = self._runtime(snapshot, network, "target", list(target.command))
+            ready = container.exec_run(["python3", "-c", READY_SCRIPT])
+            _obs_log(
+                _OBS_DOCKER, "target_ready", "target readiness checked", exit_code=ready.exit_code
+            )
+            _obs_metric(_OBS_DOCKER, "target_ready.exit_code", ready.exit_code, unit="count")
+            _obs_metric(
+                _OBS_DOCKER,
+                "start_target.seconds",
+                round(time.monotonic() - _obs_started, 3),
+                unit="seconds",
+            )
+            if ready.exit_code != 0:
+                raise SandboxError(
+                    "Target did not become ready; patch may contain a syntax or startup error."
+                )
+            return container, snapshot
 
     def replace_target(self, previous, snapshot: str, network, target: Target, source: str):
-        # Fresh process and immutable filesystem; no pkill or shell command interpolation.
-        keep_tracked = False
-        try:
-            previous.remove(force=True)
-        except NotFound:
-            # Already reaped (cancel/disconnect path removed it); untrack below.
-            pass
-        except DockerException:
-            # Transient daemon failure: LEAVE the container tracked so the
-            # session close() retries the reap. Untracking here would leak a
-            # running target the session can no longer see (correctness audit
-            # round 6: one running target per scan survived this way).
-            keep_tracked = True
-        if not keep_tracked and previous in self.containers:
-            self.containers.remove(previous)
-        return self.start_cloneable_target(network, target, source, base_image=snapshot)
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "replace_target"):
+            # Fresh process and immutable filesystem; no pkill or shell command interpolation.
+            keep_tracked = False
+            try:
+                previous.remove(force=True)
+            except NotFound:
+                # Already reaped (cancel/disconnect path removed it); untrack below.
+                pass
+            except DockerException:
+                # Transient daemon failure: LEAVE the container tracked so the
+                # session close() retries the reap. Untracking here would leak a
+                # running target the session can no longer see (correctness audit
+                # round 6: one running target per scan survived this way).
+                keep_tracked = True
+            if not keep_tracked and previous in self.containers:
+                self.containers.remove(previous)
+            return self.start_cloneable_target(network, target, source, base_image=snapshot)
 
     def run_isolated_verifier(self, network, script: str) -> VerificationResult:
-        try:
-            validate_verifier_script(script)
-        except ValueError as exc:
-            raise SandboxError(str(exc)) from exc
-        try:
-            compile(script, "verify.py", "exec")
-        except (SyntaxError, ValueError) as exc:
-            raise SandboxError("Verifier is not valid Python.") from exc
-        snapshot = self._snapshot(
-            self.config.verifier_base_image, "/verifier", "verify.py", script, "verifier"
-        )
-        container = None
-        try:
-            container = self._runtime(
-                snapshot, network, "verifier", ["python3", "/verifier/runner.py"]
-            )
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "run_verifier"):
             try:
-                status = container.wait(timeout=self.config.verifier_timeout_seconds)
-                output = container.logs(tail=100).decode("utf-8", errors="replace")[-16_384:]
-                return VerificationResult(int(status["StatusCode"]), output.strip())
-            except Exception as exc:
-                raise SandboxError(
-                    "Verifier failed or exceeded its time limit; result is inconclusive."
-                ) from exc
-        finally:
-            if container is not None:
+                validate_verifier_script(script)
+            except ValueError as exc:
+                raise SandboxError(str(exc)) from exc
+            try:
+                compile(script, "verify.py", "exec")
+            except (SyntaxError, ValueError) as exc:
+                raise SandboxError("Verifier is not valid Python.") from exc
+            snapshot = self._snapshot(
+                self.config.verifier_base_image, "/verifier", "verify.py", script, "verifier"
+            )
+            container = None
+            try:
+                container = self._runtime(
+                    snapshot, network, "verifier", ["python3", "/verifier/runner.py"]
+                )
                 try:
-                    container.remove(force=True)
-                except NotFound:
-                    pass
-                finally:
-                    if container in self.containers:
-                        self.containers.remove(container)
+                    status = container.wait(timeout=self.config.verifier_timeout_seconds)
+                    output = container.logs(tail=100).decode("utf-8", errors="replace")[-16_384:]
+                    _obs_result = VerificationResult(int(status["StatusCode"]), output.strip())
+                    _obs_log(
+                        _OBS_DOCKER,
+                        "verifier_exit",
+                        "verifier exited",
+                        exit_code=_obs_result.exit_code,
+                        inconclusive=_obs_result.inconclusive,
+                    )
+                    _obs_metric(
+                        _OBS_DOCKER,
+                        "verifier_exit.exit_code",
+                        _obs_result.exit_code,
+                        unit="count",
+                    )
+                    _obs_metric(
+                        _OBS_DOCKER,
+                        "run_verifier.seconds",
+                        round(time.monotonic() - _obs_started, 3),
+                        unit="seconds",
+                    )
+                    return _obs_result
+                except Exception as exc:
+                    raise SandboxError(
+                        "Verifier failed or exceeded its time limit; result is inconclusive."
+                    ) from exc
+            finally:
+                if container is not None:
+                    try:
+                        container.remove(force=True)
+                    except NotFound:
+                        pass
+                    finally:
+                        if container in self.containers:
+                            self.containers.remove(container)
 
     @staticmethod
     def _create_binary_tar(files: list[tuple[str, bytes, int]]) -> bytes:
@@ -543,195 +598,205 @@ class DockerSandboxManager:
         return stream.getvalue()
 
     def require_binary_image(self) -> None:
-        """Fail closed when the binary-analysis base image is missing."""
-        self.client.ping()
-        try:
-            self.client.images.get(self.config.binary_base_image)
-        except ImageNotFound as exc:
-            raise SandboxError(
-                "Binary-analysis base image is missing. Run python main.py --init-images first."
-            ) from exc
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "require_binary_image"):
+            """Fail closed when the binary-analysis base image is missing."""
+            self.client.ping()
+            try:
+                self.client.images.get(self.config.binary_base_image)
+            except ImageNotFound as exc:
+                raise SandboxError(
+                    "Binary-analysis base image is missing. Run python main.py --init-images first."
+                ) from exc
 
     def start_binary_harness(self, network, blob: bytes, *, mitigation: str = ""):
-        """Stage a binary + trusted harness, start the harness HTTP server.
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "start_binary_harness"):
+            """Stage a binary + trusted harness, start the harness HTTP server.
 
-        The binary is injected into a stopped never-executed staging
-        container (network_mode none), committed, then run read-only with
-        the harness as PID 1. The binary executes ONLY as a subprocess of
-        the trusted harness inside the air-gapped network. Returns
-        (container, snapshot); cleanup tracks both.
-        """
-        harness_source = (BASE_DIR / "docker" / "binary_harness.py").read_text(encoding="utf-8")
-        archive = self._create_binary_tar(
-            [
-                ("target.bin", blob, 0o555),
-                ("harness.py", harness_source.encode("utf-8"), 0o444),
-                ("mitigation.txt", mitigation.encode("utf-8"), 0o444),
-            ]
-        )
-        stage = self.client.containers.create(
-            self.config.binary_base_image,
-            command=["true"],
-            network_mode="none",
-            **self._options("target"),
-        )
-        self.containers.append(stage)
-        try:
-            if not stage.put_archive("/workspace", archive):
-                raise SandboxError("Docker rejected the binary staging archive.")
-            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
-            image_name = f"{self.config.clone_repo_prefix}:{tag}"
-            self.images.append(image_name)
-            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
-        finally:
-            try:
-                stage.remove(force=True)
-            except NotFound:
-                pass
-            finally:
-                if stage in self.containers:
-                    self.containers.remove(stage)
-        container = self._runtime(
-            image_name,
-            network,
-            "target",
-            ["python3", "/workspace/harness.py"],
-            aliases=["target-service"],
-        )
-        ready = container.exec_run(["python3", "-c", READY_SCRIPT])
-        if ready.exit_code != 0:
-            raise SandboxError(
-                "Binary harness did not become ready; the binary may be unexecutable."
-            )
-        return container, image_name
-
-    def replace_binary_harness(self, previous, snapshot: str, network, *, mitigation: str = ""):
-        """Restart the harness on the same snapshot with new mitigation rules."""
-        keep_tracked = False
-        try:
-            previous.remove(force=True)
-        except NotFound:
-            pass
-        except DockerException:
-            # Same keep-tracked rule as replace_target (round 6): a transient
-            # daemon failure must not untrack a still-running harness, or the
-            # session close() can never retry the reap (F-01).
-            keep_tracked = True
-        if not keep_tracked and previous in self.containers:
-            self.containers.remove(previous)
-        return self.start_binary_harness_from_snapshot(snapshot, network, mitigation=mitigation)
-
-    def start_binary_harness_from_snapshot(self, snapshot: str, network, *, mitigation: str = ""):
-        """Restart the harness image with replaced mitigation rules (same binary)."""
-        stage = self.client.containers.create(
-            snapshot,
-            command=["true"],
-            network_mode="none",
-            **self._options("target"),
-        )
-        self.containers.append(stage)
-        try:
+            The binary is injected into a stopped never-executed staging
+            container (network_mode none), committed, then run read-only with
+            the harness as PID 1. The binary executes ONLY as a subprocess of
+            the trusted harness inside the air-gapped network. Returns
+            (container, snapshot); cleanup tracks both.
+            """
+            harness_source = (BASE_DIR / "docker" / "binary_harness.py").read_text(encoding="utf-8")
             archive = self._create_binary_tar(
-                [("mitigation.txt", mitigation.encode("utf-8"), 0o444)]
+                [
+                    ("target.bin", blob, 0o555),
+                    ("harness.py", harness_source.encode("utf-8"), 0o444),
+                    ("mitigation.txt", mitigation.encode("utf-8"), 0o444),
+                ]
             )
-            if not stage.put_archive("/workspace", archive):
-                raise SandboxError("Docker rejected the mitigation archive.")
-            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
-            image_name = f"{self.config.clone_repo_prefix}:{tag}"
-            self.images.append(image_name)
-            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
-        finally:
-            try:
-                stage.remove(force=True)
-            except NotFound:
-                pass
-            finally:
-                if stage in self.containers:
-                    self.containers.remove(stage)
-        container = self._runtime(
-            image_name,
-            network,
-            "target",
-            ["python3", "/workspace/harness.py"],
-            aliases=["target-service"],
-        )
-        ready = container.exec_run(["python3", "-c", READY_SCRIPT])
-        if ready.exit_code != 0:
-            raise SandboxError("Mitigated binary harness did not become ready.")
-        return container, image_name
-
-    def binary_static_profile(self, network, blob: bytes) -> str:
-        """Static reversing profile (file/strings/readelf) inside the sandbox.
-
-        Runs in one shot in the binary base image with no network; output is
-        bounded text for red-team grounding. The binary never executes here
-        (analysis tools only read it).
-        """
-        script = (
-            "import subprocess\n"
-            "for cmd in (['file', '/workspace/target.bin'],"
-            " ['sh', '-c', 'strings /workspace/target.bin | head -100'],"
-            " ['sh', '-c', 'readelf -h -l /workspace/target.bin 2>&1 | head -60']):\n"
-            "    try:\n"
-            "        out = subprocess.run(cmd, stdout=subprocess.PIPE,"
-            " stderr=subprocess.STDOUT, timeout=20)\n"
-            "        print('$ ' + ' '.join(cmd[:2]))\n"
-            "        print(out.stdout.decode('utf-8', errors='replace')[:4000])\n"
-            "    except Exception as exc:\n"
-            "        print('profile tool failed: ' + type(exc).__name__)\n"
-        )
-        archive = self._create_binary_tar(
-            [
-                ("target.bin", blob, 0o555),
-                ("profile.py", script.encode("utf-8"), 0o444),
-            ]
-        )
-        stage = self.client.containers.create(
-            self.config.binary_base_image,
-            command=["true"],
-            network_mode="none",
-            **self._options("verifier"),
-        )
-        self.containers.append(stage)
-        try:
-            if not stage.put_archive("/workspace", archive):
-                raise SandboxError("Docker rejected the binary profile archive.")
-            tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
-            image_name = f"{self.config.clone_repo_prefix}:{tag}"
-            self.images.append(image_name)
-            stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
-        finally:
-            try:
-                stage.remove(force=True)
-            except NotFound:
-                pass
-            finally:
-                if stage in self.containers:
-                    self.containers.remove(stage)
-        container = None
-        try:
-            container = self._runtime(
-                image_name, network, "verifier", ["python3", "/workspace/profile.py"]
+            stage = self.client.containers.create(
+                self.config.binary_base_image,
+                command=["true"],
+                network_mode="none",
+                **self._options("target"),
             )
+            self.containers.append(stage)
             try:
-                status = container.wait(timeout=self.config.verifier_timeout_seconds)
-                output = container.logs(tail=100).decode("utf-8", errors="replace")[-16_384:]
-                if int(status["StatusCode"]) != 0:
-                    raise SandboxError("Static profile run failed; result is inconclusive.")
-                return output.strip()
-            except Exception as exc:
-                raise SandboxError(
-                    "Static profile failed or timed out; result is inconclusive."
-                ) from exc
-        finally:
-            if container is not None:
+                if not stage.put_archive("/workspace", archive):
+                    raise SandboxError("Docker rejected the binary staging archive.")
+                tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+                image_name = f"{self.config.clone_repo_prefix}:{tag}"
+                self.images.append(image_name)
+                stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            finally:
                 try:
-                    container.remove(force=True)
+                    stage.remove(force=True)
                 except NotFound:
                     pass
                 finally:
-                    if container in self.containers:
-                        self.containers.remove(container)
+                    if stage in self.containers:
+                        self.containers.remove(stage)
+            container = self._runtime(
+                image_name,
+                network,
+                "target",
+                ["python3", "/workspace/harness.py"],
+                aliases=["target-service"],
+            )
+            ready = container.exec_run(["python3", "-c", READY_SCRIPT])
+            if ready.exit_code != 0:
+                raise SandboxError(
+                    "Binary harness did not become ready; the binary may be unexecutable."
+                )
+            return container, image_name
+
+    def replace_binary_harness(self, previous, snapshot: str, network, *, mitigation: str = ""):
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "replace_binary_harness"):
+            """Restart the harness on the same snapshot with new mitigation rules."""
+            keep_tracked = False
+            try:
+                previous.remove(force=True)
+            except NotFound:
+                pass
+            except DockerException:
+                # Same keep-tracked rule as replace_target (round 6): a transient
+                # daemon failure must not untrack a still-running harness, or the
+                # session close() can never retry the reap (F-01).
+                keep_tracked = True
+            if not keep_tracked and previous in self.containers:
+                self.containers.remove(previous)
+            return self.start_binary_harness_from_snapshot(snapshot, network, mitigation=mitigation)
+
+    def start_binary_harness_from_snapshot(self, snapshot: str, network, *, mitigation: str = ""):
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "start_harness_from_snapshot"):
+            """Restart the harness image with replaced mitigation rules (same binary)."""
+            stage = self.client.containers.create(
+                snapshot,
+                command=["true"],
+                network_mode="none",
+                **self._options("target"),
+            )
+            self.containers.append(stage)
+            try:
+                archive = self._create_binary_tar(
+                    [("mitigation.txt", mitigation.encode("utf-8"), 0o444)]
+                )
+                if not stage.put_archive("/workspace", archive):
+                    raise SandboxError("Docker rejected the mitigation archive.")
+                tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+                image_name = f"{self.config.clone_repo_prefix}:{tag}"
+                self.images.append(image_name)
+                stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            finally:
+                try:
+                    stage.remove(force=True)
+                except NotFound:
+                    pass
+                finally:
+                    if stage in self.containers:
+                        self.containers.remove(stage)
+            container = self._runtime(
+                image_name,
+                network,
+                "target",
+                ["python3", "/workspace/harness.py"],
+                aliases=["target-service"],
+            )
+            ready = container.exec_run(["python3", "-c", READY_SCRIPT])
+            if ready.exit_code != 0:
+                raise SandboxError("Mitigated binary harness did not become ready.")
+            return container, image_name
+
+    def binary_static_profile(self, network, blob: bytes) -> str:
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "binary_profile"):
+            """Static reversing profile (file/strings/readelf) inside the sandbox.
+
+            Runs in one shot in the binary base image with no network; output is
+            bounded text for red-team grounding. The binary never executes here
+            (analysis tools only read it).
+            """
+            script = (
+                "import subprocess\n"
+                "for cmd in (['file', '/workspace/target.bin'],"
+                " ['sh', '-c', 'strings /workspace/target.bin | head -100'],"
+                " ['sh', '-c', 'readelf -h -l /workspace/target.bin 2>&1 | head -60']):\n"
+                "    try:\n"
+                "        out = subprocess.run(cmd, stdout=subprocess.PIPE,"
+                " stderr=subprocess.STDOUT, timeout=20)\n"
+                "        print('$ ' + ' '.join(cmd[:2]))\n"
+                "        print(out.stdout.decode('utf-8', errors='replace')[:4000])\n"
+                "    except Exception as exc:\n"
+                "        print('profile tool failed: ' + type(exc).__name__)\n"
+            )
+            archive = self._create_binary_tar(
+                [
+                    ("target.bin", blob, 0o555),
+                    ("profile.py", script.encode("utf-8"), 0o444),
+                ]
+            )
+            stage = self.client.containers.create(
+                self.config.binary_base_image,
+                command=["true"],
+                network_mode="none",
+                **self._options("verifier"),
+            )
+            self.containers.append(stage)
+            try:
+                if not stage.put_archive("/workspace", archive):
+                    raise SandboxError("Docker rejected the binary profile archive.")
+                tag = f"{self.session_id}-{uuid.uuid4().hex[:10]}"
+                image_name = f"{self.config.clone_repo_prefix}:{tag}"
+                self.images.append(image_name)
+                stage.commit(repository=self.config.clone_repo_prefix, tag=tag)
+            finally:
+                try:
+                    stage.remove(force=True)
+                except NotFound:
+                    pass
+                finally:
+                    if stage in self.containers:
+                        self.containers.remove(stage)
+            container = None
+            try:
+                container = self._runtime(
+                    image_name, network, "verifier", ["python3", "/workspace/profile.py"]
+                )
+                try:
+                    status = container.wait(timeout=self.config.verifier_timeout_seconds)
+                    output = container.logs(tail=100).decode("utf-8", errors="replace")[-16_384:]
+                    if int(status["StatusCode"]) != 0:
+                        raise SandboxError("Static profile run failed; result is inconclusive.")
+                    return output.strip()
+                except Exception as exc:
+                    raise SandboxError(
+                        "Static profile failed or timed out; result is inconclusive."
+                    ) from exc
+            finally:
+                if container is not None:
+                    try:
+                        container.remove(force=True)
+                    except NotFound:
+                        pass
+                    finally:
+                        if container in self.containers:
+                            self.containers.remove(container)
 
     def _require_preloaded_image(self, image: str) -> None:
         try:
@@ -810,17 +875,19 @@ class DockerSandboxManager:
                     self.containers.remove(stage)
 
     def start_project(self, network, spec: ProjectSpec, snapshot: ProjectSnapshot):
-        """Start one fresh target from a committed in-memory source snapshot."""
-        image = self._snapshot_project_image(spec.image, snapshot, "target")
-        container = self._runtime(
-            image,
-            network,
-            "target",
-            list(spec.command),
-            clear_entrypoint=True,
-            working_dir="/workspace",
-        )
-        return container, image
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "start_project"):
+            """Start one fresh target from a committed in-memory source snapshot."""
+            image = self._snapshot_project_image(spec.image, snapshot, "target")
+            container = self._runtime(
+                image,
+                network,
+                "target",
+                list(spec.command),
+                clear_entrypoint=True,
+                working_dir="/workspace",
+            )
+            return container, image
 
     @staticmethod
     def _bounded_logs(container) -> tuple[str, str]:
@@ -840,122 +907,158 @@ class DockerSandboxManager:
         command: list[str] | None = None,
         script: str | None = None,
     ) -> ProjectCheckResult:
-        """Run a disposable regression command or Python verifier against a snapshot."""
-        if command is not None and script is not None:
-            raise ValueError("Provide either a project command or a verifier script, not both.")
-        if command is None and script is None:
-            command = list(spec.test_command)
-        if command is not None and not command:
-            raise ValueError("Project check command must not be empty.")
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "run_project_check"):
+            """Run a disposable regression command or Python verifier against a snapshot."""
+            if command is not None and script is not None:
+                raise ValueError("Provide either a project command or a verifier script, not both.")
+            if command is None and script is None:
+                command = list(spec.test_command)
+            if command is not None and not command:
+                raise ValueError("Project check command must not be empty.")
 
-        if script is not None:
-            try:
-                validate_verifier_script(script)
-            except ValueError as exc:
-                raise SandboxError(str(exc)) from exc
-            try:
-                compile(script, "verify.py", "exec")
-            except (SyntaxError, ValueError) as exc:
-                raise SandboxError("Verifier is not valid Python.") from exc
-            image = self._snapshot_project_image(
-                self.config.verifier_base_image,
-                snapshot,
-                "verifier",
-                verifier_script=script,
-            )
-            role = "verifier"
-            runtime_command = [
-                "python3",
-                "-I",
-                "-B",
-                "-u",
-                "-c",
-                "import runpy, sys; sys.path.append('/workspace'); "
-                "runpy.run_path('/verifier/runner.py', run_name='__main__')",
-            ]
-        else:
-            image = self._snapshot_project_image(spec.image, snapshot, "test")
-            role = "test"
-            runtime_command = list(command or ())
-
-        container = None
-        try:
-            container = self._runtime(
-                image,
-                network,
-                role,
-                runtime_command,
-                aliases=[],
-                clear_entrypoint=True,
-                working_dir="/workspace",
-            )
-            try:
-                status = container.wait(timeout=self.config.verifier_timeout_seconds)
-            except (TimeoutError, ReadTimeout):
-                stdout, stderr = self._bounded_logs(container)
-                return ProjectCheckResult(None, stdout, stderr, timed_out=True)
-            except Exception as exc:
-                raise SandboxError("Project check failed before producing a result.") from exc
-            stdout, stderr = self._bounded_logs(container)
-            return ProjectCheckResult(int(status["StatusCode"]), stdout, stderr)
-        finally:
-            if container is not None:
+            if script is not None:
                 try:
-                    container.remove(force=True)
-                except NotFound:
-                    pass
-                finally:
-                    if container in self.containers:
-                        self.containers.remove(container)
+                    validate_verifier_script(script)
+                except ValueError as exc:
+                    raise SandboxError(str(exc)) from exc
+                try:
+                    compile(script, "verify.py", "exec")
+                except (SyntaxError, ValueError) as exc:
+                    raise SandboxError("Verifier is not valid Python.") from exc
+                image = self._snapshot_project_image(
+                    self.config.verifier_base_image,
+                    snapshot,
+                    "verifier",
+                    verifier_script=script,
+                )
+                role = "verifier"
+                runtime_command = [
+                    "python3",
+                    "-I",
+                    "-B",
+                    "-u",
+                    "-c",
+                    "import runpy, sys; sys.path.append('/workspace'); "
+                    "runpy.run_path('/verifier/runner.py', run_name='__main__')",
+                ]
+            else:
+                image = self._snapshot_project_image(spec.image, snapshot, "test")
+                role = "test"
+                runtime_command = list(command or ())
+
+            container = None
+            try:
+                container = self._runtime(
+                    image,
+                    network,
+                    role,
+                    runtime_command,
+                    aliases=[],
+                    clear_entrypoint=True,
+                    working_dir="/workspace",
+                )
+                try:
+                    status = container.wait(timeout=self.config.verifier_timeout_seconds)
+                except (TimeoutError, ReadTimeout):
+                    stdout, stderr = self._bounded_logs(container)
+                    return ProjectCheckResult(None, stdout, stderr, timed_out=True)
+                except Exception as exc:
+                    raise SandboxError("Project check failed before producing a result.") from exc
+                stdout, stderr = self._bounded_logs(container)
+                _obs_result = ProjectCheckResult(int(status["StatusCode"]), stdout, stderr)
+                _obs_log(
+                    _OBS_DOCKER,
+                    "check_exit",
+                    "project check exited",
+                    exit_code=_obs_result.exit_code,
+                    timed_out=_obs_result.timed_out,
+                )
+                _obs_metric(
+                    _OBS_DOCKER, "check_exit.exit_code", _obs_result.exit_code or 0, unit="count"
+                )
+                _obs_metric(
+                    _OBS_DOCKER,
+                    "run_project_check.seconds",
+                    round(time.monotonic() - _obs_started, 3),
+                    unit="seconds",
+                )
+                return _obs_result
+            finally:
+                if container is not None:
+                    try:
+                        container.remove(force=True)
+                    except NotFound:
+                        pass
+                    finally:
+                        if container in self.containers:
+                            self.containers.remove(container)
 
     def stop_project(self, container) -> None:
-        """Force-remove a project target, including during workflow cancellation."""
-        try:
-            container.remove(force=True)
-        except NotFound:
-            pass
-        finally:
-            if container in self.containers:
-                self.containers.remove(container)
-
-    def close(self) -> None:
-        failures = []
-        for container in reversed(self.containers):
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "stop_project"):
+            """Force-remove a project target, including during workflow cancellation."""
             try:
                 container.remove(force=True)
             except NotFound:
                 pass
-            except Exception:
-                failures.append("container")
-        for network in reversed(self.networks):
+            finally:
+                if container in self.containers:
+                    self.containers.remove(container)
+
+    def close(self) -> None:
+        _obs_started = time.monotonic()
+        with _obs_trace(_OBS_DOCKER, "close"):
+            failures = []
+            for container in reversed(self.containers):
+                try:
+                    container.remove(force=True)
+                except NotFound:
+                    pass
+                except Exception:
+                    failures.append("container")
+            for network in reversed(self.networks):
+                try:
+                    network.remove()
+                except NotFound:
+                    pass
+                except Exception:
+                    failures.append("network")
+            for image in reversed(self.images):
+                try:
+                    self.client.images.remove(image=image)
+                except (ImageNotFound, NotFound):
+                    pass
+                except Exception:
+                    failures.append("snapshot")
             try:
-                network.remove()
-            except NotFound:
-                pass
-            except Exception:
-                failures.append("network")
-        for image in reversed(self.images):
-            try:
-                self.client.images.remove(image=image)
-            except (ImageNotFound, NotFound):
-                pass
-            except Exception:
-                failures.append("snapshot")
-        try:
-            self.client.close()
-        except DockerException:
-            failures.append("client")
-        finally:
-            # Tracking is per-session: clear it even on failure so a later
-            # close (or the fail-closed stale sweep) never re-removes or leaks.
-            self.containers.clear()
-            self.networks.clear()
-            images, self.images = self.images, []
-            self._snapshot_cache = {
-                key: tag for key, tag in self._snapshot_cache.items() if tag not in images
-            }
-        if failures:
-            raise SandboxError(
-                f"Cleanup failed for {', '.join(failures)}. Inspect Docker resources labeled "
-                f"purplebox.session={self.session_id}."
+                self.client.close()
+            except DockerException:
+                failures.append("client")
+            finally:
+                # Tracking is per-session: clear it even on failure so a later
+                # close (or the fail-closed stale sweep) never re-removes or leaks.
+                self.containers.clear()
+                self.networks.clear()
+                images, self.images = self.images, []
+                self._snapshot_cache = {
+                    key: tag for key, tag in self._snapshot_cache.items() if tag not in images
+                }
+            _obs_log(
+                _OBS_DOCKER,
+                "cleanup",
+                "session cleanup finished",
+                failed_scopes=len(failures),
             )
+            _obs_metric(_OBS_DOCKER, "cleanup.failed_scopes", len(failures), unit="count")
+            _obs_metric(
+                _OBS_DOCKER,
+                "close.seconds",
+                round(time.monotonic() - _obs_started, 3),
+                unit="seconds",
+            )
+            if failures:
+                raise SandboxError(
+                    f"Cleanup failed for {', '.join(failures)}. Inspect Docker resources labeled "
+                    f"purplebox.session={self.session_id}."
+                )
