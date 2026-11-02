@@ -32,6 +32,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+import functools
 import re
 from dataclasses import dataclass, field
 from typing import Sequence
@@ -40,6 +41,10 @@ from library.shared.sms_http import DEFAULT_MAX_BYTES as MAX_BODY_BYTES
 from library.shared.sms_http import MIN_GAP_SECONDS, USER_AGENT, _pace
 from library.shared.sms_http import paced_get_json as _get_json
 from library.shared.sms_http import paced_post_json as _post_json
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.shared.sms_records import sanitize_cve_id, truncate_summary
 
 __all__ = [
@@ -50,6 +55,62 @@ __all__ = [
     "_get_json",
     "_post_json",
 ]
+
+_RESEARCH_ASPECT = get_aspect("intel.research")
+
+
+def _observed(operation: str):
+    """Decorator: trace one intel fetch, log counts + degraded flag, metric.
+
+    LAW 4: only counts, source labels, and fixed failure reasons are
+    logged — never intel payload text. No-op safe when uninitialized.
+    Single-line decorator per function: no body re-indentation needed.
+    """
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            import time as _time
+
+            started = _time.monotonic()
+            degraded = False
+            reason = ""
+            count: int = 0
+            try:
+                with obs_trace(_RESEARCH_ASPECT, operation):
+                    result = fn(*args, **kwargs)
+            except RuntimeError:
+                degraded = True
+                reason = "transport"
+                raise
+            except Exception:
+                degraded = True
+                reason = "error"
+                raise
+            else:
+                if isinstance(result, list):
+                    count = len(result)
+                elif result is not None:
+                    count = 1
+            finally:
+                duration_ms = round((_time.monotonic() - started) * 1000, 3)
+                obs_log(
+                    _RESEARCH_ASPECT,
+                    f"{operation}.result",
+                    message=f"{operation} finished",
+                    count=count,
+                    degraded=degraded,
+                    reason=reason,
+                    duration_ms=duration_ms,
+                )
+                obs_record_metric(
+                    _RESEARCH_ASPECT, f"{operation}.duration_ms", duration_ms, unit="ms"
+                )
+            return result
+
+        return inner
+
+    return wrap
 
 
 @dataclass
@@ -71,6 +132,7 @@ class ResearchRecord:
         self.cve_id = sanitize_cve_id(self.cve_id)
 
 
+@_observed("osv_lookup")
 def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list[ResearchRecord]:
     """OSV affected-package lookup: which CVEs hit this dependency. No key."""
     name = name.strip()[:128]
@@ -111,6 +173,7 @@ def osv_query_package(name: str, ecosystem: str = "", *, limit: int = 5) -> list
     return out
 
 
+@_observed("osv_lookup")
 def osv_lookup(cve_id: str) -> ResearchRecord | None:
     """OSV direct CVE fetch. No key."""
     safe = sanitize_cve_id(cve_id)
@@ -137,6 +200,7 @@ def osv_lookup(cve_id: str) -> ResearchRecord | None:
     )
 
 
+@_observed("circl_lookup")
 def circl_lookup(cve_id: str) -> ResearchRecord | None:
     """CIRCL cve-search CVE record: full CVE JSON, no key, no rate games."""
     safe = sanitize_cve_id(cve_id)
@@ -162,6 +226,7 @@ def circl_lookup(cve_id: str) -> ResearchRecord | None:
     )
 
 
+@_observed("circl_browse")
 def circl_browse_product(vendor: str, product: str, *, limit: int = 5) -> list[ResearchRecord]:
     """CIRCL vendor/product CVE listing. No key."""
     vendor = re.sub(r"[^a-z0-9_.\-]", "", vendor.strip().lower())[:64]
@@ -210,6 +275,7 @@ def _ghsa_first_patched_version(adv: dict) -> str:
     return ""
 
 
+@_observed("ghsa_lookup")
 def ghsa_lookup_by_cve(cve_id: str, *, limit: int = 5) -> list[ResearchRecord]:
     """GitHub Advisory DB lookup by CVE id (?cve_id=). No key, never raises.
 
@@ -277,6 +343,7 @@ def ghsa_lookup_by_cve(cve_id: str, *, limit: int = 5) -> list[ResearchRecord]:
     return out
 
 
+@_observed("ghsa_search")
 def ghsa_search(package: str, ecosystem: str = "", *, limit: int = 5) -> list[ResearchRecord]:
     """GitHub Advisory DB search: curated severity/CWE, unauthenticated. No key."""
     package = package.strip()[:128]
@@ -320,6 +387,7 @@ def ghsa_search(package: str, ecosystem: str = "", *, limit: int = 5) -> list[Re
     return out
 
 
+@_observed("epss_lookup")
 def epss_score(cve_id: str) -> ResearchRecord | None:
     """FIRST EPSS exploit-probability score for one CVE. No key."""
     safe = sanitize_cve_id(cve_id)
@@ -387,12 +455,28 @@ def _kev_catalog() -> dict[str, dict] | None:
         and (_time.monotonic() - _KEV_CACHE_FETCHED_AT) < KEV_CACHE_TTL_SECONDS
     ):
         return _KEV_CACHE
-    try:
-        from library.shared.sms_http import MAX_MAX_BYTES
+    with obs_trace(_RESEARCH_ASPECT, "kev_catalog"):
+        started = _time.monotonic()
+        degraded = False
+        try:
+            from library.shared.sms_http import MAX_MAX_BYTES
 
-        payload = _get_json(KEV_CATALOG_URL, max_bytes=MAX_MAX_BYTES)
-    except RuntimeError:
-        return None
+            payload = _get_json(KEV_CATALOG_URL, max_bytes=MAX_MAX_BYTES)
+        except RuntimeError:
+            degraded = True
+            return None
+        finally:
+            duration_ms = round((_time.monotonic() - started) * 1000, 3)
+            obs_log(
+                _RESEARCH_ASPECT,
+                "kev_catalog.result",
+                message="kev_catalog finished",
+                count=len(_KEV_CACHE) if _KEV_CACHE else 0,
+                degraded=degraded,
+                reason="transport" if degraded else "",
+                duration_ms=duration_ms,
+            )
+            obs_record_metric(_RESEARCH_ASPECT, "kev_catalog.duration_ms", duration_ms, unit="ms")
     if not isinstance(payload, dict):
         return None
     vulns = payload.get("vulnerabilities")
@@ -410,6 +494,7 @@ def _kev_catalog() -> dict[str, dict] | None:
     return index
 
 
+@_observed("kev_lookup")
 def kev_lookup(cve_id: str) -> ResearchRecord | None:
     """CISA KEV known-exploited flag for one CVE. No key, never raises."""
     safe = sanitize_cve_id(cve_id)
@@ -439,6 +524,7 @@ def kev_lookup(cve_id: str) -> ResearchRecord | None:
     )
 
 
+@_observed("cve_series")
 def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
     """CVE endpoint series for one or more CVE ids: CIRCL + OSV + EPSS + KEV + GHSA.
 
@@ -485,6 +571,7 @@ def cve_records(cve_ids: Sequence[str]) -> list[ResearchRecord]:
     return found[:24]
 
 
+@_observed("web_notes")
 def web_notes(queries: Sequence[str], *, per_query: int = 3) -> list[ResearchRecord]:
     """Web context for named vuln types + free text: Wikipedia JSON API only.
 
@@ -551,6 +638,7 @@ def web_notes(queries: Sequence[str], *, per_query: int = 3) -> list[ResearchRec
     return found[:12]
 
 
+@_observed("research_pass")
 def research_for_sink(
     keywords: Sequence[str],
     *,

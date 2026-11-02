@@ -38,11 +38,17 @@ Dependency-Track (a server, not a binary) lives in scanner_dtrack.py.
 
 from __future__ import annotations
 
+import functools
 import json
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.shared.sms_scan_parse import (
     cvss_best as _cvss_from_grype_cvss,
 )
@@ -90,12 +96,68 @@ class ScannerRecord:
         self.cve_id = (self.cve_id or "").strip().upper()[:64]
 
 
+_SCANNERS_ASPECT = get_aspect("intel.scanners")
+
+
+def _observed_run(operation: str):
+    """Decorator for scanner runners: trace + counts + degraded reason.
+
+    LAW 4: counts, binary name, and fixed failure reasons only — never
+    finding text. Runners already degrade every failure to []; the
+    decorator only observes. Bodies untouched (decorator lines only).
+    The degraded reason comes from `_run_json.last_reason` (absent
+    binary, timeout, oversize, bad JSON); a clean zero-finding scan
+    logs reason "".
+    """
+
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            started = time.monotonic()
+            degraded = False
+            reason = ""
+            count = 0
+            try:
+                with obs_trace(_SCANNERS_ASPECT, operation):
+                    result = fn(*args, **kwargs)
+            except Exception:
+                degraded = True
+                reason = "error"
+                raise
+            else:
+                count = len(result) if isinstance(result, list) else 0
+                reason = _run_json.last_reason  # type: ignore[attr-defined]
+                _run_json.last_reason = ""  # type: ignore[attr-defined]
+                degraded = bool(reason)
+            finally:
+                duration_ms = round((time.monotonic() - started) * 1000, 3)
+                obs_log(
+                    _SCANNERS_ASPECT,
+                    f"{operation}.result",
+                    message=f"{operation} finished",
+                    count=count,
+                    degraded=degraded,
+                    reason=reason,
+                    duration_ms=duration_ms,
+                )
+                obs_record_metric(
+                    _SCANNERS_ASPECT, f"{operation}.duration_ms", duration_ms, unit="ms"
+                )
+            return result
+
+        return inner
+
+    return wrap
+
+
 def _run_json(
     binary: str, args: list[str], *, timeout: float = DEFAULT_TIMEOUT
 ) -> dict | list | None:
     """Run a scanner binary, return parsed JSON. None on any failure."""
     exe = _cached_which(binary)
+    _run_json.last_reason = ""  # type: ignore[attr-defined]
     if not exe:
+        _run_json.last_reason = "absent_binary"  # type: ignore[attr-defined]
         return None
     try:
         proc = subprocess.run(
@@ -103,14 +165,26 @@ def _run_json(
             capture_output=True,
             timeout=timeout,
         )
-    except (subprocess.TimeoutExpired, OSError):
+    except subprocess.TimeoutExpired:
+        _run_json.last_reason = "timeout"  # type: ignore[attr-defined]
         return None
-    if not proc.stdout or len(proc.stdout) > STDOUT_CAP_BYTES:
+    except OSError:
+        _run_json.last_reason = "spawn_error"  # type: ignore[attr-defined]
+        return None
+    if not proc.stdout:
+        _run_json.last_reason = "empty_output"  # type: ignore[attr-defined]
+        return None
+    if len(proc.stdout) > STDOUT_CAP_BYTES:
+        _run_json.last_reason = "oversize"  # type: ignore[attr-defined]
         return None
     try:
         return json.loads(proc.stdout.decode("utf-8", "replace"))
     except (ValueError, UnicodeDecodeError):
+        _run_json.last_reason = "bad_json"  # type: ignore[attr-defined]
         return None
+
+
+_run_json.last_reason = ""  # type: ignore[attr-defined]
 
 
 def available(binary: str) -> bool:
@@ -245,6 +319,7 @@ def parse_depcheck_report(payload: dict | list) -> list[ScannerRecord]:
     return out
 
 
+@_observed_run("scanner_run.trivy")
 def run_trivy(path: str, *, timeout: float = DEFAULT_TIMEOUT) -> list[ScannerRecord]:
     """`trivy fs` over a directory. None-safe: [] when unavailable/failing."""
     payload = _run_json(
@@ -265,18 +340,21 @@ def run_trivy(path: str, *, timeout: float = DEFAULT_TIMEOUT) -> list[ScannerRec
     return parse_trivy_report(payload) if isinstance(payload, dict) else []
 
 
+@_observed_run("scanner_run.grype")
 def run_grype(path: str, *, timeout: float = DEFAULT_TIMEOUT) -> list[ScannerRecord]:
     """`grype dir:` over a directory. None-safe."""
     payload = _run_json("grype", [f"dir:{path}", "-o", "json", "-q"], timeout=timeout)
     return parse_grype_report(payload) if isinstance(payload, dict) else []
 
 
+@_observed_run("scanner_run.osv_scanner")
 def run_osv_scanner(path: str, *, timeout: float = DEFAULT_TIMEOUT) -> list[ScannerRecord]:
     """`osv-scanner` over a directory. None-safe."""
     payload = _run_json("osv-scanner", ["--format", "json", "--recursive", path], timeout=timeout)
     return parse_osv_scanner_report(payload) if isinstance(payload, dict) else []
 
 
+@_observed_run("scanner_run.dependency_check")
 def run_dependency_check(
     path: str, *, output_dir: str = "/tmp/depcheck", timeout: float = 900.0
 ) -> list[ScannerRecord]:
@@ -288,11 +366,13 @@ def run_dependency_check(
     import tempfile
     from pathlib import Path
 
+    _run_json.last_reason = ""  # type: ignore[attr-defined]
     outdir = Path(output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     report = outdir / "dependency-check-report.json"
     exe = _cached_which("dependency-check.sh") or _cached_which("dependency-check")
     if not exe:
+        _run_json.last_reason = "absent_binary"  # type: ignore[attr-defined]
         return []
     with tempfile.TemporaryFile() as null:
         try:
@@ -302,12 +382,21 @@ def run_dependency_check(
                 stderr=null,
                 timeout=timeout,
             )
-        except (subprocess.TimeoutExpired, OSError):
+        except subprocess.TimeoutExpired:
+            _run_json.last_reason = "timeout"  # type: ignore[attr-defined]
             return []
-    if not report.is_file() or report.stat().st_size > MAX_SCAN_BYTES:
+        except OSError:
+            _run_json.last_reason = "spawn_error"  # type: ignore[attr-defined]
+            return []
+    if not report.is_file():
+        _run_json.last_reason = "no_report"  # type: ignore[attr-defined]
+        return []
+    if report.stat().st_size > MAX_SCAN_BYTES:
+        _run_json.last_reason = "oversize"  # type: ignore[attr-defined]
         return []
     try:
         payload = json.loads(report.read_text(encoding="utf-8", errors="replace"))
     except ValueError:
+        _run_json.last_reason = "bad_json"  # type: ignore[attr-defined]
         return []
     return parse_depcheck_report(payload) if isinstance(payload, dict) else []

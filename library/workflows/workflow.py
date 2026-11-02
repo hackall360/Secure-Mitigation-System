@@ -4,6 +4,8 @@
 
 __version__ = "0.1.0"
 
+import hashlib as _hashlib
+import time as _time
 from typing import Literal
 
 from docker.errors import DockerException
@@ -26,6 +28,20 @@ from modules.core.registry import TARGETS_REGISTRY
 from modules.services.chatter import chatter
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_compress import CompressionReport, compress_context
+from modules.shared.sms_observability import (
+    get_aspect as _get_aspect,
+)
+from modules.shared.sms_observability import (
+    log as _obs_log,
+)
+from modules.shared.sms_observability import (
+    record_metric as _obs_metric,
+)
+from modules.shared.sms_observability import (
+    trace as _obs_trace,
+)
+
+_OBS_FIXTURE = _get_aspect("workflows.fixture")
 
 
 def _sink_keywords(filename: str, contract: str) -> tuple[list[str], list[str]]:
@@ -338,271 +354,332 @@ async def execute_purple_workflow(
 
     log = make_log(emit)
 
-    try:
-        if target_key not in TARGETS_REGISTRY:
-            raise ValueError("Unknown fixture. Choose one of the registered targets.")
-        if target_key == "binary_argv_echo":
-            raise ValueError(
-                "binary_argv_echo is a compiled ELF fixture: use the binary harness "
-                "path (execute_binary_sweep), not the source workflow."
-            )
-        settings = config or load_config()
-        require_api_key(settings)
-        target = TARGETS_REGISTRY[target_key]
-        source = target.read_source()
-        muse = muse_factory(settings)
-        sandbox = await blocking(sandbox_factory, settings)
-        await blocking(sandbox.require_base_images)
-        await log(
-            "system",
-            "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
-        )
-        network = await blocking(sandbox.create_isolated_network)
-        container, snapshot = await blocking(
-            sandbox.start_cloneable_target, network, target, source
-        )
-        baseline = await blocking(
-            sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
-        )
-        result.traces["baseline"] = baseline.output
-        if baseline.exit_code != 0:
-            raise SandboxError("Original fixture failed its trusted normal-input checks.")
-        result.baseline_passed = True
-        await log(
-            "system",
-            "[phase baseline] Original fixture is ready; normal-input checks passed.",
-        )
-
-        await log(
-            "red",
-            f"[phase red probe] Analyzing {target.filename} with {settings.red_team_model}.",
-        )
-        research_digest = ""
-        if settings.research_enabled:
-            await log("research", "Research sidecars on: fetching keyless intel.")
-            research_digest, result.research_records = await _gather_research(
-                muse, settings, target.filename, target.contract, log
-            )
-        compressed = compress_context(source, filename=target.filename)
-        result.compression = compressed
-        await log(
-            "system",
-            f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
-            f"{compressed.compressed_tokens_sent} tokens "
-            f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
-        )
+    _obs_scan_started = _time.monotonic()
+    with _obs_trace(_OBS_FIXTURE, "scan"):
         try:
-            from modules.intel.sms_vault import VaultNamespace, commit_verified, query_vault
-
-            vault_answer = query_vault(source)
-            result.vault_recall = vault_answer.status
-            result.vault_namespaces = vault_answer.namespaces
+            _obs_log(_OBS_FIXTURE, "scan_start", "scan started", target=target_key)
+            _obs_metric(_OBS_FIXTURE, "scan_start.count", 1, unit="count")
+            if target_key not in TARGETS_REGISTRY:
+                raise ValueError("Unknown fixture. Choose one of the registered targets.")
+            if target_key == "binary_argv_echo":
+                raise ValueError(
+                    "binary_argv_echo is a compiled ELF fixture: use the binary harness "
+                    "path (execute_binary_sweep), not the source workflow."
+                )
+            settings = config or load_config()
+            require_api_key(settings)
+            target = TARGETS_REGISTRY[target_key]
+            source = target.read_source()
+            muse = muse_factory(settings)
+            sandbox = await blocking(sandbox_factory, settings)
+            await blocking(sandbox.require_base_images)
             await log(
                 "system",
-                f"[phase vault] {vault_answer.status} "
-                f"({vault_answer.record_count} prior records"
-                + (f" in {','.join(vault_answer.namespaces)}" if vault_answer.namespaces else "")
-                + ").",
+                "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
             )
-        except Exception as exc:
-            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
-            result.vault_recall = "VAULT_UNAVAILABLE"
-        await log(
-            "red",
-            chatter("red_start", persona="Breakwater", path=target.filename, seed=1),
-        )
-        finding = await muse.run_red_team_analysis(
-            target.filename,
-            source,
-            target.contract
-            + (f"\n\nGrounded intel:\n{research_digest}" if research_digest else ""),
-        )
-        result.finding = finding
-        await log(
-            "red",
-            f"{finding.vulnerability_class} at {finding.sink_location}: {finding.analysis_summary}",
-        )
-        pre = await blocking(
-            sandbox.run_isolated_verifier, network, finding.verification_script_python
-        )
-        result.pre_exit_code = pre.exit_code
-        result.traces["before"] = pre.output
-        await log("red", f"[phase red probe] Boundary check exited {pre.exit_code}.")
-        await log(
-            "red",
-            chatter(
-                "red_proof",
-                persona="Breakwater",
-                path=target.filename,
-                code=pre.exit_code,
-                seed=2,
-            ),
-        )
-        if pre.inconclusive:
-            raise SandboxError("Pre-patch verifier was inconclusive; no patch was requested.")
-        if pre.exit_code == 1:
-            result.status = "not_confirmed"
-            result.message = (
-                "The probe did not confirm the reported boundary. No patch was requested."
+            network = await blocking(sandbox.create_isolated_network)
+            container, snapshot = await blocking(
+                sandbox.start_cloneable_target, network, target, source
             )
-        else:
+            baseline = await blocking(
+                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+            )
+            result.traces["baseline"] = baseline.output
+            _obs_log(
+                _OBS_FIXTURE, "baseline", "baseline checks finished", exit_code=baseline.exit_code
+            )
+            _obs_metric(_OBS_FIXTURE, "baseline.exit_code", baseline.exit_code, unit="count")
+            if baseline.exit_code != 0:
+                raise SandboxError("Original fixture failed its trusted normal-input checks.")
+            result.baseline_passed = True
             await log(
-                "blue",
-                f"[phase blue patch] Requesting a sanitization patch from {settings.blue_team_model}.",
+                "system",
+                "[phase baseline] Original fixture is ready; normal-input checks passed.",
             )
+
             await log(
-                "blue",
-                chatter("blue_start", persona="Bastion", path=target.filename, seed=3),
+                "red",
+                f"[phase red probe] Analyzing {target.filename} with {settings.red_team_model}.",
             )
-            patch = await muse.run_blue_team_sanitizer(
+            research_digest = ""
+            if settings.research_enabled:
+                await log("research", "Research sidecars on: fetching keyless intel.")
+                research_digest, result.research_records = await _gather_research(
+                    muse, settings, target.filename, target.contract, log
+                )
+            compressed = compress_context(source, filename=target.filename)
+            result.compression = compressed
+            await log(
+                "system",
+                f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+                f"{compressed.compressed_tokens_sent} tokens "
+                f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
+            )
+            try:
+                from modules.intel.sms_vault import VaultNamespace, commit_verified, query_vault
+
+                vault_answer = query_vault(source)
+                result.vault_recall = vault_answer.status
+                result.vault_namespaces = vault_answer.namespaces
+                await log(
+                    "system",
+                    f"[phase vault] {vault_answer.status} "
+                    f"({vault_answer.record_count} prior records"
+                    + (
+                        f" in {','.join(vault_answer.namespaces)}"
+                        if vault_answer.namespaces
+                        else ""
+                    )
+                    + ").",
+                )
+            except Exception as exc:
+                await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+                result.vault_recall = "VAULT_UNAVAILABLE"
+            await log(
+                "red",
+                chatter("red_start", persona="Breakwater", path=target.filename, seed=1),
+            )
+            finding = await muse.run_red_team_analysis(
                 target.filename,
                 source,
-                finding,
-                pre.output,
                 target.contract
                 + (f"\n\nGrounded intel:\n{research_digest}" if research_digest else ""),
             )
-            result.patch = patch
-            result.diff = validate_patch(target, source, patch.patched_file_content)
-            await log("blue", patch.sanitization_strategy)
-            await log("blue", result.diff)
+            result.finding = finding
             await log(
-                "system",
-                "[phase blue patch] Starting a fresh target from the patched snapshot.",
+                "red",
+                f"{finding.vulnerability_class} at {finding.sink_location}: {finding.analysis_summary}",
             )
-            container, _ = await blocking(
-                sandbox.replace_target,
-                container,
-                snapshot,
-                network,
-                target,
-                patch.patched_file_content,
-            )
-            regression = await blocking(
-                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
-            )
-            result.traces["regression"] = regression.output
-            if regression.exit_code != 0:
-                raise PatchRejected(
-                    "Patched fixture failed trusted normal-input regression checks."
-                )
-            result.regression_passed = True
-            post = await blocking(
+            pre = await blocking(
                 sandbox.run_isolated_verifier, network, finding.verification_script_python
             )
-            result.post_exit_code = post.exit_code
-            result.traces["after"] = post.output
-            await log(
-                "blue",
-                f"[phase verify] Post-patch boundary check exited {post.exit_code}.",
+            result.pre_exit_code = pre.exit_code
+            _obs_log(
+                _OBS_FIXTURE,
+                "probe_built",
+                "probe built",
+                bytes=len(finding.verification_script_python.encode("utf-8")),
+                script_sha256=_hashlib.sha256(
+                    finding.verification_script_python.encode("utf-8")
+                ).hexdigest(),
             )
+            _obs_metric(
+                _OBS_FIXTURE,
+                "probe_built.bytes",
+                len(finding.verification_script_python.encode("utf-8")),
+                unit="bytes",
+            )
+            _obs_log(_OBS_FIXTURE, "probe_exit", "probe exited", exit_code=pre.exit_code)
+            _obs_metric(_OBS_FIXTURE, "probe_exit.exit_code", pre.exit_code, unit="count")
+            result.traces["before"] = pre.output
+            await log("red", f"[phase red probe] Boundary check exited {pre.exit_code}.")
             await log(
-                "blue",
+                "red",
                 chatter(
-                    "blue_done",
-                    persona="Bastion",
+                    "red_proof",
+                    persona="Breakwater",
                     path=target.filename,
-                    code=post.exit_code,
-                    seed=4,
+                    code=pre.exit_code,
+                    seed=2,
                 ),
             )
-            if post.inconclusive:
-                raise SandboxError(
-                    "Post-patch verifier was inconclusive; this is not a successful fix."
+            if pre.inconclusive:
+                raise SandboxError("Pre-patch verifier was inconclusive; no patch was requested.")
+            if pre.exit_code == 1:
+                result.status = "not_confirmed"
+                result.message = (
+                    "The probe did not confirm the reported boundary. No patch was requested."
                 )
-            # A probe must not earn success by leaving the application broken afterward.
-            final_health = await blocking(
-                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
-            )
-            result.traces["after_probe_regression"] = final_health.output
-            if final_health.exit_code != 0:
-                result.regression_passed = False
-                raise PatchRejected("Target failed normal-input checks after the boundary probe.")
-            result.status = "verified" if post.exit_code == 1 else "failed"
-            if result.status == "verified" and result.patch is not None:
-                result.receipt = build_verdict_receipt(
-                    fixture=target_key,
-                    pre_exit_code=pre.exit_code,
-                    post_exit_code=post.exit_code,
-                    regression_passed=result.regression_passed,
-                    patch_content=result.patch.patched_file_content,
+            else:
+                await log(
+                    "blue",
+                    f"[phase blue patch] Requesting a sanitization patch from {settings.blue_team_model}.",
                 )
-                try:
-                    commit_verified(
-                        namespace=VaultNamespace.RED,
-                        source=source,
-                        payload={
-                            "kind": "boundary_escape",
-                            "fixture": target_key,
-                            "sink": finding.sink_location,
-                            "vulnerability_class": finding.vulnerability_class,
-                        },
+                await log(
+                    "blue",
+                    chatter("blue_start", persona="Bastion", path=target.filename, seed=3),
+                )
+                patch = await muse.run_blue_team_sanitizer(
+                    target.filename,
+                    source,
+                    finding,
+                    pre.output,
+                    target.contract
+                    + (f"\n\nGrounded intel:\n{research_digest}" if research_digest else ""),
+                )
+                result.patch = patch
+                _obs_log(
+                    _OBS_FIXTURE,
+                    "patch_written",
+                    "patch written",
+                    lines=len(patch.patched_file_content.splitlines()),
+                )
+                _obs_metric(
+                    _OBS_FIXTURE,
+                    "patch_written.lines",
+                    len(patch.patched_file_content.splitlines()),
+                    unit="count",
+                )
+                result.diff = validate_patch(target, source, patch.patched_file_content)
+                await log("blue", patch.sanitization_strategy)
+                await log("blue", result.diff)
+                await log(
+                    "system",
+                    "[phase blue patch] Starting a fresh target from the patched snapshot.",
+                )
+                container, _ = await blocking(
+                    sandbox.replace_target,
+                    container,
+                    snapshot,
+                    network,
+                    target,
+                    patch.patched_file_content,
+                )
+                regression = await blocking(
+                    sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                )
+                result.traces["regression"] = regression.output
+                if regression.exit_code != 0:
+                    raise PatchRejected(
+                        "Patched fixture failed trusted normal-input regression checks."
                     )
-                    commit_verified(
-                        namespace=VaultNamespace.BLUE,
-                        source=result.patch.patched_file_content,
-                        payload={
-                            "kind": "sanitization_patch",
-                            "fixture": target_key,
-                            "strategy": result.patch.sanitization_strategy,
-                        },
+                result.regression_passed = True
+                post = await blocking(
+                    sandbox.run_isolated_verifier, network, finding.verification_script_python
+                )
+                result.post_exit_code = post.exit_code
+                result.traces["after"] = post.output
+                await log(
+                    "blue",
+                    f"[phase verify] Post-patch boundary check exited {post.exit_code}.",
+                )
+                await log(
+                    "blue",
+                    chatter(
+                        "blue_done",
+                        persona="Bastion",
+                        path=target.filename,
+                        code=post.exit_code,
+                        seed=4,
+                    ),
+                )
+                if post.inconclusive:
+                    raise SandboxError(
+                        "Post-patch verifier was inconclusive; this is not a successful fix."
                     )
-                    await log("system", "[phase vault] Verified finding + patch committed.")
-                    result.vault_committed = True
-                except Exception as exc:
-                    result.vault_committed = False
-                    await log(
-                        "system",
-                        f"[phase vault] Commit skipped ({type(exc).__name__}).",
+                # A probe must not earn success by leaving the application broken afterward.
+                final_health = await blocking(
+                    sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                )
+                result.traces["after_probe_regression"] = final_health.output
+                if final_health.exit_code != 0:
+                    result.regression_passed = False
+                    raise PatchRejected(
+                        "Target failed normal-input checks after the boundary probe."
                     )
-            result.message = (
-                "Boundary probe blocked and trusted normal-input checks passed. Review the candidate diff."
-                if result.status == "verified"
-                else "The original boundary probe still reaches the sink."
+                result.status = "verified" if post.exit_code == 1 else "failed"
+                _obs_log(
+                    _OBS_FIXTURE,
+                    "reprobe_exit",
+                    "reprobe exited",
+                    exit_code=post.exit_code,
+                    status=result.status,
+                )
+                _obs_metric(_OBS_FIXTURE, "reprobe_exit.exit_code", post.exit_code, unit="count")
+                if result.status == "verified" and result.patch is not None:
+                    result.receipt = build_verdict_receipt(
+                        fixture=target_key,
+                        pre_exit_code=pre.exit_code,
+                        post_exit_code=post.exit_code,
+                        regression_passed=result.regression_passed,
+                        patch_content=result.patch.patched_file_content,
+                    )
+                    try:
+                        commit_verified(
+                            namespace=VaultNamespace.RED,
+                            source=source,
+                            payload={
+                                "kind": "boundary_escape",
+                                "fixture": target_key,
+                                "sink": finding.sink_location,
+                                "vulnerability_class": finding.vulnerability_class,
+                            },
+                        )
+                        commit_verified(
+                            namespace=VaultNamespace.BLUE,
+                            source=result.patch.patched_file_content,
+                            payload={
+                                "kind": "sanitization_patch",
+                                "fixture": target_key,
+                                "strategy": result.patch.sanitization_strategy,
+                            },
+                        )
+                        await log("system", "[phase vault] Verified finding + patch committed.")
+                        result.vault_committed = True
+                    except Exception as exc:
+                        result.vault_committed = False
+                        await log(
+                            "system",
+                            f"[phase vault] Commit skipped ({type(exc).__name__}).",
+                        )
+                result.message = (
+                    "Boundary probe blocked and trusted normal-input checks passed. Review the candidate diff."
+                    if result.status == "verified"
+                    else "The original boundary probe still reaches the sink."
+                )
+        except PatchRejected as exc:
+            result.status, result.message = "rejected", str(exc)
+        except (ConfigurationError, AgentError, SandboxError, ValueError) as exc:
+            result.status, result.message = "error", str(exc)
+        except DockerException:
+            result.status, result.message = (
+                "error",
+                "Docker operation failed. Check the daemon and base images.",
             )
-    except PatchRejected as exc:
-        result.status, result.message = "rejected", str(exc)
-    except (ConfigurationError, AgentError, SandboxError, ValueError) as exc:
-        result.status, result.message = "error", str(exc)
-    except DockerException:
-        result.status, result.message = (
-            "error",
-            "Docker operation failed. Check the daemon and base images.",
-        )
-    except Exception as exc:
-        result.status, result.message = (
-            "error",
-            f"Workflow failed ({type(exc).__name__}); no verified patch produced.",
-        )
-    finally:
-        # Cleanup precedes any final emission and also runs during cancellation.
-        try:
-            if sandbox is not None:
-                try:
-                    await blocking(sandbox.close)
-                except Exception as exc:
-                    result.cleanup_ok = False
-                    result.status = "error"
-                    result.message = (
-                        str(exc)
-                        if isinstance(exc, SandboxError)
-                        else "Docker cleanup failed; inspect session resources."
-                    )
+        except Exception as exc:
+            result.status, result.message = (
+                "error",
+                f"Workflow failed ({type(exc).__name__}); no verified patch produced.",
+            )
         finally:
-            if muse is not None:
-                calls = getattr(muse, "usage", None)
-                if isinstance(calls, list):
-                    result.usage = ScanUsage(calls=calls)
-                    result.total_tokens = result.usage.total_tokens
-                    result.cost_usd = result.usage.cost_usd
-                try:
-                    await muse.aclose()
-                except Exception:
-                    pass
-    await log("system", f"[done] {result.message}")
-    if sandbox is not None and result.cleanup_ok:
-        await log("system", "[phase cleanup] Session containers, snapshots, and network removed.")
-    return result
+            # Cleanup precedes any final emission and also runs during cancellation.
+            try:
+                if sandbox is not None:
+                    try:
+                        await blocking(sandbox.close)
+                    except Exception as exc:
+                        result.cleanup_ok = False
+                        result.status = "error"
+                        result.message = (
+                            str(exc)
+                            if isinstance(exc, SandboxError)
+                            else "Docker cleanup failed; inspect session resources."
+                        )
+            finally:
+                if muse is not None:
+                    calls = getattr(muse, "usage", None)
+                    if isinstance(calls, list):
+                        result.usage = ScanUsage(calls=calls)
+                        result.total_tokens = result.usage.total_tokens
+                        result.cost_usd = result.usage.cost_usd
+                    try:
+                        await muse.aclose()
+                    except Exception:
+                        pass
+        _obs_log(_OBS_FIXTURE, "verdict", "verdict reached", status=result.status)
+        _obs_metric(_OBS_FIXTURE, "verdict.count", 1, unit="count")
+        _obs_metric(
+            _OBS_FIXTURE,
+            "verdict.seconds",
+            round(_time.monotonic() - _obs_scan_started, 3),
+            unit="seconds",
+        )
+        await log("system", f"[done] {result.message}")
+        if sandbox is not None and result.cleanup_ok:
+            await log(
+                "system", "[phase cleanup] Session containers, snapshots, and network removed."
+            )
+        return result
 
 
 from modules.shared.sms_redact import EXPLOIT_REDACTED as EXPLOIT_REDACTED  # noqa: E402 (re-export shim; canonical defs live in sms_redact)

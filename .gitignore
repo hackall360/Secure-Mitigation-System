@@ -249,6 +249,8 @@ dist/
 # ---- Secure Mitigation System project artifacts (never commit) ----
 # Scan outputs: reports contain source code, model output, candidate patches.
 reports/
+# Runtime observability sinks (dev/prod JSONL logs, metrics, traces).
+logs/
 *.patch
 !targets/**/*.patch
 # Headless-browser E2E screenshots (default to repo root or /tmp).

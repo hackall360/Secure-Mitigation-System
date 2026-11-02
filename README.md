@@ -141,6 +141,14 @@ We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Won
 
 The loop needs a model that will attack its own code inside a locked sandbox and then patch it. Muse Spark and Wonder both do that here. Some hosted models are built to refuse the attack step even for defense — the contest brief names Opus 5.5, Fable 5.1, Luna 6, and Sol 6.1 as models that decline offensive probing — so tools built on refusers stay point-and-fix: they flag a line and stop.
 
+## Observability
+
+Dev/prod observability: per-aspect JSONL logs, metrics, and traces under `logs/<signal>/<aspect>.jsonl`
+(signals `logs`/`metrics`/`traces`; aspects like `workflows.fixture`, `intel.research`,
+`services.api`). `prod` records milestones; `dev` records ~10x detail records on the same run.
+Mode from `--observability-mode` or `PURPLEBOX_OBSERVABILITY_MODE` (default `prod`). Full guide:
+[`docs/guides/OBSERVABILITY.md`](docs/guides/OBSERVABILITY.md).
+
 ## Go deeper
 
 - [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — start here: the loop in plain words.

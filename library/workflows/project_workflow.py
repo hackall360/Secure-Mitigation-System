@@ -10,6 +10,7 @@ import ast
 import asyncio
 import difflib
 import hashlib
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import PurePosixPath
 from typing import Any, Literal, Protocol
@@ -44,7 +45,13 @@ from modules.services.projects import (
 from modules.shared.sms_async import Emit, blocking, make_log
 from modules.shared.sms_budget import resolve_payload_budget
 from modules.shared.sms_compress import CompressionReport, compress_context
+from modules.shared.sms_observability import get_aspect as _get_aspect
+from modules.shared.sms_observability import log as _obs_log
+from modules.shared.sms_observability import record_metric as _obs_metric
+from modules.shared.sms_observability import trace as _obs_trace
 from modules.shared.sms_text import bounded as _bounded
+
+_OBS_PROJECT = _get_aspect("workflows.project")
 
 
 class ProjectWorkflowError(RuntimeError):
@@ -1266,605 +1273,702 @@ async def execute_project_workflow(
 
     log = make_log(emit)
 
-    try:
-        settings = config or load_config()
-        require_api_key(settings)
-        if isinstance(project, ProjectSpec):
-            if settings.inference_mode != "local" and not project.allow_remote_inference:
-                raise ProjectWorkflowError(
-                    "Remote inference consent is required before project source can be sent to Muse."
+    _obs_workflow_started = time.monotonic()
+    with _obs_trace(_OBS_PROJECT, "project"):
+        try:
+            _obs_log(_OBS_PROJECT, "workflow_start", "project workflow started")
+            _obs_metric(_OBS_PROJECT, "workflow_start.count", 1, unit="count")
+            settings = config or load_config()
+            require_api_key(settings)
+            if isinstance(project, ProjectSpec):
+                if settings.inference_mode != "local" and not project.allow_remote_inference:
+                    raise ProjectWorkflowError(
+                        "Remote inference consent is required before project source can be sent to Muse."
+                    )
+                snapshot = await blocking(snapshot_project, project)
+                safe_project, omitted_paths, coverage_notes = _snapshot_context(
+                    project, snapshot, bounds
                 )
-            snapshot = await blocking(snapshot_project, project)
-            safe_project, omitted_paths, coverage_notes = _snapshot_context(
-                project, snapshot, bounds
-            )
-            snapshot_total_paths = len(snapshot.files)
-            snapshot_total_bytes = snapshot.total_bytes
-            if sandbox_factory is None:
-                sandbox = await blocking(DockerProjectSandbox, settings, project, snapshot)
+                snapshot_total_paths = len(snapshot.files)
+                snapshot_total_bytes = snapshot.total_bytes
+                if sandbox_factory is None:
+                    sandbox = await blocking(DockerProjectSandbox, settings, project, snapshot)
+                else:
+                    sandbox = await blocking(sandbox_factory, settings)
             else:
+                safe_project = coerce_project(project)
+                snapshot_total_paths = len(safe_project.files)
+                snapshot_total_bytes = sum(
+                    len(value.encode("utf-8")) for value in safe_project.files.values()
+                )
+                if sandbox_factory is None:
+                    raise ProjectWorkflowError(
+                        "A ProjectSpec is required when using the default Docker project sandbox."
+                    )
                 sandbox = await blocking(sandbox_factory, settings)
-        else:
-            safe_project = coerce_project(project)
-            snapshot_total_paths = len(safe_project.files)
-            snapshot_total_bytes = sum(
-                len(value.encode("utf-8")) for value in safe_project.files.values()
-            )
-            if sandbox_factory is None:
-                raise ProjectWorkflowError(
-                    "A ProjectSpec is required when using the default Docker project sandbox."
-                )
-            sandbox = await blocking(sandbox_factory, settings)
-        original_files = dict(safe_project.files)
-        cumulative_files = dict(original_files)
-        try:
-            snapshot_text = "\n".join(
-                f"===== {path} =====\n{content}" for path, content in sorted(original_files.items())
-            )
-            compressed = compress_context(snapshot_text, filename=safe_project.name)
-            result.compression = compressed
-            await log(
-                "system",
-                f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
-                f"{compressed.compressed_tokens_sent} tokens "
-                f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
-            )
-        except Exception as exc:
-            await log("system", f"[phase compress] Compression unavailable ({type(exc).__name__}).")
-        try:
-            from modules.intel.sms_vault import query_vault
-
-            vault_answer = query_vault(snapshot_text)
-            result.vault_recall = vault_answer.status
-            result.vault_namespaces = vault_answer.namespaces
-            await log(
-                "system",
-                f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
-            )
-        except Exception as exc:
-            await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
-            result.vault_recall = "VAULT_UNAVAILABLE"
-        muse = muse_factory(settings)
-        agents = agent_factory(muse, settings)
-        if settings.research_enabled:
+            original_files = dict(safe_project.files)
+            cumulative_files = dict(original_files)
             try:
-                from modules.workflows.workflow import _gather_research as _fixture_gather
-
-                project_digest, project_records = await _fixture_gather(
-                    muse,
-                    settings,
-                    safe_project.name,
-                    safe_project.contract,
-                    log,
+                snapshot_text = "\n".join(
+                    f"===== {path} =====\n{content}"
+                    for path, content in sorted(original_files.items())
                 )
+                compressed = compress_context(snapshot_text, filename=safe_project.name)
+                result.compression = compressed
                 await log(
-                    "research",
-                    f"[phase intel] Project intel pass complete: "
-                    f"{len(project_records)} records stored on the report.",
+                    "system",
+                    f"[phase compress] Context {compressed.raw_tokens_estimated} -> "
+                    f"{compressed.compressed_tokens_sent} tokens "
+                    f"(saved {compressed.tokens_saved}, ratio {compressed.compression_ratio:.2f}).",
                 )
             except Exception as exc:
                 await log(
-                    "research",
-                    f"[phase intel] Project intel unavailable "
-                    f"({type(exc).__name__}); continuing ungrounded.",
+                    "system", f"[phase compress] Compression unavailable ({type(exc).__name__})."
                 )
-        await blocking(sandbox.require_base_images)
-
-        protected_paths = protected_regression_paths(
-            list(cumulative_files), safe_project.regression_command
-        )
-        await log(
-            "system",
-            "[phase baseline] Running original-project baseline checks in isolated containers.",
-        )
-        baseline_raw = await blocking(
-            sandbox.verify_project_snapshot,
-            safe_project,
-            dict(cumulative_files),
-            "import sys\nsys.exit(1)",
-            tuple(safe_project.regression_command),
-            label="baseline",
-        )
-        baseline = normalize_snapshot_verification(baseline_raw, bounds.max_evidence_chars)
-        result.baseline_verification = baseline
-        if not baseline.fresh_target or baseline.regression.exit_code != 0:
-            raise SandboxError("Original project failed its preserved regression command.")
-
-        await log("system", "[phase baseline] Original-project normal-input checks passed.")
-
-        for round_index in range(requested_cycles * passes_per_cycle):
-            cycle = round_index // passes_per_cycle + 1
-            pass_number = round_index % passes_per_cycle + 1
-            if named_profile:
-                agents.configure_review(
-                    profile_key=profile_key,
-                    cycle=cycle,
-                    pass_number=pass_number,
-                    red_agents=red_agents,
-                    blue_agents=blue_agents,
-                )
-            await log(
-                "red",
-                f"[phase red review] Cycle {cycle}/{requested_cycles}, "
-                f"pass {pass_number}/{passes_per_cycle}: "
-                "reviewing the cumulative verified snapshot.",
-            )
             try:
-                if named_profile and profile_key == "ultra_heavy":
-                    await log("red", chatter("leader_red", n=red_agents, seed=cycle))
-                    await log("blue", chatter("leader_blue", n=blue_agents, seed=cycle))
-                else:
+                from modules.intel.sms_vault import query_vault
+
+                vault_answer = query_vault(snapshot_text)
+                result.vault_recall = vault_answer.status
+                result.vault_namespaces = vault_answer.namespaces
+                await log(
+                    "system",
+                    f"[phase vault] {vault_answer.status} ({vault_answer.record_count} prior records).",
+                )
+            except Exception as exc:
+                await log("system", f"[phase vault] Recall unavailable ({type(exc).__name__}).")
+                result.vault_recall = "VAULT_UNAVAILABLE"
+            muse = muse_factory(settings)
+            agents = agent_factory(muse, settings)
+            if settings.research_enabled:
+                try:
+                    from modules.workflows.workflow import _gather_research as _fixture_gather
+
+                    project_digest, project_records = await _fixture_gather(
+                        muse,
+                        settings,
+                        safe_project.name,
+                        safe_project.contract,
+                        log,
+                    )
                     await log(
-                        "red",
-                        chatter(
-                            "red_start",
-                            persona=red_persona(1).name,
-                            path="",
-                            seed=cycle * 10 + pass_number,
-                        ),
+                        "research",
+                        f"[phase intel] Project intel pass complete: "
+                        f"{len(project_records)} records stored on the report.",
                     )
-            except Exception:
-                pass
-            documents = documents_from_mapping(cumulative_files)
-            red = await agents.analyze_red(
-                documents,
-                project_name=safe_project.name,
-                cycle=cycle,
-                max_batch_bytes=bounds.max_batch_bytes,
-                contract=safe_project.contract
-                + (f"\n\nGrounded intel:\n{project_digest}" if project_digest else ""),
-                total_paths=snapshot_total_paths,
-                total_bytes=snapshot_total_bytes,
-                omitted_paths=omitted_paths,
-                coverage_notes=coverage_notes,
-                max_payload_bytes=payload_budget,
-                prior_verified_history=verified_history,
+                except Exception as exc:
+                    await log(
+                        "research",
+                        f"[phase intel] Project intel unavailable "
+                        f"({type(exc).__name__}); continuing ungrounded.",
+                    )
+            await blocking(sandbox.require_base_images)
+
+            protected_paths = protected_regression_paths(
+                list(cumulative_files), safe_project.regression_command
             )
-            result.context_coverage.append(red.coverage)
-            evidence = CycleEvidence(red=red)
-            if red.report.outcome == "no_finding":
-                final = await agents.final_blue_report(
-                    project_name=safe_project.name,
-                    cycle=cycle,
-                    contract=safe_project.contract,
-                    max_payload_bytes=payload_budget,
-                    stage_evidence={
-                        "red_report": red.report.model_dump(),
-                        "coverage": red.coverage.model_dump(),
-                        "disposition": "no_change",
-                    },
-                )
-                evidence.final_blue_report = final
-                result.cycle_reports.append(
-                    ProjectCycleReport(
-                        cycle=cycle,
-                        pass_number=pass_number,
-                        status="no_finding",
-                        message="The bounded review produced no testable finding; this is not a security guarantee.",
-                        evidence=evidence,
-                    )
-                )
-                result.cycles_completed += int(pass_number == passes_per_cycle)
-                if named_profile:
-                    continue
-                break
-
-            unknown_paths = sorted(set(red.report.affected_paths) - set(cumulative_files))
-            if unknown_paths:
-                raise ProjectWorkflowError("Red report referenced paths outside the safe snapshot.")
-
             await log(
-                "red",
-                f"[phase verify] Cycle {cycle}/{requested_cycles} "
-                f"pass {pass_number}/{passes_per_cycle}: "
-                "proving the finding before requesting changes.",
+                "system",
+                "[phase baseline] Running original-project baseline checks in isolated containers.",
             )
-            pre_raw = await blocking(
+            baseline_raw = await blocking(
                 sandbox.verify_project_snapshot,
                 safe_project,
                 dict(cumulative_files),
-                red.report.verification_script_python,
+                "import sys\nsys.exit(1)",
                 tuple(safe_project.regression_command),
-                label=f"cycle-{cycle}-pass-{pass_number}-pre"
-                if named_profile
-                else f"cycle-{cycle}-pre",
+                label="baseline",
             )
-            pre = normalize_snapshot_verification(pre_raw, bounds.max_evidence_chars)
-            evidence.pre_verification = pre
-            if not pre.fresh_target:
-                raise SandboxError("Pre-verification did not use a fresh target.")
-            if pre.regression.exit_code != 0:
-                raise SandboxError(
-                    "The cumulative snapshot failed the original regression command."
-                )
-            if pre.probe.inconclusive:
-                final = await agents.final_blue_report(
-                    project_name=safe_project.name,
-                    cycle=cycle,
-                    contract=safe_project.contract,
-                    max_payload_bytes=payload_budget,
-                    stage_evidence={
-                        "red_report": red.report.model_dump(),
-                        "pre_verification": pre.model_dump(),
-                        "disposition": "no_change",
-                    },
-                )
-                evidence.final_blue_report = final
-                result.cycle_reports.append(
-                    ProjectCycleReport(
-                        cycle=cycle,
-                        pass_number=pass_number,
-                        status="inconclusive",
-                        message="The pre-change probe was inconclusive; no changes were requested.",
-                        evidence=evidence,
-                    )
-                )
-                result.cycles_completed += int(pass_number == passes_per_cycle)
-                if named_profile:
-                    continue
-                break
-            if pre.probe.blocked:
-                final = await agents.final_blue_report(
-                    project_name=safe_project.name,
-                    cycle=cycle,
-                    contract=safe_project.contract,
-                    max_payload_bytes=payload_budget,
-                    stage_evidence={
-                        "red_report": red.report.model_dump(),
-                        "pre_verification": pre.model_dump(),
-                        "disposition": "no_change",
-                    },
-                )
-                evidence.final_blue_report = final
-                result.cycle_reports.append(
-                    ProjectCycleReport(
-                        cycle=cycle,
-                        pass_number=pass_number,
-                        status="not_confirmed",
-                        message="The original probe did not confirm the reported vulnerability; no changes were requested.",
-                        evidence=evidence,
-                    )
-                )
-                result.cycles_completed += int(pass_number == passes_per_cycle)
-                if named_profile:
-                    continue
-                break
+            baseline = normalize_snapshot_verification(baseline_raw, bounds.max_evidence_chars)
+            result.baseline_verification = baseline
+            _obs_log(
+                _OBS_PROJECT,
+                "baseline",
+                "baseline checks finished",
+                exit_code=baseline.regression.exit_code,
+            )
+            _obs_metric(
+                _OBS_PROJECT,
+                "baseline.exit_code",
+                baseline.regression.exit_code,
+                unit="count",
+            )
+            if not baseline.fresh_target or baseline.regression.exit_code != 0:
+                raise SandboxError("Original project failed its preserved regression command.")
 
-            try:
-                await log(
-                    "red",
-                    chatter(
-                        "red_proof",
-                        persona=red_persona((round_index % 5) + 1).name,
-                        path=(red.report.affected_paths[0] if red.report.affected_paths else ""),
-                        code=pre.probe.exit_code,
-                        seed=cycle * 100 + pass_number,
-                    ),
-                )
-            except Exception:
-                pass
-            await log(
-                "blue",
-                f"[phase blue patch] Cycle {cycle}/{requested_cycles} "
-                f"pass {pass_number}/{passes_per_cycle}: "
-                "requesting bounded sanitation-only replacements.",
-            )
-            proposal = await agents.propose_blue(
-                documents,
-                project_name=safe_project.name,
-                cycle=cycle,
-                red_report=red.report,
-                pre_verification=pre.model_dump(),
-                contract=safe_project.contract,
-                protected_paths=protected_paths,
-                max_changed_files=bounds.max_changed_files,
-                max_changed_bytes=bounds.max_changed_bytes,
-                max_payload_bytes=payload_budget,
-            )
-            evidence.blue_proposal = proposal
-            validation, replacements = validate_replacements(
-                proposal,
-                cumulative_files,
-                max_changed_files=bounds.max_changed_files,
-                max_changed_bytes=bounds.max_changed_bytes,
-                protected_paths=protected_paths,
-                cycle=cycle,
-                pass_number=pass_number,
-            )
-            evidence.replacement_validation = validation
-            if not validation.accepted:
-                final = await agents.final_blue_report(
-                    project_name=safe_project.name,
-                    cycle=cycle,
-                    contract=safe_project.contract,
-                    max_payload_bytes=payload_budget,
-                    stage_evidence={
+            await log("system", "[phase baseline] Original-project normal-input checks passed.")
+
+            for round_index in range(requested_cycles * passes_per_cycle):
+                with _obs_trace(_OBS_PROJECT, "cycle"):
+                    cycle = round_index // passes_per_cycle + 1
+                    pass_number = round_index % passes_per_cycle + 1
+                    _obs_log(
+                        _OBS_PROJECT,
+                        "cycle_start",
+                        "cycle started",
+                        cycle=cycle,
+                        pass_number=pass_number,
+                    )
+                    _obs_metric(_OBS_PROJECT, "cycle_start.count", 1, unit="count")
+                    if named_profile:
+                        agents.configure_review(
+                            profile_key=profile_key,
+                            cycle=cycle,
+                            pass_number=pass_number,
+                            red_agents=red_agents,
+                            blue_agents=blue_agents,
+                        )
+                    await log(
+                        "red",
+                        f"[phase red review] Cycle {cycle}/{requested_cycles}, "
+                        f"pass {pass_number}/{passes_per_cycle}: "
+                        "reviewing the cumulative verified snapshot.",
+                    )
+                    try:
+                        if named_profile and profile_key == "ultra_heavy":
+                            await log("red", chatter("leader_red", n=red_agents, seed=cycle))
+                            await log("blue", chatter("leader_blue", n=blue_agents, seed=cycle))
+                        else:
+                            await log(
+                                "red",
+                                chatter(
+                                    "red_start",
+                                    persona=red_persona(1).name,
+                                    path="",
+                                    seed=cycle * 10 + pass_number,
+                                ),
+                            )
+                    except Exception:
+                        pass
+                    documents = documents_from_mapping(cumulative_files)
+                    red = await agents.analyze_red(
+                        documents,
+                        project_name=safe_project.name,
+                        cycle=cycle,
+                        max_batch_bytes=bounds.max_batch_bytes,
+                        contract=safe_project.contract
+                        + (f"\n\nGrounded intel:\n{project_digest}" if project_digest else ""),
+                        total_paths=snapshot_total_paths,
+                        total_bytes=snapshot_total_bytes,
+                        omitted_paths=omitted_paths,
+                        coverage_notes=coverage_notes,
+                        max_payload_bytes=payload_budget,
+                        prior_verified_history=verified_history,
+                    )
+                    result.context_coverage.append(red.coverage)
+                    evidence = CycleEvidence(red=red)
+                    if red.report.outcome == "no_finding":
+                        final = await agents.final_blue_report(
+                            project_name=safe_project.name,
+                            cycle=cycle,
+                            contract=safe_project.contract,
+                            max_payload_bytes=payload_budget,
+                            stage_evidence={
+                                "red_report": red.report.model_dump(),
+                                "coverage": red.coverage.model_dump(),
+                                "disposition": "no_change",
+                            },
+                        )
+                        evidence.final_blue_report = final
+                        result.cycle_reports.append(
+                            ProjectCycleReport(
+                                cycle=cycle,
+                                pass_number=pass_number,
+                                status="no_finding",
+                                message="The bounded review produced no testable finding; this is not a security guarantee.",
+                                evidence=evidence,
+                            )
+                        )
+                        result.cycles_completed += int(pass_number == passes_per_cycle)
+                        if named_profile:
+                            continue
+                        break
+
+                    unknown_paths = sorted(set(red.report.affected_paths) - set(cumulative_files))
+                    if unknown_paths:
+                        raise ProjectWorkflowError(
+                            "Red report referenced paths outside the safe snapshot."
+                        )
+
+                    await log(
+                        "red",
+                        f"[phase verify] Cycle {cycle}/{requested_cycles} "
+                        f"pass {pass_number}/{passes_per_cycle}: "
+                        "proving the finding before requesting changes.",
+                    )
+                    pre_raw = await blocking(
+                        sandbox.verify_project_snapshot,
+                        safe_project,
+                        dict(cumulative_files),
+                        red.report.verification_script_python,
+                        tuple(safe_project.regression_command),
+                        label=f"cycle-{cycle}-pass-{pass_number}-pre"
+                        if named_profile
+                        else f"cycle-{cycle}-pre",
+                    )
+                    pre = normalize_snapshot_verification(pre_raw, bounds.max_evidence_chars)
+                    evidence.pre_verification = pre
+                    _obs_log(
+                        _OBS_PROJECT,
+                        "probe_built",
+                        "cycle probe verified",
+                        cycle=cycle,
+                        probe_exit=pre.probe.exit_code,
+                        regression_exit=pre.regression.exit_code,
+                    )
+                    _obs_metric(
+                        _OBS_PROJECT, "probe_exit.exit_code", pre.probe.exit_code, unit="count"
+                    )
+                    if not pre.fresh_target:
+                        raise SandboxError("Pre-verification did not use a fresh target.")
+                    if pre.regression.exit_code != 0:
+                        raise SandboxError(
+                            "The cumulative snapshot failed the original regression command."
+                        )
+                    if pre.probe.inconclusive:
+                        final = await agents.final_blue_report(
+                            project_name=safe_project.name,
+                            cycle=cycle,
+                            contract=safe_project.contract,
+                            max_payload_bytes=payload_budget,
+                            stage_evidence={
+                                "red_report": red.report.model_dump(),
+                                "pre_verification": pre.model_dump(),
+                                "disposition": "no_change",
+                            },
+                        )
+                        evidence.final_blue_report = final
+                        result.cycle_reports.append(
+                            ProjectCycleReport(
+                                cycle=cycle,
+                                pass_number=pass_number,
+                                status="inconclusive",
+                                message="The pre-change probe was inconclusive; no changes were requested.",
+                                evidence=evidence,
+                            )
+                        )
+                        result.cycles_completed += int(pass_number == passes_per_cycle)
+                        if named_profile:
+                            continue
+                        break
+                    if pre.probe.blocked:
+                        final = await agents.final_blue_report(
+                            project_name=safe_project.name,
+                            cycle=cycle,
+                            contract=safe_project.contract,
+                            max_payload_bytes=payload_budget,
+                            stage_evidence={
+                                "red_report": red.report.model_dump(),
+                                "pre_verification": pre.model_dump(),
+                                "disposition": "no_change",
+                            },
+                        )
+                        evidence.final_blue_report = final
+                        result.cycle_reports.append(
+                            ProjectCycleReport(
+                                cycle=cycle,
+                                pass_number=pass_number,
+                                status="not_confirmed",
+                                message="The original probe did not confirm the reported vulnerability; no changes were requested.",
+                                evidence=evidence,
+                            )
+                        )
+                        result.cycles_completed += int(pass_number == passes_per_cycle)
+                        if named_profile:
+                            continue
+                        break
+
+                    try:
+                        await log(
+                            "red",
+                            chatter(
+                                "red_proof",
+                                persona=red_persona((round_index % 5) + 1).name,
+                                path=(
+                                    red.report.affected_paths[0]
+                                    if red.report.affected_paths
+                                    else ""
+                                ),
+                                code=pre.probe.exit_code,
+                                seed=cycle * 100 + pass_number,
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    await log(
+                        "blue",
+                        f"[phase blue patch] Cycle {cycle}/{requested_cycles} "
+                        f"pass {pass_number}/{passes_per_cycle}: "
+                        "requesting bounded sanitation-only replacements.",
+                    )
+                    proposal = await agents.propose_blue(
+                        documents,
+                        project_name=safe_project.name,
+                        cycle=cycle,
+                        red_report=red.report,
+                        pre_verification=pre.model_dump(),
+                        contract=safe_project.contract,
+                        protected_paths=protected_paths,
+                        max_changed_files=bounds.max_changed_files,
+                        max_changed_bytes=bounds.max_changed_bytes,
+                        max_payload_bytes=payload_budget,
+                    )
+                    evidence.blue_proposal = proposal
+                    validation, replacements = validate_replacements(
+                        proposal,
+                        cumulative_files,
+                        max_changed_files=bounds.max_changed_files,
+                        max_changed_bytes=bounds.max_changed_bytes,
+                        protected_paths=protected_paths,
+                        cycle=cycle,
+                        pass_number=pass_number,
+                    )
+                    evidence.replacement_validation = validation
+                    if not validation.accepted:
+                        final = await agents.final_blue_report(
+                            project_name=safe_project.name,
+                            cycle=cycle,
+                            contract=safe_project.contract,
+                            max_payload_bytes=payload_budget,
+                            stage_evidence={
+                                "red_report": red.report.model_dump(),
+                                "pre_verification": pre.model_dump(),
+                                "proposal": proposal_report_evidence(proposal),
+                                "replacement_validation": validation.model_dump(),
+                                "disposition": "rolled_back",
+                            },
+                        )
+                        evidence.final_blue_report = final
+                        result.cycle_reports.append(
+                            ProjectCycleReport(
+                                cycle=cycle,
+                                pass_number=pass_number,
+                                status="rolled_back",
+                                message=validation.reason,
+                                evidence=evidence,
+                            )
+                        )
+                        result.cycles_completed += int(pass_number == passes_per_cycle)
+                        continue
+
+                    candidate_files = dict(cumulative_files)
+                    candidate_files.update(replacements)
+                    candidate_diff = render_diff(
+                        cumulative_files, candidate_files, bounds.max_diff_chars
+                    )
+                    _obs_log(
+                        _OBS_PROJECT,
+                        "patch_written",
+                        "cycle candidate diff rendered",
+                        cycle=cycle,
+                        paths=len(replacements),
+                        bytes=len(candidate_diff.encode("utf-8")),
+                    )
+                    _obs_metric(_OBS_PROJECT, "patch_written.count", 1, unit="count")
+                    await log(
+                        "system",
+                        f"[phase verify] Cycle {cycle}/{requested_cycles} pass {pass_number}/{passes_per_cycle}: "
+                        "verifying a fresh target with the original probe and regression command.",
+                    )
+                    patched_raw = await blocking(
+                        sandbox.verify_project_snapshot,
+                        safe_project,
+                        candidate_files,
+                        red.report.verification_script_python,
+                        tuple(safe_project.regression_command),
+                        label=f"cycle-{cycle}-pass-{pass_number}-patched"
+                        if named_profile
+                        else f"cycle-{cycle}-patched",
+                    )
+                    patched = normalize_snapshot_verification(
+                        patched_raw, bounds.max_evidence_chars
+                    )
+                    evidence.patched_verification = patched
+                    _obs_log(
+                        _OBS_PROJECT,
+                        "reprobe_exit",
+                        "cycle patched probe verified",
+                        cycle=cycle,
+                        probe_exit=patched.probe.exit_code,
+                        regression_exit=patched.regression.exit_code,
+                    )
+                    _obs_metric(
+                        _OBS_PROJECT,
+                        "reprobe_exit.exit_code",
+                        patched.probe.exit_code,
+                        unit="count",
+                    )
+                    evidence.differential_passed = differential_passed(
+                        result.baseline_verification.regression.exit_code
+                        if result.baseline_verification is not None
+                        else None,
+                        patched.regression.exit_code,
+                    )
+                    if not patched.fresh_target:
+                        raise SandboxError("Patched verification did not use a fresh target.")
+
+                    independent_red: RedAnalysisArtifacts | None = None
+                    independent_same_finding = False
+                    if patched.probe.blocked and patched.regression.exit_code == 0:
+                        independent_red = await agents.analyze_red(
+                            documents_from_mapping(candidate_files),
+                            project_name=safe_project.name,
+                            cycle=cycle,
+                            phase="verification",
+                            max_batch_bytes=bounds.max_batch_bytes,
+                            contract=safe_project.contract,
+                            total_paths=snapshot_total_paths,
+                            total_bytes=snapshot_total_bytes,
+                            omitted_paths=omitted_paths,
+                            coverage_notes=coverage_notes,
+                            max_payload_bytes=payload_budget,
+                            prior_verified_history=verified_history,
+                        )
+                        evidence.independent_red = independent_red
+                        result.context_coverage.append(independent_red.coverage)
+                        if independent_red.report.outcome == "finding":
+                            independent_same_finding = (
+                                independent_red.report.vulnerability.strip().casefold()
+                                == red.report.vulnerability.strip().casefold()
+                            )
+                            if independent_same_finding:
+                                independent_raw = await blocking(
+                                    sandbox.verify_project_snapshot,
+                                    safe_project,
+                                    candidate_files,
+                                    independent_red.report.verification_script_python,
+                                    tuple(safe_project.regression_command),
+                                    label=(
+                                        f"cycle-{cycle}-pass-{pass_number}-independent-red"
+                                        if named_profile
+                                        else f"cycle-{cycle}-independent-red"
+                                    ),
+                                )
+                                evidence.independent_verification = normalize_snapshot_verification(
+                                    independent_raw, bounds.max_evidence_chars
+                                )
+
+                    retained = (
+                        patched.probe.blocked
+                        and patched.regression.exit_code == 0
+                        and not patched.probe.inconclusive
+                        # Explicit differential gate: equivalent to the already-required
+                        # (baseline exit 0 via the L895 raise + patched exit 0 above), so it
+                        # changes no retain/rollback verdict — it only records the check.
+                        and evidence.differential_passed
+                        # Wave 8 R1 fail-closed property gate: a recorded properties
+                        # exit other than 0 vetoes the retain (properties None skips).
+                        and property_gate_passed(patched)
+                        # SPEC 14.8 item 4 fail-closed mutation gate: a recorded
+                        # mutations exit other than 0 vetoes the retain (mutations
+                        # None skips, e.g. arbitrary projects).
+                        and mutation_gate_passed(patched)
+                        # Wave 8 item 7 (horse) repeat-stability net: for arbitrary
+                        # projects (properties None and mutations None) the sandbox
+                        # runs the regression command twice and the two exits must
+                        # agree; a recorded mismatch vetoes the retain. Fixture paths
+                        # already set properties/mutations, so the gate skips there.
+                        and (
+                            (patched.properties is not None or patched.mutations is not None)
+                            or repeat_stability_passed(patched)
+                        )
+                    )
+                    if independent_same_finding:
+                        independent_check = evidence.independent_verification
+                        retained = bool(
+                            retained
+                            and independent_check is not None
+                            and independent_check.fresh_target
+                            and independent_check.probe.blocked
+                            and independent_check.regression.exit_code == 0
+                            and property_gate_passed(independent_check)
+                            and mutation_gate_passed(independent_check)
+                        )
+                    disposition = "retained" if retained else "rolled_back"
+                    try:
+                        await log(
+                            "blue",
+                            chatter(
+                                "blue_done",
+                                persona=blue_persona((round_index % 5) + 1).name,
+                                path=(sorted(replacements)[0] if retained and replacements else ""),
+                                code=patched.probe.exit_code,
+                                seed=cycle * 1000 + pass_number,
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    stage_evidence = {
                         "red_report": red.report.model_dump(),
                         "pre_verification": pre.model_dump(),
                         "proposal": proposal_report_evidence(proposal),
                         "replacement_validation": validation.model_dump(),
-                        "disposition": "rolled_back",
-                    },
-                )
-                evidence.final_blue_report = final
-                result.cycle_reports.append(
-                    ProjectCycleReport(
+                        "patched_verification": patched.model_dump(),
+                        "independent_red": (
+                            {
+                                "report": independent_red.report.model_dump(),
+                                "coverage": independent_red.coverage.model_dump(),
+                                "same_finding": independent_same_finding,
+                            }
+                            if independent_red
+                            else None
+                        ),
+                        "independent_verification": (
+                            evidence.independent_verification.model_dump()
+                            if evidence.independent_verification
+                            else None
+                        ),
+                        "candidate_diff": candidate_diff,
+                        "disposition": disposition,
+                        "semantic_guarantee": False,
+                    }
+                    final = await agents.final_blue_report(
+                        project_name=safe_project.name,
                         cycle=cycle,
-                        pass_number=pass_number,
-                        status="rolled_back",
-                        message=validation.reason,
-                        evidence=evidence,
+                        contract=safe_project.contract,
+                        max_payload_bytes=payload_budget,
+                        stage_evidence=stage_evidence,
                     )
-                )
-                result.cycles_completed += int(pass_number == passes_per_cycle)
-                continue
+                    evidence.final_blue_report = final
+                    if final.disposition != disposition:
+                        raise ProjectWorkflowError(
+                            "Final blue report contradicted observed disposition."
+                        )
 
-            candidate_files = dict(cumulative_files)
-            candidate_files.update(replacements)
-            candidate_diff = render_diff(cumulative_files, candidate_files, bounds.max_diff_chars)
-            await log(
-                "system",
-                f"[phase verify] Cycle {cycle}/{requested_cycles} pass {pass_number}/{passes_per_cycle}: "
-                "verifying a fresh target with the original probe and regression command.",
-            )
-            patched_raw = await blocking(
-                sandbox.verify_project_snapshot,
-                safe_project,
-                candidate_files,
-                red.report.verification_script_python,
-                tuple(safe_project.regression_command),
-                label=f"cycle-{cycle}-pass-{pass_number}-patched"
-                if named_profile
-                else f"cycle-{cycle}-patched",
-            )
-            patched = normalize_snapshot_verification(patched_raw, bounds.max_evidence_chars)
-            evidence.patched_verification = patched
-            evidence.differential_passed = differential_passed(
-                result.baseline_verification.regression.exit_code
-                if result.baseline_verification is not None
-                else None,
-                patched.regression.exit_code,
-            )
-            if not patched.fresh_target:
-                raise SandboxError("Patched verification did not use a fresh target.")
-
-            independent_red: RedAnalysisArtifacts | None = None
-            independent_same_finding = False
-            if patched.probe.blocked and patched.regression.exit_code == 0:
-                independent_red = await agents.analyze_red(
-                    documents_from_mapping(candidate_files),
-                    project_name=safe_project.name,
-                    cycle=cycle,
-                    phase="verification",
-                    max_batch_bytes=bounds.max_batch_bytes,
-                    contract=safe_project.contract,
-                    total_paths=snapshot_total_paths,
-                    total_bytes=snapshot_total_bytes,
-                    omitted_paths=omitted_paths,
-                    coverage_notes=coverage_notes,
-                    max_payload_bytes=payload_budget,
-                    prior_verified_history=verified_history,
-                )
-                evidence.independent_red = independent_red
-                result.context_coverage.append(independent_red.coverage)
-                if independent_red.report.outcome == "finding":
-                    independent_same_finding = (
-                        independent_red.report.vulnerability.strip().casefold()
-                        == red.report.vulnerability.strip().casefold()
-                    )
-                    if independent_same_finding:
-                        independent_raw = await blocking(
-                            sandbox.verify_project_snapshot,
-                            safe_project,
-                            candidate_files,
-                            independent_red.report.verification_script_python,
-                            tuple(safe_project.regression_command),
-                            label=(
-                                f"cycle-{cycle}-pass-{pass_number}-independent-red"
-                                if named_profile
-                                else f"cycle-{cycle}-independent-red"
+                    if retained:
+                        cumulative_files = candidate_files
+                        verified_history.append(
+                            {
+                                "cycle": cycle,
+                                "pass_number": pass_number,
+                                "vulnerability": red.report.vulnerability,
+                                "changed_paths": sorted(replacements),
+                                "pre_probe_exit": pre.probe.exit_code,
+                                "post_probe_exit": patched.probe.exit_code,
+                                "regression_exit": patched.regression.exit_code,
+                            }
+                        )
+                        status = "retained"
+                        message = (
+                            "Candidate replacements were retained after the same probe was blocked on a fresh "
+                            "target and the original regression command passed; no general security claim is made."
+                        )
+                    else:
+                        status = "rolled_back"
+                        message = (
+                            "Candidate replacements were rolled back because the same probe was not blocked or "
+                            "the original regression command did not pass."
+                        )
+                    receipt = None
+                    if retained:
+                        receipt = build_cycle_receipt(
+                            fixture=safe_project.name,
+                            cycle=cycle,
+                            pass_number=pass_number,
+                            pre=pre,
+                            patched=patched,
+                            baseline_regression_exit=(
+                                result.baseline_verification.regression.exit_code
+                                if result.baseline_verification is not None
+                                else 2
                             ),
+                            differential_passed=evidence.differential_passed,
+                            candidate_diff=candidate_diff,
                         )
-                        evidence.independent_verification = normalize_snapshot_verification(
-                            independent_raw, bounds.max_evidence_chars
-                        )
-
-            retained = (
-                patched.probe.blocked
-                and patched.regression.exit_code == 0
-                and not patched.probe.inconclusive
-                # Explicit differential gate: equivalent to the already-required
-                # (baseline exit 0 via the L895 raise + patched exit 0 above), so it
-                # changes no retain/rollback verdict — it only records the check.
-                and evidence.differential_passed
-                # Wave 8 R1 fail-closed property gate: a recorded properties
-                # exit other than 0 vetoes the retain (properties None skips).
-                and property_gate_passed(patched)
-                # SPEC 14.8 item 4 fail-closed mutation gate: a recorded
-                # mutations exit other than 0 vetoes the retain (mutations
-                # None skips, e.g. arbitrary projects).
-                and mutation_gate_passed(patched)
-                # Wave 8 item 7 (horse) repeat-stability net: for arbitrary
-                # projects (properties None and mutations None) the sandbox
-                # runs the regression command twice and the two exits must
-                # agree; a recorded mismatch vetoes the retain. Fixture paths
-                # already set properties/mutations, so the gate skips there.
-                and (
-                    (patched.properties is not None or patched.mutations is not None)
-                    or repeat_stability_passed(patched)
-                )
-            )
-            if independent_same_finding:
-                independent_check = evidence.independent_verification
-                retained = bool(
-                    retained
-                    and independent_check is not None
-                    and independent_check.fresh_target
-                    and independent_check.probe.blocked
-                    and independent_check.regression.exit_code == 0
-                    and property_gate_passed(independent_check)
-                    and mutation_gate_passed(independent_check)
-                )
-            disposition = "retained" if retained else "rolled_back"
-            try:
-                await log(
-                    "blue",
-                    chatter(
-                        "blue_done",
-                        persona=blue_persona((round_index % 5) + 1).name,
-                        path=(sorted(replacements)[0] if retained and replacements else ""),
-                        code=patched.probe.exit_code,
-                        seed=cycle * 1000 + pass_number,
-                    ),
-                )
-            except Exception:
-                pass
-            stage_evidence = {
-                "red_report": red.report.model_dump(),
-                "pre_verification": pre.model_dump(),
-                "proposal": proposal_report_evidence(proposal),
-                "replacement_validation": validation.model_dump(),
-                "patched_verification": patched.model_dump(),
-                "independent_red": (
-                    {
-                        "report": independent_red.report.model_dump(),
-                        "coverage": independent_red.coverage.model_dump(),
-                        "same_finding": independent_same_finding,
-                    }
-                    if independent_red
-                    else None
-                ),
-                "independent_verification": (
-                    evidence.independent_verification.model_dump()
-                    if evidence.independent_verification
-                    else None
-                ),
-                "candidate_diff": candidate_diff,
-                "disposition": disposition,
-                "semantic_guarantee": False,
-            }
-            final = await agents.final_blue_report(
-                project_name=safe_project.name,
-                cycle=cycle,
-                contract=safe_project.contract,
-                max_payload_bytes=payload_budget,
-                stage_evidence=stage_evidence,
-            )
-            evidence.final_blue_report = final
-            if final.disposition != disposition:
-                raise ProjectWorkflowError("Final blue report contradicted observed disposition.")
-
-            if retained:
-                cumulative_files = candidate_files
-                verified_history.append(
-                    {
-                        "cycle": cycle,
-                        "pass_number": pass_number,
-                        "vulnerability": red.report.vulnerability,
-                        "changed_paths": sorted(replacements),
-                        "pre_probe_exit": pre.probe.exit_code,
-                        "post_probe_exit": patched.probe.exit_code,
-                        "regression_exit": patched.regression.exit_code,
-                    }
-                )
-                status = "retained"
-                message = (
-                    "Candidate replacements were retained after the same probe was blocked on a fresh "
-                    "target and the original regression command passed; no general security claim is made."
-                )
-            else:
-                status = "rolled_back"
-                message = (
-                    "Candidate replacements were rolled back because the same probe was not blocked or "
-                    "the original regression command did not pass."
-                )
-            receipt = None
-            if retained:
-                receipt = build_cycle_receipt(
-                    fixture=safe_project.name,
-                    cycle=cycle,
-                    pass_number=pass_number,
-                    pre=pre,
-                    patched=patched,
-                    baseline_regression_exit=(
-                        result.baseline_verification.regression.exit_code
-                        if result.baseline_verification is not None
-                        else 2
-                    ),
-                    differential_passed=evidence.differential_passed,
-                    candidate_diff=candidate_diff,
-                )
-            result.cycle_reports.append(
-                ProjectCycleReport(
-                    cycle=cycle,
-                    pass_number=pass_number,
-                    status=status,
-                    message=message,
-                    changed_paths=sorted(replacements) if retained else [],
-                    diff=candidate_diff,
-                    receipt=receipt,
-                    evidence=evidence,
-                )
-            )
-            result.cycles_completed += int(pass_number == passes_per_cycle)
-
-        statuses = [report.status for report in result.cycle_reports]
-        if statuses and all(status == "no_finding" for status in statuses):
-            result.status = "no_findings"
-            result.message = "The bounded review produced no testable finding; this is not a general security claim."
-        elif "retained" in statuses and not any(
-            status in ("rolled_back", "not_confirmed", "inconclusive", "error")
-            for status in statuses
-        ):
-            result.status = "verified"
-            result.message = "Evidence-gated candidate replacements were retained. Review the reports and diff manually."
-        else:
-            result.status = "partial"
-            result.message = "The workflow completed without a fully verified outcome; review rollbacks and evidence."
-    except asyncio.CancelledError:
-        raise
-    except (ConfigurationError, AgentError, ProjectWorkflowError, SandboxError, ValueError) as exc:
-        result.status = "error"
-        result.message = str(exc)
-    except Exception as exc:
-        result.status = "error"
-        result.message = (
-            f"Project workflow failed ({type(exc).__name__}); no unverified changes retained."
-        )
-    finally:
-        result.cumulative_diff = render_diff(
-            original_files, cumulative_files, bounds.max_diff_chars
-        )
-        result.research_records = project_records
-        try:
-            if sandbox is not None:
-                result.cleanup.attempted = True
-                await log(
-                    "system",
-                    "[phase cleanup] Removing project session containers, snapshots, and network.",
-                )
-                try:
-                    await blocking(sandbox.close)
-                except Exception as exc:
-                    result.cleanup.succeeded = False
-                    result.cleanup.error = (
-                        str(exc)
-                        if isinstance(exc, SandboxError)
-                        else "Docker cleanup failed; inspect session resources."
+                    _obs_log(
+                        _OBS_PROJECT,
+                        "cycle_verdict",
+                        "cycle verdict reached",
+                        cycle=cycle,
+                        status=status,
+                        retained=retained,
                     )
-                    result.status = "error"
-                    result.message = result.cleanup.error
+                    _obs_metric(_OBS_PROJECT, "cycle_verdict.count", 1, unit="count")
+                    result.cycle_reports.append(
+                        ProjectCycleReport(
+                            cycle=cycle,
+                            pass_number=pass_number,
+                            status=status,
+                            message=message,
+                            changed_paths=sorted(replacements) if retained else [],
+                            diff=candidate_diff,
+                            receipt=receipt,
+                            evidence=evidence,
+                        )
+                    )
+                    result.cycles_completed += int(pass_number == passes_per_cycle)
+
+            statuses = [report.status for report in result.cycle_reports]
+            if statuses and all(status == "no_finding" for status in statuses):
+                result.status = "no_findings"
+                result.message = "The bounded review produced no testable finding; this is not a general security claim."
+            elif "retained" in statuses and not any(
+                status in ("rolled_back", "not_confirmed", "inconclusive", "error")
+                for status in statuses
+            ):
+                result.status = "verified"
+                result.message = "Evidence-gated candidate replacements were retained. Review the reports and diff manually."
+            else:
+                result.status = "partial"
+                result.message = "The workflow completed without a fully verified outcome; review rollbacks and evidence."
+        except asyncio.CancelledError:
+            raise
+        except (
+            ConfigurationError,
+            AgentError,
+            ProjectWorkflowError,
+            SandboxError,
+            ValueError,
+        ) as exc:
+            result.status = "error"
+            result.message = str(exc)
+        except Exception as exc:
+            result.status = "error"
+            result.message = (
+                f"Project workflow failed ({type(exc).__name__}); no unverified changes retained."
+            )
         finally:
-            if muse is not None:
-                calls = getattr(muse, "usage", None)
-                if isinstance(calls, list):
-                    result.usage = ScanUsage(calls=calls)
-                    result.total_tokens = result.usage.total_tokens
-                    result.total_cost_usd = result.usage.cost_usd
-                try:
-                    await muse.aclose()
-                except Exception:
-                    pass
+            _obs_log(_OBS_PROJECT, "verdict", "project verdict reached", status=result.status)
+            _obs_metric(_OBS_PROJECT, "verdict.count", 1, unit="count")
+            _obs_metric(
+                _OBS_PROJECT,
+                "workflow.seconds",
+                round(time.monotonic() - _obs_workflow_started, 3),
+                unit="seconds",
+            )
+            result.cumulative_diff = render_diff(
+                original_files, cumulative_files, bounds.max_diff_chars
+            )
+            result.research_records = project_records
+            try:
+                if sandbox is not None:
+                    result.cleanup.attempted = True
+                    await log(
+                        "system",
+                        "[phase cleanup] Removing project session containers, snapshots, and network.",
+                    )
+                    try:
+                        await blocking(sandbox.close)
+                    except Exception as exc:
+                        result.cleanup.succeeded = False
+                        result.cleanup.error = (
+                            str(exc)
+                            if isinstance(exc, SandboxError)
+                            else "Docker cleanup failed; inspect session resources."
+                        )
+                        result.status = "error"
+                        result.message = result.cleanup.error
+            finally:
+                if muse is not None:
+                    calls = getattr(muse, "usage", None)
+                    if isinstance(calls, list):
+                        result.usage = ScanUsage(calls=calls)
+                        result.total_tokens = result.usage.total_tokens
+                        result.total_cost_usd = result.usage.cost_usd
+                    try:
+                        await muse.aclose()
+                    except Exception:
+                        pass
     await log(
         "system",
         f"[done] {result.cycles_completed}/{requested_cycles} cycles complete: {result.message}",

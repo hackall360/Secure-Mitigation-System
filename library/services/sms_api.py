@@ -16,13 +16,20 @@ wrappers never invent one.
 
 from __future__ import annotations
 
+import time
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
 from modules.core.config import PurpleBoxConfig
 from modules.workflows.workflow import ScanResult, VerdictReceipt
+
+_API_ASPECT = get_aspect("services.api")
 
 
 class ApiScanRequest(BaseModel):
@@ -51,11 +58,44 @@ async def scan_source(
         if isinstance(outcome, Awaitable):
             await outcome
 
-    if max_passes > 1:
-        return await execute_sweep_scan(
-            target, _emit, config=config, max_passes=max(1, min(4, max_passes))
-        )
-    return await execute_purple_workflow(target, _emit, config=config)
+    sweep = max_passes > 1
+    # LAW 4: log target key + pass depth only (never snippet bytes/contract).
+    obs_log(
+        _API_ASPECT,
+        "scan_source.start",
+        message="scan_source started",
+        target=str(target)[:64],
+        max_passes=max(1, min(4, int(max_passes))),
+        sweep=sweep,
+    )
+    started = time.monotonic()
+    with obs_trace(_API_ASPECT, "scan_source"):
+        if sweep:
+            result = await execute_sweep_scan(
+                target, _emit, config=config, max_passes=max(1, min(4, max_passes))
+            )
+        else:
+            result = await execute_purple_workflow(target, _emit, config=config)
+    duration_ms = round((time.monotonic() - started) * 1000, 3)
+    obs_log(
+        _API_ASPECT,
+        "scan_source.verdict",
+        message="scan_source verdict",
+        target=str(target)[:64],
+        status=getattr(result, "status", "unknown"),
+        pre_exit_code=getattr(result, "pre_exit_code", None),
+        post_exit_code=getattr(result, "post_exit_code", None),
+        regression_passed=bool(getattr(result, "regression_passed", False)),
+        duration_ms=duration_ms,
+    )
+    obs_record_metric(_API_ASPECT, "scan_source.duration_ms", duration_ms, unit="ms")
+    obs_record_metric(
+        _API_ASPECT,
+        f"scan_source.status.{getattr(result, 'status', 'unknown')}",
+        1,
+        unit="count",
+    )
+    return result
 
 
 async def scan_binary(
@@ -82,9 +122,40 @@ async def scan_binary(
         if isinstance(outcome, Awaitable):
             await outcome
 
-    return await execute_binary_sweep(
-        spec, _emit, config=config, max_passes=max(1, min(4, max_passes))
+    # LAW 4: sizes + format + pass depth only (never blob bytes or contract).
+    obs_log(
+        _API_ASPECT,
+        "scan_binary.start",
+        message="scan_binary started",
+        binary_format=getattr(spec, "binary_format", "unknown"),
+        size_bytes=getattr(spec, "size_bytes", 0),
+        max_passes=max(1, min(4, int(max_passes))),
     )
+    started = time.monotonic()
+    with obs_trace(_API_ASPECT, "scan_binary"):
+        result = await execute_binary_sweep(
+            spec, _emit, config=config, max_passes=max(1, min(4, max_passes))
+        )
+    duration_ms = round((time.monotonic() - started) * 1000, 3)
+    obs_log(
+        _API_ASPECT,
+        "scan_binary.verdict",
+        message="scan_binary verdict",
+        target=getattr(result, "target", ""),
+        status=getattr(result, "status", "unknown"),
+        passes_completed=len(
+            getattr(result, "pass_results", None) or getattr(result, "passes", None) or []
+        ),
+        duration_ms=duration_ms,
+    )
+    obs_record_metric(_API_ASPECT, "scan_binary.duration_ms", duration_ms, unit="ms")
+    obs_record_metric(
+        _API_ASPECT,
+        f"scan_binary.status.{getattr(result, 'status', 'unknown')}",
+        1,
+        unit="count",
+    )
+    return result
 
 
 def query_vault_stats(vault_dir: str | None = None) -> dict[str, Any]:

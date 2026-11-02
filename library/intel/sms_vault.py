@@ -39,6 +39,7 @@ import os
 import re
 import secrets
 import tempfile
+import time
 from enum import Enum
 from pathlib import Path
 
@@ -46,9 +47,16 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import BaseModel, ConfigDict
 
+from library.shared.sms_observability import get_aspect
+from library.shared.sms_observability import log as obs_log
+from library.shared.sms_observability import record_metric as obs_record_metric
+from library.shared.sms_observability import trace as obs_trace
+
 VAULT_KEY_BYTES = 32
 VAULT_NONCE_BYTES = 12
 _BLOB_VERSION = 1
+
+_VAULT_ASPECT = get_aspect("intel.vault")
 
 
 class VaultError(ValueError):
@@ -342,26 +350,69 @@ class VaultStore:
 
 
 def query_vault(source: str, vault_dir: Path | str | None = None) -> VaultQueryResult:
-    """Fingerprint a target and report KNOWN_ARCHETYPE vs NOVEL_SURFACE."""
-    fingerprint = fingerprint_source(source)
-    base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
-    hits: list[str] = []
-    total = 0
-    for namespace in VaultNamespace:
-        try:
-            store = VaultStore(namespace, vault_dir=base)
-            count = store.record_fingerprints().get(fingerprint, 0)
-        except VaultError:
-            continue
-        if count:
-            hits.append(namespace.value)
-            total += count
-    return VaultQueryResult(
-        status="KNOWN_ARCHETYPE" if hits else "NOVEL_SURFACE",
-        fingerprint=fingerprint,
-        record_count=total,
-        namespaces=sorted(hits),
+    """Fingerprint a target and report KNOWN_ARCHETYPE vs NOVEL_SURFACE.
+
+    LAW 4: the fingerprint is a one-way digest (safe to log); `source`
+    text, namespaces beyond their names, payloads, keys, and blobs are
+    never logged. Only the operation name, status, record count, and
+    namespace names (fixed enum values) are recorded.
+    """
+    started = time.monotonic()
+    obs_log(
+        _VAULT_ASPECT,
+        "vault.query.start",
+        message="vault query started",
+        operation="query",
     )
+    status = "NOVEL_SURFACE"
+    fingerprint = ""
+    try:
+        with obs_trace(_VAULT_ASPECT, "vault.query"):
+            fingerprint = fingerprint_source(source)
+            base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
+            hits: list[str] = []
+            total = 0
+            for namespace in VaultNamespace:
+                try:
+                    store = VaultStore(namespace, vault_dir=base)
+                    count = store.record_fingerprints().get(fingerprint, 0)
+                except VaultError:
+                    continue
+                if count:
+                    hits.append(namespace.value)
+                    total += count
+            result = VaultQueryResult(
+                status="KNOWN_ARCHETYPE" if hits else "NOVEL_SURFACE",
+                fingerprint=fingerprint,
+                record_count=total,
+                namespaces=sorted(hits),
+            )
+    except Exception:
+        status = "error"
+        raise
+    else:
+        status = result.status
+        return result
+    finally:
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        fields: dict[str, object] = {"operation": "query", "status": status}
+        if status != "error":
+            try:
+                fields["record_count"] = result.record_count
+                fields["namespaces"] = list(result.namespaces)
+            except Exception:
+                pass
+        # Fingerprint is a sha256 hex digest, not key material — safe to keep
+        # in the returned record (callers already receive it); only counts
+        # and the fixed status string go to the log.
+        obs_log(
+            _VAULT_ASPECT,
+            "vault.query.result",
+            message="vault query finished",
+            duration_ms=duration_ms,
+            **fields,
+        )
+        obs_record_metric(_VAULT_ASPECT, "vault.query.duration_ms", duration_ms, unit="ms")
 
 
 def commit_verified(
@@ -375,11 +426,43 @@ def commit_verified(
 
     Caller must enforce: only after exit 0 pre-patch -> exit 1 post-patch
     with regression gates green. This function records; it never verifies.
+
+    LAW 4: only the namespace name (fixed enum value) is logged — never the
+    source text, payload keys/values, record id (opaque handle), key bytes,
+    or blobs.
     """
-    fingerprint = fingerprint_source(source)
-    base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
-    store = VaultStore(namespace, vault_dir=base)
-    return store.commit(payload, fingerprint=fingerprint)
+    started = time.monotonic()
+    obs_log(
+        _VAULT_ASPECT,
+        "vault.commit.start",
+        message="vault commit started",
+        operation="commit",
+        namespace=namespace.value,
+    )
+    status = "ok"
+    try:
+        with obs_trace(_VAULT_ASPECT, "vault.commit"):
+            fingerprint = fingerprint_source(source)
+            base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
+            store = VaultStore(namespace, vault_dir=base)
+            record_id = store.commit(payload, fingerprint=fingerprint)
+    except Exception:
+        status = "error"
+        raise
+    else:
+        return record_id
+    finally:
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        obs_log(
+            _VAULT_ASPECT,
+            "vault.commit.result",
+            message="vault commit finished",
+            operation="commit",
+            namespace=namespace.value,
+            status=status,
+            duration_ms=duration_ms,
+        )
+        obs_record_metric(_VAULT_ASPECT, "vault.commit.duration_ms", duration_ms, unit="ms")
 
 
 def vault_stats(vault_dir: Path | str | None = None) -> dict:
@@ -388,17 +471,42 @@ def vault_stats(vault_dir: Path | str | None = None) -> dict:
     Never includes payload material (sinks, shapes, diffs, notes) — only
     counts and a rough token-saving estimate (known archetypes save a
     red-analysis round trip each).
+
+    LAW 4: the returned dict is already redacted (counts only); the
+    observability milestone logs the same counts, never anything more.
     """
+    started = time.monotonic()
     base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
-    stats: dict = {}
-    known = 0
-    for namespace in VaultNamespace:
+    stats = {"known_archetypes": 0, "tokens_saved_estimate": 0}
+    try:
+        with obs_trace(_VAULT_ASPECT, "vault.stats"):
+            stats = {}
+            known = 0
+            for namespace in VaultNamespace:
+                try:
+                    count = VaultStore(namespace, vault_dir=base).count()
+                except VaultError:
+                    count = 0
+                stats[namespace.value] = {"records": count}
+                known += count
+            stats["known_archetypes"] = known
+            stats["tokens_saved_estimate"] = known * 2000
+    except Exception:
+        raise
+    else:
+        return stats
+    finally:
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
         try:
-            count = VaultStore(namespace, vault_dir=base).count()
-        except VaultError:
-            count = 0
-        stats[namespace.value] = {"records": count}
-        known += count
-    stats["known_archetypes"] = known
-    stats["tokens_saved_estimate"] = known * 2000
-    return stats
+            known_logged = int(stats.get("known_archetypes", 0))
+        except Exception:
+            known_logged = -1
+        obs_log(
+            _VAULT_ASPECT,
+            "vault.stats.result",
+            message="vault stats finished",
+            operation="stats",
+            known_archetypes=known_logged,
+            duration_ms=duration_ms,
+        )
+        obs_record_metric(_VAULT_ASPECT, "vault.stats.duration_ms", duration_ms, unit="ms")

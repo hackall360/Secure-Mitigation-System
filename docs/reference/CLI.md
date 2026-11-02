@@ -94,6 +94,7 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--demo-size {small,standard}` | standard | Greenhouse demo size: small (fewer routes) or standard (full set) |
 | `--flaw-count N` | — | Bound the requested demo flaws to 1..8 (default: keep them all; clamps; ai-demo only) |
 | `--demo-seed N` | — | Variation nonce for AI demo generation (ai-demo only) |
+| `--observability-mode {dev,prod}` | prod (`PURPLEBOX_OBSERVABILITY_MODE`) | Observability verbosity: `prod` records milestones, `dev` records ~10x detail records (see `docs/guides/OBSERVABILITY.md`) |
 
 CVE JSON output now carries `reach_score` + `reach_evidence` per vulnerability (KEV-listed +5, EPSS percentile >=0.9 +5 tie-breaks).
 

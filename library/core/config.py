@@ -38,6 +38,7 @@ class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
     meta_base_url: str = "https://api.meta.ai/v1"
     inference_mode: str = "hosted"
+    observability_mode: str = "prod"
     # Red team default is Spark (fast triage); blue team default is Wonder (deep patch).
     red_team_model: str = "muse-spark-1.3"
     blue_team_model: str = "muse-wonder-1.0"
@@ -62,6 +63,8 @@ class PurpleBoxConfig:
     def validate(self) -> None:
         if self.inference_mode not in ("hosted", "local"):
             raise ConfigurationError("PURPLEBOX_INFERENCE_MODE must be hosted or local.")
+        if self.observability_mode not in ("dev", "prod"):
+            raise ConfigurationError("PURPLEBOX_OBSERVABILITY_MODE must be dev or prod.")
         url = urlsplit(self.meta_base_url)
         hostname = url.hostname or ""
         allowed = hostname == "api.meta.ai" or any(
@@ -158,6 +161,7 @@ def load_config() -> PurpleBoxConfig:
             .strip()
             .rstrip("/"),
             inference_mode=os.getenv("PURPLEBOX_INFERENCE_MODE", "hosted").strip().lower(),
+            observability_mode=os.getenv("PURPLEBOX_OBSERVABILITY_MODE", "prod").strip().lower(),
             red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3").strip(),
             blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "180")),
