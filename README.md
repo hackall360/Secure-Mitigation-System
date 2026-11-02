@@ -73,7 +73,7 @@ Each `verified` result ships a `VerdictReceipt`: the fix hash plus the exact exi
 
 ## Try it
 
-You need **Python 3.12+** and **Docker** (Linux containers). One command goes from clone to live verdict:
+You need **Python 3.12+**, **Node.js** (syntax checks + Node fixtures), and **Docker** (Linux containers). One command goes from clone to live verdict:
 
 ```bash
 git clone https://github.com/hackall360/Secure-Mitigation-System.git

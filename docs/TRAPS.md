@@ -4,6 +4,16 @@ One growing map per `docs/guides/WORKFLOWS.md`. Highest value first: the
 wrong assumption, then what the evidence actually showed. Link new entries
 here, not in scattered notes.
 
+## Bare-metal setup test in clean container (2026-11-02, branch feature/baremetal-setup-test)
+
+- **Result: fresh-install setup WORKS — `dev.py setup` → imports → targets → tags → smoke all green in a bare `python:3.12-slim` container; project loads without issues.**
+  Method (closest bare-metal approximation): `docker run -d python:3.12-slim sleep 3600`, `git archive HEAD | docker exec tar -x` into `/repo`, `dev.py setup` (stdlib venv fallback — no uv in slim), then `import main/tui/sms_cli`, `main.py --version/--list-targets`, `dev.py tags` (128/128), `dev.py smoke` (keyless health + 6 asset routes), 68 unit tests + ruff + `test_harness.py`. No secrets entered the container (keyless paths only). Container removed afterward (`docker rm -f`). No end-to-end scan per scope.
+- **Trap: `--network none` breaks setup at pip — and that is correct, not a bug.**
+  Wrong assumption: "air-gapped everywhere, including the test container." `dev.py setup` installs from PyPI, so a fully isolated container fails with `No matching distribution found for fastapi`. The air-gap invariant (LAW 4) covers the app's Docker sandbox, not the developer's `pip install` — bare metal has network at install time. Retested with network: setup green in 40 s. Never "fix" setup to work offline; fix the test harness instead.
+- **Trap: slim images have no `node`, and README only asked for Python + Docker.**
+  Wrong assumption: "`node --check` is a dev nicety; fixtures don't need it." The gate runs `node --check` on `targets/node_query_sink/app.js` + every `web/js/**`, and the Node fixtures need node at scan time — so a bare box without Node.js fails both. `docs/guides/DEVELOPMENT.md` already listed Node.js, but README "Try it" did not. Fix shipped: README now reads "Python 3.12+, Node.js (syntax checks + Node fixtures), and Docker"; pinned by `test_readme_try_it_lists_all_setup_prerequisites`. Lesson: the README prerequisite line and DEVELOPMENT.md must stay in sync — the container test is the check.
+  Evidence: container transcript — setup 40 s green, `imports OK` + `0.14.0`, 5 fixtures, tags 128/128, smoke 6/6 PASS, 68 unit green, harness PASS (Docker/Muse correctly skipped). `node: not found` was the only red line, from the image — not the repo.
+
 ## Overnight int(inf) OverflowError class (2026-11-01, branch feature/overnight-verify)
 
 - **Trap: `int()` on untrusted numerics raises `OverflowError`, not `ValueError` — and every `(TypeError, ValueError)` guard in the repo missed it.**
