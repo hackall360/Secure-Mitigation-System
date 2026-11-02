@@ -182,7 +182,11 @@
       const bump = (dir, mult = 1) => {
         const cur = this.v[s.key];
         const base = cur === '' || cur === null || cur === undefined ? (dir > 0 ? s.min - s.step : s.min) : Number(cur);
-        this.set(s.key, clampV(base + dir * s.step * mult));
+        const next = clampV(base + dir * s.step * mult);
+        this.set(s.key, next);
+        // _sync skips the focused input (typing guard); bump is always
+        // programmatic (keyboard/buttons), so echo the new value directly.
+        input.value = String(next);
       };
       // press-and-hold accelerates
       const hold = (btn, dir) => {
