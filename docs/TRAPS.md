@@ -249,3 +249,9 @@ occupies the `tui` import name, so only a `tui/` package dir breaks the gate.
 cleanly and the gate stays green. Rule refined: physical dirs are allowed
 unless a same-named top-level module exists; `tui/` stays a map, `web/` may
 be physical. Verified: gate green after `web/` migration (contract suite).
+
+## 2026-11-02 — intermittent session-container survivors are daemon-side, not a tracking bug (D1 closed-loop)
+
+Wrong assumption: "one surviving running target per scan = untracked leak in `close()`" — so the fix must be more tracking.
+Evidence: instrumented 1-, 2-, and 4-fixture runs with a `close()` spy all showed `tracked=1 net=1` and converged to zero residue for the spied sessions (`80c6d59d`, `013e3fd2`, `642933f5`, `3ab1e2ab`, `9f8e5c4d`, plus the full 4-fixture trace `795baeba/fd5dad2c/dca3513e/f1658f28`); `keep_tracked` (round 6 + F-01) covers transient-`remove` failures and `close()` surfaces persistent failure as `SandboxError` with the session label instead of dropping it. The survivors correlate with no code path — single runs converge, sequential runs intermittently leave one `Up` target that was demonstrably tracked at `close()` time with `cleanup_ok=True`.
+Lesson: after `close()` returns success, a container that still shows `Up` is a daemon-side slow/stuck reaping outside the tracked contract, not an ownership bug. The reconciler is `main.py --cleanup` (label-filtered `remove_stale_resources` — removed 19+6 here, verified 0/0). Do not add more tracking; re-run `--cleanup` after proof batches and move on. Genuine leaks would show `cleanup_ok=False` or `SandboxError`, which never occurred in any instrumented run.
