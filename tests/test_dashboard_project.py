@@ -238,4 +238,9 @@ def test_w5r2_dashboard_scanner_five_set_matches_cli_allowlist():
 
     server = inspect.getsource(app_module)
     assert "dependency-track" in server, "server must carry the 5-scanner allowlist"
-    assert server.count("dependency-track") >= 2, "scanner allowlist must repeat across endpoints"
+    # F-222: the allowlist is single-sourced from
+    # ALLOWED_RESEARCH_SCANNERS, not copy-pasted per endpoint. The WS, MCP
+    # stdio, cli_runner, and ai_demo paths all call _pick_research_scanners.
+    assert server.count("_pick_research_scanners(") >= 4, (
+        "every research path must use the single allowlist helper"
+    )

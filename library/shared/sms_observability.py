@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -90,26 +91,71 @@ def _now() -> str:
     )
 
 
+_SECRET_KEY_PARTS = (
+    "api_key",
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "auth",
+    "credential",
+    "cookie",
+    "bearer",
+    "private_key",
+    "privatekey",
+    "session_key",
+    "x-api-key",
+    "passwd",
+)
+_SECRET_VALUE_PREFIXES = (
+    "ghp_",
+    "gho_",
+    "ghs_",
+    "github_pat_",
+    "xoxb-",
+    "xoxp-",
+    "AKIA",
+    "ASIA",
+)
+_URL_USERINFO = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]*@")
+
+
 def _redact(value: Any) -> Any:
+    """Recursively redact secret-looking keys/values and URL userinfo.
+
+    Note: the top-level ``message=`` argument of the logging helpers is not
+    passed through here; messages are static strings by design and must never
+    interpolate secrets. Digests (e.g. ``script_sha256``) are logged on purpose,
+    so there is deliberately no generic hex/entropy rule.
+    """
     if isinstance(value, dict):
         return {k: ("REDACTED" if _looks_secret(k, v) else _redact(v)) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_redact(v) for v in value]
-    if isinstance(value, str) and _looks_secret("", value):
-        return "REDACTED"
+    if isinstance(value, str):
+        if _looks_secret("", value):
+            return "REDACTED"
+        if "://" in value and "@" in value:
+            return _URL_USERINFO.sub(lambda m: m.group("scheme") + "***@", value)
     return value
 
 
 def _looks_secret(key: str, value: Any = None) -> bool:
-    lowered = key.lower()
-    if any(
-        token in lowered for token in ("api_key", "apikey", "token", "secret", "password", "auth")
-    ):
+    lowered = str(key).lower()
+    if any(part in lowered for part in _SECRET_KEY_PARTS):
         return True
-    if isinstance(value, str) and len(value) >= 12:
-        marker = value[:7].lower().replace("_", "-")
-        if marker.startswith("sk-live") or marker.startswith("sk-ant") or marker.startswith("sk-"):
+    if isinstance(value, str):
+        if len(value) >= 12:
+            marker = value[:7].lower().replace("_", "-")
+            if marker.startswith("sk-"):
+                return True
+        if "-----BEGIN" in value and "PRIVATE KEY" in value:
             return True
+        if len(value) >= 16:
+            if value.startswith(_SECRET_VALUE_PREFIXES):
+                return True
+            if value.startswith("eyJ") and value.count(".") >= 2:
+                return True
     return False
 
 

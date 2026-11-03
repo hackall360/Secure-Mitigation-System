@@ -76,7 +76,7 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--context-budget N` | 32768 | Bounded per-call source context budget |
 | `--allow-remote-inference` | off | Consent to send source/evidence to hosted Muse endpoint |
 | `--profile {economy,balanced,quality,custom}` | — | Model profile for `--scan` (default: configured models) |
-| `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults |
+| `--config PATH` | — | TOML or JSON file with an `[sms]` table of CLI defaults. Precedence: flag > config file > env > default. Unknown keys are an error. `META_MUSE_*` / model knobs cannot be set from the config file (env or `.env` only). |
 | `--format {table,json}` | table | Non-interactive output shape (tables show guard rationales + mutation probes) |
 | `--show-usage` | off | Always print token/cost table even when no model calls were made |
 | `--output-dir PATH` | — | Save scan JSON + candidate diff to a new run dir (includes `receipt.json`) |

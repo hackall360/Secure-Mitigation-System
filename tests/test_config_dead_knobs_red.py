@@ -240,7 +240,6 @@ def test_dead_max_source_bytes_unsettable_and_unused(monkeypatch):
         ("PURPLEBOX_MEM_LIMIT", "container_mem_limit", "9m"),
         ("PURPLEBOX_CPU_NANO", "container_cpu_nano", 111_111),
         ("PURPLEBOX_NETWORK_PREFIX", "network_prefix", "sentinel-net"),
-        ("PURPLEBOX_DOCKER_TIMEOUT_SECONDS", "docker_timeout_seconds", 111),
     ],
 )
 def test_dead_infra_knob_pinned_to_default(monkeypatch, env_name, field, probe):

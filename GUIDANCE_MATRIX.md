@@ -73,3 +73,63 @@ Ruled OUT (reader claim disproven by code): R-01 "binary hardcodes 3 passes with
 - `develop` == `origin/develop` == `main` == `origin/main` (`aef40fe`). Home = `develop`, tree CLEAN.
 - Gate at ship: 1063 passed + 2 skipped, All checks passed. Red default `muse-spark-1.3-contributor`, version `0.14.0` on all surfaces.
 - Deferred to post-ship (unchanged from directive scope): Stages 4–7 live/chaos/concurrency qualification; Stages 1–3 are VERIFIED_ZERO_DELTA for audited surfaces.
+
+---
+
+# Run v2 — 2026-11-03 systems-assurance re-issue (brief `2026-11-03-systems-assurance-e2e-v2`, verbatim)
+
+Branch `feature/startup-gap-hunt` off `develop` `c64189f`. Baseline S_current: gate **1405 passed + 2 skipped, All checks passed**
+(post-dotenv fix). Recon input: 20 read-only agents (R01-R20), full reports in
+`.jcode/session/recon/2026-11-03-recon-20.md` (local, ignored). Coordinator re-verified load-bearing claims live before triage.
+
+## Coordinator live verification of recon claims (LAW 10H: no fix on an unverified claim)
+
+| Claim | Probe | Result |
+|---|---|---|
+| R18: WS binary dead above ~48 KB raw (ws_max_size=65536) | live server :8797, `/ws/binary` frames of 16 KB / 60 KB / 200 KB raw | **REPRODUCED**: 16 KB accepted (log frames), 60 KB + 200 KB `ConnectionClosedError` at transport. UI badge says 8 MiB. |
+| R17 P0-2 / repo-intake clone works | `containers.create(...)` then `exec_run` on the never-started staging container | **REPRODUCED (worse than reported)**: Docker 409 Conflict, exec on a non-running container is impossible. And target-base image has `apk` only, no `git`/`apt-get`, runs uid 10001. `intake_repo_to_snapshot(clone=True)` can never succeed live; it is only green against the unit-test fake. |
+| R17 P0-1 SSRF via clone | depends on clone working | **DISPROVEN as live risk today** (clone path cannot execute, see above) but host gate still missing. |
+| R09/R17: `cli_runner` ingest branch unreachable | `main()` dispatch at `main.py:3597-3640` | **CONFIRMED**: `main()` always refuses `--ingest-repo` (exit 2) with "not yet implemented"; `cli_runner` + TUI ingest call the dead clone path. Prior session's "intake clone retired F-01/F-02" claim was proven only against a fake. |
+
+## Failure register (Stage 2 triage; severity P0-P3, evidence level)
+
+| ID | Sev | Evidence | Subsystem | Causal chain (trigger → root cause → consequence) | Slice |
+|---|---|---|---|---|---|
+| F-201 | P1 | REPRODUCED | transport / WS binary | real binary upload → `ws_max_size=65536` at `main.py:3460,3642` → transport closes; advertised 8 MiB path dead for any real ELF | sa-main |
+| F-202 | P1 | REPRODUCED | repo intake | clone=True → `exec_run` on created-not-started container (409) + no git in image → intake can never clone; CLI refuses, TUI/cli_runner fail late after Docker work | sa-intake |
+| F-203 | P1 | SOURCE-CONFIRMED | repo intake security | `RepoIntakeSpec` accepts `user:pass@` userinfo, any host incl. loopback/RFC1918/link-local/metadata literals; creds echoed in `--ingest-dry-run` + progress | sa-intake |
+| F-204 | P1 | SOURCE-CONFIRMED | WS ingest integrity | `/ws/project` ingest frame scans client-supplied `file_list` under a claimed repo URL + commit, never fetched; verdict attributed to repo it never read (false-success family) | sa-main |
+| F-205 | P1 | SOURCE-CONFIRMED | config precedence | `merge_config(None,...)` at `main.py:3225` reads `PURPLEBOX_RESEARCH*`/`INTEL_OFFLINE` via `_env_values` BEFORE `load_config()` fills `.env` → `.env`-only research/offline silently ignored (dotenv sibling bug) | sa-config |
+| F-206 | P2 | SOURCE-CONFIRMED | config precedence | `cli_runner`/`ai_demo_runner` rebuild from `load_config()` and only override `if research:` → env `PURPLEBOX_RESEARCH=on` beats config-file `research=false` (documented order flag>config>env violated) | sa-main |
+| F-207 | P2 | SOURCE-CONFIRMED | observability / MCP stdio | `mcp_stdio_runner` inits obs with `mode=None` before any `load_config()` → `.env`-only `PURPLEBOX_OBSERVABILITY_MODE` ignored | sa-main |
+| F-208 | P2 | SOURCE-CONFIRMED | library parity | `sms_api.docker_health/cleanup_preview(None)` build bare `PurpleBoxConfig()` → skip env, `.env`, validate | sa-libmisc |
+| F-209 | P1 | SOURCE-CONFIRMED | WS concurrency | `/ws/binary` 60 s and fixture/project 30 s first-frame reads run INSIDE `async with lock` → one slow client holds the global scan lock, everyone else gets busy | sa-main |
+| F-210 | P2 | SOURCE-CONFIRMED | MCP binary | MCP HTTP + stdio `sms_scan_binary` base64-decode unbounded `blob_b64` before any cap; HTTP tempfile unlink skipped on exception (/tmp leak) | sa-main |
+| F-211 | P2 | SOURCE-CONFIRMED | binary intake | filename accepts NUL/control chars/whitespace-only; CLI/TUI `read_bytes()` unbounded before 8 MiB check | sa-binary |
+| F-212 | P1 | SOURCE-CONFIRMED | CLI JSON purity | `--ai-demo`, `--mcp-snippet`, `--binary-target` `--format json` print chatter to stdout before JSON; `--health --format json` + bad config → KeyError → empty stdout; `--config` preamble on stdout | sa-main |
+| F-213 | P2 | SOURCE-CONFIRMED | error semantics | generic `main()` catch swallows actionable text: `--ai-demo` missing key and `--project` consent print only "could not start (Type)"; MCP `-32603` drops key guidance | sa-main |
+| F-214 | P2 | SOURCE-CONFIRMED | TUI UX | TUI prints `scan failed (ConfigurationError)` type-only; user never sees which key/consent is missing | sa-tui |
+| F-215 | P2 | SOURCE-CONFIRMED | vault durability | `default_vault_dir` raw `RuntimeError` on no HOME; `mkdir` outside try → raw `OSError` escapes `VaultError` contract (carries paths into traces); `chmod` failures swallowed, no mode verify; relative/`~` override unexpanded | sa-vault |
+| F-216 | P3 | SOURCE-CONFIRMED | vault concurrency | `_bump_index` read-modify-write, no lock → lost counts under concurrent commits (index is a cache; blobs stay atomic) | sa-vault |
+| F-217 | P2 | SOURCE-CONFIRMED | WS demo | Greenhouse does keyless intel HTTP + "green" chatter before the key gate, then fails as generic "Demo generation failed (ConfigurationError)" | sa-main |
+| F-218 | P2 | SOURCE-CONFIRMED | CVE labelling | `--offline-cve` result message identical to live OSV path; offline output indistinguishable from a live verdict | sa-libmisc |
+| F-219 | P3 | SOURCE-CONFIRMED | docs/env drift | `example.env` documents unread `PURPLEBOX_DOCKER_TIMEOUT_SECONDS`; 6 read-but-undocumented knobs (DTRACK URL/KEY, NVD_API_KEY, VAULT_DIR, INTEL_OFFLINE, LOG_RAW_RESPONSES); `ENV_FALLBACKS` dead dict; CLI.md advertises nonexistent `--ingest-branch` | sa-config |
+| F-220 | P3 | SOURCE-CONFIRMED | obs redaction | `_redact` value scan only `sk-` prefixes; misses `ghp_/AKIA/PEM/JWT` shapes and `x-api-key/cookie/bearer/credential/private_key` key names | sa-libmisc |
+| F-221 | P3 | SOURCE-CONFIRMED | docker residue | `--docker-status` leftover count is containers only; networks/snapshot images invisible | sa-docker |
+| F-222 | P3 | SOURCE-CONFIRMED | WS params | `research_scanners` allowlist hardcoded 3x in `main.py` instead of importing `ALLOWED_RESEARCH_SCANNERS` (drift risk) | sa-main |
+
+Disproven / by-design (no fix): model-lock bypass (R16 all-clear); snippet env leak (R19 not visible); obs call-site leaks (R14 none);
+`--cleanup` label scope (R15 reaps all); offline CVE keyless by design (labelling fixed in F-218 only); `/ws/system` explicit-invalid by design.
+
+## Slice registry (write scopes are disjoint; coordinator owns main.py merges serially)
+
+| Slice | Agent | Write scope | Findings | Deps | Status |
+|---|---|---|---|---|---|
+| sa-main | coordinator | `main.py`, `tests/test_sa_main_*.py` | F-201 F-204 F-206 F-207 F-209 F-210 F-212 F-213 F-217 F-222 | sa-intake (spec API) | [ ] |
+| sa-intake | worker | `library/services/repo_intake.py`, `tests/test_sa_intake_*.py` | F-202 F-203 | none | [ ] |
+| sa-config | worker | `library/core/config.py`, `sms_cli.py`, `example.env`, `docs/reference/CLI.md`, `tests/test_sa_config_*.py` | F-205 F-219 | none | [ ] |
+| sa-vault | worker | `library/intel/sms_vault.py`, `tests/test_sa_vault_*.py` | F-215 F-216 | none | [ ] |
+| sa-binary | worker | `library/services/binary_intake.py`, `tests/test_sa_binary_*.py` | F-211 | none | [ ] |
+| sa-tui | worker | `tui.py`, `tests/test_sa_tui_*.py` | F-214 | none | [ ] |
+| sa-libmisc | worker | `library/services/sms_api.py`, `library/workflows/cve_workflow.py`, `library/shared/sms_observability.py`, `tests/test_sa_libmisc_*.py` | F-208 F-218 F-220 | none | [ ] |
+| sa-docker | worker | `library/core/docker_manager.py`, `tests/test_sa_docker_*.py` | F-221 | none | [ ] |

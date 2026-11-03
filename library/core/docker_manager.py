@@ -84,6 +84,30 @@ _SECRET_ENV_NAME = re.compile(
 )
 
 
+_SESSION_LABEL = {"label": "purplebox.session"}
+
+
+# Shared selectors: docker_status and remove_stale_resources must use these so
+# the readiness counts can never drift from what --cleanup actually reaps.
+def _stale_containers(client, config) -> list:
+    return client.containers.list(all=True, filters=dict(_SESSION_LABEL))
+
+
+def _stale_networks(client, config) -> list:
+    return client.networks.list(filters=dict(_SESSION_LABEL))
+
+
+def _stale_images(client, config) -> list:
+    return client.images.list(name=config.clone_repo_prefix)
+
+
+def _safe_count(selector, client, config):
+    try:
+        return len(selector(client, config))
+    except Exception:
+        return None
+
+
 def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
     """Fast, read-only readiness probe for the dashboard and CLI. Never raises."""
     owned = client is None
@@ -96,14 +120,22 @@ def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
                 client.images.get(tag)
             except ImageNotFound:
                 missing.append(tag)
-        leftovers = len(client.containers.list(all=True, filters={"label": "purplebox.session"}))
+        leftovers = len(_stale_containers(client, config))
         return {
             "state": "ready" if not missing else "images_missing",
             "missing_images": missing,
             "leftover_containers": leftovers,
+            "leftover_networks": _safe_count(_stale_networks, client, config),
+            "leftover_images": _safe_count(_stale_images, client, config),
         }
     except Exception:
-        return {"state": "unavailable", "missing_images": [], "leftover_containers": 0}
+        return {
+            "state": "unavailable",
+            "missing_images": [],
+            "leftover_containers": 0,
+            "leftover_networks": None,
+            "leftover_images": None,
+        }
     finally:
         if owned and client is not None:
             try:
@@ -154,9 +186,8 @@ def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
     """
     client = client if client is not None else docker.from_env(timeout=60)
     removed = {"containers": 0, "networks": 0, "snapshots": 0}
-    label = {"label": "purplebox.session"}
     try:
-        containers = client.containers.list(all=True, filters=label)
+        containers = _stale_containers(client, config)
     except DockerException:
         containers = []
     for container in containers:
@@ -170,7 +201,7 @@ def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
             continue
         removed["containers"] += 1
     try:
-        networks = client.networks.list(filters=label)
+        networks = _stale_networks(client, config)
     except DockerException:
         networks = []
     for network in networks:
@@ -182,7 +213,7 @@ def remove_stale_resources(config: PurpleBoxConfig, *, client=None) -> dict:
             continue
         removed["networks"] += 1
     try:
-        snapshots = client.images.list(name=config.clone_repo_prefix)
+        snapshots = _stale_images(client, config)
     except DockerException:
         snapshots = []
     for image in snapshots:
@@ -1024,6 +1055,8 @@ class DockerSandboxManager:
                     pass
                 except Exception:
                     failures.append("network")
+            # Deliberately non-force (unlike remove_stale_resources, which
+            # forces): an in-use snapshot must survive a live session close.
             for image in reversed(self.images):
                 try:
                     self.client.images.remove(image=image)
