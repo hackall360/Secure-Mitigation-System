@@ -146,7 +146,12 @@ def docker_status(config: PurpleBoxConfig, *, client=None) -> dict:
 
 def _assert_dockerfiles_pinned() -> None:
     """Fail closed if any Dockerfile drifts off the pinned digest base."""
-    for filename in ("Dockerfile.target", "Dockerfile.verifier", "Dockerfile.binary"):
+    for filename in (
+        "Dockerfile.target",
+        "Dockerfile.verifier",
+        "Dockerfile.binary",
+        "Dockerfile.clone",
+    ):
         content = (BASE_DIR / "docker" / filename).read_text(encoding="utf-8")
         if PINNED_PYTHON_BASE not in content:
             raise SandboxError(
@@ -163,6 +168,7 @@ def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
         (config.target_base_image, "Dockerfile.target"),
         (config.verifier_base_image, "Dockerfile.verifier"),
         (config.binary_base_image, "Dockerfile.binary"),
+        (config.clone_base_image, "Dockerfile.clone"),
     ):
         client.images.build(
             path=str(BASE_DIR / "docker"),
@@ -252,6 +258,7 @@ class DockerSandboxManager:
             (self.config.target_base_image, "Dockerfile.target"),
             (self.config.verifier_base_image, "Dockerfile.verifier"),
             (self.config.binary_base_image, "Dockerfile.binary"),
+            (self.config.clone_base_image, "Dockerfile.clone"),
         ):
             try:
                 self.client.images.get(tag)
