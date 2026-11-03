@@ -51,15 +51,16 @@ _ACTIONABLE_SUFFIX = (
 
 @dataclass(frozen=True)
 class RepoIntakeSpec:
-    """Validated repo-intake request: HTTPS remote + pinned 40-hex commit.
+    """Validated repo-intake request: HTTPS remote + optional pinned 40-hex commit.
 
     Rejects non-HTTPS schemes (``git://``, ``ssh://``, scp-style
-    ``host:path``) and blank/short/non-hex commit hashes. No ``host_path``
+    ``host:path``) and blank/short/non-hex commit hashes. ``commit_hash=None``
+    (the default) means the remote's default-branch HEAD as-is. No ``host_path``
     attribute exists by design: intake never touches host paths.
     """
 
     url: str
-    commit_hash: str
+    commit_hash: str | None = None
 
     def __post_init__(self) -> None:
         # Error messages name the rule only: the URL may carry credentials.
@@ -91,12 +92,14 @@ class RepoIntakeSpec:
                 "reserved, multicast, or internal names)."
             )
         commit = self.commit_hash
+        if commit is None:
+            return
         if (
             not isinstance(commit, str)
             or len(commit) != 40
             or any(char not in _COMMIT_HEX_CHARS for char in commit)
         ):
-            raise ValueError("commit_hash must be a 40-hex pinned commit")
+            raise ValueError("commit_hash must be a 40-hex pinned commit (or None for HEAD)")
 
 
 _BLOCKED_HOSTNAMES = frozenset({"localhost", "metadata.google.internal"})
@@ -131,9 +134,13 @@ class RepoIntakeSnapshot:
 
     files: MappingProxyType
     url: str
-    commit_hash: str
+    commit_hash: str | None
     runtime_command: tuple
     digest: str
+
+
+def _digest_commit(commit: str | None) -> bytes:
+    return b"" if commit is None else commit.encode("utf-8")
 
 
 def _manifest_digest(spec: RepoIntakeSpec, runtime_command: tuple) -> str:
@@ -141,7 +148,7 @@ def _manifest_digest(spec: RepoIntakeSpec, runtime_command: tuple) -> str:
     digest.update(_INGEST_DIGEST_DOMAIN)
     digest.update(spec.url.encode("utf-8"))
     digest.update(b"\0")
-    digest.update(spec.commit_hash.encode("utf-8"))
+    digest.update(_digest_commit(spec.commit_hash))
     digest.update(b"\0")
     digest.update(json.dumps(list(runtime_command)).encode("utf-8"))
     return digest.hexdigest()
@@ -347,7 +354,7 @@ def intake_repo_to_snapshot(
     manifest = MappingProxyType(
         {
             "repo.url": spec.url.encode("utf-8"),
-            "repo.commit_hash": spec.commit_hash.encode("utf-8"),
+            "repo.commit_hash": _digest_commit(spec.commit_hash),
             "repo.runtime_command": json.dumps(list(runtime_command)).encode("utf-8"),
         }
     )
@@ -370,14 +377,35 @@ def intake_repo_to_snapshot(
     )
 
 
-_CLONE_SCRIPT = (
+_CLONE_SCRIPT_HEAD = (
     "git -c protocol.allow=never -c protocol.https.allow=always "
     "-c submodule.recurse=false clone --depth 1 --no-recurse-submodules "
-    '-- "$1" /work/repo && '
+    '-- "$1" /work/repo'
+)
+_CLONE_SCRIPT_PINNED = _CLONE_SCRIPT_HEAD + (
+    " && "
     "git -C /work/repo -c protocol.allow=never -c protocol.https.allow=always "
     '-c submodule.recurse=false fetch --depth 1 origin "$2" && '
     'git -C /work/repo -c submodule.recurse=false checkout --detach "$2"'
 )
+# Back-compat alias: the pinned-commit script keeps the historic name.
+_CLONE_SCRIPT = _CLONE_SCRIPT_PINNED
+
+
+def _resolve_commit(spec: RepoIntakeSpec) -> tuple[str, list[str]]:
+    """Pick the clone script and positional argv for ``spec``.
+
+    Returns ``(script, argv)`` where ``argv`` is ``[url]`` for a ``None``
+    commit (default-branch HEAD as-is: no ``fetch``/``checkout`` steps) or
+    ``[url, commit]`` for a pinned 40-hex commit. The URL and commit stay
+    positional ``sh -c`` arguments (``$1``/``$2``), never interpolated into
+    the script text.
+    """
+    if spec.commit_hash is None:
+        return _CLONE_SCRIPT_HEAD, [spec.url]
+    return _CLONE_SCRIPT_PINNED, [spec.url, spec.commit_hash]
+
+
 _NO_GIT_MESSAGE = (
     "staging clone unavailable: no git in the staging image; build or pass a clone image with git"
 )
@@ -421,15 +449,26 @@ def _clone_in_staging(
     if client is None:
         raise ValueError("clone=True requires a sandbox with a Docker client")
     config = getattr(sandbox, "config", None)
-    configured = getattr(config, "target_base_image", None)
-    image = clone_image or (configured if isinstance(configured, str) else None) or "sms-target"
+    clone_configured = getattr(config, "clone_base_image", None)
+    # Legacy backstop: test doubles built before clone_base_image existed only
+    # carry target_base_image; prefer them over the "sms-clone" literal so
+    # those doubles keep resolving a real configured tag.
+    legacy_configured = getattr(config, "target_base_image", None)
+    image = (
+        clone_image
+        or (clone_configured if isinstance(clone_configured, str) else None)
+        or (legacy_configured if isinstance(legacy_configured, str) else None)
+        or "sms-clone"
+    )
     if not isinstance(image, str) or not image:
-        raise ValueError("clone=True requires a clone image (sandbox.config.target_base_image)")
+        raise ValueError("clone=True requires a clone image (sandbox.config.clone_base_image)")
     host = urlparse(spec.url).hostname or "?"
-    where = f"{host} @ {spec.commit_hash[:12]}"
+    commit = spec.commit_hash or "HEAD"
+    where = f"{host} @ {commit[:12]}"
+    script, argv = _resolve_commit(spec)
     container = client.containers.run(
         image,
-        command=["sh", "-c", _CLONE_SCRIPT, "sh", spec.url, spec.commit_hash],
+        command=["sh", "-c", script, "sh", *argv],
         detach=True,
         network_mode="bridge",
         user="10001",
