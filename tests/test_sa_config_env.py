@@ -83,3 +83,13 @@ def test_example_env_documents_knob(name):
 def test_cli_doc_documents_config_precedence():
     text = (ROOT / "docs/reference/CLI.md").read_text()
     assert "flag > config file > env > default" in text
+
+
+def test_f206_explicit_false_flag_beats_file_and_env(monkeypatch, tmp_path):
+    """F-206: an explicit falsy flag is a real choice, not absence."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PURPLEBOX_RESEARCH", "on")
+    merged = sms_cli.merge_config(None, {"research": True}, {"research": False})
+    assert merged["research"] is False
+    merged_on = sms_cli.merge_config(None, {"research": False}, {"research": True})
+    assert merged_on["research"] is True

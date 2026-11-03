@@ -166,7 +166,11 @@ def merge_config(env: dict | None, file_values: dict, flags: dict) -> dict:
     merged: dict = {}
     source = dict(env) if env is not None else _env_values()
     for key in CONFIG_KEYS:
-        if key in flags and flags[key] not in (None, "", False):
+        if key in flags and flags[key] not in (None, ""):
+            # Explicit flag wins even when falsy (F-206): argparse only ever
+            # puts explicit choices into `flags` (main.py compares against
+            # defaults), so False/0 are real choices that beat file and env.
+            # store_true flags can never pass False — absence means unset.
             merged[key] = flags[key]
         elif key in file_values:
             merged[key] = file_values[key]
