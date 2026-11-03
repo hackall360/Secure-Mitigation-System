@@ -275,10 +275,19 @@ geckodriver.log
 chromedriver.log
 *.har
 # Agent scratch and local tooling state.
+.jcode/*
+!.jcode/tools/
 .jcode/scratch/
 .jcode/briefs/
 .jcode/session/
 .jcode/tools/__pycache__/
+# Harness-private notes (machine-specific, session journals, ledgers).
+# The shared dev harness in .jcode/tools/ stays tracked; everything else
+# in .jcode/ is local-only and never committed.
+/.jcode/AGENTS.md
+/.jcode/agents/
+/.jcode/laws/
+/.jcode/session/
 *.tmp
 .DS_Store
 Thumbs.db

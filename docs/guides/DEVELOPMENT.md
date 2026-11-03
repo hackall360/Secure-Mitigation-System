@@ -10,6 +10,12 @@ Node.js, and a running Linux Docker Engine your user can reach
 (`docker info` must work without sudo). No key, no network beyond the clone
 and the first image build.
 
+Harness privacy: `.jcode/tools/` (dev.py, scanners, E2E harnesses) is the
+shared, tracked dev harness — fresh clones need it. Everything else under
+`.jcode/` (AGENTS.md, `agents/`, `laws/`, `session/`, `briefs/`) is
+machine-local and git-ignored; never commit it (pinned by
+`test_private_harness_paths_untracked_and_ignored`).
+
 ```sh
 git clone https://github.com/hackall360/Secure-Mitigation-System.git
 cd Secure-Mitigation-System

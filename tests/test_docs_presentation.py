@@ -221,3 +221,31 @@ def test_readme_try_it_lists_all_setup_prerequisites():
     assert "Python 3.12" in try_it
     assert "Docker" in try_it
     assert "Node.js" in try_it or "Node" in try_it
+
+
+def test_private_harness_paths_untracked_and_ignored():
+    import subprocess
+
+    root = README.parent
+    # Private harness surface must never be committed: AGENTS, agents/,
+    # laws/, session/. The shared dev harness (.jcode/tools/*.py) stays
+    # tracked — fresh clones need it for setup/gate.
+    tracked = subprocess.run(
+        ["git", "ls-files", ".jcode"], capture_output=True, text=True, cwd=root
+    ).stdout.splitlines()
+    bad = [
+        p
+        for p in tracked
+        if p == ".jcode/AGENTS.md"
+        or p.startswith((".jcode/agents/", ".jcode/laws/", ".jcode/session/"))
+    ]
+    assert not bad, f"private harness files tracked: {bad}"
+    tools = [p for p in tracked if p.startswith(".jcode/tools/") and p.endswith(".py")]
+    assert "dev.py" in [p.split("/")[-1] for p in tools], "dev harness must stay tracked"
+    ignored = subprocess.run(
+        ["git", "check-ignore", ".jcode/AGENTS.md", ".jcode/session/root/x.md"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    ).stdout.splitlines()
+    assert len(ignored) == 2, "private paths must resolve as ignored"
