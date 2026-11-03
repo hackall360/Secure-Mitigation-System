@@ -242,6 +242,50 @@ def run_live(
     return 0
 
 
+#: Stages allowed in an --auto schedule (STAGE_META keys, web/js/core/palette.js).
+STAGE_META_KEYS = frozenset(
+    {"sandbox", "baseline", "analysis", "probe", "patch", "regression", "cleanup"}
+)
+
+
+def run_auto(
+    doc: Path | None = None,
+    out: Path | str | None = None,
+    *,
+    scenario: Path | None = None,
+) -> int:
+    """Write a machine-readable beat schedule for the demo.js presenter.
+
+    Re-parses ``doc`` beats, validates stages vs STAGE_META_KEYS, cross-checks
+    doc vs scenario BEATS (doctored stems fail closed). Emits JSON ``[{t,
+    stage, stem, narration}]`` with absolute T+ starts to ``out``. No network,
+    no audio, no browser — a downstream harness feeds it to the presenter.
+    """
+    beats = parse_doc_beats(doc)
+    if not beats:
+        print("auto failed: no beats parsed from the beat file")
+        return 1
+    drift = check_beats(doc, scenario)
+    if drift:
+        print(f"auto FAILED: {len(drift)} drift line(s): {drift[0]}")
+        return 1
+    sched = [
+        {"t": mmss(b["start"]), "stage": b["stage"], "stem": b["stem"], "narration": b["narration"]}
+        for b in beats
+    ]
+    bad = sorted({e["stage"] for e in sched} - set(STAGE_META_KEYS))
+    if bad:
+        print(f"auto failed: stages outside STAGE_META: {bad}")
+        return 1
+    if out is None:
+        print(json.dumps(sched, indent=2))
+        return 0
+    dest = Path(out)
+    dest.write_text(json.dumps(sched, indent=2) + "\n", encoding="utf-8")
+    print(f"auto: wrote {len(sched)} beats to {dest} (end T+{cumulative_end(beats):.1f}s)")
+    return 0
+
+
 def run_check_beats(doc: Path | None = None, scenario: Path | None = None) -> int:
     """Exit 0 iff doc beats == scenario.js BEATS 1:1 (range/stage/stem/narration)."""
     drift = check_beats(doc, scenario)
@@ -277,6 +321,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check-beats",
         action="store_true",
         help="Assert doc beats == scenario.js BEATS 1:1, exit non-zero on drift",
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Write a machine-readable beat schedule [{t, stage, stem, narration}] "
+        "for the demo.js presenter (validates stages + BEATS 1:1, no network)",
+    )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Schedule JSON path for --auto (default: print to stdout)",
     )
     parser.add_argument(
         "--base",
@@ -321,6 +376,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"demo driver failed: scenario rig not found: {scenario}")
             return 1
         return run_check_beats(doc, scenario)
+    if args.auto:
+        return run_auto(doc, args.out, scenario=scenario)
     if args.live:
         return run_live(args.base, doc, timeout=args.timeout, pace=args.pace)
     return run_dry_run(doc)

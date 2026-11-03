@@ -26,6 +26,32 @@
   new ExplainToggle($('ex-toggle'), { page: 'demo', def: 'both' });
 
   const state = { launch: null, source: 'fake', session: null, replay: null, started: 0, timer: 0, result: null, running: false, msgs: 0, lens: 'file', story: {}, stage: '' };
+  // Narration stems (4B): text-first, audio opt-in. BEATS mirror docs/DEMO_SCRIPT.md;
+  // stems are pre-rendered at video time (client.py --render) — never rendered here.
+  // Toggle defaults OFF so untouched runs behave exactly as before.
+  let narrationOn = false;
+  function narrationToggle(stage) {
+    if (!narrationOn || !stage) return;
+    const beats = (SMS.scenario && SMS.scenario.BEATS) || [];
+    const beat = beats.filter((b) => b.stage === stage).pop() || beats[beats.length - 1];
+    if (!beat || !beat.stem) return;
+    const stem = beat.stem;
+    const line = beat.narration;
+    state.narration = { stem: stem, line: line };
+    fetch('/api/narration/' + stem)
+      .then((r) => { if (!r.ok) return null; return r.arrayBuffer(); })
+      .then((buf) => {
+        if (!buf) return null;
+        return new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))).play().catch(() => {});
+      })
+      .catch(() => {});
+  }
+  const narBtn = $('nar-toggle');
+  if (narBtn) narBtn.addEventListener('click', () => {
+    narrationOn = !narrationOn;
+    narBtn.setAttribute('aria-pressed', String(narrationOn));
+    if (narrationOn && state.stage) narrationToggle(state.stage);
+  });
   SMS.explain.on((lv) => { graph.setExplain(lv); if (state.stage) caption(state.stage, state.override); requestAnimationFrame(syncInsets); });
 
   /* ---------- fit the map into the space the HUD leaves free ---------- */
@@ -187,6 +213,7 @@
     scramble($('cap-title'), override || (expert ? m.caption : said.simple), 650);
     $('cap-tech').textContent = said.expert;
     document.body.dataset.stage = stage;
+    narrationToggle(stage);
   }
 
   interp.on('stage', (stage) => { stagebar.set(stage); caption(stage); });
