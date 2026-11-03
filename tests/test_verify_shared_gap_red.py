@@ -92,10 +92,7 @@ def test_vendor_map_non_dict_is_empty():
 
 def test_vendor_map_falls_back_to_any_vendor():
     assert scan.cvss_from_vendor_map({"other": {"V3Score": 8.0}}) == "8.0"
-    assert (
-        scan.cvss_from_vendor_map({"nvd": {"V2Score": None}, "other": {"V3Score": 8.0}})
-        == "8.0"
-    )
+    assert scan.cvss_from_vendor_map({"nvd": {"V2Score": None}, "other": {"V3Score": 8.0}}) == "8.0"
     assert scan.cvss_from_vendor_map({"nvd": "junk", "other": {"V3Score": 8.0}}) == "8.0"
 
 

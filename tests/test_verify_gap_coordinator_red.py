@@ -29,8 +29,12 @@ def test_usage_from_response_non_dict_body_counts_zero():
 def test_scan_usage_cost_none_when_any_call_unpriced():
     from modules.core.pricing import CallUsage, ScanUsage
 
-    priced = CallUsage(role="red", model="muse-spark-1.3", prompt_tokens=10, completion_tokens=5, cost_usd=0.001)
-    unpriced = CallUsage(role="red", model="muse-spark-1.3", prompt_tokens=10, completion_tokens=5, cost_usd=None)
+    priced = CallUsage(
+        role="red", model="muse-spark-1.3", prompt_tokens=10, completion_tokens=5, cost_usd=0.001
+    )
+    unpriced = CallUsage(
+        role="red", model="muse-spark-1.3", prompt_tokens=10, completion_tokens=5, cost_usd=None
+    )
     assert ScanUsage(calls=[priced, unpriced]).cost_usd is None
     assert ScanUsage(calls=[]).cost_usd is None
     assert ScanUsage(calls=[priced]).cost_usd == 0.001

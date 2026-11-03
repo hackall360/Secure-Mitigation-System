@@ -25,7 +25,6 @@ from tests.helpers import (
     silent_emit,
 )
 
-
 # --- 1. _sink_keywords grounds the research sidecar on local hints ---
 
 

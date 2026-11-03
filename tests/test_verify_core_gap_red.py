@@ -4,7 +4,7 @@
 """RED-first: each test targets lines no existing test executes (verify_cov gaps).
 
 pricing.total_tokens / pricing unknown-model (lines 48, 61); config accept/reject
-branches (local URL, mem/cpu/image/name/scanner/max-bytes/require-key); 
+branches (local URL, mem/cpu/image/name/scanner/max-bytes/require-key);
 project_models non-dict/symlink/mode guards; scan_profiles ultra_heavy derivation.
 """
 

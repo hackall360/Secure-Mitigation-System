@@ -57,7 +57,9 @@ def test_validate_blob_empty_and_oversize_and_dotfile_and_backslash():
     with pytest.raises(BinaryRejected, match="empty"):
         validate_binary_blob(b"", filename="t.elf", contract="c")
     with pytest.raises(BinaryRejected, match="8 MiB"):
-        validate_binary_blob(b"\x7fELF" + b"\x00" * BINARY_MAX_BYTES, filename="t.elf", contract="c")
+        validate_binary_blob(
+            b"\x7fELF" + b"\x00" * BINARY_MAX_BYTES, filename="t.elf", contract="c"
+        )
     with pytest.raises(BinaryRejected, match="bare filename"):
         validate_binary_blob(ELF, filename=".hidden.elf", contract="c")
     with pytest.raises(BinaryRejected, match="bare filename"):
@@ -113,7 +115,10 @@ def test_snapshot_project_skips_and_caps(tmp_path):
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "config").write_text("x")
     spec = ProjectSpec(
-        path=tmp_path, command=["python3", "ok.py"], test_command=["python3", "-m", "unittest"], contract="c"
+        path=tmp_path,
+        command=["python3", "ok.py"],
+        test_command=["python3", "-m", "unittest"],
+        contract="c",
     )
     snap = snapshot_project(spec)
     assert "secret.pem" in snap.skipped
@@ -130,7 +135,11 @@ def test_snapshot_project_skips_and_caps(tmp_path):
         snapshot_project(spec, max_file_bytes=4)
     tiny = dict(snap.files)
     with pytest.raises(ValueError, match="exceeds"):
-        P.replace_snapshot_files(snap, {"ok.py": b"x" * (sum(map(len, tiny.values())) + 1)}, max_total_bytes=sum(map(len, tiny.values())))
+        P.replace_snapshot_files(
+            snap,
+            {"ok.py": b"x" * (sum(map(len, tiny.values())) + 1)},
+            max_total_bytes=sum(map(len, tiny.values())),
+        )
 
 
 def test_snapshot_project_rejects_empty_and_special(tmp_path):
@@ -232,7 +241,10 @@ def test_package_and_makefile_content_variants():
     from modules.services.repo_intake import _makefile_command, _package_json_command
 
     assert _package_json_command('{"main": "  "}') == ["npm", "start"]
-    assert _package_json_command('{"scripts": {"start": "x"}, "main": "srv.js"}') == ["npm", "start"]
+    assert _package_json_command('{"scripts": {"start": "x"}, "main": "srv.js"}') == [
+        "npm",
+        "start",
+    ]
     assert _package_json_command('{"scripts": "nope"}') == ["npm", "start"]
     assert _package_json_command('["not", "a", "dict"]') == ["npm", "start"]
     assert _makefile_command("") == ["make"]
@@ -283,7 +295,11 @@ def test_intake_manifest_digest_and_plan_shape():
 def test_mcp_language_filename_and_suffix_maps():
     from modules.services.mcp_bridge import SNIPPET_FILENAME_BY_LANGUAGE, SNIPPET_LANGUAGE_BY_SUFFIX
 
-    assert SNIPPET_FILENAME_BY_LANGUAGE == {"javascript": "app.js", "python": "app.py", "php": "index.php"}
+    assert SNIPPET_FILENAME_BY_LANGUAGE == {
+        "javascript": "app.js",
+        "python": "app.py",
+        "php": "index.php",
+    }
     assert SNIPPET_LANGUAGE_BY_SUFFIX[".mjs"] == "javascript"
     assert SNIPPET_LANGUAGE_BY_SUFFIX[".py"] == "python"
 
@@ -300,7 +316,11 @@ def test_snippet_schema_definitions():
     assert tool["name"] == "submit_code_snippet"
     assert B.MCP_TOOLS and len(B.MCP_TOOLS) == 6
     src = B.sms_scan_source_tool_definition()
-    assert src["inputSchema"]["properties"]["max_passes"] == {"type": "integer", "minimum": 1, "maximum": 3}
+    assert src["inputSchema"]["properties"]["max_passes"] == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3,
+    }
     binary = B.sms_scan_binary_tool_definition()
     assert "blob_b64" in binary["inputSchema"]["properties"]
     stats = B.sms_query_vault_stats_tool_definition()
@@ -382,7 +402,12 @@ def test_handle_mcp_status_and_vault_samples():
     )
     assert long_id["result"]["structuredContent"]["scan_id"] == "x" * 64
     stats = B.handle_mcp_request(
-        {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "sms_query_vault_stats"}}
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "sms_query_vault_stats"},
+        }
     )
     assert "stats" in stats["result"]["structuredContent"]
     receipt = B.handle_mcp_request(

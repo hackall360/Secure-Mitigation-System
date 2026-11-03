@@ -36,32 +36,27 @@ import json
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # G1: vault crypto fail-closed
 # ---------------------------------------------------------------------------
 
 
 def test_encrypt_blob_refuses_short_key():
-    from modules.intel.sms_vault import VaultError
-    from modules.intel.sms_vault import encrypt_blob
+    from modules.intel.sms_vault import VaultError, encrypt_blob
 
     with pytest.raises(VaultError, match="32 bytes"):
         encrypt_blob({"a": 1}, key=b"\x01" * 16)
 
 
 def test_decrypt_blob_refuses_short_key():
-    from modules.intel.sms_vault import VaultError
-    from modules.intel.sms_vault import decrypt_blob
+    from modules.intel.sms_vault import VaultError, decrypt_blob
 
     with pytest.raises(VaultError, match="32 bytes"):
         decrypt_blob(b"{}", key=b"\x01" * 8)
 
 
 def test_decrypt_blob_rejects_truncated_envelope(tmp_path):
-    from modules.intel.sms_vault import VaultError
-    from modules.intel.sms_vault import decrypt_blob
-    from modules.intel.sms_vault import encrypt_blob
+    from modules.intel.sms_vault import VaultError, decrypt_blob, encrypt_blob
 
     key = b"\x02" * 32
     blob = encrypt_blob({"kind": "boundary_escape", "sink": "eval(x)"}, key=key)
@@ -76,9 +71,7 @@ def test_decrypt_blob_rejects_truncated_envelope(tmp_path):
 
 
 def test_blob_path_rejects_malformed_record_id(tmp_path):
-    from modules.intel.sms_vault import VaultError
-    from modules.intel.sms_vault import VaultNamespace
-    from modules.intel.sms_vault import VaultStore
+    from modules.intel.sms_vault import VaultError, VaultNamespace, VaultStore
 
     store = VaultStore(namespace=VaultNamespace.RED, vault_dir=tmp_path / "v")
     with pytest.raises(VaultError, match="malformed"):
@@ -88,9 +81,7 @@ def test_blob_path_rejects_malformed_record_id(tmp_path):
 
 
 def test_commit_refuses_non_mapping_payload(tmp_path):
-    from modules.intel.sms_vault import VaultError
-    from modules.intel.sms_vault import VaultNamespace
-    from modules.intel.sms_vault import VaultStore
+    from modules.intel.sms_vault import VaultError, VaultNamespace, VaultStore
 
     store = VaultStore(namespace=VaultNamespace.BLUE, vault_dir=tmp_path / "v")
     with pytest.raises(VaultError, match="mapping"):
@@ -189,13 +180,8 @@ def test_ghsa_first_patched_version_branches():
 
     assert fpv({"first_patched_version": "  5.6.2  "}) == "5.6.2"
     assert fpv({"first_patched_version": {"identifier": "1.2.3"}}) == "1.2.3"
-    assert (
-        fpv({"vulnerabilities": [{"first_patched_version": "9.9.9"}, {"junk": 1}]}) == "9.9.9"
-    )
-    assert (
-        fpv({"vulnerabilities": [{"first_patched_version": {"identifier": "7.7.7"}}]})
-        == "7.7.7"
-    )
+    assert fpv({"vulnerabilities": [{"first_patched_version": "9.9.9"}, {"junk": 1}]}) == "9.9.9"
+    assert fpv({"vulnerabilities": [{"first_patched_version": {"identifier": "7.7.7"}}]}) == "7.7.7"
     assert fpv({"vulnerabilities": ["nope", {"first_patched_version": None}]}) == ""
     assert fpv({}) == ""
 
@@ -291,12 +277,17 @@ def test_scan_packages_polls_to_project_uuid(monkeypatch):
         calls.append((method, path, body))
         if path == "/api/v1/bom":
             assert body["projectName"] == "proj"
-            assert json.loads(__import__("base64").b64decode(body["bom"]).decode())[
-                "bomFormat"
-            ] == "CycloneDX"
+            assert (
+                json.loads(__import__("base64").b64decode(body["bom"]).decode())["bomFormat"]
+                == "CycloneDX"
+            )
             return {"token": "tok-1"}
         if path.startswith("/api/v1/bom/token/"):
-            return {"processing": True} if len(calls) < 3 else {"processing": False, "project": "uuid-9"}
+            return (
+                {"processing": True}
+                if len(calls) < 3
+                else {"processing": False, "project": "uuid-9"}
+            )
         if path.startswith("/api/v1/finding/project/"):
             assert path.endswith("uuid-9")
             return [
@@ -331,7 +322,9 @@ def test_run_json_failure_reasons_degrade(monkeypatch):
         def __init__(self, out):
             self.stdout = out
 
-    monkeypatch.setattr(_sb.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(_sp.TimeoutExpired("x", 1)))
+    monkeypatch.setattr(
+        _sb.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(_sp.TimeoutExpired("x", 1))
+    )
     assert _sb._run_json("trivy", ["x"], timeout=1) is None
     assert _sb._run_json.last_reason == "timeout"
 

@@ -5,11 +5,18 @@
 print per-file line-coverage for library/main/tui/sms_cli/docker, list the
 lowest-coverage files (gap-test targets), exit 1 if any file < THRESHOLD."""
 
+import ast
+import json
 import subprocess
 import sys
+from pathlib import Path
 
-THRESHOLD = float(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].replace(".", "").isdigit() else 0.0
-PYTEST_ARGS = [a for a in sys.argv[1:] if not (a.replace(".", "").isdigit() and float(a) == THRESHOLD)]
+THRESHOLD = (
+    float(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].replace(".", "").isdigit() else 0.0
+)
+PYTEST_ARGS = [
+    a for a in sys.argv[1:] if not (a.replace(".", "").isdigit() and float(a) == THRESHOLD)
+]
 
 TRACER = """
 import sys
@@ -32,16 +39,11 @@ r = subprocess.run(
 print(r.stdout[-2000:])
 print(r.stderr[-1000:], file=sys.stderr)
 
-import json
-from pathlib import Path
-
 try:
     cov = json.load(open("/tmp/verify_cov.json"))
 except FileNotFoundError:
     print("no coverage data collected")
     sys.exit(2)
-
-import ast
 
 ROOT = Path(".").resolve()
 gaps = []
@@ -59,7 +61,9 @@ for fname, lines in sorted(cov.items()):
     except Exception:
         continue
     code_lines = {n.lineno for n in ast.walk(tree) if isinstance(n, (ast.stmt,))} - {
-        n.lineno for n in ast.walk(tree) if isinstance(n, (ast.Expr,)) and isinstance(getattr(n, "value", None), (ast.Constant,))
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Expr,)) and isinstance(getattr(n, "value", None), (ast.Constant,))
     }
     code_lines = {ln for ln in code_lines if ln}
     hit = set(lines) & code_lines

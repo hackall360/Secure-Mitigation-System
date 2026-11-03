@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-
 # --- demo_gen._text: list/set joining, None, non-string coercion ---
 
 
@@ -112,9 +111,7 @@ def test_generate_demo_project_fail_fast_on_bad_syntax():
             )
 
     with pytest.raises(ValueError, match="invalid app.py"):
-        asyncio.run(
-            generate_demo_project(FakeClient(), intel_context=[], build_brief="b")
-        )
+        asyncio.run(generate_demo_project(FakeClient(), intel_context=[], build_brief="b"))
 
 
 # --- repo_intake pure helpers: normalise entries, commands, detection ---
@@ -312,7 +309,11 @@ def test_scan_status_sinks_track_phases():
 def test_snippet_targets_and_envelopes():
     import modules.services.mcp_bridge as B
 
-    for lang, key in (("JavaScript", "node_query_sink"), ("PYTHON", "node_query_sink"), ("php", "php_command_sink")):
+    for lang, key in (
+        ("JavaScript", "node_query_sink"),
+        ("PYTHON", "node_query_sink"),
+        ("php", "php_command_sink"),
+    ):
         args = B.validate_snippet_arguments(
             {"filename": "x", "language": lang, "source": "print(1)", "contract": "c"}
         )
@@ -358,9 +359,12 @@ def test_handle_mcp_request_branches():
     assert B.handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "ping"})["result"] == {}
     init = B.handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     assert init["result"]["serverInfo"]["name"] == "secure-mitigation-system"
-    assert B.handle_mcp_request(
-        {"jsonrpc": "2.0", "id": 1, "method": "notifications/initialized"}
-    )["result"] == {}
+    assert (
+        B.handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "notifications/initialized"})[
+            "result"
+        ]
+        == {}
+    )
     tools = B.handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     assert tools["result"]["tools"]
     listed = B.handle_mcp_request(
@@ -487,7 +491,10 @@ def test_snapshot_digest_orders_and_binds_mode_and_bytes(tmp_path):
 
     (tmp_path / "a.py").write_text("print(1)\n")
     spec = ProjectSpec(
-        path=tmp_path, command=["python3", "a.py"], test_command=["python3", "-m", "unittest"], contract="c"
+        path=tmp_path,
+        command=["python3", "a.py"],
+        test_command=["python3", "-m", "unittest"],
+        contract="c",
     )
     snap = snapshot_project(spec)
     assert snap.digest and len(snap.digest) == 64
@@ -513,7 +520,10 @@ def test_replace_snapshot_guards_and_paths(tmp_path):
 
     (tmp_path / "a.py").write_text("print(1)\n")
     spec = ProjectSpec(
-        path=tmp_path, command=["python3", "a.py"], test_command=["python3", "-m", "unittest"], contract="c"
+        path=tmp_path,
+        command=["python3", "a.py"],
+        test_command=["python3", "-m", "unittest"],
+        contract="c",
     )
     snap = snapshot_project(spec)
     assert replace_snapshot_files(snap, {}) is snap
@@ -581,9 +591,7 @@ def test_source_chunk_bounds_and_outcome_guards():
     with pytest.raises(Exception, match="finding requires"):
         RedReport(outcome="finding", analysis_summary="s")
     with pytest.raises(Exception, match="no-finding"):
-        RedReport(
-            outcome="no_finding", analysis_summary="s", vulnerability="v"
-        )
+        RedReport(outcome="no_finding", analysis_summary="s", vulnerability="v")
 
 
 def test_compact_indices_and_focus_labels():
@@ -641,7 +649,6 @@ def test_binding_live_all_surfaces(tmp_path):
     from library import tags as T
 
     (tmp_path / "main.py").write_text("--serve --port 1")
-    entry = {"backend": "main.py:main", "cli": "--serve", "ui": "chip-x", "tui": "run_plain"}
     assert T._binding_live({"backend": "no-colon"}, "api", tmp_path) is False
     assert T._binding_live({"backend": "web/app.html:tok"}, "api", tmp_path) is False
     (tmp_path / "web").mkdir()
@@ -681,4 +688,3 @@ def test_load_module_resolves_canonical_package():
     from library import tags as T
 
     assert T._load_module("library.tags") is T
-

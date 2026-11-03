@@ -30,7 +30,6 @@ import modules.intel.scanner_binaries as sb
 import modules.shared.sms_compress as comp
 import modules.shared.sms_scan_parse as scan
 
-
 # --- sms_compress: blank lines are filler ------------------------------------
 
 
@@ -63,7 +62,9 @@ def test_r2_fold_marker_shows_count_and_truncates():
     assert store.fold_marker("k") == "[... seen 1x in prior cycles: k ...]"
     assert store.fold_marker("never-seen") == "[... seen 0x in prior cycles: never-seen ...]"
     long_line = "z" * 80
-    assert store.fold_marker(long_line).endswith("...]") and "z" * 60 in store.fold_marker(long_line)
+    assert store.fold_marker(long_line).endswith("...]") and "z" * 60 in store.fold_marker(
+        long_line
+    )
     assert "z" * 61 not in store.fold_marker(long_line)
 
 
@@ -106,7 +107,9 @@ def test_r2_all_filler_source_keeps_first_line():
 
 def test_r2_fast_path_records_dictionary(tmp_path):
     store = comp.DictionaryStore(path=tmp_path / "d.json")
-    report = comp.compress_context("const a = 1;\nconst b = 2;\n", filename="a.js", dictionary=store)
+    report = comp.compress_context(
+        "const a = 1;\nconst b = 2;\n", filename="a.js", dictionary=store
+    )
     assert report.tokens_saved >= 0
     assert store.known("const a = 1;") and store.known("const b = 2;")
 
@@ -140,7 +143,9 @@ def test_r2_vendor_map_prefers_nvd_then_falls_back():
 
 
 def test_r2_vendor_map_prefers_listed_vendor_order():
-    assert scan.cvss_from_vendor_map({"ghsa": {"V3Score": 5.0}, "redhat": {"V3Score": 7.0}}) == "7.0"
+    assert (
+        scan.cvss_from_vendor_map({"ghsa": {"V3Score": 5.0}, "redhat": {"V3Score": 7.0}}) == "7.0"
+    )
     assert scan.cvss_from_vendor_map({"ghsa": {"V3Score": 5.0}}) == "5.0"
 
 
@@ -149,7 +154,10 @@ def test_r2_cvss_best_skips_non_dict_and_bad_scores():
     assert scan.cvss_best(None) == ""
     assert scan.cvss_best([]) == ""
     assert scan.cvss_best([{"metrics": None}, {"metrics": {"baseScore": 6.0}}]) == "6.0"
-    assert scan.cvss_best([{"metrics": {"baseScore": 6.0}}, {"metrics": {"baseScore": "high"}}]) == "6.0"
+    assert (
+        scan.cvss_best([{"metrics": {"baseScore": 6.0}}, {"metrics": {"baseScore": "high"}}])
+        == "6.0"
+    )
 
 
 # --- scanner parsers on canned payloads (no subprocesses) ----------------------
