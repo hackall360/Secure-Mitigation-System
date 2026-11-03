@@ -12,6 +12,7 @@ mock Muse transport (never live); real parser + real dispatch only.
     ("agents: red=N blue=M (source: ...)").
 """
 
+import json
 from types import SimpleNamespace
 
 import main
@@ -140,3 +141,20 @@ def test_fixture_header_names_agent_counts(monkeypatch, capsys):
     assert "agents:" in out, f"header lacks agent counts:\n{out}"
     assert "red=7" in out and "blue=6" in out, f"header lacks effective counts:\n{out}"
     assert "source: flag" in out, f"header lacks count source:\n{out}"
+
+
+def test_cve_scan_json_mode_prints_redacted_json_to_stdout(monkeypatch, tmp_path, capsys):
+    """Surface F2 (real bug): CVE --format json printed nothing to stdout."""
+    from modules.core.config import PurpleBoxConfig
+
+    async def fake_cve(project, emit, **kwargs):
+        return _canned_report(2)
+
+    monkeypatch.setattr(main, "execute_cve_scan", fake_cve)
+    monkeypatch.setattr(main, "load_config", lambda: PurpleBoxConfig())
+    monkeypatch.setattr("sys.argv", _project_argv(tmp_path, "--cve-limit", "5", "--format", "json"))
+    assert main.main() == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["status"] == "completed"
+    assert len(payload["vulnerabilities"]) == 2

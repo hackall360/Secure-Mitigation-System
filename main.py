@@ -130,6 +130,12 @@ def _ops_log_tail(limit: int) -> int:
     # mtime order keeps cross-signal recency; the sort is stable so records
     # from the same file stay in write order.
     lines.sort(key=lambda item: item[0])
+    if not lines:
+        print(
+            "no observability log lines under logs/ yet (run a scan first).",
+            file=sys.stderr,
+        )
+        return 0
     for _, line in lines[-limit:] if limit else []:
         print(line)
     return 0
@@ -2351,6 +2357,32 @@ async def cli_runner(
             summary = _build_cve_summary_markdown(project, settings, cve_result)
             run_dir = write_run_report(output_dir, report, summary)
             _out(f"[SYSTEM] Report: {run_dir / 'report.json'}")
+        if json_mode:
+            # Surface F2: the CVE branch previously printed nothing to stdout
+            # in JSON mode (all lines went to stderr). Emit the redacted
+            # report machine-pure, honoring the same display bounds.
+            shown_vulns = [
+                v
+                for v in cve_result.vulnerabilities
+                if v.get("summary") or v.get("cves") or v.get("id")
+            ]
+            if cve_reach_only:
+                shown_vulns = [v for v in shown_vulns if v.get("reach_score") is not None]
+            shown_vulns = shown_vulns[: max(cve_limit, 1)]
+            print(
+                json.dumps(
+                    {
+                        "target": cve_result.target,
+                        "status": cve_result.status,
+                        "message": cve_result.message,
+                        "vulnerabilities": shown_vulns,
+                        "reach_only": cve_reach_only,
+                        "errors": cve_result.errors,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
         return 0 if cve_result.success else 1
     if project is None:
         with Spinner("Verifying fixture boundary"):

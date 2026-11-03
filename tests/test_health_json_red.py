@@ -94,8 +94,10 @@ def test_cli_runner_has_no_bare_stdout_prints():
                 stmt.append(lines[i])
                 depth += lines[i].count("(") - lines[i].count(")")
             text = "\n".join(stmt)
-            # The json payload dump is the single sanctioned bare print.
-            if "json.dumps(user_report" not in text:
+            # The json payload dumps are the sanctioned bare prints: fixture
+            # path (user_report) and CVE path (cve_result-shaped payload).
+            # Everything else must route via _out (stderr in json mode).
+            if "json.dumps(user_report" not in text and '"target": cve_result.target' not in text:
                 assert "file=" in text, f"bare stdout print in cli_runner: {text.strip()[:200]}"
         i += 1
 
