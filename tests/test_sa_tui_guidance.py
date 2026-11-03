@@ -84,3 +84,31 @@ def test_preflight_printed_to_stderr_in_plain(monkeypatch, capsys):
     monkeypatch.setattr(wf, "execute_purple_workflow", _ok)
     tui.run_plain(["--fixture", "php_command_sink"])
     assert "inference: no META_MUSE_API_KEY" in capsys.readouterr().err
+
+
+def test_legacy_fixture_key_error_exits_nonzero(monkeypatch, tmp_path, capsys):
+    """TUI legacy path: error-status ScanResult (backend returns, not raises)
+    must exit nonzero. Live-proven: key-free plain run printed
+    `-> error: META_MUSE_API_KEY ...` but exited 0."""
+    import tui as tui_mod
+
+    monkeypatch.chdir(tmp_path)
+
+    class FakeResult:
+        status = "error"
+        message = "META_MUSE_API_KEY is required for scans."
+        target = "node_query_sink"
+        success = False
+
+    async def fake_run(*args, **kwargs):
+        return FakeResult()
+
+    import modules.workflows.workflow as _wf
+
+    monkeypatch.setattr(_wf, "execute_purple_workflow", fake_run)
+    rc = tui_mod._run_plain_legacy(
+        type("A", (), {"fixture": "node_query_sink", "sweep_passes": None, "binary_target": ""})()
+    )
+    out = capsys.readouterr().out
+    assert rc == 1, f"key-error result must exit 1, got {rc}: {out[:200]}"
+    assert "META_MUSE_API_KEY" in out
