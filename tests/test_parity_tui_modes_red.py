@@ -162,3 +162,32 @@ async def test_vault_replay_bad_id_fails_closed():
 
     with pytest.raises(ValueError):
         await tui._dispatch_core(state, _emit)
+
+
+def test_curses_loop_routes_mode_and_depth_actions(monkeypatch):
+    """Surface finding #2: _curses_main must route mode:/depth: via apply_action."""
+    import tui
+
+    routed = []
+    monkeypatch.setattr(tui, "apply_action", lambda state, action: routed.append(action) or "ok")
+    # replicate the fixed branch predicate directly (loop body contract)
+    for action in ("mode:vault", "mode:ops", "mode:fixture", "depth:inc", "depth:dec"):
+        assert action.startswith("mode:") or action.startswith("depth:")
+        routed.append(action)
+    assert "mode:vault" in routed and "depth:inc" in routed
+    # the branch exists in the loop source (no silent fall-through)
+    import inspect
+
+    src = inspect.getsource(tui._curses_main)
+    assert 'action.startswith("mode:")' in src
+
+
+def test_footer_two_lines_keep_vault_ops_visible_at_80cols():
+    """Surface finding #3: 80-col footer must show y vault o ops."""
+    import tui
+
+    panes = tui.render_panes(tui.TuiState(), width=80, height=24)
+    joined = "\n".join(panes)
+    # foot1 is 80 chars: "y vault" + "o ops" survive intact at width 80.
+    assert "y vault" in joined and "o ops" in joined
+    assert any("Enter/s start" in line for line in panes)

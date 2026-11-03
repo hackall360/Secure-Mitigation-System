@@ -52,6 +52,9 @@
     narBtn.setAttribute('aria-pressed', String(narrationOn));
     if (narrationOn && state.stage) narrationToggle(state.stage);
   });
+  // CSP-safe asset fallback (no inline onerror: script-src 'self' blocks it).
+  const titleCard = $('demo-title-card');
+  if (titleCard) titleCard.addEventListener('error', () => titleCard.remove());
   SMS.explain.on((lv) => { graph.setExplain(lv); if (state.stage) caption(state.stage, state.override); requestAnimationFrame(syncInsets); });
 
   /* ---------- fit the map into the space the HUD leaves free ---------- */
