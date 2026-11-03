@@ -145,7 +145,9 @@
           seg.append(b);
         });
         seg.addEventListener('keydown', (e) => {
-          const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+          // WAI-ARIA radiogroup: all four arrows move (vertical layouts,
+          // single-axis groups like demo Operational mode included).
+          const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
           if (!d) return;
           const opts = s.options.map((o) => o.v);
           const i = opts.indexOf(this.v[s.key]);

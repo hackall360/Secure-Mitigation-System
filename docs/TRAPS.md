@@ -317,3 +317,14 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: `return None` from a mocked `execute_project_workflow` is fine because the test only checks routing.
   Evidence: retargeted F-204 WS test routed correctly, then died at `result.model_dump()` → `AttributeError: NoneType`. A `_FakeResult` with the 7-field `model_dump()` dict (target/status/message/diff/cleanup_ok/cycles/total_tokens+cost_usd) fixed it — same shape w22 already used.
   Lesson: mocks must satisfy the downstream contract, not just the assertion under test. Copy the existing fake-result shape instead of inventing a thinner one.
+
+## Demo live bugs (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the segmented test that never tested the arrows.**
+  Wrong assumption: "the demo setup controls work with a keyboard because the stepper test covers ArrowUp/Down." That test drove the *stepper* input; the *segmented* radiogroup ("Operational mode") had its own keydown map with only left/right — up/down silently no-op'd on exactly the two-option control where wrap matters most.
+  Evidence: node probe of the handler map pre-fix (`ArrowUp -> undefined`); post-fix round-trip Right/Down/Up/Left returns to start.
+  Lesson: one keyboard test per widget type, not per page. When a form file has N keydown handlers, each needs its own pin.
+- **Trap: retry covered statuses but not the transport.**
+  Wrong assumption: "RETRY_MAX_ATTEMPTS = 2 means two tries." Only for HTTP *statuses*. An httpx.HTTPError (timeout/DNS/reset) raised AgentError on attempt 0 — the loop's second iteration never ran. A single blip produced status=error and the demo's "Scan could not complete / Nothing was changed" verdict.
+  Evidence: RED pin (blip-then-success) failed pre-fix, green post-fix; persistent-failure pin still fails closed with the identical no-fallback message in exactly 2 calls.
+  Lesson: when a retry loop has two failure ingresses (status vs exception), pin both. SPEC's no-fallback lock constrains *providers*, not *attempts* — one bounded re-try of the same provider is policy-safe.

@@ -389,7 +389,14 @@ class MetaMuseClient:
                         "Muse returned invalid JSON or an unexpected response schema."
                     ) from exc
             except httpx.HTTPError as exc:
-                last_error = exc
+                # Transport blip (timeout, DNS hiccup, reset): one bounded
+                # retry on attempt 0, mirroring the transient-status path
+                # above. SPEC strict model lock holds — no fallback provider
+                # is contacted; a second failure still raises below.
+                if attempt == 0:
+                    last_error = exc
+                    await asyncio.sleep(_retry_delay_seconds(attempt, None))
+                    continue
                 raise AgentError(
                     "Muse request failed or timed out; no fallback provider was contacted."
                 ) from exc
