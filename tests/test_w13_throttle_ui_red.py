@@ -51,9 +51,14 @@ async def test_sustained_429_raises_bounded_agent_error(monkeypatch):
             await client.run_red_team_analysis("app.js", "source")
     finally:
         await client.aclose()
-    assert attempts == RETRY_MAX_ATTEMPTS
+    assert attempts == RETRY_MAX_ATTEMPTS, f"ladder exhausts 4 attempts, got {attempts}"
     assert len(slept) == RETRY_MAX_ATTEMPTS - 1
-    assert sum(slept) <= (RETRY_AFTER_MAX_SECONDS + RETRY_JITTER_SECONDS) * len(slept)
+    # First sleep honors the capped Retry-After (3600 → 5 s cap); later
+    # sleeps climb the ladder floor (10 s, 20 s) — the hostile header can
+    # neither stall the scan nor collapse the waits.
+    assert slept[0] <= RETRY_AFTER_MAX_SECONDS + RETRY_JITTER_SECONDS
+    assert slept[1] == pytest.approx(10.0, abs=1.0)
+    assert slept[2] == pytest.approx(20.0, abs=1.0)
     assert sum(slept) < 3600.0
 
 

@@ -328,3 +328,14 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: "RETRY_MAX_ATTEMPTS = 2 means two tries." Only for HTTP *statuses*. An httpx.HTTPError (timeout/DNS/reset) raised AgentError on attempt 0 — the loop's second iteration never ran. A single blip produced status=error and the demo's "Scan could not complete / Nothing was changed" verdict.
   Evidence: RED pin (blip-then-success) failed pre-fix, green post-fix; persistent-failure pin still fails closed with the identical no-fallback message in exactly 2 calls.
   Lesson: when a retry loop has two failure ingresses (status vs exception), pin both. SPEC's no-fallback lock constrains *providers*, not *attempts* — one bounded re-try of the same provider is policy-safe.
+
+## Retry-budget change retargets (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the attempt index is not the failure count.**
+  Wrong assumption: passing `attempt` (0-based) to the delay helper yields immediate/10s/20s. It yields 0.5s/10s/20s — the first *failure* must map to the immediate slot, so the helper takes a 1-based *failure count* incremented per failure, and both call sites (status path, transport path) bump the same counter. My own new pin caught it ([0.5, 10] vs expected [10, 20]) before the gate did.
+  Evidence: `_retry_delay_seconds(failures, ...)` + `consecutive_failures` in `_request`; corrected pin `test_transport_ladder_waits_immediate_10s_then_20s` asserts [~0.5, ~10, ~20].
+  Lesson: name delay-helper params for what they count (`failures`, never `attempt`/`index`), and assert the full sleep vector in the pin, not just the last value.
+- **Trap: raising the retry budget breaks every pin that counted attempts.**
+  Wrong assumption: "RETRY_MAX_ATTEMPTS 2→4 is a one-line change." Eight pins across four files asserted exactly 2 calls / 1 sleep / `== 2` — all RED post-change, all correct-by-construction under the old budget. Each needed retargeting to the ladder (4 calls, [immediate, 10s, 20s] sleeps) while keeping its original *intent* (no body leak, rate-limit named, hostile Retry-After capped, UI survivable).
+  Evidence: `test_config_agents`, `test_w29_load_red`, `test_w13_throttle_ui_red`, `test_recovery_convergence_red` retargeted in the same commit; gate green after.
+  Lesson: a budget constant is a load-bearing contract — grep every reference in tests/ before changing it, and retarget in the same commit as the implementation.

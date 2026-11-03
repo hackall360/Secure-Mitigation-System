@@ -15,10 +15,11 @@ immediately on attempt 0 — the second attempt never runs. One blip ends
 the run as status=error ("Scan could not complete / The run ended before
 we could decide. Nothing was changed"), exactly the demo failure.
 
-Bug 2 fix shape (bounded, policy-safe): retry the transport error ONCE
-(attempt 0 only, same bound as the status path), then fail with the same
-no-fallback message. No fallback provider is added (SPEC strict model
-lock); only the wasted attempt is reclaimed.
+Bug 2 fix shape (bounded, policy-safe): the transport ladder retries the
+SAME model through the SAME provider — immediate re-try on the first blip,
+then 10 s, then 20 s — then fails with the same no-fallback message. No
+fallback provider is added (SPEC strict model lock); only wasted attempts
+are reclaimed. Total worst-case wait ≈ 30 s + jitter, inside one scan step.
 """
 
 from __future__ import annotations
@@ -71,9 +72,17 @@ def _ok_response():
 
 
 @pytest.mark.asyncio
-async def test_transport_blip_retried_once_then_succeeds():
-    """One timeout followed by success must NOT kill the scan."""
+async def test_transport_blip_retried_immediately_then_succeeds(monkeypatch):
+    """First blip → immediate re-try (no 10 s wait when the retry succeeds)."""
+    import asyncio
+
     calls = []
+    slept = []
+
+    async def record_sleep(delay):
+        slept.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
 
     def handle(request):
         calls.append(request)
@@ -89,14 +98,64 @@ async def test_transport_blip_retried_once_then_succeeds():
         result = await client.run_red_team_analysis("app.js", "source")
         assert result.sink_location == "app.js:15"
         assert len(calls) == 2
+        assert slept == [pytest.approx(0.5, abs=0.6)], f"first retry is immediate, got {slept}"
     finally:
         await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_persistent_transport_failure_still_fails_closed_no_fallback():
-    """Two blips in a row: fail with the same no-fallback message (SPEC lock holds)."""
+async def test_transport_ladder_waits_immediate_10s_then_20s(monkeypatch):
+    """Blip x3 → waits of ~0s, ~10s, ~20s, 4th attempt succeeds.
+
+    Ladder: fail → immediate re-try; fail → wait 10 s; fail → wait 20 s.
+    Same model, same provider throughout.
+    """
+    import asyncio
+
     calls = []
+    slept = []
+
+    async def record_sleep(delay):
+        slept.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
+
+    def handle(request):
+        calls.append(request)
+        if len(calls) < 4:
+            raise httpx.ConnectError("still down")
+        return _ok_response()
+
+    client = MetaMuseClient(
+        PurpleBoxConfig(meta_api_key="unit-test-key"),
+        transport=httpx.MockTransport(handle),
+    )
+    try:
+        result = await client.run_red_team_analysis("app.js", "source")
+        assert result.sink_location == "app.js:15"
+        assert len(calls) == 4, f"three blips then success = 4 attempts, got {len(calls)}"
+        assert len(slept) == 3, f"three waits before success, got {slept}"
+        assert slept[0] == pytest.approx(0.5, abs=0.6), f"1st wait immediate, got {slept}"
+        assert slept[1] == pytest.approx(10.0, abs=1.0), f"2nd wait ~10s, got {slept}"
+        assert slept[2] == pytest.approx(20.0, abs=1.0), f"3rd wait ~20s, got {slept}"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_persistent_transport_failure_still_fails_closed_no_fallback(monkeypatch):
+    """Three blips in a row: fail with the same no-fallback message (SPEC lock holds)."""
+    import asyncio
+
+    import library.core.agents as agents_mod
+
+    calls = []
+    slept = []
+
+    async def record_sleep(delay):
+        slept.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
 
     def handle(request):
         calls.append(request)
@@ -109,6 +168,9 @@ async def test_persistent_transport_failure_still_fails_closed_no_fallback():
     try:
         with pytest.raises(AgentError, match="no fallback provider"):
             await client.run_red_team_analysis("app.js", "source")
-        assert len(calls) == 2, f"bounded retry = exactly 2 attempts, got {len(calls)}"
+        assert len(calls) == agents_mod.RETRY_MAX_ATTEMPTS, (
+            f"bounded ladder = exactly RETRY_MAX_ATTEMPTS attempts, got {len(calls)}"
+        )
+        assert len(slept) == agents_mod.RETRY_MAX_ATTEMPTS - 1
     finally:
         await client.aclose()

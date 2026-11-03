@@ -220,13 +220,23 @@ def test_budget_and_effort_validation(field, value):
 
 
 @pytest.mark.parametrize("status", [429, 502, 503, 504])
-async def test_transient_status_retries_once_then_fails_without_exposing_body(status):
+async def test_transient_status_climbs_ladder_then_fails_without_exposing_body(status):
+    """Ladder (2026-11-03 directive): fail → retry → 10 s → 20 s, same
+    model/provider, then fail closed. Bodies never leak into the error."""
     called = []
+    slept = []
+
+    async def record_sleep(delay):
+        slept.append(delay)
 
     def handle(request):
         called.append(request)
         return httpx.Response(status, text="private provider detail")
 
+    import asyncio as _asyncio
+
+    real_sleep = _asyncio.sleep
+    _asyncio.sleep = record_sleep
     client = MetaMuseClient(
         PurpleBoxConfig(meta_api_key="unit-test-key"), transport=httpx.MockTransport(handle)
     )
@@ -234,8 +244,12 @@ async def test_transient_status_retries_once_then_fails_without_exposing_body(st
         with pytest.raises(AgentError) as error:
             await client.run_red_team_analysis("app.js", "source")
         assert "private provider detail" not in str(error.value)
-        assert len(called) == 2
+        assert len(called) == 4, f"ladder exhausts 4 attempts, got {len(called)}"
+        assert len(slept) == 3, f"waits immediate/10s/20s, got {slept}"
+        assert slept[1] == pytest.approx(10.0, abs=1.0)
+        assert slept[2] == pytest.approx(20.0, abs=1.0)
     finally:
+        _asyncio.sleep = real_sleep
         await client.aclose()
 
 
