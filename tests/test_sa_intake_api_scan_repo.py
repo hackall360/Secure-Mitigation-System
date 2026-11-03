@@ -79,9 +79,7 @@ def _keyed_config() -> PurpleBoxConfig:
 @pytest.fixture
 def fake_stack(monkeypatch):
     calls: dict = {}
-    monkeypatch.setattr(
-        "modules.core.docker_manager.DockerSandboxManager", _FakeManager
-    )
+    monkeypatch.setattr("modules.core.docker_manager.DockerSandboxManager", _FakeManager)
     _FakeManager.instances.clear()
 
     def fake_intake(spec, runtime_command=None, *, sandbox=None, **kwargs):
@@ -98,12 +96,8 @@ def fake_stack(monkeypatch):
         calls["execute_config"] = config
         return {"status": "no_findings", "sentinel": True}
 
-    monkeypatch.setattr(
-        "modules.services.repo_intake.intake_repo_to_snapshot", fake_intake
-    )
-    monkeypatch.setattr(
-        "modules.workflows.project_workflow.execute_project_workflow", fake_execute
-    )
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
+    monkeypatch.setattr("modules.workflows.project_workflow.execute_project_workflow", fake_execute)
     return calls
 
 
@@ -123,16 +117,12 @@ def test_scan_repo_request_forbids_extras():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        sms_api.ApiRepoScanRequest(
-            repo_url=URL, commit_hash=COMMIT, contract="", bogus="nope"
-        )
+        sms_api.ApiRepoScanRequest(repo_url=URL, commit_hash=COMMIT, contract="", bogus="nope")
 
 
 @pytest.mark.asyncio
 async def test_scan_repo_valid_reaches_intake_with_clone(fake_stack):
-    result = await sms_api.scan_repo(
-        URL, commit_hash=COMMIT, contract="", config=_keyed_config()
-    )
+    result = await sms_api.scan_repo(URL, commit_hash=COMMIT, contract="", config=_keyed_config())
     assert result == {"status": "no_findings", "sentinel": True}
     intake = fake_stack["intake"]
     assert intake["kwargs"].get("clone") is True
@@ -187,9 +177,7 @@ async def test_scan_repo_grants_remote_inference_and_carries_contract(fake_stack
     from modules.services.projects import ProjectSpec
 
     contract = "Only sanitize untrusted inputs. Preserve the public API."
-    await sms_api.scan_repo(
-        URL, commit_hash=COMMIT, contract=contract, config=_keyed_config()
-    )
+    await sms_api.scan_repo(URL, commit_hash=COMMIT, contract=contract, config=_keyed_config())
     project = fake_stack["project"]
     assert isinstance(project, ProjectSpec)
     assert project.allow_remote_inference is True

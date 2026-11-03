@@ -916,8 +916,7 @@ async def scan_repo(
             spec = RepoIntakeSpec(url=request.repo_url, commit_hash=pin)
         except ValueError as exc:
             raise ValueError(
-                f"invalid repo intake ({exc}); "
-                f"{_repo_host_prefix(request.repo_url, pin)}"
+                f"invalid repo intake ({exc}); {_repo_host_prefix(request.repo_url, pin)}"
             ) from exc
         try:
             snapshot = intake_repo_to_snapshot(

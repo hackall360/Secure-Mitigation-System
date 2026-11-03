@@ -53,14 +53,21 @@ out.emptyBody = O.compile('ingest',
 out.pinnedBody = O.compile('ingest',
   { ingest_repo: 'https://github.com/org/repo', commit_hash: %s }, {}).body;
 console.log(JSON.stringify(out));
-""" % (json.dumps(str(SCHEMA)), json.dumps(str(COMPILE)),
-       json.dumps(GOOD_SHA), json.dumps(GOOD_SHA))
+""" % (
+    json.dumps(str(SCHEMA)),
+    json.dumps(str(COMPILE)),
+    json.dumps(GOOD_SHA),
+    json.dumps(GOOD_SHA),
+)
 
 
 def _probe():
     proc = subprocess.run(
         [NODE, "-e", _NODE_HARNESS],
-        capture_output=True, text=True, cwd=str(REPO), timeout=60,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        timeout=60,
     )
     assert proc.returncode == 0, f"node harness failed:\n{proc.stderr}"
     return json.loads(proc.stdout)
@@ -106,11 +113,7 @@ def test_setup_prod_ingest_display_head_default():
 def test_prod_setup_html_ingest_markup_no_inline_handlers():
     html = HTML.read_text(encoding="utf-8")
     assert "HEAD or pinned commit" in html
-    bad = [
-        line.strip()[:80]
-        for line in html.splitlines()
-        if re.search(r"""\son\w+\s*=""", line)
-    ]
+    bad = [line.strip()[:80] for line in html.splitlines() if re.search(r"""\son\w+\s*=""", line)]
     assert not bad, "inline handlers blocked by CSP:\n" + "\n".join(bad)
 
 
@@ -118,6 +121,8 @@ def test_node_check_passes_on_edited_js():
     for path in (SCHEMA, COMPILE, SETUP_PROD):
         proc = subprocess.run(
             [NODE, "--check", str(path)],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         assert proc.returncode == 0, f"node --check failed for {path}:\n{proc.stderr}"
