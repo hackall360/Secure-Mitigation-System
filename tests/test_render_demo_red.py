@@ -54,9 +54,7 @@ def test_render_script_executable_bit():
 
 def test_render_script_bash_syntax_clean():
     assert SCRIPT.is_file(), f"missing provisioning script: {SCRIPT}"
-    proc = subprocess.run(
-        ["bash", "-n", str(SCRIPT)], capture_output=True, text=True, timeout=30
-    )
+    proc = subprocess.run(["bash", "-n", str(SCRIPT)], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, f"bash -n failed: {proc.stderr}"
 
 
@@ -70,9 +68,7 @@ def test_render_check_names_all_six_phases():
 
 def test_render_check_missing_input_fails_actionable():
     assert SCRIPT.is_file(), f"missing provisioning script: {SCRIPT}"
-    proc = _check(
-        "--check", env_extra={"STEM_SRC_DIR": "/nonexistent-stems-dir-xyz"}
-    )
+    proc = _check("--check", env_extra={"STEM_SRC_DIR": "/nonexistent-stems-dir-xyz"})
     assert proc.returncode != 0, "--check must fail on a doctored missing input"
     combined = proc.stdout + proc.stderr
     assert "STEM_SRC_DIR" in combined, "failure must name the missing override"

@@ -114,9 +114,7 @@ def cumulative_end(beats: list[dict]) -> float:
     return mmss(beats[-1]["end"])
 
 
-def check_beats(
-    doc: Path | None = None, scenario: Path | None = None
-) -> list[str]:
+def check_beats(doc: Path | None = None, scenario: Path | None = None) -> list[str]:
     """Assert doc beats == scenario.js BEATS 1:1; return drift lines (empty = clean)."""
     doc_beats = parse_doc_beats(doc)
     js_beats = parse_js_beats(scenario)
@@ -155,7 +153,7 @@ def run_dry_run(doc: Path | None = None) -> int:
         print(
             f"Beat {i}/{len(beats)} T+{elapsed:.1f}s "
             f"({b['start']}-{b['end']}, {dur:.1f}s) "
-            f"[{b['stage']}] {b['stem']}: \"{b['narration']}\""
+            f'[{b["stage"]}] {b["stem"]}: "{b["narration"]}"'
         )
         elapsed = mmss(b["end"])
     total = cumulative_end(beats)
@@ -252,10 +250,7 @@ def run_check_beats(doc: Path | None = None, scenario: Path | None = None) -> in
         for line in drift:
             print(f"  - {line}")
         return 1
-    print(
-        f"check-beats OK: {len(parse_doc_beats(doc))} doc beats "
-        "match scenario.js BEATS 1:1"
-    )
+    print(f"check-beats OK: {len(parse_doc_beats(doc))} doc beats match scenario.js BEATS 1:1")
     return 0
 
 
