@@ -212,3 +212,10 @@ live generation, live 180 s run-through, 100-scan soak, live benchmarks.
 - Shared dev harness moved to tracked `scripts/dev/` (12 tools, git rename detection) with ROOT-depth + import + doc/test path rewrites; pin test `test_jcode_tree_fully_untracked_and_ignored` (RED-verified against old tree).
 - Incidental: MCP 6→10 tool-count pins + README/CLI.md tool lists updated for the parity wave (were red after W6).
 - Gate: **1385 passed + 2 skipped, All checks passed**. No rubric delta (structure-only change).
+
+## Note — 2026-11-03 ~03:08 UTC — 4-surface testing + 3 finding fixes (no score change)
+
+- Live testing: CLI (17 PASS/1 WEAK/1 SKIP), TUI (87/95 → fixed), MCP (42/42), WebUI (routes/assets/sockets green, 1 CSP violation found). Notes: `docs/surface-notes/` (4 files, per-flag/route/evidence).
+- Fixes: (1) CSP — `#demo-title-card` inline `onerror` → `addEventListener` (was dead code under `script-src 'self'`); (2) TUI `_curses_main` now routes `mode:`/`depth:` via `apply_action` (vault/ops keys were dead live); (3) two-line 80-col footer (vault/ops hints were truncated invisible). RED-first pins in `test_parity_tui_modes_red.py`.
+- Weak/known: `--ops-log` empty-tree silence (no guidance vs missing-tree path); keyless fixture scan impossible by design (`require_api_key`); MCP snippet offline asymmetry (-32602 vs -32001); WebUI setup pages expose no cycles/intel/vault/ops (confirmed gap, WebUI wave scope).
+- Gate pending full run at ship.
