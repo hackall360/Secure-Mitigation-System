@@ -1369,7 +1369,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 # structural validation only. No Docker, no lock, no
                 # config. Answered here so they stay usable mid-scan.
                 return JSONResponse(handle_mcp_request(body), status_code=200)
-            if tool_name in ("sms_scan_source", "sms_scan_binary", "sms_query_vault_stats"):
+            if tool_name in (
+                "sms_scan_source",
+                "sms_scan_binary",
+                "sms_scan_repo",
+                "sms_query_vault_stats",
+            ):
                 if tool_name == "sms_query_vault_stats":
                     from modules.services.sms_api import query_vault_stats
 
@@ -1537,6 +1542,97 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             status_code=200,
                         )
                     structured = structured_result(live_bin)
+                    return _mcp_scan_response(rpc_id, structured)
+                if tool_name == "sms_scan_repo":
+                    from modules.services.mcp_bridge import (
+                        new_scan_id as _repo_scan_id,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_repo_target_label as _repo_label,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_mark_done as _repo_done,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_phase_sink as _repo_sink,
+                    )
+                    from modules.services.mcp_bridge import (
+                        scan_status_register as _repo_register,
+                    )
+                    from modules.services.mcp_bridge import (
+                        validate_scan_repo_arguments as _validate_repo,
+                    )
+
+                    def _emit_repo_sync(team: str, message: str) -> None:
+                        messages_live.append(f"[{team}] {message}")
+
+                    async def _emit_repo(team: str, message: str) -> None:
+                        messages_live.append(f"[{team}] {message}")
+
+                    repo_scan_id = _repo_scan_id()
+                    # Lock held across validation + run (D6): the V2 probe
+                    # above decides the -32001 winner; validation and the
+                    # ingest+workflow run below all hold the lock so a
+                    # concurrent second caller deterministically loses.
+                    async with lock:
+                        try:
+                            repo_arguments = _validate_repo(live_arguments)
+                        except ValueError as exc:
+                            return JSONResponse(
+                                jsonrpc_error(rpc_id, -32602, str(exc)),
+                                status_code=200,
+                            )
+                        _repo_register(repo_scan_id, phase="red")
+                        try:
+                            project = await _ingest_repo_to_project(
+                                repo_arguments.repo_url,
+                                repo_arguments.commit_hash,
+                                _emit_repo_sync,
+                                settings=settings,
+                            )
+                            # D3: the explicit tool call IS the remote-inference
+                            # grant — the same grant a dashboard checkbox /
+                            # CLI flag would record. Stamp it on the built
+                            # spec so execute_project_workflow's consent gate
+                            # passes without weakening the gate itself.
+                            try:
+                                project = project.model_copy(
+                                    update={"allow_remote_inference": True}
+                                )
+                            except AttributeError:
+                                project.allow_remote_inference = True
+                            _label = _repo_label(repo_arguments)
+                            from modules.workflows.project_workflow import (
+                                redact_report_for_user as _repo_redact,
+                            )
+
+                            live_repo = await execute_project_workflow(
+                                project,
+                                _repo_sink(repo_scan_id, _emit_repo),
+                                config=settings,
+                            )
+                            _repo_done(repo_scan_id)
+                            structured = structured_result(live_repo)
+                            try:
+                                structured["report"] = _repo_redact(live_repo)
+                            except Exception:
+                                pass
+                            structured.setdefault("repo", _label)
+                        except Exception as exc:
+                            guidance = _actionable_error_text(exc)
+                            if guidance is not None:
+                                return JSONResponse(
+                                    jsonrpc_error(rpc_id, -32603, guidance),
+                                    status_code=200,
+                                )
+                            return JSONResponse(
+                                jsonrpc_error(
+                                    rpc_id,
+                                    -32603,
+                                    f"Repo scan failed ({type(exc).__name__}).",
+                                ),
+                                status_code=200,
+                            )
                     return _mcp_scan_response(rpc_id, structured)
             if params.get("name") != SNIPPET_TOOL_NAME:
                 return JSONResponse(
@@ -1992,6 +2088,98 @@ def _mcp_stdio_loop() -> int:
                                 {"type": "text", "text": _mcp_scan_text(structured_result(result))}
                             ],
                             "structuredContent": structured_result(result),
+                        },
+                    }
+                )
+                + "\n"
+            )
+            _sys.stdout.flush()
+            continue
+        if method == "tools/call" and name == "sms_scan_repo":
+            from modules.services.mcp_bridge import (
+                scan_repo_target_label as _stdio_repo_label,
+            )
+            from modules.services.mcp_bridge import (
+                validate_scan_repo_arguments as _stdio_validate_repo,
+            )
+
+            try:
+                stdio_repo_args = _stdio_validate_repo(arguments)
+            except ValueError as exc:
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {"code": -32602, "message": str(exc)},
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+
+            def _emit_repo_stdio_sync(team: str, message: str) -> None:
+                sys.stderr.write(f"[{team}] {message}\n")
+
+            async def _emit_repo_stdio(team: str, message: str) -> None:
+                sys.stderr.write(f"[{team}] {message}\n")
+
+            try:
+                from modules.core.config import load_config as _load
+
+                async def _run_repo_scan(_args=stdio_repo_args):
+                    settings = _load()
+                    project = await _ingest_repo_to_project(
+                        _args.repo_url,
+                        _args.commit_hash,
+                        _emit_repo_stdio_sync,
+                        settings=settings,
+                    )
+                    # D3: the explicit tool call IS the remote-inference grant.
+                    try:
+                        project = project.model_copy(update={"allow_remote_inference": True})
+                    except AttributeError:
+                        project.allow_remote_inference = True
+                    # main-global (not a local import) so tests can patch
+                    # main.execute_project_workflow like the HTTP branch.
+                    return await execute_project_workflow(
+                        project, _emit_repo_stdio, config=settings
+                    )
+
+                result = asyncio.run(_run_repo_scan())
+            except Exception as exc:
+                guidance = _actionable_error_text(exc)
+                message = (
+                    guidance
+                    if guidance is not None
+                    else (f"Repo scan failed ({type(exc).__name__}).")
+                )
+                _sys.stdout.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": body.get("id"),
+                            "error": {"code": -32603, "message": message},
+                        }
+                    )
+                    + "\n"
+                )
+                _sys.stdout.flush()
+                continue
+            structured = structured_result(result)
+            try:
+                structured.setdefault("repo", _stdio_repo_label(stdio_repo_args))
+            except Exception:
+                pass
+            _sys.stdout.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": _mcp_scan_text(structured)}],
+                            "structuredContent": structured,
                         },
                     }
                 )
