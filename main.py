@@ -1084,15 +1084,92 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     if isinstance(frame, dict) and (
                         "ingest_repo" in frame or "commit_hash" in frame
                     ):
-                        # F-204: a WS client can always SEND bytes, so a verdict
-                        # attributed to the claimed repo URL would be unverified
-                        # by construction. Refuse every ingest frame (even a
-                        # well-formed one) until the server fetches the commit
-                        # itself and the snapshot manifest proves origin.
-                        raise ValueError(
-                            "Invalid ingest settings (the server cannot fetch the "
-                            "repository itself yet, so ingest bytes were not fetched "
-                            "and are not verified)."
+                        # Live intake (brief 2026-11-03-repo-intake-live D1):
+                        # the server fetches the commit itself (clone in a
+                        # Docker staging container, never the host), then maps
+                        # the staged snapshot through _run_ingest_workflow.
+                        # Host paths are never honored here: only the two
+                        # intake keys plus the optional runtime/file_list and
+                        # scan knobs are read. commit_hash is optional
+                        # (omitted = HEAD as-is; the spec decides validity).
+                        import modules.services.repo_intake as _intake_mod
+                        from modules.core.docker_manager import (
+                            DockerSandboxManager as _SandboxMgr,
+                        )
+
+                        _RepoIntakeSpec = _intake_mod.RepoIntakeSpec
+                        _intake_to_snapshot = _intake_mod.intake_repo_to_snapshot
+
+                        try:
+                            intake_spec = _RepoIntakeSpec(
+                                url=frame.get("ingest_repo"),
+                                commit_hash=frame.get("commit_hash"),
+                            )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(
+                                f"Invalid ingest settings ({exc}). Send an https:// "
+                                "repository URL and the full 40-hex pinned commit."
+                            ) from exc
+                        explicit_command = frame.get("runtime_command")
+                        if explicit_command is not None:
+                            if not isinstance(explicit_command, (list, tuple)) or not all(
+                                isinstance(item, str) for item in explicit_command
+                            ):
+                                raise ValueError(
+                                    "Invalid ingest settings (runtime_command must be "
+                                    "an argv list of strings)."
+                                )
+                            intake_command: list | tuple | None = list(explicit_command)
+                            frame_files = None
+                            intake_files = None
+                        else:
+                            intake_command = None
+                            frame_files = frame.get("file_list")
+                            intake_files = frame_files
+                        try:
+                            staging = _SandboxMgr(scan_config)
+                            if intake_files is None:
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec,
+                                    intake_command,
+                                    clone=True,
+                                    sandbox=staging,
+                                )
+                            else:
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec,
+                                    intake_command,
+                                    file_list=intake_files,
+                                    clone=True,
+                                    sandbox=staging,
+                                )
+                        except (ValueError, TypeError) as exc:
+                            raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+                        except Exception:
+                            # Intake failures (staging clone, Docker contact)
+                            # fail closed: host + commit prefix only, never
+                            # the URL (it may carry credentials).
+                            from urllib.parse import urlparse as _urlparse
+
+                            _host = _urlparse(intake_spec.url).hostname or "?"
+                            _prefix = (
+                                intake_spec.commit_hash[:12]
+                                if isinstance(intake_spec.commit_hash, str)
+                                else "(HEAD)"
+                            )
+                            raise ValueError(
+                                "Invalid ingest settings (staging clone failed for "
+                                f"repo host {_host!r} at commit {_prefix})."
+                            ) from None
+                        frame_contract = frame.get("contract", "")
+                        _scan_phase_set = True
+                        application.state.scan_phase = "scanning"
+                        coroutine = _run_ingest_workflow(
+                            snapshot,
+                            emit,
+                            config=scan_config,
+                            file_list=frame_files,
+                            contract=frame_contract,
                         )
                     else:
                         spec = ProjectSpec.model_validate(frame)
@@ -2445,6 +2522,10 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
         dest.write_bytes(content if isinstance(content, bytes) else str(content).encode())
     runtime = detect_runtime(sorted(tree))
     test_command = list(runtime)
+    # Brief 2026-11-03-repo-intake-live D3: the explicit repo action IS the
+    # remote-inference grant — the operator asked for this repo's bytes to be
+    # scanned, so the derived spec carries consent (hosted inference would
+    # otherwise refuse before the first model call).
     return ProjectSpec.model_validate(
         {
             "path": str(staged),
@@ -2453,6 +2534,7 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
             "contract": f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. Preserve the public API. Only sanitize untrusted input.",
             "scan_profile": "custom",
             "cycles": 1,
+            "allow_remote_inference": True,
         }
     )
 
@@ -3177,23 +3259,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     Tests and tooling import this to inspect the live parser without running
     a scan. Returns an ``_IngestPairParser``: argparse-level shape (choices,
-    mutual exclusion) plus the ``--ingest-repo``/``--commit-hash`` pair
-    check, so ``parse_args`` itself exits 2 on a half pair.
+    mutual exclusion) plus the ``--commit-hash requires --ingest-repo``
+    check, so ``parse_args`` itself exits 2 on a lone ``--commit-hash``.
+    A lone ``--ingest-repo`` parses (omitted commit = HEAD as-is).
     """
 
     class _IngestPairParser(argparse.ArgumentParser):
         """Argparse parser enforcing the --ingest-repo/--commit-hash pair.
 
-        Both directions error at ``parse_args`` time: ``--ingest-repo``
-        without ``--commit-hash`` and ``--commit-hash`` without
-        ``--ingest-repo`` each exit 2, mirroring the
-        ``--research-scanners requires --research`` shape.
+        Brief 2026-11-03-repo-intake-live D2: ``--commit-hash`` is OPTIONAL
+        (omitted = HEAD as-is); only ``--commit-hash`` without
+        ``--ingest-repo`` exits 2 here. The spec itself decides validity
+        down-stream, mirroring the ``--research-scanners requires --research``
+        shape for the remaining direction.
         """
 
         def parse_args(self, args=None, namespace=None):  # type: ignore[override]
             parsed = super().parse_args(args, namespace)
-            if parsed.ingest_repo and not parsed.commit_hash:
-                self.error("--ingest-repo requires --commit-hash")
             if parsed.commit_hash and not parsed.ingest_repo:
                 self.error("--commit-hash requires --ingest-repo")
             return parsed
@@ -3280,7 +3362,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_argument(
         "--ingest-repo",
         default=None,
-        help="Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires --commit-hash)",
+        help="Clone a git repo at an optional pinned commit into an isolated Docker staging container, then run the project scan (omitted --commit-hash means HEAD as-is)",
     )
     commands.add_argument(
         "--showcase-status",
@@ -3481,7 +3563,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--commit-hash",
         default=None,
-        help="Pinned 40-hex commit for --ingest-repo (required with --ingest-repo)",
+        help="Pinned 40-hex commit for --ingest-repo (optional; omitted means HEAD as-is)",
     )
     parser.add_argument(
         "--ingest-dry-run",
@@ -3560,11 +3642,10 @@ def main() -> int:
         parser.error("--research requires --scan, --project, --ai-demo, or --ingest-repo")
     if args.research_scanners and not args.research:
         parser.error("--research-scanners requires --research")
-    # --ingest-repo/--commit-hash mirror the --research/--research-scanners
-    # pair shape: each requires the other (argparse exit 2). --ingest-repo
-    # itself is mutually exclusive with --scan via the command group above.
-    if args.ingest_repo and not args.commit_hash:
-        parser.error("--ingest-repo requires --commit-hash")
+    # Brief 2026-11-03-repo-intake-live D2: --commit-hash is optional
+    # (omitted = HEAD as-is); only a lone --commit-hash errors here
+    # (argparse exit 2). Validity of the pair itself is decided by
+    # RepoIntakeSpec down-stream.
     if args.commit_hash and not args.ingest_repo:
         parser.error("--commit-hash requires --ingest-repo")
     # --ingest-dry-run is a modifier of the ingest surface, same as pair gating.
@@ -3948,8 +4029,11 @@ def main() -> int:
                     "running intake (auto-detect needs a file list)."
                 )
                 return 0
-            # F-01/F-02 honest refusal: validate first (exit 2 on bad input),
-            # then refuse — never run the fixture loop. A fixture scan would
+            # Live intake (brief 2026-11-03-repo-intake-live D2): --commit-hash
+            # is optional (omitted = HEAD as-is). Validate first (exit 2 on
+            # bad input, clones nothing), then run the real clone path via
+            # cli_runner's ingest branch — clone in Docker staging, project
+            # scan on the CLONED bytes. Never the fixture loop: that would
             # verify the WRONG bytes while reporting the repo's verdict.
             try:
                 from modules.services.repo_intake import RepoIntakeSpec
@@ -3957,11 +4041,28 @@ def main() -> int:
                 RepoIntakeSpec(url=args.ingest_repo, commit_hash=args.commit_hash)
             except ValueError:
                 parser.error("Invalid ingest settings. Use an https:// URL and a 40-hex commit.")
-            print(
-                _ingest_refusal_message(args.ingest_repo, args.commit_hash),
-                file=sys.stderr,
+            return asyncio.run(
+                cli_runner(
+                    None,
+                    args.output_dir or Path("reports"),
+                    args.profile,
+                    args.research,
+                    args.research_scanners,
+                    ingest_repo=args.ingest_repo,
+                    commit_hash=args.commit_hash,
+                    cve_scan=args.cve_scan,
+                    deep_assessment=args.deep_assessment,
+                    offline_cve=args.offline_cve,
+                    fast_lane=args.fast_lane,
+                    cve_limit=max(args.cve_limit, 1),
+                    cve_reach_only=args.cve_reach_only,
+                    red_agents=args.red_agents,
+                    blue_agents=args.blue_agents,
+                    out_format=out_format,
+                    show_usage=args.show_usage,
+                    show_cycles=args.show_cycles,
+                )
             )
-            return 2
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
         uvicorn.run(
             create_app(settings),
