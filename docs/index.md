@@ -6,6 +6,11 @@ New here? Read the [README](../README.md) (5 minutes), then
 - [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — the loop, the parts, where each part lives.
 - [SESSION_LESSONS.md](SESSION_LESSONS.md) — mechanical notes for the next session: gate, scan loop, Docker lifecycle, busy contract, config knobs, symbol provenance.
 - [TECHNICAL_BREAKDOWN.md](TECHNICAL_BREAKDOWN.md) — deep cut for engineers: passes, compression, vault, isolation, 429s, receipts, telemetry, with file and line pointers (linked from README).
+- [SYSTEM_ARCHITECTURE_INDEX.md](SYSTEM_ARCHITECTURE_INDEX.md) — map-reduce whole-repo index: every module/system/surface with file+symbol pointers.
+- [ASSETS.md](ASSETS.md) — showcase asset pipeline: title-card/thumbnail SVGs, generation prompts, placement + fallback.
+- [OPEN_WEIGHT.md](OPEN_WEIGHT.md) — open-weight verification payload (spark-open id, base-URL flags, mocked smoke proof).
+- [LOAD_TABLE.md](LOAD_TABLE.md) — measured load timings + `/ws/system` stay-stub decision.
+- [DEMO_SCRIPT.md](DEMO_SCRIPT.md) — timed 3-minute beat sheet + narration stems (BEATS 1:1 in the replay rig).
 - [TRAPS.md](TRAPS.md) — what looked correct and was not (wrong assumption + evidence).
 - [ARCHITECTURE.md](ARCHITECTURE.md) — production deep dive (evidence loop, wave specs, isolation, config, project map; executive pitch stays in `README.md`).
 - [REFACTOR_PLAN.md](REFACTOR_PLAN.md) — code category maps: `library/` (core+shared+intel+services+workflows), `web/`, `tui/`, `mcp/`.
