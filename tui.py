@@ -206,6 +206,7 @@ class TuiState:
     events: list[tuple[str, str]] = field(default_factory=list)
     result_summary: str = "idle: pick a fixture, press Enter."
     status: str = "idle"
+    inference_hint: str = ""
 
     @property
     def fixture_key(self) -> str:
@@ -358,6 +359,56 @@ def apply_action(state: TuiState, action: str) -> str:
     return action
 
 
+_TOKEN_RUN = re.compile(r"[A-Za-z0-9]{20,}")
+_UNSAFE_MARKERS = ("sk-", "http://", "https://", "@", "/home/", "/tmp/")
+
+
+def _safe_guidance(msg: str) -> str:
+    """Return ``msg`` truncated to 300 chars if LAW-4 safe, else ``""``."""
+    text = " ".join(str(msg or "").split())
+    if not text or any(m in text for m in _UNSAFE_MARKERS) or _TOKEN_RUN.search(text):
+        return ""
+    return text[:300]
+
+
+def _operator_guidance(exc: BaseException) -> str:
+    """Failure line: type always; message only for known operator-facing errors."""
+    base = f"scan failed ({type(exc).__name__})"
+    guidance_types: tuple[type, ...] = ()
+    try:
+        from modules.core.config import ConfigurationError
+
+        guidance_types += (ConfigurationError,)
+    except Exception:
+        pass
+    try:
+        from modules.workflows.project_workflow import ProjectWorkflowError
+
+        guidance_types += (ProjectWorkflowError,)
+    except Exception:
+        pass
+    if guidance_types and isinstance(exc, guidance_types):
+        msg = _safe_guidance(str(exc))
+        if msg:
+            return f"{base}: {msg}"
+    return base
+
+
+def _inference_preflight() -> str:
+    """One-line hint when hosted inference has no key; ``""`` when fine."""
+    try:
+        from modules.core import config as _cfg
+
+        settings = _cfg.load_config()
+    except Exception as exc:
+        return f"inference: configuration error ({type(exc).__name__})"
+    if getattr(settings, "inference_mode", "hosted") != "local" and not getattr(
+        settings, "meta_api_key", ""
+    ):
+        return "inference: no META_MUSE_API_KEY (scans will refuse; set it in .env)"
+    return ""
+
+
 def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> list[str]:
     """Pure 80x24 renderer: header / chips / pipeline panes / result / footer."""
     width = max(40, width)
@@ -366,6 +417,8 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
 
     header = " Secure Mitigation System "
     status = f"[{state.status}]"
+    if state.inference_hint:
+        status = f"{state.inference_hint} {status}"
     lines.append((header + status.rjust(width - len(header)))[:width].ljust(width))
 
     chips = []
@@ -502,8 +555,8 @@ def start_scan_thread(
             state.result_summary = describe_result(result)
             state.status = "done"
         except Exception as exc:  # fail closed: report type only, never internals
-            event_queue.put(("system", f"system: scan failed ({type(exc).__name__})"))
-            state.result_summary = f"scan failed ({type(exc).__name__})."
+            event_queue.put(("system", f"system: {_operator_guidance(exc)}"))
+            state.result_summary = f"{_operator_guidance(exc)}."
             state.status = "error"
         finally:
             state.running = False
@@ -872,8 +925,8 @@ def start_dispatch_thread(
             state.result_summary = summary
             state.status = "done"
         except Exception as exc:  # fail closed: report type only, never internals
-            event_queue.put(("system", f"system: scan failed ({type(exc).__name__})"))
-            state.result_summary = f"scan failed ({type(exc).__name__})."
+            event_queue.put(("system", f"system: {_operator_guidance(exc)}"))
+            state.result_summary = f"{_operator_guidance(exc)}."
             state.status = "error"
         finally:
             state.running = False
@@ -1072,7 +1125,7 @@ def _run_state_scan(state: TuiState, *, header: str) -> int:
             except queue.Empty:
                 break
             print(f"[{kind}] {text}")
-        print(f"scan failed ({type(exc).__name__})")
+        print(_operator_guidance(exc))
         return 1
     while True:
         try:
@@ -1128,7 +1181,7 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
         try:
             result = asyncio.run(execute_binary_sweep(spec, queue_emit(event_queue)))
         except Exception as exc:
-            print(f"scan failed ({type(exc).__name__})")
+            print(_operator_guidance(exc))
             return 1
         while True:
             try:
@@ -1156,7 +1209,7 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
         else:
             result = asyncio.run(execute_purple_workflow(args.fixture, queue_emit(event_queue)))
     except Exception as exc:
-        print(f"scan failed ({type(exc).__name__})")
+        print(_operator_guidance(exc))
         return 1
     while True:
         try:
@@ -1266,6 +1319,9 @@ def run_plain(argv: list[str] | None = None) -> int:
         pass
     explicit = set(argv or [])
     if "--mode" in explicit or getattr(args, "mode", "fixture") != "fixture":
+        _hint = _inference_preflight()
+        if _hint:
+            print(_hint, file=sys.stderr)
         try:
             return _run_plain_dispatch(args)
         finally:
@@ -1302,6 +1358,9 @@ def run_plain(argv: list[str] | None = None) -> int:
                 _obs_done.shutdown()
             except Exception:
                 pass
+    _hint = _inference_preflight()
+    if _hint:
+        print(_hint, file=sys.stderr)
     try:
         return _run_plain_legacy(args)
     finally:
@@ -1317,6 +1376,7 @@ def _curses_main(stdscr, state: TuiState) -> None:
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
     stop_event = threading.Event()
     worker: threading.Thread | None = None
+    state.inference_hint = _inference_preflight()
     try:
         curses.curs_set(0)
     except Exception:
