@@ -190,10 +190,14 @@
         // programmatic (keyboard/buttons), so echo the new value directly.
         input.value = String(next);
       };
-      // press-and-hold accelerates
+      // press-and-hold accelerates. Liveness guard: bump()->set() fires
+      // onChange->refresh->render(), which DESTROYS the pressed button
+      // mid-press — its pointerup clearer dies with it. Without the guard
+      // the pending timer fires on as a zombie, re-renders, reschedules,
+      // and fights later opposite-direction timers (1<->2 oscillation).
       const hold = (btn, dir) => {
         let t = 0; let n = 0;
-        const go = () => { bump(dir, n > 12 ? 10 : 1); n += 1; t = setTimeout(go, n < 3 ? 320 : 70); };
+        const go = () => { if (!btn.isConnected) return; bump(dir, n > 12 ? 10 : 1); n += 1; t = setTimeout(go, n < 3 ? 320 : 70); };
         btn.addEventListener('pointerdown', (e) => { e.preventDefault(); if (btn.disabled) return; n = 0; go(); });
         ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, () => clearTimeout(t)));
       };

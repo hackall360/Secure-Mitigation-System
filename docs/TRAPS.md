@@ -339,3 +339,24 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: "RETRY_MAX_ATTEMPTS 2→4 is a one-line change." Eight pins across four files asserted exactly 2 calls / 1 sleep / `== 2` — all RED post-change, all correct-by-construction under the old budget. Each needed retargeting to the ladder (4 calls, [immediate, 10s, 20s] sleeps) while keeping its original *intent* (no body leak, rate-limit named, hostile Retry-After capped, UI survivable).
   Evidence: `test_config_agents`, `test_w29_load_red`, `test_w13_throttle_ui_red`, `test_recovery_convergence_red` retargeted in the same commit; gate green after.
   Lesson: a budget constant is a load-bearing contract — grep every reference in tests/ before changing it, and retarget in the same commit as the implementation.
+
+## Stepper zombie hold-timers (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the pressed button does not survive its own click.**
+  Wrong assumption: "pointerdown ... pointerup bracket one press, so the
+  repeat timer always gets cleared." bump()->set() fires onChange->refresh->
+  setContext->render()->replaceChildren, which DESTROYS the pressed button
+  mid-press. pointerup lands on the NEW node and clears the NEW closure's
+  (idle) timer; the OLD closure's pending setTimeout fires as a zombie,
+  bumps, re-renders, reschedules — a stuck ~14 Hz repeat. One click leaves
+  one invisible zombie; opposing clicks (+ then -) fight forever: the
+  visible 1<->2 sweep oscillation. Every further click adds another zombie,
+  and each zombie rewrite flickers the Request preview.
+  Evidence: traced from the hold()/render()/refresh() call chain (headless
+  Firefox unusable here — desktop profile lock — so the pin simulates the
+  DOM-lifetime race in node); post-fix simulation shows exactly one bump
+  per click with the zombie tick killed.
+  Lesson: any setTimeout/setInterval chained from a DOM event must check
+  its node's liveness (`btn.isConnected`) before re-firing — especially
+  when the handler synchronously triggers a re-render. The clearer only
+  works if it shares a lifetime with the timer.
