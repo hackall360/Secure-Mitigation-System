@@ -62,10 +62,12 @@ from sms_cli import (
     usage_table,
 )
 
-# WebSocket transport cap (F-201): must admit an 8 MiB binary first frame as
-# base64 + JSON envelope (~11.2 MiB). The prior 65536 (uvicorn default) closed
-# the transport on any real ELF while the badge advertised 8 MiB.
-WS_MAX_MESSAGE_BYTES = 12 * 1024 * 1024
+# Transport frame cap (F-201): must admit an 8 MiB binary first frame as
+# base64 + JSON envelope (~11.2 MiB). Named for what it is — an HTTP-layer
+# transport bound — because it does NOT bound application payload size: the
+# 8 MiB application cap is enforced separately in validate_binary_blob
+# (BINARY_MAX_BYTES) and the 12 MiB project/binary first-frame checks.
+WS_TRANSPORT_MAX_BYTES = 12 * 1024 * 1024
 
 
 def _pick_research_scanners(raw: str) -> tuple:
@@ -3593,7 +3595,7 @@ def main() -> int:
                 create_app(settings),
                 host="127.0.0.1",
                 port=args.port,
-                ws_max_size=WS_MAX_MESSAGE_BYTES,
+                ws_max_size=WS_TRANSPORT_MAX_BYTES,
             )
             return 0
         if args.tui:
@@ -3777,7 +3779,10 @@ def main() -> int:
             return 2
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
         uvicorn.run(
-            create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=WS_MAX_MESSAGE_BYTES
+            create_app(settings),
+            host="127.0.0.1",
+            port=args.port,
+            ws_max_size=WS_TRANSPORT_MAX_BYTES,
         )
         return 0
     except KeyboardInterrupt:

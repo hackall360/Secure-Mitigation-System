@@ -40,10 +40,13 @@ def load_dotenv_file(path=None) -> None:
     quotes stripped. Never overrides a var the process env already sets, so
     an exported secret always wins over the file. Missing file = no-op.
     Default path is `.env` in the current working directory (the repo root
-    when launched normally).
+    when launched normally). `PURPLEBOX_SKIP_DOTENV=1` disables the fill
+    (key-free smoke/test harnesses that must prove the no-key contract).
     """
     from pathlib import Path
 
+    if os.environ.get("PURPLEBOX_SKIP_DOTENV", "") == "1" and path is None:
+        return
     dotenv = Path(path) if path is not None else Path.cwd() / ".env"
     try:
         text = dotenv.read_text(encoding="utf-8")
