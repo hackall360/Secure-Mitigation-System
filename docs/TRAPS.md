@@ -4,6 +4,13 @@ One growing map per `docs/guides/WORKFLOWS.md`. Highest value first: the
 wrong assumption, then what the evidence actually showed. Link new entries
 here, not in scattered notes.
 
+## Stale `.pyc` shadows mutant revert (2026-11-02, branch feature/verification-sweep)
+
+- **Trap: `git checkout -- <file>` after a mutation experiment does NOT invalidate the `.pyc` compiled from the mutant — the stale bytecode keeps executing.**
+  Wrong assumption: "source restored = behavior restored; the next pytest run tests the real code." A Layer-2 mutant run (`cached = 0` in `sms_compress.py`) compiled `__pycache__/sms_compress.cpython-312.pyc` at 15:45; `git checkout --` restored the `.py` but left the mutant `.pyc`. Five R2-parse tests then failed in the repo checkout while passing in a pristine worktree with byte-identical sources — the only difference was the poisoned cache. Purging `*.pyc` (`find library tests -name "*.pyc" -delete`) turned 5-failed into 21-passed with zero source changes.
+  Evidence: identical `diff` on the `.py`, divergent `compress_context` output, `ls -la` showing the 15:45 `.pyc`; post-purge 236/236 gap tests green.
+  Lesson: after ANY in-place mutation experiment, `find <touched-dirs> -name "*.pyc" -delete` before trusting another run. Prefer `git stash` round-trips (which the gate's compileall would also have caught) or copy-the-file-to-/tmp mutants that never touch the tree. The `verify_cov.py` tracer compounds this: it reports line hits from whatever bytecode executed, so a poisoned `.pyc` silently corrupts coverage too.
+
 ## Bare-metal setup test in clean container (2026-11-02, branch feature/baremetal-setup-test)
 
 - **Result: fresh-install setup WORKS — `dev.py setup` → imports → targets → tags → smoke all green in a bare `python:3.12-slim` container; project loads without issues.**
