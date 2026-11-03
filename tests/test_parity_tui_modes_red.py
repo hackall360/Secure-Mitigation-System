@@ -200,9 +200,7 @@ def test_summarize_dict_surfaces_cycles_and_intel_keys():
     outcome = {
         "status": "verified",
         "message": "ok",
-        "cycles": [
-            {"cycle": 1, "pre_exit": 0, "post_exit": 1, "verdict": "retained"}
-        ],
+        "cycles": [{"cycle": 1, "pre_exit": 0, "post_exit": 1, "verdict": "retained"}],
         "intel_provenance": [{"source": "osv", "cve_id": "CVE-2024-1234"}],
     }
     text = tui._summarize_result("scan", outcome)

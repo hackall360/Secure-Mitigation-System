@@ -87,4 +87,7 @@ def test_ops_log_empty_tree_prints_guidance(monkeypatch, tmp_path, capsys):
     (tmp_path / "logs" / "traces").mkdir(parents=True)
     assert main._ops_log_tail(20) == 0
     out = capsys.readouterr()
-    assert "no observability log lines" in out.out.lower() or "no observability" in (out.out + out.err).lower()
+    assert (
+        "no observability log lines" in out.out.lower()
+        or "no observability" in (out.out + out.err).lower()
+    )
