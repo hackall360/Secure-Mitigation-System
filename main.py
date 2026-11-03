@@ -94,6 +94,47 @@ def _init_observability(args, config) -> str:
     return _obs.init(root="logs", mode=mode)
 
 
+def _ops_log_tail(limit: int) -> int:
+    """Print the last ``limit`` records across the logs/ JSONL sink tree.
+
+    Read-only: walks ``logs/<signal>/*.jsonl`` (signals ``logs``|``metrics``|
+    ``traces``), keeps the newest ``limit`` lines in mtime order (oldest of
+    the kept slice first), and prints each line verbatim. Values were already
+    redacted at write time (LAW 4), so no further scrubbing here. ``limit``
+    0 prints nothing and still exits 0; a missing ``logs/`` tree reports to
+    stderr and exits 1 (actionable: run a scan first, or pass a larger N).
+    No Docker contact, no servers started.
+    """
+    root = Path("logs")
+    if not root.is_dir():
+        print("no observability logs found under logs/ (run a scan first).", file=sys.stderr)
+        return 1
+    files: list[Path] = []
+    for signal in ("logs", "metrics", "traces"):
+        signal_dir = root / signal
+        if not signal_dir.is_dir():
+            continue
+        files.extend(sorted(signal_dir.glob("*.jsonl")))
+    lines: list[str] = []
+    for path in files:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        try:
+            with path.open(encoding="utf-8") as handle:
+                content = [line for line in handle.read().splitlines() if line.strip()]
+        except OSError:
+            continue
+        lines.extend((mtime, line) for line in content)
+    # mtime order keeps cross-signal recency; the sort is stable so records
+    # from the same file stay in write order.
+    lines.sort(key=lambda item: item[0])
+    for _, line in lines[-limit:] if limit else []:
+        print(line)
+    return 0
+
+
 def _demo_build_failure(exc: BaseException) -> dict:
     """User-safe error report for a failed demo build (UI result-card shape)."""
     return {
@@ -2203,6 +2244,10 @@ async def cli_runner(
     deep_assessment: bool = False,
     offline_cve: bool = False,
     fast_lane: bool = False,
+    cve_limit: int = 20,
+    cve_reach_only: bool = False,
+    red_agents: int = 5,
+    blue_agents: int = 5,
     out_format: str = "table",
     show_usage: bool = False,
     sweep_passes: int | None = None,
@@ -2236,6 +2281,10 @@ async def cli_runner(
             deep_assessment=deep_assessment,
             offline_cve=offline_cve,
             fast_lane=fast_lane,
+            cve_limit=cve_limit,
+            cve_reach_only=cve_reach_only,
+            red_agents=red_agents,
+            blue_agents=blue_agents,
             out_format=out_format,
             show_usage=show_usage,
             sweep_passes=sweep_passes,
@@ -2262,6 +2311,10 @@ async def cli_runner(
             **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
         )
     _out(f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}")
+    _out(
+        f"[SYSTEM] agents: red={red_agents} blue={blue_agents} "
+        f"(source: {'flag' if (red_agents, blue_agents) != (5, 5) else 'server-default'})"
+    )
     if project is not None and cve_scan:
         cve_result = await execute_cve_scan(
             project,
@@ -2273,9 +2326,14 @@ async def cli_runner(
             fast_lane=fast_lane,
         )
         _out(f"[SYSTEM] {cve_result.message}")
-        for vuln in cve_result.vulnerabilities[:20]:
+        shown = 0
+        for vuln in cve_result.vulnerabilities:
             cves = ",".join(vuln.get("cves") or [vuln.get("id", "")])
-            _out(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}")
+            if not cve_reach_only:
+                if shown >= max(cve_limit, 1):
+                    break
+                _out(f"[CVE    ] {cves}: {(vuln.get('summary') or '')[:160]}")
+                shown += 1
             # Wave 2 item 3: topping evidence on the live terminal path.
             try:
                 score = vuln.get("reach_score")
@@ -2878,6 +2936,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires --commit-hash)",
     )
+    commands.add_argument(
+        "--showcase-status",
+        action="store_true",
+        help="Print the standalone showcase rig presence table (TTS, capture, music, render); static file checks only, nothing is started",
+    )
+    commands.add_argument(
+        "--ops-log",
+        nargs="?",
+        const=20,
+        default=None,
+        type=int,
+        metavar="N",
+        help="Print the last N records across the observability JSONL sinks (default 20); read-only, values already redacted at write time",
+    )
     parser.add_argument(
         "--snippet-language",
         choices=["javascript", "python", "php"],
@@ -2936,6 +3008,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--cve-scan",
         action="store_true",
         help="Run deep static+CVE scan (OSV lookup) instead of probe/patch verification; KEV/EPSS carry freshness stamps",
+    )
+    parser.add_argument(
+        "--cve-limit",
+        type=int,
+        default=20,
+        help="Cap printed [CVE] lines per scan (default 20, min 1)",
+    )
+    parser.add_argument(
+        "--cve-reach-only",
+        action="store_true",
+        help="Print only [TOP] reachability topping lines, no [CVE] detail lines",
     )
     parser.add_argument(
         "--deep-assessment",
@@ -3055,6 +3138,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pinned 40-hex commit for --ingest-repo (required with --ingest-repo)",
     )
     parser.add_argument(
+        "--ingest-dry-run",
+        action="store_true",
+        help="Validate the --ingest-repo/--commit-hash spec and print the staging plan without cloning (prints actionable guidance; exit 1 on bad input, clones nothing)",
+    )
+    parser.add_argument(
         "--observability-mode",
         choices=["dev", "prod"],
         default=None,
@@ -3133,6 +3221,13 @@ def main() -> int:
         parser.error("--ingest-repo requires --commit-hash")
     if args.commit_hash and not args.ingest_repo:
         parser.error("--commit-hash requires --ingest-repo")
+    # --ingest-dry-run is a modifier of the ingest surface, same as pair gating.
+    if args.ingest_dry_run and not args.ingest_repo:
+        parser.error("--ingest-dry-run requires --ingest-repo")
+    # --ops-log is a read-only tail of the default logs/ sink tree; negative
+    # counts are rejected here (exit 2) so dispatch can treat 0 as "print none".
+    if args.ops_log is not None and args.ops_log < 0:
+        parser.error("--ops-log must be >= 0")
     if args.project and (not args.command or not args.test_command or not args.contract):
         parser.error("--project requires --command, --test-command, and --contract")
     if args.ai_demo and args.scan:
@@ -3155,6 +3250,8 @@ def main() -> int:
         parser.error("--sweep-passes requires --scan")
     if args.show_intel and not args.scan:
         parser.error("--show-intel requires --scan")
+    if not 1 <= args.cve_limit <= 1000:
+        parser.error("--cve-limit must be between 1 and 1000")
     if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 4:
         parser.error("--sweep-passes must be between 1 and 4")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
@@ -3209,6 +3306,30 @@ def main() -> int:
             return 0
         settings = load_config()
         _init_observability(args, settings)
+        if args.showcase_status:
+            status = showcase_status()
+            if out_format == "json":
+                print(json.dumps(status, indent=2))
+            else:
+                tts = status["tts"]
+                capture = status["capture"]
+                music = status["music"]
+                render = status["render"]
+                print("showcase rig presence (static checks only; nothing started):")
+                tts_state = "present" if tts["present"] else "absent"
+                print(f"  tts: {tts_state} (port {tts['port']}, {tts['health_url']})")
+                scripts = ", ".join(capture["scripts"]) if capture["scripts"] else "none found"
+                capture_state = "present" if capture["present"] else "absent"
+                print(f"  capture: {capture_state} ({scripts})")
+                bed = music["final_bed"] if music["final_bed"] else "none found"
+                music_state = "present" if music["present"] else "absent"
+                print(f"  music: {music_state} ({bed})")
+                syntax = "ok" if render["bash_syntax_ok"] else "unchecked"
+                render_state = "present" if render["script_present"] else "absent"
+                print(f"  render: {render_state} (bash -n: {syntax})")
+            return 0
+        if args.ops_log is not None:
+            return _ops_log_tail(args.ops_log)
         if args.health:
             report = _health_report(settings)
             if out_format == "json":
@@ -3352,6 +3473,8 @@ def main() -> int:
                     sweep_passes=args.sweep_passes,
                     show_cycles=args.show_cycles,
                     show_intel=args.show_intel,
+                    red_agents=args.red_agents,
+                    blue_agents=args.blue_agents,
                 )
             )
         if args.ai_demo:
@@ -3426,6 +3549,10 @@ def main() -> int:
                     deep_assessment=args.deep_assessment,
                     offline_cve=args.offline_cve,
                     fast_lane=args.fast_lane,
+                    cve_limit=max(args.cve_limit, 1),
+                    cve_reach_only=args.cve_reach_only,
+                    red_agents=args.red_agents,
+                    blue_agents=args.blue_agents,
                     out_format=out_format,
                     show_usage=args.show_usage,
                     show_cycles=args.show_cycles,
@@ -3436,6 +3563,35 @@ def main() -> int:
         if args.vault_replay is not None:
             return _vault_replay_main(args.vault_replay)
         if args.ingest_repo:
+            # --ingest-dry-run: validate the spec and print the staging plan —
+            # no clone, no Docker contact, no fixture loop. Bad input exits 1
+            # with actionable guidance (spec validators reject non-https URLs
+            # and non-40-hex commits); the refusal path below stays exit 2.
+            if args.ingest_dry_run:
+                from modules.services.repo_intake import RepoIntakeSpec
+
+                try:
+                    spec = RepoIntakeSpec(url=args.ingest_repo, commit_hash=args.commit_hash)
+                except ValueError as exc:
+                    print(
+                        f"ingest dry-run: invalid spec ({exc}); "
+                        "use an https:// URL and a 40-hex commit.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                print("ingest dry-run: spec valid, nothing cloned.")
+                print(f"  url: {spec.url}")
+                print(f"  commit: {spec.commit_hash}")
+                print(
+                    "  staging plan: clone <url> inside a non-started "
+                    'network_mode="none" container (no host mounts), '
+                    "checkout <commit>, snapshot tree, remove staging container."
+                )
+                print(
+                    "  runtime: pass an explicit runtime_command argv when "
+                    "running intake (auto-detect needs a file list)."
+                )
+                return 0
             # F-01/F-02 honest refusal: validate first (exit 2 on bad input),
             # then refuse — never run the fixture loop. A fixture scan would
             # verify the WRONG bytes while reporting the repo's verdict.
