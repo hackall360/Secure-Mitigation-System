@@ -131,3 +131,45 @@ Spark, one point three. Thank you for watching."
    ("1 cycle, 5 red, 3 blue") matches what the form actually sends.
 3. AnyCam wall-clock is unknown — dry-run Part 2 once to learn the capture
    length and confirm the run completes before promising anything on mic.
+
+## VO rendering lessons (decided 2026-11-03, booth seed 6420)
+
+No single template renders every line. Each line needs its own shaping,
+but the aspects below re-use across lines — mix per line, never copy a
+whole recipe blindly.
+
+Reusable aspects (the toolkit, not a template):
+- Skip-refine (`skip_refine_text=True`): synthesis runs exactly as written.
+  The refiner otherwise rewrites the line and scatters its own pauses.
+  Default ON for all VO.
+- `[uv_break]`: gentle filled pause, for mid-line breaths between clauses.
+- `[lbreak]`: hard stop. Use sparingly — one before the closer, one
+  trailing so the final phoneme renders instead of hard-cutting (plus
+  0.5 s padded digital silence after, always).
+- `break_6` (relaxed gaps) over `break_4` (clipped, robotic here).
+- Letter-space acronyms/compound tech terms (O S, P H P, host name, escape
+  shell arg) — the voice mumbles them joined, spells them spaced.
+- Temp 0.3 + top_P 0.7 + top_K 20 pins (README lively triple, deterministic
+  with seeded tensor `dd1e40d0f813e52b`).
+- End lines on facts, not slogans. A closer that sounds AI-written
+  ("Evidence, chained, not opinion") will read AI-spoken no matter the
+  recipe — cut it rather than fix the delivery.
+
+What did NOT transfer:
+- `[lbreak]` at every boundary (hook v5) sounded upset/agitated. Hard
+  stops multiply tension; one is punctuation, four is an argument.
+- Temp 0.45/0.5 variants: liveliness knob, not a pause-placement fix.
+- Word-break prefixing every sentence without skip-refine: the refiner
+  reorganized the marks anyway.
+- Long single-breath multi-clause sentences (explainer v1-v8): split the
+  sentence instead of tuning the pause. No pause recipe fixes a breath
+  that carries three ideas.
+- Trailing digital silence alone does NOT save a clipped final phoneme —
+  only a rendered trailing `[lbreak]` does.
+
+Final Part 1 takes (all seed 6420, skip-refine, break_6, padded tails):
+- `test_demo_part1_hook.wav` (v7 recipe: soft uv mid-line, one lbreak
+  before closer, trailing lbreak).
+- `test_demo_part1_explainer.wav` (v10: v7 recipe + split breaths +
+  spaced acronyms, closer dropped).
+- `test_demo_bridge.wav` (single thought, one lbreak, trailing lbreak).
