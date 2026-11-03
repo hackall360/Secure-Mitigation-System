@@ -775,7 +775,7 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 return _wrap_tool_result(rpc_id, payload)
             except Exception as exc:
                 return jsonrpc_error(rpc_id, -32603, f"Ops status failed ({type(exc).__name__}).")
-        if name in ("sms_scan_source", "sms_scan_binary"):
+        if name in ("sms_scan_source", "sms_scan_binary", "submit_code_snippet"):
             return jsonrpc_error(
                 rpc_id,
                 -32001,
