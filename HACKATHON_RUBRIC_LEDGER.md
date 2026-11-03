@@ -181,7 +181,7 @@ submission-scale live benchmarks (1D). Next wave targets: live `/ws/demo` narrat
 - **Monotonic Regression Gate Status:** **PASS: MONOTONIC_GAIN_OR_HOLD** (Δ ≥ 0 every sub-criterion)
 - **Stage 3 Finalist Tier Projection:** **Top-5 Bubble** (agentic 8.0→8.5; open-weight 5.0 holds; creative 5.0→6.5)
 
-Gate: **1317 passed + 2 skipped** (1303 + 6 narration + 3 driver-appends + 3 assets + 2 format-sync stabilizations), **All checks passed**. No video recorded/rendered (ban honored; render_demo.sh proven via `bash -n` + `--check` only).
+Gate: **1315 passed + 2 skipped, All checks passed** (1303 + 6 narration + 3 driver-appends + 3 assets). No video recorded/rendered (ban honored; render_demo.sh proven via `bash -n` + `--check` only).
 
 ### C. Stage 2 Delta Detail (Run #3 vs Run #2)
 
@@ -204,4 +204,4 @@ live generation, live 180 s run-through, 100-scan soak, live benchmarks.
 - **Run #3 — 2026-11-03 ~00:45 UTC** (`774e646` + ledger): Stage 1 PASS (no notes);
   Stage 2 **7.96/10.00** (Impact 8.25 / Tooling 9.00 / Depth 8.25 / Demo 6.75);
   Δ **+0.25** vs Run #2 (7.71), **+0.90** vs baseline (7.06).
-  **STATUS: MONOTONIC_GAIN_OR_HOLD**. Gate 1317+2. No video recorded/rendered.
+  **STATUS: MONOTONIC_GAIN_OR_HOLD**. Gate 1315+2. No video recorded/rendered.
