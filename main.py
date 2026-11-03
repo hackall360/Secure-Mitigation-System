@@ -2098,6 +2098,13 @@ async def ai_demo_runner(
     from modules.services.demo_gen import generate_demo_project, materialize_demo_project
 
     settings = _apply(_load(), profile)
+    # F-212: --format json keeps stdout machine-pure (report only); all team
+    # chatter goes to stderr. Table mode keeps the legacy stdout stream.
+    json_mode = out_format == "json"
+
+    def _say(message: str) -> None:
+        print(message, flush=True, file=sys.stderr if json_mode else sys.stdout)
+
     if research:
         # Single allowlist source (F-222); explicit flag wins, env only when
         # the flag is absent, honoring flag > config > env > default (F-206).
@@ -2116,33 +2123,24 @@ async def ai_demo_runner(
         # stays offline (patterns only) unless consent is explicit — same rule
         # the dashboard enforces by coercing intel_offline without the checkbox.
         intel_offline = True
-        print(
+        _say(
             "[SYSTEM] AI demo: hosted inference without --allow-remote-inference; "
-            "building offline from static flaw patterns.",
-            flush=True,
+            "building offline from static flaw patterns."
         )
 
     themes = [w for w in intel_theme.split() if w][:6]
     if intel_offline:
         intel: list = []
-        print(
-            "[SYSTEM] AI demo: offline mode, using static flaw patterns (no NVD lookup).",
-            flush=True,
-        )
+        _say("[SYSTEM] AI demo: offline mode, using static flaw patterns (no NVD lookup).")
     else:
-        print(
-            f"[SYSTEM] AI demo: gathering threat intel for themes: {', '.join(themes)}", flush=True
-        )
+        _say(f"[SYSTEM] AI demo: gathering threat intel for themes: {', '.join(themes)}")
         try:
             intel = await intel_for_demo(themes, per_theme=4)
-            print(f"[SYSTEM] AI demo: {len(intel)} intel records for generation.", flush=True)
+            _say(f"[SYSTEM] AI demo: {len(intel)} intel records for generation.")
         except Exception as exc:
-            print(
-                f"[SYSTEM] AI demo: intel unavailable ({type(exc).__name__}); continuing offline.",
-                flush=True,
-            )
+            _say(f"[SYSTEM] AI demo: intel unavailable ({type(exc).__name__}); continuing offline.")
             intel = []
-    print("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).", flush=True)
+    _say("[SYSTEM] AI demo: Muse designing a novel demo project (red-team driver).")
     from modules.services.demo_gen import parse_build_intent as _parse
 
     _intent = _parse(build_brief=build_brief, vulns=vulns, theme=intel_theme)
@@ -2163,15 +2161,14 @@ async def ai_demo_runner(
             await muse.aclose()
         except Exception:
             pass
-    print(
-        f"[SYSTEM] AI demo: generated app.py ({len(files.app_py)} chars) inspired by {', '.join(files.cve_inspiration) or 'novel combinations'}.",
-        flush=True,
+    _say(
+        f"[SYSTEM] AI demo: generated app.py ({len(files.app_py)} chars) inspired by {', '.join(files.cve_inspiration) or 'novel combinations'}."
     )
     spec = materialize_demo_project(files)
     try:
         from modules.services.chatter import chatter as _chatter
 
-        print(f"[GREEN] {_chatter('green', n=len(files.flaw_notes), path='app.py')}", flush=True)
+        _say(f"[GREEN] {_chatter('green', n=len(files.flaw_notes), path='app.py')}")
     except Exception:
         pass
     # Enrich ProjectSpec with requested intensity/team sizes.
