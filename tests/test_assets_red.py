@@ -73,9 +73,29 @@ def test_demo_references_title_card_with_fallback():
     hit = None
     for page in pages:
         html = page.read_text(encoding="utf-8")
-        if "title-card.svg" in html and "onerror" in html:
-            hit = page
-            break
+        # CSP-safe fallback: addEventListener('error') in demo.js (inline
+        # onerror is blocked by script-src 'self' - see surface-testing
+        # findings). Markup must reference the asset; handler lives in JS.
+        if "title-card.svg" in html:
+            js = (ROOT / "web" / "js" / "pages" / "demo.js").read_text(encoding="utf-8")
+            if "demo-title-card" in js and 'addEventListener("error"' in js.replace("'", '"'):
+                hit = page
+                break
     assert hit is not None, (
-        "no page references the title-card asset with a graceful onerror fallback"
+        "no page references the title-card asset with a graceful CSP-safe fallback"
     )
+
+
+def test_no_inline_event_handlers_in_web_pages():
+    """Surface finding #1 regression pin: CSP script-src 'self' blocks all
+    inline handlers — markup must never carry on*= attributes."""
+    import re
+
+    pages = sorted((ROOT / "web").glob("*.html"))
+    assert pages, "no web pages found"
+    bad = []
+    for page in pages:
+        for i, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"""\son\w+\s*=""", line):
+                bad.append(f"{page.name}:{i}: {line.strip()[:80]}")
+    assert not bad, f"inline handlers blocked by CSP:\n" + "\n".join(bad)
