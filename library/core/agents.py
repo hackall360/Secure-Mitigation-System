@@ -23,6 +23,7 @@ from modules.core.prompts import (
     RED_TEAM_SYSTEM_PROMPT,
     RED_THREAT_ACTOR_SYSTEM_PROMPT,
 )
+from modules.shared.sms_budget import check_payload_budget
 from modules.shared.sms_observability import get_aspect as _get_aspect
 from modules.shared.sms_observability import log as _obs_log
 from modules.shared.sms_observability import record_metric as _obs_metric
@@ -244,11 +245,20 @@ class MetaMuseClient:
         return body
 
     async def _request(
-        self, model: str, system: str, payload: dict, schema: type[ResponseModel], role: str = ""
+        self,
+        model: str,
+        system: str,
+        payload: dict,
+        schema: type[ResponseModel],
+        role: str = "",
+        max_payload_bytes: int = 256_000,
     ) -> ResponseModel:
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
         throttled = False
+        # F-217b: enforce the caller-supplied payload budget here too, so a
+        # direct _request caller cannot bypass the demo_gen pre-check.
+        check_payload_budget(payload, max_payload_bytes, "Model request")
         for attempt in range(RETRY_MAX_ATTEMPTS):
             started = time.monotonic()
             # Meta's Chat Completions endpoint constrains decoding through response_format,

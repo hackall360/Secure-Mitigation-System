@@ -452,3 +452,88 @@ def test_f217_local_mode_still_builds_past_gate(monkeypatch, mode):
     except Exception:
         pass
     assert called, "local inference needs no key, so the intel phase must still run"
+
+
+def test_f212_aidemo_json_stdout_pure(monkeypatch, tmp_path, capsys):
+    """F-212: ai-demo --format json keeps stdout machine-pure (RED-first).
+
+    Live-proven by L15: key-free run printed 3 [SYSTEM] chatter lines to
+    stdout ahead of the JSON report. All chatter must go to stderr in
+    json mode; table mode keeps the legacy stdout stream.
+    """
+    import main as app_module
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("META_MUSE_API_KEY", "k")
+    for knob in (
+        "PURPLEBOX_OBSERVABILITY_MODE",
+        "PURPLEBOX_RESEARCH",
+        "PURPLEBOX_RESEARCH_SCANNERS",
+        "PURPLEBOX_INTEL_OFFLINE",
+    ):
+        monkeypatch.delenv(knob, raising=False)
+    import library.services.mcp_bridge as _bridge
+
+    monkeypatch.setattr(_bridge, "obs_log", lambda *a, **k: None)
+
+    async def fake_cli_runner(*args, **kwargs):
+        import json as _json
+
+        print(_json.dumps({"status": "ai-demo-stub"}))
+        return 0
+
+    async def fake_generate(*args, **kwargs):
+        from library.services.demo_gen import DemoProjectFiles
+
+        return DemoProjectFiles(
+            app_py="x = 1\n",
+            test_contract_py="assert True\n",
+            contract="c",
+            flaw_notes=["SQL injection at /q"],
+            cve_inspiration=[],
+        )
+
+    monkeypatch.setattr(app_module, "cli_runner", fake_cli_runner)
+    import modules.core.agents as _mod_agents
+    import modules.services.demo_gen as _mod_demo_gen
+
+    monkeypatch.setattr(_mod_demo_gen, "generate_demo_project", fake_generate)
+
+    class _FakeSpec:
+        def model_dump(self, mode="json"):
+            return {
+                "path": str(tmp_path),
+                "command": ["python3", "app.py"],
+                "test_command": ["python3", "-m", "unittest"],
+                "contract": "c",
+                "scan_profile": "custom",
+                "cycles": None,
+                "red_agents": 5,
+                "blue_agents": 5,
+                "allow_remote_inference": True,
+            }
+
+    monkeypatch.setattr(_mod_demo_gen, "materialize_demo_project", lambda files: _FakeSpec())
+
+    class _FakeMuse:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(_mod_agents, "MetaMuseClient", _FakeMuse)
+    import library.core.agents as _agents
+
+    monkeypatch.setattr(_agents, "MetaMuseClient", _FakeMuse)
+    rc = asyncio.run(
+        app_module.ai_demo_runner(
+            tmp_path / "out",
+            out_format="json",
+            intel_offline=True,
+            allow_remote_inference=True,
+        )
+    )
+    out = capsys.readouterr()
+    assert rc == 0
+    assert _stdout_is_json(out.out), f"stdout not pure JSON: {out.out[:200]!r}"
