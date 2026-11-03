@@ -98,4 +98,4 @@ def test_no_inline_event_handlers_in_web_pages():
         for i, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"""\son\w+\s*=""", line):
                 bad.append(f"{page.name}:{i}: {line.strip()[:80]}")
-    assert not bad, f"inline handlers blocked by CSP:\n" + "\n".join(bad)
+    assert not bad, "inline handlers blocked by CSP:\n" + "\n".join(bad)
