@@ -5,6 +5,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -61,10 +62,76 @@ from sms_cli import (
     usage_table,
 )
 
+# WebSocket transport cap (F-201): must admit an 8 MiB binary first frame as
+# base64 + JSON envelope (~11.2 MiB). The prior 65536 (uvicorn default) closed
+# the transport on any real ELF while the badge advertised 8 MiB.
+WS_MAX_MESSAGE_BYTES = 12 * 1024 * 1024
+
+
+def _pick_research_scanners(raw: str) -> tuple:
+    """Intersect a caller string with the canonical allowlist (F-222).
+
+    Single source of truth: ALLOWED_RESEARCH_SCANNERS. Sorts for the
+    validate() sorted-and-unique contract. Unknown names are dropped.
+    """
+    from modules.core.config import ALLOWED_RESEARCH_SCANNERS as _ALLOWED
+
+    return tuple(sorted({s.strip().lower() for s in (raw or "").split(",")} & set(_ALLOWED)))
+
+
+def _is_safe_guidance_text(text: str) -> bool:
+    """LAW 4 guard: authored config/consent text is safe to repeat; anything
+    shaped like a secret, path, or URL is not. Rejects long alnum runs
+    (token-like), URL/path/secret markers. Truncation happens at the use."""
+    if len(text) > 2000:
+        return False
+    lowered = text.lower()
+    for marker in (
+        "sk-",
+        "http://",
+        "https://",
+        "github_pat_",
+        "ghp_",
+        "gho_",
+        "xoxb-",
+        "@",
+        "/home/",
+        "/tmp/",
+        "passwd",
+    ):
+        if lowered.find(marker) >= 0:
+            return False
+    run = 0
+    for ch in text:
+        if ch.isalnum():
+            run += 1
+            if run >= 20:
+                return False
+        else:
+            run = 0
+    return True
+
+
+def _actionable_error_text(exc: BaseException) -> str | None:
+    """Return the exception text only when it is safe to repeat to an
+    operator (authored rule text). Otherwise None (caller prints type-only).
+
+    ConfigurationError and ProjectWorkflowError messages are written by this
+    codebase and name env vars and flags, never values. Anything else is
+    type-only per LAW 4.
+    """
+    from modules.workflows.project_workflow import ProjectWorkflowError
+
+    if not isinstance(exc, (ConfigurationError, ProjectWorkflowError)):
+        return None
+    text = str(exc)
+    if not text or not _is_safe_guidance_text(text):
+        return None
+    return text[:300]
+
+
 NOTICE = "Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use."
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
-
-# (APP_VERSION imported at top from library.core.version.)
 
 # Exec-audience one-liners for Wave 2/5/8: every capability, its same-day
 # value in plain English. Rendered as the --help epilog; sms_cli and tui
@@ -566,6 +633,30 @@ async def run_demo_build(
 
     intent = parse_build_intent(build_brief=build_brief, vulns=vulns, theme=theme)
     themes = [w for w in (theme or "input validation SQL injection XSS").split() if w][:6]
+    # F-217: Greenhouse generation always needs Muse, so refuse before any
+    # keyless intel HTTP or "green" chatter. Failing here (not inside the
+    # generation try) keeps the no-key contract identical for local mode:
+    # local needs no key and proceeds to the offline intel phase below.
+    try:
+        from modules.core.config import require_api_key as _require_key
+
+        _require_key(settings)
+    except ConfigurationError as exc:
+        guidance = _actionable_error_text(exc) or f"Demo generation failed ({type(exc).__name__})."
+        return {
+            "status": "error",
+            "message": guidance,
+            "project": "ai-demo",
+            "cycles": [],
+            "cycle_reports": [],
+            "cumulative_diff": "",
+            "diff": "",
+            "research_records": [],
+            "usage": {"calls": []},
+            "total_tokens": 0,
+            "cost_usd": None,
+            "cleanup_ok": True,
+        }
     intel: list = []
     if not intel_offline:
         try:
@@ -702,7 +793,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     async def readiness_lifespan(application: FastAPI):
         try:
             settings = config or load_config()
-            snapshot = _health_report(settings, scan_lock=application.state.scan_lock)
+            snapshot = _health_report(
+                settings, busy=getattr(application.state, "scan_phase", "idle") == "scanning"
+            )
             print(
                 "[SYSTEM] Secure Mitigation System ready: "
                 f"inference={snapshot['inference_mode']} "
@@ -730,6 +823,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
         TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]"]
     )
     application.state.scan_lock = asyncio.Lock()
+    application.state.scan_phase = "idle"
 
     @application.middleware("http")
     async def response_headers(request, call_next):
@@ -818,7 +912,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     for profile in SCAN_PROFILES.values()
                 ],
                 "docker": await asyncio.to_thread(docker_status, settings),
-                "busy": application.state.scan_lock.locked(),
+                "busy": getattr(application.state, "scan_phase", "idle") == "scanning",
             }
         except ConfigurationError as exc:
             return JSONResponse(
@@ -845,16 +939,9 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             # Dashboard opt-in mirrors --research/--research-scanners: off unless
             # the query explicitly says on. Allowlist-validated like the env var.
             if socket.query_params.get("research") == "on":
-                allowed = ("trivy", "grype", "osv-scanner", "dependency-check", "dependency-track")
-                wanted = tuple(
-                    sorted(
-                        {
-                            s.strip().lower()
-                            for s in (socket.query_params.get("research_scanners") or "").split(",")
-                            if s.strip().lower() in allowed
-                        }
-                    )
-                )
+                # Single allowlist source (F-222); the helper intersects
+                # with ALLOWED_RESEARCH_SCANNERS, sorts, and drops unknowns.
+                wanted = _pick_research_scanners(socket.query_params.get("research_scanners") or "")
                 import dataclasses
 
                 scan_config = dataclasses.replace(
@@ -875,26 +962,20 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             return
         await socket.accept()
         lock = application.state.scan_lock
-        # F-02 atomic busy: the old shape (one locked() check, then a long
-        # snapshot/docker-status gap, then unconditional `async with lock`)
-        # let two callers both see "free" and serialize instead of the
-        # loser getting busy. The re-check immediately before acquire runs
-        # with no awaits between check and acquire, which is atomic within
-        # one event-loop step: exactly one winner, the loser gets busy now.
-        _busy_acquired = False
-        if not lock.locked():
-            if not lock.locked():
-                await lock.acquire()
-                _busy_acquired = True
-        if not _busy_acquired:
+        # F-209: one acquire attempt, no release gap. The old
+        # release-then-`async with lock` handoff left lock.locked() True
+        # while no scan ran, which the busy gate then misreported. The
+        # first-frame reads below run lock-free inside the body; the scan
+        # phase is set after the first frame is validated, so a slow
+        # client trickling bytes holds no lock and reports idle.
+        if lock.locked():
             await socket.send_json(
                 {"team": "system", "msg": "Another scan is already running.", "type": "busy"}
             )
             await socket.close(code=1013)
             return
-        # This task now owns the lock; release so the `async with lock`
-        # below (which wraps the whole scan body) acquires normally.
-        lock.release()
+
+        _scan_phase_set = False
 
         from modules.services.chatter import socket_emit as _socket_emit
         from modules.services.telemetry_hub import build_snapshot as _build_snapshot
@@ -945,7 +1026,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                 try:
                     # Binary bytes travel in the first WS frame (base64), never
                     # in URLs, history, or access logs. 8 MiB intake cap + 33%
-                    # base64 overhead bound the frame.
+                    # base64 overhead bound the frame. F-209: read BEFORE the
+                    # phase is set, so a slow client holds nothing.
                     import base64
 
                     from modules.services.binary_intake import (
@@ -973,11 +1055,15 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     )
                     await socket.send_json({"type": "invalid", "team": "system", "msg": reason})
                     await socket.close(code=1008)
+                    application.state.scan_phase = "idle"
                     return
                 from modules.workflows.binary_sweep import (
                     execute_binary_sweep as _execute_binary,
                 )
 
+                # First frame validated; only now does this connection occupy the scanner.
+                _scan_phase_set = True
+                application.state.scan_phase = "scanning"
                 coroutine = _execute_binary(binary_spec, emit, config=scan_config)
             elif target_key is None:
                 try:
@@ -996,56 +1082,20 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     if isinstance(frame, dict) and (
                         "ingest_repo" in frame or "commit_hash" in frame
                     ):
-                        import modules.services.repo_intake as _intake_mod
-
-                        _RepoIntakeSpec = _intake_mod.RepoIntakeSpec
-                        _intake_to_snapshot = _intake_mod.intake_repo_to_snapshot
-
-                        try:
-                            intake_spec = _RepoIntakeSpec(
-                                url=frame.get("ingest_repo"),
-                                commit_hash=frame.get("commit_hash"),
-                            )
-                        except (ValueError, TypeError) as exc:
-                            raise ValueError(
-                                f"Invalid ingest settings ({exc}). Send an https:// "
-                                "repository URL and the full 40-hex pinned commit."
-                            ) from exc
-                        explicit_command = frame.get("runtime_command")
-                        if explicit_command is not None:
-                            if not isinstance(explicit_command, (list, tuple)) or not all(
-                                isinstance(item, str) for item in explicit_command
-                            ):
-                                raise ValueError(
-                                    "Invalid ingest settings (runtime_command must be "
-                                    "an argv list of strings)."
-                                )
-                            intake_command: list | tuple | None = list(explicit_command)
-                            frame_files = frame.get("file_list")
-                            intake_files = frame_files
-                        else:
-                            intake_command = None
-                            frame_files = frame.get("file_list")
-                            intake_files = frame_files
-                        try:
-                            if intake_files is None:
-                                snapshot = _intake_to_snapshot(intake_spec, intake_command)
-                            else:
-                                snapshot = _intake_to_snapshot(
-                                    intake_spec, intake_command, file_list=intake_files
-                                )
-                        except (ValueError, TypeError) as exc:
-                            raise ValueError(f"Invalid ingest settings ({exc}).") from exc
-                        frame_contract = frame.get("contract", "")
-                        coroutine = _run_ingest_workflow(
-                            snapshot,
-                            emit,
-                            config=scan_config,
-                            file_list=frame_files,
-                            contract=frame_contract,
+                        # F-204: a WS client can always SEND bytes, so a verdict
+                        # attributed to the claimed repo URL would be unverified
+                        # by construction. Refuse every ingest frame (even a
+                        # well-formed one) until the server fetches the commit
+                        # itself and the snapshot manifest proves origin.
+                        raise ValueError(
+                            "Invalid ingest settings (the server cannot fetch the "
+                            "repository itself yet, so ingest bytes were not fetched "
+                            "and are not verified)."
                         )
                     else:
                         spec = ProjectSpec.model_validate(frame)
+                        _scan_phase_set = True
+                        application.state.scan_phase = "scanning"
                         coroutine = execute_project_workflow(spec, emit, config=scan_config)
                 except (ValueError, TimeoutError, WebSocketDisconnect) as exc:
                     ingest_msg = None
@@ -1114,6 +1164,8 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     )
                     await socket.close(code=1008)
                     return
+                _scan_phase_set = True
+                application.state.scan_phase = "scanning"
                 coroutine = run_demo_build(
                     emit,
                     scan_config,
@@ -1149,10 +1201,14 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     await socket.close(code=1008)
                     return
                 if sweep_depth is not None:
+                    _scan_phase_set = True
+                    application.state.scan_phase = "scanning"
                     coroutine = execute_sweep_scan(
                         target_key, emit, config=scan_config, max_passes=sweep_depth
                     )
                 else:
+                    _scan_phase_set = True
+                    application.state.scan_phase = "scanning"
                     coroutine = execute_purple_workflow(target_key, emit, config=scan_config)
             # Connect preamble: the UI renders plain log frames immediately,
             # so this hello + profile snapshot means it never sits blank
@@ -1218,6 +1274,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             except (WebSocketDisconnect, RuntimeError):
                 pass
             finally:
+                application.state.scan_phase = "idle"
                 for task in (run, disconnect):
                     if not task.done():
                         task.cancel()
@@ -1400,9 +1457,25 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                     import base64 as _base64
 
                     try:
-                        blob = _base64.b64decode(
-                            str(live_arguments.get("blob_b64") or ""), validate=True
-                        )
+                        # F-210: refuse oversized base64 BEFORE decoding, so an
+                        # unbounded request body cannot balloon in memory.
+                        # The bound lands via sa-binary (BINARY_MAX_B64_CHARS);
+                        # fall back to the exact math locally until merged.
+                        try:
+                            from modules.services.binary_intake import (
+                                BINARY_MAX_B64_CHARS as _MAX_B64,
+                            )
+                        except ImportError:
+                            from modules.services.binary_intake import BINARY_MAX_BYTES as _MAX_BIN
+
+                            _MAX_B64 = 4 * -(-_MAX_BIN // 3)
+                        _b64_raw = str(live_arguments.get("blob_b64") or "")
+                        if len(_b64_raw) > _MAX_B64:
+                            raise ValueError(
+                                f"Binary base64 too large ({len(_b64_raw)} chars; "
+                                f"limit {_MAX_B64})."
+                            )
+                        blob = _base64.b64decode(_b64_raw, validate=True)
                         from modules.services.binary_intake import validate_binary_blob
 
                         validate_binary_blob(
@@ -1539,6 +1612,17 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
     return application
 
 
+def _mcp_scan_text(structured: dict) -> str:
+    """One-line scan verdict text (F-213): status plus the Docker exit codes,
+    shared by the HTTP envelope and the stdio transport so both surfaces
+    surface the same information. Never includes keys, paths, or prompts."""
+    return (
+        f"status={structured.get('status')} "
+        f"pre_probe_exit={structured.get('pre_probe_exit')} "
+        f"post_probe_exit={structured.get('post_probe_exit')}"
+    )
+
+
 def _mcp_scan_response(rpc_id: object, structured: dict) -> JSONResponse:
     """Shared /mcp structured scan envelope (content + structuredContent)."""
     return JSONResponse(
@@ -1548,11 +1632,7 @@ def _mcp_scan_response(rpc_id: object, structured: dict) -> JSONResponse:
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            f"status={structured['status']} "
-                            f"pre_probe_exit={structured['pre_probe_exit']} "
-                            f"post_probe_exit={structured['post_probe_exit']}"
-                        ),
+                        "text": _mcp_scan_text(structured),
                     }
                 ],
                 "structuredContent": structured,
@@ -1609,9 +1689,12 @@ async def mcp_snippet_runner(
         lines.append(f"[{team}] {message}")
 
     result = await execute_mcp_snippet_scan(arguments, _emit, config=settings)
+    # F-212: --format json keeps stdout machine-pure (report only); all team
+    # chatter goes to stderr. Table mode keeps the legacy stdout stream.
+    json_mode = out_format == "json"
     for line in lines:
-        print(line)
-    if out_format == "json":
+        print(line, file=sys.stderr if json_mode else sys.stdout)
+    if json_mode:
         print(json.dumps(structured_result(result), indent=2))
     else:
         print(fact_table(result))
@@ -1623,9 +1706,12 @@ async def mcp_snippet_runner(
         (run_dir / "report.json").write_text(
             json.dumps(structured_result(result), indent=2), encoding="utf-8"
         )
-        print(f"Saved MCP snippet report to {run_dir}/report.json")
+        print(
+            f"Saved MCP snippet report to {run_dir}/report.json",
+            file=sys.stderr if json_mode else sys.stdout,
+        )
     if show_usage:
-        print(usage_table(result.usage))
+        print(usage_table(result.usage), file=sys.stderr if json_mode else sys.stdout)
     return 0 if getattr(result, "success", False) else 1
 
 
@@ -1637,8 +1723,28 @@ def mcp_stdio_runner() -> int:
     sms_scan_source, sms_scan_binary) execute the live loop and return the
     structured result. A `shutdown` notification ends the session.
     """
+    # F-207: a .env-only mode would be missed if init runs before any
+    # load_config(). Fill ONLY this one key (a deletion-safe copy of the
+    # dotenv parse, never touching other vars): exported env still wins,
+    # and nothing leaks between tests or processes.
+    import os as _os
+
     from modules.shared import sms_observability as _mcp_obs
 
+    if "PURPLEBOX_OBSERVABILITY_MODE" not in _os.environ:
+        try:
+            from pathlib import Path as _P
+
+            for _line in _P.cwd().joinpath(".env").read_text(encoding="utf-8").splitlines():
+                _line = _line.strip()
+                if not _line or _line.startswith("#") or "=" not in _line:
+                    continue
+                _k, _, _v = _line.partition("=")
+                if _k.strip() == "PURPLEBOX_OBSERVABILITY_MODE":
+                    _os.environ[_k.strip()] = _v.strip().strip("\"'")
+                    break
+        except OSError:
+            pass
     _mcp_obs.init(root="logs", mode=None)
     try:
         return _mcp_stdio_loop()
@@ -1744,7 +1850,9 @@ def _mcp_stdio_loop() -> int:
                         "jsonrpc": "2.0",
                         "id": body.get("id"),
                         "result": {
-                            "content": [{"type": "text", "text": "snippet scan complete"}],
+                            "content": [
+                                {"type": "text", "text": _mcp_scan_text(structured_result(result))}
+                            ],
                             "structuredContent": structured_result(result),
                         },
                     }
@@ -1792,7 +1900,9 @@ def _mcp_stdio_loop() -> int:
                         "jsonrpc": "2.0",
                         "id": body.get("id"),
                         "result": {
-                            "content": [{"type": "text", "text": "source scan complete"}],
+                            "content": [
+                                {"type": "text", "text": _mcp_scan_text(structured_result(result))}
+                            ],
                             "structuredContent": structured_result(result),
                         },
                     }
@@ -1876,7 +1986,9 @@ def _mcp_stdio_loop() -> int:
                         "jsonrpc": "2.0",
                         "id": body.get("id"),
                         "result": {
-                            "content": [{"type": "text", "text": "binary scan complete"}],
+                            "content": [
+                                {"type": "text", "text": _mcp_scan_text(structured_result(result))}
+                            ],
                             "structuredContent": structured_result(result),
                         },
                     }
@@ -1925,10 +2037,12 @@ async def binary_sweep_runner(
     result = await execute_binary_sweep(
         spec, _emit, config=settings, max_passes=max(1, min(4, max_passes))
     )
+    # F-212: same machine-purity rule as the snippet runner above.
+    json_mode = out_format == "json"
     for line in lines:
-        print(line)
+        print(line, file=sys.stderr if json_mode else sys.stdout)
     report = redact_binary_sweep_result_for_user(result)
-    if out_format == "json":
+    if json_mode:
         print(json.dumps(report, indent=2))
     else:
         print(fact_table(result))
@@ -1944,9 +2058,12 @@ async def binary_sweep_runner(
         run_dir = output_dir / f"binary-sweep-{stamp}"
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-        print(f"Saved binary sweep report to {run_dir}/report.json")
+        print(
+            f"Saved binary sweep report to {run_dir}/report.json",
+            file=sys.stderr if json_mode else sys.stdout,
+        )
     if show_usage:
-        print(usage_table(result.usage))
+        print(usage_table(result.usage), file=sys.stderr if json_mode else sys.stdout)
     return 0 if getattr(result, "success", False) else 1
 
 
@@ -1980,11 +2097,17 @@ async def ai_demo_runner(
 
     settings = _apply(_load(), profile)
     if research:
-        # Same 5-set allowlist as --scan/--project and the dashboard socket.
-        allowed = {"trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"}
-        picked = tuple(sorted({s.strip().lower() for s in research_scanners.split(",")} & allowed))
+        # Single allowlist source (F-222); explicit flag wins, env only when
+        # the flag is absent, honoring flag > config > env > default (F-206).
+        from modules.core.config import load_dotenv_file as _dotenv_env
+
+        _dotenv_env()
+        env_on = os.getenv("PURPLEBOX_RESEARCH", "off").strip().lower() == "on"
+        env_scan = os.getenv("PURPLEBOX_RESEARCH_SCANNERS", "")
+        picked = _pick_research_scanners(research_scanners if research_scanners else env_scan)
+        enabled = research or (not research_scanners and env_on)
         settings = settings.__class__(
-            **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
+            **{**settings.__dict__, "research_enabled": enabled, "research_scanners": picked}
         )
     if settings.inference_mode != "local" and not allow_remote_inference:
         # Consent parity: hosted Muse receives generated source, so the demo
@@ -2310,11 +2433,19 @@ async def cli_runner(
         emit_progress(team, message)
 
     settings = apply_profile(load_config(), profile)
-    if research:
-        allowed = {"trivy", "grype", "osv-scanner", "dependency-check", "dependency-track"}
-        picked = tuple(sorted({s.strip().lower() for s in research_scanners.split(",")} & allowed))
+    if research or os.getenv("PURPLEBOX_RESEARCH", "off").strip().lower() == "on":
+        # Single allowlist source (F-222). The merged `research` flag already
+        # honors flag > config > env and .env; only consult raw env when the
+        # merged flag is explicitly False and the caller passed no
+        # research_scanners (F-206: explicit research=false wins).
+        picked = (
+            _pick_research_scanners(research_scanners)
+            if research
+            else _pick_research_scanners(os.getenv("PURPLEBOX_RESEARCH_SCANNERS", ""))
+        )
+        enabled = research or (not research_scanners)
         settings = settings.__class__(
-            **{**settings.__dict__, "research_enabled": True, "research_scanners": picked}
+            **{**settings.__dict__, "research_enabled": enabled, "research_scanners": picked}
         )
     _out(f"[SYSTEM] Models: red {settings.red_team_model}, blue {settings.blue_team_model}")
     _out(
@@ -2795,20 +2926,16 @@ def _vault_replay_main(spec: str) -> int:
     return 0
 
 
-def _health_report(settings: PurpleBoxConfig, *, scan_lock=None) -> dict:
+def _health_report(settings: PurpleBoxConfig, *, scan_lock=None, busy=None) -> dict:
     """Readiness snapshot for --health (table or redacted JSON). Never raises.
 
-    scan_lock is the live WS scan lock (asyncio.Lock): when provided, busy
-    reports lock.locked(). Plain --health CLI runs with no server instance,
-    so the None default keeps False — truthful idle, not a guess.
+    busy is the authoritative scan-phase flag (F-209): True only while a scan
+    body runs. The legacy scan_lock kwarg is kept for backward compatibility
+    with existing tests but is ignored — lock.locked() also covers the
+    microsecond acquire handoff, which is not a running scan. Plain --health
+    CLI runs with no server instance, so the default False is truthful idle.
     """
-    if scan_lock is not None:
-        try:
-            busy = bool(scan_lock.locked())
-        except Exception:
-            busy = False
-    else:
-        # No server running in the CLI context; False is truthful idle here.
+    if busy is None:
         busy = False
     try:
         settings.validate()
@@ -3366,19 +3493,24 @@ def main() -> int:
             report = _health_report(settings)
             if out_format == "json":
                 # LAW 4: readiness booleans only; keys and model internals never print.
+                # F-212: use .get with safe defaults — a configuration_error
+                # report has no docker/profiles keys, and stdout must still be
+                # machine-pure JSON (never a KeyError -> empty stdout).
                 safe = {
                     "status": report["status"],
                     "version": report.get("version", APP_VERSION),
-                    "inference_mode": report["inference_mode"],
-                    "inference_ready": report["inference_ready"],
-                    "api_key_configured": report["api_key_configured"],
-                    "red_model": report["red_model"],
-                    "blue_model": report["blue_model"],
-                    "profiles": report["profiles"],
-                    "scan_profiles": report["scan_profiles"],
-                    "docker": report["docker"],
-                    "busy": report["busy"],
+                    "inference_mode": report.get("inference_mode", "hosted"),
+                    "inference_ready": report.get("inference_ready", False),
+                    "api_key_configured": report.get("api_key_configured", False),
+                    "red_model": report.get("red_model"),
+                    "blue_model": report.get("blue_model"),
+                    "profiles": report.get("profiles", []),
+                    "scan_profiles": report.get("scan_profiles", []),
+                    "docker": report.get("docker", {}),
+                    "busy": report.get("busy", False),
                 }
+                if "message" in report:
+                    safe["message"] = report["message"]
                 print(json.dumps(safe, indent=2))
             else:
                 print(health_table(report))
@@ -3457,7 +3589,12 @@ def main() -> int:
                 print("\n".join(lines))
             return 0
         if args.serve:
-            uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
+            uvicorn.run(
+                create_app(settings),
+                host="127.0.0.1",
+                port=args.port,
+                ws_max_size=WS_MAX_MESSAGE_BYTES,
+            )
             return 0
         if args.tui:
             from tui import main as _tui_main
@@ -3639,16 +3776,24 @@ def main() -> int:
             )
             return 2
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
-        uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
+        uvicorn.run(
+            create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=WS_MAX_MESSAGE_BYTES
+        )
         return 0
     except KeyboardInterrupt:
         print("Interrupted; cleanup was requested.", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(
-            f"Secure Mitigation System could not start ({type(exc).__name__}). Check configuration and Docker availability.",
-            file=sys.stderr,
-        )
+        # F-213: authored config/consent text is safe to repeat (LAW-4
+        # guarded by _actionable_error_text); anything else stays type-only.
+        guidance = _actionable_error_text(exc)
+        if guidance is not None:
+            print(f"Secure Mitigation System could not start: {guidance}", file=sys.stderr)
+        else:
+            print(
+                f"Secure Mitigation System could not start ({type(exc).__name__}). Check configuration and Docker availability.",
+                file=sys.stderr,
+            )
         return 1
     finally:
         try:
