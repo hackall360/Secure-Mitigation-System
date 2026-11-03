@@ -57,15 +57,34 @@ def connect(client):
 
 
 def test_ingest_first_frame_is_accepted_not_invalid(monkeypatch):
-    """F-204: ingest frames fail closed — a WS client can always SEND bytes,
-    so no frame under a claimed repo URL may reach the project flow until
-    the server fetches the commit itself (unimplemented: host clone path
-    F-202). Valid shape still parses (spec validation), but the outcome is
-    an invalid refusal naming the reason, and the workflow never runs."""
+    """Live intake (brief 2026-11-03-repo-intake-live): a well-formed ingest
+    frame reaches the project flow through the real clone path. Docker is
+    mocked at the intake boundary (canned snapshot); the F-204 refusal era
+    is over — fetch works."""
+    from types import MappingProxyType, SimpleNamespace
 
-    async def workflow(*args, **kwargs):
-        pytest.fail("Ingest frame reached the workflow without a server fetch")
+    def fake_intake(spec, runtime_command=None, **kwargs):
+        assert kwargs.get("clone") is True
+        assert kwargs.get("sandbox") is not None
+        return SimpleNamespace(
+            files=MappingProxyType(
+                {
+                    "repo.url": GOOD_URL.encode(),
+                    "repo.commit_hash": GOOD_HASH.encode(),
+                    "repo.runtime_command": b'["python3", "app.py"]',
+                }
+            ),
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=("python3", "app.py"),
+            digest="fake",
+        )
 
+    async def workflow(project, emit, **kwargs):
+        assert getattr(project, "name", "").startswith("ingest:"), project
+        return fake_result()
+
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
@@ -73,10 +92,7 @@ def test_ingest_first_frame_is_accepted_not_invalid(monkeypatch):
                 {"ingest_repo": GOOD_URL, "commit_hash": GOOD_HASH, "file_list": ["package.json"]}
             )
             first = drain_snapshot(socket)
-            assert first.get("type") == "invalid", f"ingest frame accepted: {first}"
-            assert "not fetched" in first.get("msg", "") or "not verified" in first.get(
-                "msg", ""
-            ), f"refusal must name the reason: {first}"
+            assert first.get("type") != "invalid", f"ingest frame refused: {first}"
 
 
 def test_ingest_first_frame_carries_no_host_paths(monkeypatch):
@@ -129,13 +145,34 @@ def test_ingest_validation_failures_are_invalid_and_never_start_workflow(monkeyp
 
 
 def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch):
-    """F-204: the staged intake path is gone — no ingest frame stages or
-    delegates, even with an explicit runtime_command. The workflow never
-    runs; the frame dies at the fetch refusal."""
+    """Live intake: explicit runtime_command rides the real clone path
+    (mocked Docker) into the project flow. F-204 refusal era is over."""
+    from types import MappingProxyType, SimpleNamespace
 
-    async def workflow(*args, **kwargs):
-        pytest.fail("Ingest frame delegated without a server fetch")
+    def fake_intake(spec, runtime_command=None, **kwargs):
+        assert kwargs.get("clone") is True
+        return SimpleNamespace(
+            files=MappingProxyType(
+                {
+                    "repo.url": GOOD_URL.encode(),
+                    "repo.commit_hash": GOOD_HASH.encode(),
+                    "repo.runtime_command": b'["python3", "main.py"]',
+                }
+            ),
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=("python3", "main.py"),
+            digest="fake",
+        )
 
+    seen = {}
+
+    async def workflow(project, emit, **kwargs):
+        seen["ran"] = True
+        assert getattr(project, "name", "").startswith("ingest:")
+        return fake_result()
+
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
@@ -148,8 +185,8 @@ def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch
                 }
             )
             reply = drain_snapshot(socket)
-            assert reply.get("type") == "invalid", f"ingest frame accepted: {reply}"
-            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get("msg", "")
+            assert reply.get("type") != "invalid", f"ingest frame refused: {reply}"
+    assert seen.get("ran") is True
 
 
 def test_explicit_runtime_command_wins_over_detect(monkeypatch):
@@ -196,8 +233,9 @@ def test_detect_runtime_used_when_frame_omits_command(monkeypatch):
 
 
 def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
-    """F-204: the fetch refusal fires before any runtime detection, so the
-    message names the fetch gap — not the missing runtime_command."""
+    """Live intake: a README-only tree cannot yield a runtime, so the frame
+    fails closed at runtime detection (actionable invalid, workflow never
+    runs, no hang). Docker is mocked at the intake boundary."""
 
     async def workflow(*args, **kwargs):
         pytest.fail("Undetectable ingest reached the workflow")
@@ -214,7 +252,10 @@ def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
             )
             reply = drain_snapshot(socket)
             assert reply["type"] == "invalid"
-            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get("msg", "")
+            assert (
+                "runtime" in reply.get("msg", "").lower()
+                or "detect" in reply.get("msg", "").lower()
+            ), f"refusal must name runtime detection: {reply}"
 
 
 def test_ingest_invalid_frame_closes_1008(monkeypatch):

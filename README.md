@@ -126,7 +126,7 @@ python main.py --ai-demo --scan-profile extra_light --output-dir reports
 python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, SQL injection"
 ```
 
-Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`, `sms_list_vault_namespaces`, `sms_replay_vault_record`, `sms_verify_receipt`, `sms_scan_status`, `sms_ops_status`, `sms_showcase_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
+Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_scan_repo`, `sms_query_vault_stats`, `sms_list_vault_namespaces`, `sms_replay_vault_record`, `sms_verify_receipt`, `sms_scan_status`, `sms_ops_status`, `sms_showcase_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
 
 ## 3-minute demo guide
 

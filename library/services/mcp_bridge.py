@@ -75,6 +75,14 @@ _MCP_LANGUAGE_COMMAND: dict[str, tuple[str, ...]] = {
 }
 SNIPPET_TOOL_NAME = "submit_code_snippet"
 SCAN_STATUS_TOOL_NAME = "sms_scan_status"
+SCAN_REPO_TOOL_NAME = "sms_scan_repo"
+
+#: Repo-intake scan bounds (D6): same shape as the sms_scan_source/
+#: sms_scan_binary strict schemas (extra=forbid) and the RepoIntakeSpec
+#: URL rules (https only, no embedded credentials). commit_hash is optional
+#: here (omitted = HEAD); when present it must be 40-hex.
+SCAN_REPO_MAX_URL_CHARS = 2048
+SCAN_REPO_COMMIT_RE = r"^[0-9a-fA-F]{40}$"
 
 #: Scan phases the status tool may report. Live scans advance
 #: red -> blue -> verify; the sink reports whichever marker arrived last.
@@ -286,6 +294,32 @@ def sms_scan_binary_tool_definition() -> dict[str, Any]:
                 "max_passes": {"type": "integer", "minimum": 1, "maximum": 3},
             },
             "required": ["filename", "blob_b64", "contract"],
+            "additionalProperties": False,
+        },
+        "outputSchema": snippet_output_schema(),
+    }
+
+
+def sms_scan_repo_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_scan_repo (repo-intake scan)."""
+    return {
+        "name": SCAN_REPO_TOOL_NAME,
+        "title": "Scan a remote git repo through the evidence-gated loop",
+        "description": (
+            "Clone an https remote at a pinned 40-hex commit (or HEAD when "
+            "commit_hash is omitted) in Docker staging and run the "
+            "evidence-gated project loop over the cloned bytes. Docker "
+            "evidence alone decides the verdict. The tool call is the "
+            "explicit remote-inference grant."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo_url": {"type": "string", "minLength": 1, "maxLength": 2048},
+                "commit_hash": {"type": ["string", "null"], "pattern": SCAN_REPO_COMMIT_RE},
+                "contract": {"type": "string", "maxLength": MCP_CONTRACT_MAX_CHARS},
+            },
+            "required": ["repo_url"],
             "additionalProperties": False,
         },
         "outputSchema": snippet_output_schema(),
@@ -515,6 +549,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
     snippet_tool_definition(),
     sms_scan_source_tool_definition(),
     sms_scan_binary_tool_definition(),
+    sms_scan_repo_tool_definition(),
     sms_query_vault_stats_tool_definition(),
     sms_list_vault_namespaces_tool_definition(),
     sms_replay_vault_record_tool_definition(),
@@ -586,6 +621,118 @@ def validate_snippet_arguments(raw: dict[str, Any]) -> McpSnippetArguments:
     obs_record_metric(_MCP_ASPECT, "submit_code_snippet.duration_ms", duration_ms, unit="ms")
     obs_record_metric(_MCP_ASPECT, "submit_code_snippet.status.accepted", 1, unit="count")
     return args
+
+
+class McpScanRepoArguments(BaseModel):
+    """Validated tool arguments for sms_scan_repo (D6).
+
+    repo_url is required (1..2048); commit_hash optional (omitted = HEAD;
+    when present must be 40-hex); contract defaults to "".
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    repo_url: str = Field(min_length=1, max_length=SCAN_REPO_MAX_URL_CHARS)
+    commit_hash: str | None = Field(default=None, max_length=40)
+    contract: str = Field(default="", max_length=MCP_CONTRACT_MAX_CHARS)
+
+
+def validate_scan_repo_arguments(raw: dict[str, Any]) -> McpScanRepoArguments:
+    """Validate raw sms_scan_repo tool arguments; raises ValueError."""
+    import re as _re
+    import time as _time
+
+    raw = raw if isinstance(raw, dict) else {}
+    obs_log(
+        _MCP_ASPECT,
+        "sms_scan_repo.start",
+        message="sms_scan_repo submission received",
+        repo_url_host=_safe_repo_host(raw.get("repo_url")),
+        commit_prefix=str(raw.get("commit_hash") or "")[:12] or "(head)",
+    )
+    started = _time.monotonic()
+    try:
+        with obs_trace(_MCP_ASPECT, "sms_scan_repo"):
+            try:
+                args = McpScanRepoArguments.model_validate(raw)
+            except Exception as exc:
+                raise ValueError(f"Invalid scan arguments ({type(exc).__name__}).") from exc
+            _validate_scan_repo_url(args.repo_url)
+            commit = args.commit_hash
+            if commit is not None and not _re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+                raise ValueError("Invalid scan arguments (commit_hash must be 40-hex).")
+    except ValueError:
+        duration_ms = round((_time.monotonic() - started) * 1000, 3)
+        obs_log(
+            _MCP_ASPECT,
+            "sms_scan_repo.verdict",
+            message="sms_scan_repo rejected",
+            accepted=False,
+            duration_ms=duration_ms,
+        )
+        obs_record_metric(_MCP_ASPECT, "sms_scan_repo.duration_ms", duration_ms, unit="ms")
+        obs_record_metric(_MCP_ASPECT, "sms_scan_repo.status.rejected", 1, unit="count")
+        raise
+    duration_ms = round((_time.monotonic() - started) * 1000, 3)
+    obs_log(
+        _MCP_ASPECT,
+        "sms_scan_repo.verdict",
+        message="sms_scan_repo accepted for scan",
+        accepted=True,
+        duration_ms=duration_ms,
+    )
+    obs_record_metric(_MCP_ASPECT, "sms_scan_repo.duration_ms", duration_ms, unit="ms")
+    obs_record_metric(_MCP_ASPECT, "sms_scan_repo.status.accepted", 1, unit="count")
+    return args
+
+
+def _safe_repo_host(repo_url: object) -> str:
+    """Host label for observability (LAW 4: never the full URL)."""
+    from urllib.parse import urlparse as _urlparse
+
+    try:
+        return _urlparse(str(repo_url)).hostname or "(invalid)"
+    except Exception:
+        return "(invalid)"
+
+
+def _validate_scan_repo_url(repo_url: str) -> None:
+    """Mirror RepoIntakeSpec URL rules (https only, no credentials); raise ValueError."""
+    from urllib.parse import urlparse as _urlparse
+
+    parsed = _urlparse(repo_url)
+    if "@" in parsed.netloc:
+        raise ValueError("Invalid scan arguments (repo URL must not embed credentials).")
+    try:
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("Invalid scan arguments (repo URL must not embed credentials).")
+        parsed.port  # noqa: B018 - raises ValueError on a malformed port
+    except ValueError as exc:
+        if "credentials" in str(exc):
+            raise
+        raise ValueError("Invalid scan arguments (repo URL must be an https:// remote).") from None
+    host = (parsed.hostname or "").rstrip(".").lower()
+    if (
+        parsed.scheme != "https"
+        or not host
+        or any(part in ("", ".", "..") for part in host.split("."))
+    ):
+        raise ValueError("Invalid scan arguments (repo URL must be an https:// remote).")
+    try:
+        from modules.services.repo_intake import _is_blocked_host as _blocked
+    except ImportError:  # pragma: no cover - bridge stays importable standalone
+        _blocked = None
+    if _blocked is not None and _blocked(host):
+        raise ValueError(
+            "Invalid scan arguments (repo URL host must be public; no loopback, "
+            "private, link-local, reserved, multicast, or internal names)."
+        )
+
+
+def scan_repo_target_label(arguments: McpScanRepoArguments) -> str:
+    """LAW 4-safe label for a repo scan (host + commit prefix only)."""
+    prefix = (arguments.commit_hash or "")[:12] or "(head)"
+    return f"{_safe_repo_host(arguments.repo_url)} @ {prefix}"
 
 
 def snippet_target(args: McpSnippetArguments) -> Target:
@@ -775,7 +922,7 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 return _wrap_tool_result(rpc_id, payload)
             except Exception as exc:
                 return jsonrpc_error(rpc_id, -32603, f"Ops status failed ({type(exc).__name__}).")
-        if name in ("sms_scan_source", "sms_scan_binary", "submit_code_snippet"):
+        if name in ("sms_scan_source", "sms_scan_binary", "sms_scan_repo", "submit_code_snippet"):
             return jsonrpc_error(
                 rpc_id,
                 -32001,
@@ -790,6 +937,7 @@ McpToolKind = Literal[
     "submit_code_snippet",
     "sms_scan_source",
     "sms_scan_binary",
+    "sms_scan_repo",
     "sms_query_vault_stats",
     "sms_list_vault_namespaces",
     "sms_replay_vault_record",

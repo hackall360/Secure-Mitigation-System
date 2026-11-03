@@ -89,15 +89,52 @@ def test_f209_slow_first_frame_does_not_hold_scan_lock():
 # ---------- F-204: WS ingest must not scan client-supplied bytes as the repo ----------
 
 
-def test_f204_ws_ingest_refuses_unverified_bytes(monkeypatch):
+def test_f204_ws_ingest_live_path_reaches_staging_not_refusal(monkeypatch):
+    """Brief 2026-11-03-repo-intake-live: the F-204 refusal is retired — the
+    server fetches the commit itself (mocked Docker here) and the staged
+    snapshot enters the project flow. The workflow MUST run (proving the
+    live path), never die at a fetch refusal."""
+    from types import MappingProxyType, SimpleNamespace
+
     from fastapi.testclient import TestClient
 
-    started = []
+    collected = {}
+
+    def fake_intake(spec, runtime_command=None, **kwargs):
+        assert kwargs.get("clone") is True or kwargs.get("sandbox") is not None
+        collected["url"] = spec.url
+        return SimpleNamespace(
+            files=MappingProxyType(
+                {
+                    "repo.url": GOOD_URL.encode(),
+                    "repo.commit_hash": GOOD_HASH.encode(),
+                    "repo.runtime_command": b'["python3", "main.py"]',
+                }
+            ),
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=("python3", "main.py"),
+            digest="fake",
+        )
+
+    class _FakeResult:
+        def model_dump(self, mode="json"):
+            return {
+                "target": "ingest:github.com",
+                "status": "verified",
+                "message": "Probe blocked",
+                "diff": "",
+                "cleanup_ok": True,
+                "cycles": [],
+                "total_tokens": 0,
+                "cost_usd": None,
+            }
 
     async def workflow(*args, **kwargs):
-        started.append(True)
-        return None
+        collected["ran"] = True
+        return _FakeResult()
 
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     app = main.create_app(PurpleBoxConfig(meta_api_key="k"))
     with TestClient(app, base_url="http://localhost") as client:
@@ -119,9 +156,9 @@ def test_f204_ws_ingest_refuses_unverified_bytes(monkeypatch):
             except Exception:
                 pass
     invalid = [f for f in frames if isinstance(f, dict) and f.get("type") == "invalid"]
-    assert invalid, f"expected an invalid refusal, got {frames!r}"
-    assert "not fetched" in invalid[0]["msg"] or "not verified" in invalid[0]["msg"]
-    assert not started, "no workflow may run on bytes the server never fetched"
+    assert not invalid, f"live path must not die at refusal: {invalid!r}"
+    assert collected.get("ran") is True, "staged snapshot must reach the project flow"
+    assert collected.get("url") == GOOD_URL
 
 
 # ---------- F-210: MCP binary must refuse oversized base64 before decoding ----------
