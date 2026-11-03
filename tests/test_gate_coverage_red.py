@@ -1,6 +1,6 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""LAW 9 RED: pin L1 gate holes in `.jcode/tools/dev.py check()`.
+"""LAW 9 RED: pin L1 gate holes in `scripts/dev/dev.py check()`.
 
 Each test below pins one hole: (a) check() must invoke the `dev.py tags`
 feature-tag coverage, (b) `node --check` must cover every `web/js/**/*.js`
@@ -20,7 +20,7 @@ from unittest.mock import Mock
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DEV = ROOT / ".jcode" / "tools" / "dev.py"
+DEV = ROOT / "scripts" / "dev" / "dev.py"
 
 
 @pytest.fixture

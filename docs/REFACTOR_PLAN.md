@@ -39,7 +39,7 @@ the directory map lives in a doc + `__init__` re-exports, not in moved files.
   ~10 test files `import main` + monkeypatch `main.*` targets; a move would
   rewrite the whole test seam layer. Map: `web/server/` ≡ `main.py`
   serving section (~ll. 600–1400). Documented in `docs/web/`.
-- E2E tools (`.jcode/tools/ui_scan.py`, `browser_controls_check.py`,
+- E2E tools (`scripts/dev/ui_scan.py`, `browser_controls_check.py`,
   `ui_design_metrics.py`): in git-ignored `.jcode/`, untouched per directive.
 
 ## tui/ — terminal surface (map, no move)

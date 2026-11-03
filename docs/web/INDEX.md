@@ -49,7 +49,7 @@ Batching: `TelemetryBatcher` 100–250 ms for telemetry-team bursts only;
 red/blue verdict lines send immediately (real time is sacred).
 Tests pinning it: `test_web.py`, `test_mcp_server.py`, `test_tui_plain.py`
 (monkeypatch `main.*`), `test_w22_ingest_wire_red.py`,
-`.jcode/tools/project_ui_scan.py` (`import main`).
+`scripts/dev/project_ui_scan.py` (`import main`).
 
 ## web/e2e/ ≡ `.jcode/tools/{ui_scan,browser_controls_check,ui_design_metrics}.py`
 

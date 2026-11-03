@@ -251,11 +251,11 @@ genuinely parallel writer work.
 
 ## 2026-11-01 — `ui_scan.py` needs the project venv for Chrome (GG5)
 
-Wrong assumption: `python3 .jcode/tools/ui_scan.py --browser chrome` works
+Wrong assumption: `python3 scripts/dev/ui_scan.py --browser chrome` works
 with system python. What the evidence showed: the CDP drive path does
 `import websockets`, which only exists in `.venv` — instant ModuleNotFoundError.
 Firefox (WebDriver/urllib path) works on either. Rule: always run browser
-proof as `.venv/bin/python .jcode/tools/ui_scan.py ...`.
+proof as `.venv/bin/python scripts/dev/ui_scan.py ...`.
 
 ## 2026-11-01 — physical `web/` is safe, `tui/` is not (GG2 follow-up, webui-v3 branch)
 
@@ -291,3 +291,10 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: `write` replying "Created ..." means the file exists.
   Evidence (prior session, still true): two `edit` calls failed "old_string not found", then `read` said "File not found" — the create never landed. Shell heredoc worked first try.
   Lesson: after `write` of a NEW file, verify with `ls`/`read` before editing it.
+
+## Function-local import shadows top-level name (2026-11-03, branch feature/full-surface-parity)
+
+- **Trap: `from x import name` inside an `if` block makes `name` function-local for the WHOLE function — sibling branches reading the top-level `name` then raise `UnboundLocalError`.**
+  Wrong assumption: "a lazy import inside one branch is contained to that branch." Python scoping is function-wide at compile time: c5's `--showcase-status` dispatch did a lazy `from modules.services.sms_api import showcase_status` while c3's `--ops-status` dispatch (same `main()`) called the top-level `showcase_status`. Running `--ops-status` skipped the import line, leaving the local unbound — the generic handler reported "could not start (UnboundLocalError)". The failure appeared only when both slices merged; each slice was green alone.
+  Evidence: 3 ops tests failed post-merge, `grep showcase main.py` showed the local import at :3280 vs top-level at :43 and the unconditional call at :3353; deleting the lazy import (top-level already provides it) → 23/23 green.
+  Lesson: never lazy-import a name that is also top-level-imported in the same module — or that any merged slice may top-level-import. One import site per name per module; grep co-slices before adding a second.

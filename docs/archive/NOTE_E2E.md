@@ -13,7 +13,7 @@ Scope: WRITE-ONLY `/tmp` artifacts + this file. No source files touched, no merg
 Command:
 
 ```text
-ROOT/.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox --shot /tmp/sms-gap-e2e.png
+ROOT/.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser firefox --shot /tmp/sms-gap-e2e.png
 ```
 
 Result card JSON:
@@ -70,8 +70,8 @@ Constraint honored: no sub-agents spawned, no merges (commit on `feature/work-bu
 Commands (from this worktree, ROOT venv):
 
 ```text
-ROOT/.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox --shot /tmp/sms-rerun-firefox.png
-ROOT/.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser chrome --shot /tmp/sms-rerun-chrome.png
+ROOT/.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser firefox --shot /tmp/sms-rerun-firefox.png
+ROOT/.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser chrome --shot /tmp/sms-rerun-chrome.png
 ```
 
 | Leg | Exit | Result card status | Stages | Facts | Diff | Elapsed | Shot |

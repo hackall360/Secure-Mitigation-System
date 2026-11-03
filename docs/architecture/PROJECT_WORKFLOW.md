@@ -96,7 +96,7 @@ JavaScript intake/readiness checks under Node. These use a minimal DOM substitut
 not a visual browser acceptance check. Context-budget bounds are 1024 through
 131072 in both the HTML, JavaScript intake, and `ProjectSpec`.
 
-Run `.venv/bin/python .jcode/tools/project_scan.py` for two real Docker cycles.
+Run `.venv/bin/python scripts/dev/project_scan.py` for two real Docker cycles.
 Only the Muse HTTP transport is replaced with deterministic structured replies.
 The transport recognizes the current red report payload key `evidence_digests`,
 not the obsolete `batch_evidence`. A mismatch raises before probe execution and
@@ -150,7 +150,7 @@ and probes not run. Project report filenames use `project`, not the fixture-only
 `target` field.
 
 For repeatable real-browser acceptance, start
-`.venv/bin/python .jcode/tools/project_ui_scan.py`. It prints a generated repository
+`.venv/bin/python scripts/dev/project_ui_scan.py`. It prints a generated repository
 specification and serves a keyless local dashboard on port 8798. Its test-only
 `/v1/chat/completions` route serves deterministic JSON replies over actual loopback
 HTTP. All snapshots, Docker execution, WebSockets, frontend code, and cleanup are
@@ -159,7 +159,7 @@ cycles. A private `browser-report.json` is saved in
 `reports/browser-project-acceptance/`. Stop this test server afterward, never use
 its deterministic inference route for actual security review.
 
-`.venv/bin/python .jcode/tools/project_scan.py --source-import-probes --cycles 1`
+`.venv/bin/python scripts/dev/project_scan.py --source-import-probes --cycles 1`
 checks the pure-Python import path through real Docker. `--live --cycles 1` instead
 uses the configured real Muse endpoint and incurs API usage, sending only the
 generated fixture source. Export the trusted `.env` as described in DEVELOPMENT.md
@@ -192,7 +192,7 @@ behavior. Sandbox labels include both cycle and pass for named profiles.
 Mechanical acceptance command:
 
 ```sh
-.venv/bin/python .jcode/tools/project_scan.py --scan-profile extra_light \
+.venv/bin/python scripts/dev/project_scan.py --scan-profile extra_light \
   --output-dir reports/cycle-profile-acceptance
 ```
 

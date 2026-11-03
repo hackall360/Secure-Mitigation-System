@@ -17,6 +17,7 @@ wrappers never invent one.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
@@ -330,4 +331,388 @@ def build_result_hud(result: dict[str, Any] | Any) -> dict[str, Any]:
         },
         "savings_pct": savings_pct,
         "novel_vs_historical": f"{novel} novel vs {known} historical",
+    }
+
+
+def summarize_cycle_evidence(result: dict[str, Any] | Any) -> list[dict[str, Any]]:
+    """Per-cycle [{cycle, pre_exit, post_exit, gates, verdict}] (pure, no I/O).
+
+    Missing cycles -> []. Gates that did not run read None (skip): only
+    Docker evidence decides verdicts.
+    """
+    if isinstance(result, Mapping):
+        items = result.get("cycle_reports") or result.get("cycles")
+    elif result is None:
+        items = None
+    else:
+        items = getattr(result, "cycle_reports", None) or getattr(result, "cycles", None)
+    rows: list[dict[str, Any]] = []
+    for entry in items if isinstance(items, (list, tuple)) else []:
+        node = entry.model_dump() if hasattr(entry, "model_dump") else entry
+        if not isinstance(node, Mapping):
+            continue
+        try:
+            receipt = node.get("receipt")
+            receipt = receipt.model_dump() if hasattr(receipt, "model_dump") else receipt
+            receipt = receipt if isinstance(receipt, Mapping) else {}
+            ver = node.get("evidence")
+            ver = ver.model_dump() if hasattr(ver, "model_dump") else ver
+            patched = ver.get("patched_verification") if isinstance(ver, Mapping) else None
+            patched = patched if isinstance(patched, Mapping) else {}
+            gates: dict[str, bool | None] = {}
+            for name, key in (("mutation", "mutations"), ("property", "properties")):
+                n = patched.get(key)
+                c = n.get("exit_code") if isinstance(n, Mapping) else getattr(n, "exit_code", None)
+                try:
+                    gates[name] = None if c is None else int(c) == 0
+                except (TypeError, ValueError):
+                    gates[name] = False
+            if gates["property"] is None:
+                p = receipt.get("property_passed")
+                gates["property"] = None if p is None else bool(p)
+            rep = patched.get("repeat_regression")
+            reg = patched.get("regression")
+            gates["repeat"] = None
+            if rep is not None:
+                f = (
+                    reg.get("exit_code")
+                    if isinstance(reg, Mapping)
+                    else getattr(reg, "exit_code", None)
+                )
+                s = (
+                    rep.get("exit_code")
+                    if isinstance(rep, Mapping)
+                    else getattr(rep, "exit_code", None)
+                )
+                try:
+                    gates["repeat"] = (
+                        (int(f) == int(s)) if f is not None and s is not None else False
+                    )
+                except (TypeError, ValueError):
+                    gates["repeat"] = False
+            pre = receipt.get("pre_probe_exit", receipt.get("pre_exit_code"))
+            post = receipt.get("post_probe_exit", receipt.get("post_exit_code"))
+            row = {"cycle": node.get("cycle"), "pre_exit": pre, "post_exit": post}
+            row.update(gates=gates, verdict=node.get("status"))
+            rows.append(row)
+        except Exception:
+            continue
+    return rows
+
+
+def summarize_cycle_receipts(report: dict[str, Any] | Any) -> list[dict[str, Any]]:
+    """Per-cycle receipts from a report mapping (pure, no I/O)."""
+    items = (
+        (report.get("cycle_reports") or report.get("cycles"))
+        if isinstance(report, Mapping)
+        else None
+    )
+    out: list[dict[str, Any]] = []
+    for entry in items if isinstance(items, (list, tuple)) else []:
+        node = entry.model_dump() if hasattr(entry, "model_dump") else entry
+        if not isinstance(node, Mapping):
+            continue
+        receipt = node.get("receipt")
+        if hasattr(receipt, "model_dump"):
+            try:
+                receipt = receipt.model_dump()
+            except Exception:
+                continue
+        if isinstance(receipt, Mapping) and receipt:
+            out.append(dict(receipt))
+    return out
+
+
+def summarize_intel_provenance(records: Any) -> list[dict[str, Any]]:
+    """Summarize which intel grounded a finding: one row per record.
+
+    Pure function (parity W1): accepts ResearchRecord objects or their
+    dict dumps, returns [{source, cve_id, summary_snippet, epss, kev}].
+    Only allowlisted fields are copied into the output — payload/blob/
+    key/secret material on the input (including inside ``extra``) is
+    never propagated. Never raises on hostile shapes: non-list input
+    yields [], unrecognized items are skipped.
+    """
+    if not isinstance(records, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in records:
+        if isinstance(item, dict):
+            source = item.get("source", "")
+            cve_id = item.get("cve_id", "")
+            summary = item.get("summary", "")
+            extra = item.get("extra", {})
+        elif hasattr(item, "source"):
+            source = getattr(item, "source", "")
+            cve_id = getattr(item, "cve_id", "")
+            summary = getattr(item, "summary", "")
+            extra = getattr(item, "extra", {})
+        else:
+            continue
+        if not isinstance(extra, dict):
+            extra = {}
+        epss = extra.get("epss", "") or extra.get("epss_percentage", "")
+        snippet = " ".join(str(summary or "").split())[:160]
+        out.append(
+            {
+                "source": str(source or "")[:32],
+                "cve_id": str(cve_id or "")[:32],
+                "summary_snippet": snippet,
+                "epss": str(epss or "")[:32],
+                "kev": bool(extra.get("kev_listed", False)),
+            }
+        )
+    return out
+
+
+def list_vault_namespaces(vault_dir: str | None = None) -> list[dict[str, Any]]:
+    """Browse vault namespaces: names + record counts, never payloads.
+
+    Parity W1 (LAW 4): returns ``[{"namespace": ..., "record_count": ...}]``
+    for namespaces holding at least one record. Namespace names are fixed
+    enum values; payloads, keys, and blobs never leave the vault. A missing
+    or empty vault dir yields ``[]`` — fail-closed in the browse sense:
+    there is simply nothing to list, and no key material is created to
+    answer the question.
+    """
+    from pathlib import Path
+
+    from modules.intel.sms_vault import VaultNamespace, default_vault_dir
+
+    base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
+    namespaces: list[dict[str, Any]] = []
+    for namespace in VaultNamespace:
+        try:
+            count = len(list((base / namespace.value).glob("*.vault")))
+        except OSError:
+            count = 0
+        if count:
+            namespaces.append({"namespace": namespace.value, "record_count": count})
+    # LAW 4: fixed enum names only — never payloads, keys, or blobs.
+    obs_log(
+        _API_ASPECT,
+        "vault.browse.result",
+        message="vault browse finished",
+        operation="list_namespaces",
+        namespaces=[entry["namespace"] for entry in namespaces],
+    )
+    return namespaces
+
+
+def replay_vault_record(
+    vault_dir: str | None,
+    namespace: str,
+    record_id: str,
+) -> dict[str, Any]:
+    """Replay one vault record as a redacted summary (LAW 4).
+
+    Returns ``{"id", "fingerprint_prefix", "status", "created"}``: the
+    record id (opaque handle), the first 12 hex chars of its one-way
+    fingerprint digest, a fixed status string, and the blob mtime. The
+    payload, blob bytes, and key material are never returned or logged.
+
+    Fail closed: unknown namespace, malformed id, missing record, or an
+    undecryptable blob raises ``ValueError`` (``VaultError`` already is
+    one; ``OSError``/``KeyError`` surface as ``ValueError`` so callers
+    handle a single refusal type).
+    """
+    import re
+    from pathlib import Path
+
+    from modules.intel.sms_vault import (
+        VaultError,
+        VaultNamespace,
+        decrypt_blob,
+        default_vault_dir,
+        load_or_create_key,
+    )
+
+    if isinstance(namespace, VaultNamespace):
+        parsed = namespace
+    else:
+        try:
+            parsed = VaultNamespace(str(namespace))
+        except ValueError as exc:
+            raise ValueError(f"Unknown vault namespace: {namespace!r}.") from exc
+    record_key = str(record_id)
+    if not re.fullmatch(r"[0-9a-f]{32}", record_key):
+        raise ValueError("Malformed vault record id; refusing to replay.")
+    base = Path(vault_dir) if vault_dir is not None else default_vault_dir()
+    blob_path = base / parsed.value / f"{record_key}.vault"
+    try:
+        raw = blob_path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"Unknown vault record in namespace {parsed.value!r}.") from exc
+    try:
+        stored = decrypt_blob(raw, key=load_or_create_key(base))
+    except VaultError as exc:
+        raise ValueError(f"Vault record failed authentication ({type(exc).__name__}).") from exc
+    fingerprint = stored.get("fingerprint", "")
+    if not isinstance(fingerprint, str):
+        fingerprint = ""
+    try:
+        created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(blob_path.stat().st_mtime))
+    except OSError:
+        created = ""
+    summary = {
+        "id": record_key,
+        "fingerprint_prefix": fingerprint[:12],
+        "status": "KNOWN_ARCHETYPE" if fingerprint else "NOVEL_SURFACE",
+        "created": created,
+    }
+    # LAW 4: fixed enum name + status only — never payloads, keys, or blobs.
+    obs_log(
+        _API_ASPECT,
+        "vault.replay.result",
+        message="vault replay finished",
+        operation="replay",
+        namespace=parsed.value,
+        status=summary["status"],
+    )
+    return summary
+
+
+def docker_health(config: PurpleBoxConfig | None = None, *, client: Any = None) -> dict[str, Any]:
+    """Library parity for CLI ``--docker-status`` (W2 ops visibility).
+
+    Same shape as the ``docker_report`` in ``main._health_report``:
+    ``{"state", "missing_images", "leftover_containers"}``. Delegates to
+    ``modules.core.docker_manager.docker_status``, which never raises: a
+    daemon-unreachable client reads ``state: unavailable`` (fail closed).
+    ``client`` is an injected docker client (tests); ``None`` uses the
+    real daemon.
+    """
+    from modules.core.docker_manager import docker_status
+
+    return docker_status(config if config is not None else PurpleBoxConfig(), client=client)
+
+
+def cleanup_preview(
+    config: PurpleBoxConfig | None = None, *, client: Any = None
+) -> dict[str, list[str]]:
+    """Dry-run for CLI ``--cleanup``: LIST what would be removed, remove nothing.
+
+    Mirrors the label scoping of ``remove_stale_resources`` (session
+    containers, session networks, clone-cache snapshot images) but never
+    calls ``remove`` on anything. Fail-closed per scope: a dead daemon
+    mid-list yields empty lists instead of raising.
+    """
+    settings = config if config is not None else PurpleBoxConfig()
+    if client is None:
+        try:
+            import docker as _docker
+
+            client = _docker.from_env(timeout=60)
+        except Exception:
+            return {"containers": [], "networks": [], "images": []}
+    label = {"label": "purplebox.session"}
+    try:
+        containers = client.containers.list(all=True, filters=label)
+    except Exception:
+        containers = []
+    try:
+        networks = client.networks.list(filters=label)
+    except Exception:
+        networks = []
+    try:
+        snapshots = client.images.list(name=settings.clone_repo_prefix)
+    except Exception:
+        snapshots = []
+    return {
+        "containers": [getattr(c, "name", None) or str(getattr(c, "id", "?")) for c in containers],
+        "networks": [getattr(n, "name", None) or str(getattr(n, "id", "?")) for n in networks],
+        "images": [str(getattr(i, "id", "?")) for i in snapshots],
+    }
+
+
+def effective_knobs(config: PurpleBoxConfig | None = None) -> dict[str, Any]:
+    """Effective inference/verifier knob values (parity wave W2).
+
+    These knobs live in env only (``META_MUSE_TIMEOUT_SECONDS``,
+    ``META_MUSE_MAX_TOKENS``, ``META_MUSE_REASONING_EFFORT``,
+    ``PURPLEBOX_VERIFIER_TIMEOUT_SECONDS``, ``PURPLEBOX_RESEARCH_SCANNERS``)
+    and change scan behaviour while appearing in no ``--help`` and no API.
+    This function surfaces the resolved values: it reads a passed config
+    (default: the live :func:`load_config`) and returns plain values.
+    Pure read: the config object is never mutated.
+    """
+    if config is None:
+        from library.core.config import load_config
+
+        config = load_config()
+    return {
+        "timeout_seconds": config.api_timeout_seconds,
+        "max_tokens": config.max_output_tokens,
+        "reasoning_effort": config.reasoning_effort,
+        "verifier_timeout": config.verifier_timeout_seconds,
+        "research_scanners": list(config.research_scanners),
+    }
+
+
+def showcase_status(root: Any = None) -> dict[str, Any]:
+    """Static presence report for the standalone showcase rig (parity W2).
+
+    The showcase rig (TTS booth, desktop capture, music DSP,
+    ``video-demo/render_demo.sh``) is deliberately standalone with zero
+    product wiring; this function only acknowledges it exists. Static
+    presence checks via file existence plus ``bash -n`` on
+    ``render_demo.sh``: fast, no execution, no servers started. Fail
+    closed: a missing ``root`` override reports absent everywhere and
+    never raises.
+    """
+    import subprocess
+    from pathlib import Path
+
+    try:
+        base = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    except Exception:  # noqa: BLE001 - fail closed, never raise
+        base = Path(__file__).resolve().parents[2]
+    demo = base / "video-demo"
+
+    tts_port = 8002  # video-demo/TTSServer/server.py DEFAULT_PORT (static; not imported)
+    tts_present = (demo / "TTSServer" / "server.py").is_file()
+
+    _capture_rels = (
+        "video-demo/desktop-capture/gamescope/launch_sandbox.sh",
+        "video-demo/desktop-capture/pipewire/setup_audio_sink.sh",
+        "video-demo/desktop-capture/pipewire/teardown_audio_sink.sh",
+        "video-demo/desktop-capture/deskcap/Makefile",
+        "video-demo/desktop-capture/deskcap/pwcam_desktop.c",
+    )
+    scripts = [rel for rel in _capture_rels if (base / rel).is_file()]
+
+    _final_bed_rel = "video-demo/music-generation/cinematic_cybersec_epic_FINAL.py"
+    _final_bed = base / _final_bed_rel
+    music_present = _final_bed.is_file()
+
+    _render_rel = "video-demo/render_demo.sh"
+    _render_path = base / _render_rel
+    script_present = _render_path.is_file()
+    bash_syntax_ok = False
+    if script_present:
+        try:
+            proc = subprocess.run(
+                ["bash", "-n", str(_render_path)],
+                capture_output=True,
+                timeout=15,
+            )
+            bash_syntax_ok = proc.returncode == 0
+        except Exception:  # noqa: BLE001 - fail closed (no bash? syntax unknown)
+            bash_syntax_ok = False
+
+    return {
+        "tts": {
+            "present": bool(tts_present),
+            "port": tts_port,
+            "health_url": f"http://127.0.0.1:{tts_port}/healthz",
+        },
+        "capture": {"present": bool(scripts), "scripts": scripts},
+        "music": {
+            "present": bool(music_present),
+            "final_bed": _final_bed_rel if music_present else None,
+        },
+        "render": {
+            "script_present": bool(script_present),
+            "bash_syntax_ok": bool(bash_syntax_ok),
+        },
     }

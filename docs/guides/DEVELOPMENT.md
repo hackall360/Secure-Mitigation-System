@@ -10,11 +10,17 @@ Node.js, and a running Linux Docker Engine your user can reach
 (`docker info` must work without sudo). No key, no network beyond the clone
 and the first image build.
 
+Harness privacy: the entire `.jcode/` tree is machine-local and never
+committed (pinned by `test_jcode_tree_fully_untracked_and_ignored`).
+The shared dev harness lives tracked at `scripts/dev/` (`dev.py`,
+`offline_scan.py`, `project_scan.py`, `ui_scan.py`, `verify_cov.py`) —
+fresh clones get it there, not under `.jcode/`.
+
 ```sh
 git clone https://github.com/hackall360/Secure-Mitigation-System.git
 cd Secure-Mitigation-System
-python3 .jcode/tools/dev.py quickstart  # one command: .venv (uv, stdlib fallback), images, chain proof — no key
-python3 .jcode/tools/dev.py quickstart --keyed  # same, plus one live chain scan (fails closed without .env key)
+python3 scripts/dev/dev.py quickstart  # one command: .venv (uv, stdlib fallback), images, chain proof — no key
+python3 scripts/dev/dev.py quickstart --keyed  # same, plus one live chain scan (fails closed without .env key)
 ```
 
 Manual stages (same work, step by step) — `setup`, `check`, `images`, `offline-scan` as below. CI/CD adoption: run `quickstart` in a pipeline, gate on exit 0, archive the verdict + receipt line.
@@ -46,12 +52,12 @@ access is effectively host administrator access. Do not chmod the socket or
 run this application as root to bypass permissions.
 
 ```sh
-python3 .jcode/tools/dev.py setup
-python3 .jcode/tools/dev.py check
-python3 .jcode/tools/dev.py images
-python3 .jcode/tools/dev.py docker-test
-python3 .jcode/tools/dev.py smoke
-python3 .jcode/tools/dev.py serve --port 8000
+python3 scripts/dev/dev.py setup
+python3 scripts/dev/dev.py check
+python3 scripts/dev/dev.py images
+python3 scripts/dev/dev.py docker-test
+python3 scripts/dev/dev.py smoke
+python3 scripts/dev/dev.py serve --port 8000
 ```
 
 `setup` creates `.venv` only if missing, installs exactly the transitive versions
@@ -94,9 +100,9 @@ Direct versions remain in `requirements.txt` and `requirements-dev.txt`. After a
 intentional dependency edit, regenerate and review the lock, synchronize, and test:
 
 ```sh
-python3 .jcode/tools/dev.py lock
-python3 .jcode/tools/dev.py setup
-python3 .jcode/tools/dev.py check
+python3 scripts/dev/dev.py lock
+python3 scripts/dev/dev.py setup
+python3 scripts/dev/dev.py check
 ```
 
 The lock was resolved for Python 3.12 on Linux x86_64. Other platforms must be
@@ -109,7 +115,7 @@ editing a Dockerfile or `docker/runner.py`, rebuild explicitly:
 ```sh
 docker build -f docker/Dockerfile.target -t purplebox-target-base:latest docker
 docker build -f docker/Dockerfile.verifier -t purplebox-verifier-base:latest docker
-python3 .jcode/tools/dev.py docker-test
+python3 scripts/dev/dev.py docker-test
 ```
 
 Do not run global Docker prune commands. Inspect only project resources:
@@ -211,12 +217,12 @@ diff, filters, keyboard selection, and no horizontal overflow on mobile.
 
 | Command | What it does |
 | --- | --- |
-| `python3 .jcode/tools/dev.py docker-status` | `main.py --docker-status`: pings the daemon, checks both base images, counts leftover session containers. Exit 0 only when `state` is `ready`. |
-| `python3 .jcode/tools/dev.py images` | Builds base images only if missing (`ensure_base_images`). |
-| `python3 .jcode/tools/dev.py rebuild-images` | `main.py --rebuild-images`: unconditional rebuild with `pull=True`, label `purplebox.base=true`. Use after editing `docker/`. |
-| `python3 .jcode/tools/dev.py docker-cleanup` | `main.py --cleanup`: removes only `purplebox.session`-labeled containers/networks and `purplebox-clone-cache` snapshots. Base images kept. |
-| `python3 .jcode/tools/dev.py docker-test` | Live harness: all three fixtures end to end in real containers. |
-| `python3 .jcode/tools/dev.py offline-scan` | `.jcode/tools/offline_scan.py`: runs the production `execute_purple_workflow` through real Docker for every fixture with only Muse replaced by known outputs. Exit 0 only if all three are `verified` with cleanup. About 110 s. |
+| `python3 scripts/dev/dev.py docker-status` | `main.py --docker-status`: pings the daemon, checks both base images, counts leftover session containers. Exit 0 only when `state` is `ready`. |
+| `python3 scripts/dev/dev.py images` | Builds base images only if missing (`ensure_base_images`). |
+| `python3 scripts/dev/dev.py rebuild-images` | `main.py --rebuild-images`: unconditional rebuild with `pull=True`, label `purplebox.base=true`. Use after editing `docker/`. |
+| `python3 scripts/dev/dev.py docker-cleanup` | `main.py --cleanup`: removes only `purplebox.session`-labeled containers/networks and `purplebox-clone-cache` snapshots. Base images kept. |
+| `python3 scripts/dev/dev.py docker-test` | Live harness: all three fixtures end to end in real containers. |
+| `python3 scripts/dev/dev.py offline-scan` | `scripts/dev/offline_scan.py`: runs the production `execute_purple_workflow` through real Docker for every fixture with only Muse replaced by known outputs. Exit 0 only if all three are `verified` with cleanup. About 110 s. |
 
 Code: `docker_status()`, `build_base_images()`, `remove_stale_resources()` in
 `modules/core/docker_manager.py`. `/api/health` now returns a `docker` object
@@ -253,7 +259,7 @@ which looked like a workflow/Docker failure but was a schema error in the stub.
 Real Chrome clicked the PHP target card and **Run verification** on the real
 FastAPI server. That opened the real WebSocket, ran `execute_purple_workflow`, and
 created real Docker sandboxes. Only `MetaMuseClient` was replaced by `KnownMuse`
-from `.jcode/tools/offline_scan.py`. Observed: status "Boundary check passed", all 7
+from `scripts/dev/offline_scan.py`. Observed: status "Boundary check passed", all 7
 pipeline stages done, facts Baseline passed / Exit 0 reachable / Regression passed /
 Exit 1 blocked / Resources removed, diff +5 -0, 37 s. Afterwards `--docker-status`
 showed 0 leftover containers. Without a key, `main.py --scan` exits 1 with the
@@ -358,9 +364,9 @@ in the tree (former commit `82e702c`) and then in **all history**:
   **Most of the cost is red-team reasoning tokens.** Recomputing each call's cost from the
   saved report matched exactly.
 
-### `.jcode/tools/ui_scan.py`
+### `scripts/dev/ui_scan.py`
 
-Real-browser acceptance check: `.venv/bin/python .jcode/tools/ui_scan.py TARGET [--browser chrome|chromium|edge|brave|firefox] [--offline]`.
+Real-browser acceptance check: `.venv/bin/python scripts/dev/ui_scan.py TARGET [--browser chrome|chromium|edge|brave|firefox] [--offline]`.
 It starts the server with only the key from `.env`, opens the v3 production setup
 page in the requested headless browser, picks the fixture card, clicks Launch,
 waits for the live verdict on console.html, prints it as JSON and saves a
@@ -406,7 +412,7 @@ only offered for the Meta API hostname, not other providers. `/api/health` expos
 The CLI accepts `main.py --scan TARGET --profile economy` (also balanced, quality,
 and custom) and prints the selected models. `--profile` requires `--scan`.
 
-Browser acceptance: `.venv/bin/python .jcode/tools/ui_scan.py node_query_sink
+Browser acceptance: `.venv/bin/python scripts/dev/ui_scan.py node_query_sink
 --profile economy` completed a real Meta API and Docker scan with both roles using
 Spark. Baseline and regression passed, the pre-patch probe reached the boundary,
 the post-patch probe was blocked, and cleanup left zero containers. The dashboard
@@ -425,9 +431,9 @@ dependencies are needed.
 Run the real browser matrix from the repository root:
 
 ```sh
-.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser chrome --design-check --shot reports/ui-after-chrome.png
-.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox --design-check --shot reports/ui-after-firefox.png
-python3 .jcode/tools/dev.py check
+.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser chrome --design-check --shot reports/ui-after-chrome.png
+.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser firefox --design-check --shot reports/ui-after-firefox.png
+python3 scripts/dev/dev.py check
 ```
 
 `--design-check` operates mode switching, section navigation, and log focus before
@@ -453,7 +459,7 @@ Traps discovered during this change:
 
 #### Measured outcome, not just screenshot inspection
 
-`.venv/bin/python .jcode/tools/ui_design_metrics.py --baseline d7763fa` loads
+`.venv/bin/python scripts/dev/ui_design_metrics.py --baseline d7763fa` loads
 both revisions' actual HTML/CSS in headless Chrome at 1440px and 390px. It isolates
 presentation by removing scripts from temporary copies, so it cannot start scans
 or make API calls. It measures computed colors, element geometry, actual focus
