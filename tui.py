@@ -626,6 +626,71 @@ def _result_target(result: object) -> str:
     return project if project and project != "?" else "?"
 
 
+def _ingest_identity(url: object, commit: object) -> str:
+    """LAW-4-safe staged repo identity: ``host@commit[:12]``, never the URL.
+
+    Userinfo is stripped (hostname only, never credentials). D2
+    (commit optional): ``commit=None`` (HEAD as-is) renders as ``HEAD``.
+    Never raises: unknown shapes yield ``""`` so the caller falls back
+    to a bare verdict line.
+    """
+    try:
+        text = str(url or "").strip()
+        host = ""
+        if text:
+            if "://" in text:
+                from urllib.parse import urlparse as _urlparse
+
+                try:
+                    host = _urlparse(text).hostname or ""
+                except Exception:
+                    host = ""
+            else:
+                host = text.split("/")[0]
+                if "@" in host:
+                    host = host.rsplit("@", 1)[-1]
+            host = host.strip().strip(".").lower()
+        if not host:
+            return ""
+        prefix = str(commit).strip()[:12] if commit else "HEAD"
+        return f"{host}@{prefix}" if prefix else host
+    except Exception:
+        return ""
+
+
+def _summarize_ingest_result(url: object, commit: object, result: object) -> str:
+    """Ingest verdict line: staged identity + status, never a consent nag.
+
+    D3: the explicit repo action authorized the fetch, so a successful
+    ingest summary never mentions ``--allow-remote-inference``. Keyless
+    failures propagate (run_plain maps them via ``_operator_guidance``),
+    so the key guidance still surfaces. F-214: unexpected shapes fall
+    back to type-only text, never internals.
+    """
+    try:
+        identity = _ingest_identity(url, commit)
+        head = f"ingest {identity}" if identity else "ingest"
+        if isinstance(result, dict):
+            status = _result_field(result, "status", "?")
+            message = _result_field(result, "message", "")
+            text = f"{status}: {message}".strip(": ").strip() or "done"
+            cycles = result.get("cycles")
+            if isinstance(cycles, (list, tuple)) and cycles:
+                text += f" | {len(cycles)} cycle(s)"
+            intel = result.get("intel_provenance")
+            if isinstance(intel, (list, tuple)) and intel:
+                first = intel[0] if isinstance(intel[0], dict) else {}
+                cve = first.get("cve_id", "") if isinstance(first, dict) else ""
+                text += f" | intel {len(intel)}" + (f" ({cve})" if cve else "")
+            return f"{head}: {text}"[:200]
+        status = _result_field(result, "status", "?")
+        message = _result_field(result, "message", "")
+        text = f"{status}: {message}".strip(": ").strip() or "done"
+        return f"{head}: {text}{describe_wave2(result)}"[:200]
+    except Exception:
+        return "ingest: done"
+
+
 def _summarize_result(prefix: str, result: object) -> str:
     """LAW-4-safe one-line summary: status/message/target only, never blobs."""
     try:
@@ -798,22 +863,37 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         # Wave 2.1 (P2-6, 1B +0.5): real intake wiring — clone in Docker
         # staging, then run the project workflow on the CLONED bytes.
         import main as main_mod
-        from modules.services.repo_intake import RepoIntakeSpec
 
         url = _state_field(state, "ingest_repo")
         commit = _state_field(state, "ingest_commit", "commit_hash")
-        spec = RepoIntakeSpec(url=url, commit_hash=commit)  # ValueError -> fail closed
+        # D2 (commit optional): _state_field defaults to "" for an empty
+        # form field, but RepoIntakeSpec rejects "" — normalize to None at
+        # the TUI boundary so empty means HEAD as-is, never a "" break.
+        # Validation stays in main._ingest_repo_to_project (fail closed);
+        # the TUI only normalizes and passes through. The scheme gate
+        # below is a UX fast-refusal for obviously non-HTTPS input: it
+        # names the rule only (never echoes the URL, which may carry
+        # credentials) and never replaces backend validation.
+        commit_hash = commit.strip() if isinstance(commit, str) else commit
+        if not commit_hash:
+            commit_hash = None
+        from urllib.parse import urlparse as _urlparse
+
+        try:
+            _scheme = _urlparse(str(url or "")).scheme.lower()
+        except Exception:
+            _scheme = ""
+        if _state_field(state, "ingest_repo").strip() and _scheme != "https":
+            raise ValueError("repo URL must be an https:// remote")
 
         async def _tui_ingest_emit(team, message):
             await emit(team, message)
 
-        project = await main_mod._ingest_repo_to_project(
-            spec.url, spec.commit_hash, _tui_ingest_emit
-        )
+        project = await main_mod._ingest_repo_to_project(url, commit_hash, _tui_ingest_emit)
         from modules.workflows import project_workflow as _project_workflow
 
         result = await _project_workflow.execute_project_workflow(project, emit)
-        return _summarize_result("ingest", result), result
+        return _summarize_ingest_result(url, commit_hash, result), result
     if mode == "demo":
         import main as main_mod
         from modules.core.config import load_config
@@ -1113,6 +1193,16 @@ def _run_state_scan(state: TuiState, *, header: str) -> int:
     """Run dispatch core on the calling thread; print redacted lines + summary."""
     event_queue: queue.Queue[tuple[str, str]] = queue.Queue()
     print(header)
+    if _state_mode(state) == "ingest" and not _state_field(state, "ingest_repo").strip():
+        # Ingest UX: an empty repo field means the user has not picked a
+        # target yet — say so on stderr BEFORE dispatch (the explicit repo
+        # action later authorizes the fetch, D3), then run normally so the
+        # backend still validates fail-closed.
+        print(
+            "ingest: enter a repo URL (https://) \u2014 optional pinned commit; "
+            "fetching it authorizes the scan",
+            file=sys.stderr,
+        )
     emit = queue_emit(event_queue)
     try:
         _summary, outcome = asyncio.run(_dispatch_core(state, emit))
@@ -1133,7 +1223,12 @@ def _run_state_scan(state: TuiState, *, header: str) -> int:
         except queue.Empty:
             break
         print(f"[{kind}] {text}")
-    print(_summarize_result(_state_mode(state), outcome))
+    if _state_mode(state) == "ingest":
+        # Ingest carries its staged identity (host@commit) in the dispatch
+        # summary; recomputing here would drop it back to a bare verdict.
+        print(_summary)
+    else:
+        print(_summarize_result(_state_mode(state), outcome))
     return _rc_from_outcome(outcome)
 
 
