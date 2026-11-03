@@ -409,7 +409,14 @@ def render_panes(state: TuiState, width: int = WIDTH, height: int = HEIGHT) -> l
 
     result = f" Result [{state.fixture_key}]: {state.result_summary}"
     lines.append(result[:width].ljust(width))
-    lines.append(FOOTER_HELP[:width].ljust(width))
+    # Two-line footer: the full single-line help is 172 chars, invisible
+    # past col 80 at the canonical 80x24 size. Line 1 keeps mode keys
+    # (incl. y vault o ops); line 2 keeps run/scroll keys. Both truncated
+    # to width, never wrapped (curses pads with ljust).
+    foot1 = "1-4 fixture m mcp b binary p project i ingest g sweep v demo c cve y vault o ops"
+    foot2 = "+/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+    lines.append(foot1[:width].ljust(width))
+    lines.append(foot2[:width].ljust(width))
     hint = "q quit  f filter  arrows scroll"
     if state.running:
         hint = "RUNNING... x stop" + "  " + hint
@@ -1338,6 +1345,10 @@ def _curses_main(stdscr, state: TuiState) -> None:
                 state.result_summary = "stop requested; worker is daemonized."
             continue
         if action.startswith("select:"):
+            if not state.running:
+                apply_action(state, action)
+            continue
+        if action.startswith("mode:") or action.startswith("depth:"):
             if not state.running:
                 apply_action(state, action)
             continue
