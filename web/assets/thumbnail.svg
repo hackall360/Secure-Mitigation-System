@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Secure Mitigation System thumbnail">
+  <rect width="640" height="360" fill="#02050a"/>
+  <rect x="12" y="12" width="616" height="336" fill="none" stroke="#38e1c6" stroke-width="2" opacity="0.6"/>
+  <!-- locked-room motif compact -->
+  <g transform="translate(48,90)" fill="none" stroke="#38e1c6" stroke-width="7" stroke-linejoin="round">
+    <path d="M60 6 L114 26 V72 C114 114 90 144 60 162 C30 144 6 114 6 72 V26 Z"/>
+    <path d="M42 72 L57 87 L81 57" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <circle cx="300" cy="130" r="16" fill="#ff5470"/>
+  <circle cx="356" cy="130" r="16" fill="#4aa8ff"/>
+  <line x1="316" y1="130" x2="340" y2="130" stroke="#8b93a3" stroke-width="3" stroke-dasharray="6 5"/>
+  <text x="228" y="200" fill="#f2f5f9" font-family="monospace" font-size="34" font-weight="bold">SECURE MITIGATION</text>
+  <text x="228" y="242" fill="#38e1c6" font-family="monospace" font-size="34" font-weight="bold">SYSTEM</text>
+  <g font-family="monospace" font-size="20">
+    <rect x="228" y="262" width="52" height="38" fill="none" stroke="#8b93a3" stroke-width="2"/>
+    <text x="243" y="289" fill="#8b93a3">0</text>
+    <polygon points="292,274 306,281 292,288" fill="#38e1c6"/>
+    <rect x="312" y="262" width="52" height="38" fill="none" stroke="#38e1c6" stroke-width="2"/>
+    <text x="327" y="289" fill="#38e1c6">1</text>
+    <polygon points="376,274 390,281 376,288" fill="#38e1c6"/>
+    <rect x="396" y="262" width="130" height="38" fill="none" stroke="#ffd166" stroke-width="2" stroke-dasharray="7 4"/>
+    <text x="406" y="289" fill="#ffd166" font-size="17">RECEIPT</text>
+  </g>
+</svg>

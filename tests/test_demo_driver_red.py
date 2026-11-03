@@ -70,3 +70,54 @@ def test_check_beats_tampered_copy_exits_nonzero(tmp_path, capsys):
     )
     rc = driver.main(["--check-beats", "--doc", str(doctored)])
     assert rc != 0, "RED: --check-beats must exit non-zero on a doctored stem"
+
+
+# --- LAW 9 RED-FIRST (rubric 2C): --auto machine-readable beat schedule ---
+STAGE_META_KEYS = {
+    "sandbox",
+    "baseline",
+    "analysis",
+    "probe",
+    "patch",
+    "regression",
+    "cleanup",
+}
+
+
+def test_auto_writes_schedule_within_budget(tmp_path):
+    import json
+
+    plan = tmp_path / "plan.json"
+    rc = driver.main(["--auto", "--out", str(plan)])
+    assert rc == 0, "RED: --auto must exit 0 on the clean tree"
+    sched = json.loads(plan.read_text(encoding="utf-8"))
+    assert len(sched) == 7, f"RED: schedule needs 7 beats, got {len(sched)}"
+    for entry in sched:
+        assert set(entry) == {"t", "stage", "stem", "narration"}, (
+            f"RED: schedule entry keys wrong: {sorted(entry)}"
+        )
+    assert sched[-1]["t"] <= 180.0, "RED: last beat starts after the budget"
+    assert driver.cumulative_end(driver.parse_doc_beats()) <= 180.0
+
+
+def test_auto_plan_stages_within_stage_meta(tmp_path):
+    import json
+
+    plan = tmp_path / "plan.json"
+    rc = driver.main(["--auto", "--out", str(plan)])
+    assert rc == 0, "RED: --auto must exit 0 on the clean tree"
+    sched = json.loads(plan.read_text(encoding="utf-8"))
+    stages = {entry["stage"] for entry in sched}
+    assert stages <= STAGE_META_KEYS, f"RED: plan stages outside STAGE_META: {stages}"
+
+
+def test_auto_tampered_copy_exits_nonzero(tmp_path):
+    doctored = tmp_path / "DEMO_SCRIPT.md"
+    doctored.write_text(
+        driver.DEFAULT_DOC.read_text(encoding="utf-8").replace(
+            "stem: demo-hook", "stem: demo-hoax", 1
+        ),
+        encoding="utf-8",
+    )
+    rc = driver.main(["--auto", "--doc", str(doctored), "--out", str(tmp_path / "plan.json")])
+    assert rc != 0, "RED: --auto must exit non-zero on a doctored stem"
