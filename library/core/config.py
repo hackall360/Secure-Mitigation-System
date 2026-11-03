@@ -33,6 +33,36 @@ class ConfigurationError(ValueError):
     """An invalid setting prevents a real scan from starting."""
 
 
+def load_dotenv_file(path=None) -> None:
+    """Fill missing process env vars from an owner-only `.env` file (stdlib).
+
+    KEY=value lines only; `#` comments and blank lines skipped; surrounding
+    quotes stripped. Never overrides a var the process env already sets, so
+    an exported secret always wins over the file. Missing file = no-op.
+    Default path is `.env` in the current working directory (the repo root
+    when launched normally).
+    """
+    from pathlib import Path
+
+    dotenv = Path(path) if path is not None else Path.cwd() / ".env"
+    try:
+        text = dotenv.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export ") :].strip()
+        if not key or not key.replace("_", "").isalnum() or key in os.environ:
+            continue
+        value = value.strip().strip("\"'")
+        os.environ[key] = value
+
+
 @dataclass(frozen=True)
 class PurpleBoxConfig:
     meta_api_key: str = field(default="", repr=False)
@@ -154,6 +184,9 @@ class PurpleBoxConfig:
 
 
 def load_config() -> PurpleBoxConfig:
+    # Owner-only .env fills vars the shell did not export (e.g. a plain
+    # `python main.py --serve` with the key in .env). Exported env wins.
+    load_dotenv_file()
     try:
         config = PurpleBoxConfig(
             meta_api_key=os.getenv("META_MUSE_API_KEY", "").strip(),

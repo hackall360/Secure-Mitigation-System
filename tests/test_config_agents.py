@@ -17,7 +17,7 @@ FINDING = {
 }
 
 
-def test_key_only_required_for_inference(monkeypatch):
+def test_key_only_required_for_inference(monkeypatch, tmp_path):
     for name in (
         "META_MUSE_API_KEY",
         "META_MUSE_BASE_URL",
@@ -25,6 +25,9 @@ def test_key_only_required_for_inference(monkeypatch):
         "META_MUSE_BLUE_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
+    # Isolate from the developer's real .env: load_config() now fills
+    # missing vars from ./.env (dotenv fix), so run from an empty dir.
+    monkeypatch.chdir(tmp_path)
     settings = load_config()
     assert settings.meta_base_url == "https://api.meta.ai/v1"
     assert settings.red_team_model == "muse-spark-1.3-contributor"
