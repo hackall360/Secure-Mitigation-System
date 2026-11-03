@@ -315,6 +315,75 @@ def sms_query_vault_stats_tool_definition() -> dict[str, Any]:
     }
 
 
+def sms_list_vault_namespaces_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_list_vault_namespaces (redacted browse)."""
+    return {
+        "name": "sms_list_vault_namespaces",
+        "title": "List vault namespaces",
+        "description": (
+            "Browse vault namespaces: names plus record counts, never "
+            "payloads. An empty vault yields an empty list (fail closed)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "namespaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "namespace": {"type": "string"},
+                            "record_count": {"type": "integer"},
+                        },
+                        "required": ["namespace", "record_count"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["namespaces"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def sms_replay_vault_record_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_replay_vault_record (redacted summary)."""
+    return {
+        "name": "sms_replay_vault_record",
+        "title": "Replay one vault record as a redacted summary",
+        "description": (
+            "Replay one vault record by namespace + record id. Returns a "
+            "redacted summary (id, fingerprint prefix, status, created) — "
+            "never payload material. Unknown ids fail closed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "namespace": {"type": "string"},
+                "record_id": {"type": "string"},
+            },
+            "required": ["namespace", "record_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "fingerprint_prefix": {"type": "string"},
+                "status": {"type": "string"},
+                "created": {"type": "string"},
+            },
+            "required": ["id", "fingerprint_prefix", "status", "created"],
+            "additionalProperties": False,
+        },
+    }
+
+
 def sms_verify_receipt_tool_definition() -> dict[str, Any]:
     """MCP tools/list entry for sms_verify_receipt (digest validation)."""
     return {
@@ -381,13 +450,78 @@ def sms_scan_status_tool_definition() -> dict[str, Any]:
     }
 
 
+def sms_ops_status_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_ops_status (ops visibility, offline)."""
+    return {
+        "name": "sms_ops_status",
+        "title": "Show Docker, cleanup, knobs, and showcase presence",
+        "description": (
+            "Ops visibility without running a scan: Docker daemon state "
+            "plus missing images and leftover containers, cleanup preview "
+            "(what --cleanup would remove), effective inference/verifier "
+            "knobs, and static showcase presence. Same payload shape as "
+            "CLI --ops-status --format json. Fail closed when the daemon "
+            "is unreachable."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "docker": {"type": "object"},
+                "cleanup_preview": {"type": "object"},
+                "knobs": {"type": "object"},
+                "showcase": {"type": "object"},
+            },
+            "required": ["docker", "cleanup_preview", "knobs", "showcase"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def sms_showcase_status_tool_definition() -> dict[str, Any]:
+    """MCP tools/list entry for sms_showcase_status (static presence)."""
+    return {
+        "name": "sms_showcase_status",
+        "title": "Show showcase rig static presence",
+        "description": (
+            "Static presence report for the standalone showcase rig "
+            "(TTS booth, desktop capture, music DSP, video-demo render): "
+            "file checks only, nothing started, no servers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "tts": {"type": "object"},
+                "capture": {"type": "object"},
+                "music": {"type": "object"},
+                "render": {"type": "object"},
+            },
+            "required": ["tts", "capture", "music", "render"],
+            "additionalProperties": False,
+        },
+    }
+
+
 MCP_TOOLS: list[dict[str, Any]] = [
     snippet_tool_definition(),
     sms_scan_source_tool_definition(),
     sms_scan_binary_tool_definition(),
     sms_query_vault_stats_tool_definition(),
+    sms_list_vault_namespaces_tool_definition(),
+    sms_replay_vault_record_tool_definition(),
     sms_verify_receipt_tool_definition(),
     sms_scan_status_tool_definition(),
+    sms_ops_status_tool_definition(),
+    sms_showcase_status_tool_definition(),
 ]
 
 
@@ -562,6 +696,27 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 return _wrap_tool_result(rpc_id, {"stats": query_vault_stats()})
             except Exception as exc:
                 return jsonrpc_error(rpc_id, -32603, f"Vault stats failed ({type(exc).__name__}).")
+        if name == "sms_list_vault_namespaces":
+            try:
+                from modules.services.sms_api import list_vault_namespaces
+
+                return _wrap_tool_result(rpc_id, {"namespaces": list_vault_namespaces()})
+            except Exception as exc:
+                return jsonrpc_error(rpc_id, -32603, f"Vault browse failed ({type(exc).__name__}).")
+        if name == "sms_replay_vault_record":
+            try:
+                from modules.services.sms_api import replay_vault_record
+
+                return _wrap_tool_result(
+                    rpc_id,
+                    replay_vault_record(
+                        None,
+                        str(arguments.get("namespace", "")),
+                        str(arguments.get("record_id", "")),
+                    ),
+                )
+            except Exception as exc:
+                return jsonrpc_error(rpc_id, -32603, f"Vault replay failed ({type(exc).__name__}).")
         if name == "sms_verify_receipt":
             try:
                 from modules.services.sms_api import verify_receipt
@@ -580,6 +735,46 @@ def handle_mcp_request(body: dict[str, Any]) -> dict[str, Any]:
                 return _wrap_tool_result(rpc_id, scan_status_for(scan_id))
             except Exception as exc:
                 return jsonrpc_error(rpc_id, -32603, f"Scan status failed ({type(exc).__name__}).")
+        if name == "sms_showcase_status":
+            # Static presence only: file checks + bash -n, no servers,
+            # no Docker, no lock. Fail closed, never raises.
+            try:
+                from modules.services.sms_api import showcase_status
+
+                return _wrap_tool_result(rpc_id, showcase_status())
+            except Exception as exc:
+                return jsonrpc_error(
+                    rpc_id, -32603, f"Showcase status failed ({type(exc).__name__})."
+                )
+        if name == "sms_ops_status":
+            # Offline ops visibility: same payload shape as CLI
+            # --ops-status --format json. Fail closed when the daemon is
+            # unreachable (state == "unavailable") or on any exception.
+            try:
+                from modules.services.sms_api import (
+                    cleanup_preview,
+                    docker_health,
+                    effective_knobs,
+                    showcase_status,
+                )
+
+                docker_report = docker_health()
+                if (
+                    not isinstance(docker_report, dict)
+                    or docker_report.get("state") == "unavailable"
+                ):
+                    return jsonrpc_error(
+                        rpc_id, -32603, "Ops status failed (docker daemon unreachable)."
+                    )
+                payload = {
+                    "docker": docker_report,
+                    "cleanup_preview": cleanup_preview(),
+                    "knobs": effective_knobs(),
+                    "showcase": showcase_status(),
+                }
+                return _wrap_tool_result(rpc_id, payload)
+            except Exception as exc:
+                return jsonrpc_error(rpc_id, -32603, f"Ops status failed ({type(exc).__name__}).")
         if name in ("sms_scan_source", "sms_scan_binary"):
             return jsonrpc_error(
                 rpc_id,
@@ -596,6 +791,10 @@ McpToolKind = Literal[
     "sms_scan_source",
     "sms_scan_binary",
     "sms_query_vault_stats",
+    "sms_list_vault_namespaces",
+    "sms_replay_vault_record",
     "sms_verify_receipt",
     "sms_scan_status",
+    "sms_ops_status",
+    "sms_showcase_status",
 ]
