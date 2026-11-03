@@ -15,7 +15,6 @@ clone on the host. LAW 9C: fakes sit at the Docker boundary (FakeSandbox /
 FakeMuse doubles), never inside intake validation itself.
 """
 
-import json
 from types import MappingProxyType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -150,9 +149,7 @@ def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch
             )
             reply = drain_snapshot(socket)
             assert reply.get("type") == "invalid", f"ingest frame accepted: {reply}"
-            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get(
-                "msg", ""
-            )
+            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get("msg", "")
 
 
 def test_explicit_runtime_command_wins_over_detect(monkeypatch):
@@ -217,9 +214,7 @@ def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
             )
             reply = drain_snapshot(socket)
             assert reply["type"] == "invalid"
-            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get(
-                "msg", ""
-            )
+            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get("msg", "")
 
 
 def test_ingest_invalid_frame_closes_1008(monkeypatch):
