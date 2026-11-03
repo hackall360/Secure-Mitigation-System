@@ -191,3 +191,20 @@ def test_footer_two_lines_keep_vault_ops_visible_at_80cols():
     # foot1 is 80 chars: "y vault" + "o ops" survive intact at width 80.
     assert "y vault" in joined and "o ops" in joined
     assert any("Enter/s start" in line for line in panes)
+
+
+def test_summarize_dict_surfaces_cycles_and_intel_keys():
+    """Surface TUI finding: dict branch dropped cycles/intel keys silently."""
+    import tui
+
+    outcome = {
+        "status": "verified",
+        "message": "ok",
+        "cycles": [
+            {"cycle": 1, "pre_exit": 0, "post_exit": 1, "verdict": "retained"}
+        ],
+        "intel_provenance": [{"source": "osv", "cve_id": "CVE-2024-1234"}],
+    }
+    text = tui._summarize_result("scan", outcome)
+    assert "1 cycle" in text or "cycle" in text
+    assert "CVE-2024-1234" in text or "intel" in text
