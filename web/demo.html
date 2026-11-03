@@ -71,6 +71,7 @@
     <!-- top bar -->
     <header class="d-top">
       <div class="d-brand">
+        <img id="demo-title-card" src="assets/title-card.svg" alt="" aria-hidden="true" width="120" height="63" loading="lazy" onerror="this.remove()">
         <span class="d-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3l10 3.5V14c0 6.5-4.2 11.5-10 15C10.2 25.5 6 20.5 6 14V6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11.5 16l3.5 3.5 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <div>
           <h1 class="glitch" data-text="SECURE MITIGATION SYSTEM">SECURE MITIGATION SYSTEM</h1>
@@ -119,7 +120,7 @@
     <!-- bottom: caption + stats -->
     <section class="d-bottom" aria-live="polite">
       <div class="d-caption glass brackets">
-        <div class="cap-head"><p class="eyebrow"><span id="cap-phase">PHASE 00 // STANDBY</span><span id="cap-team" class="cap-team"></span></p><div id="ex-toggle" title="Explain (E)"></div></div>
+        <div class="cap-head"><p class="eyebrow"><span id="cap-phase">PHASE 00 // STANDBY</span><span id="cap-team" class="cap-team"></span></p><div id="ex-toggle" title="Explain (E)"></div><button id="nar-toggle" type="button" class="nar-toggle" aria-pressed="false" aria-label="Narration (audio opt-in)" title="Narration: read beat stems aloud when available (N)">Narration: off</button></div>
         <h2 id="cap-title">Pick a target to wake the swarm.</h2>
         <p id="cap-tech" class="cap-tech x-expert"></p>
         <div id="explain" class="d-explain"></div>
