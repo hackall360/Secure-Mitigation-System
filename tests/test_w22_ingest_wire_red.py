@@ -58,17 +58,14 @@ def connect(client):
 
 
 def test_ingest_first_frame_is_accepted_not_invalid(monkeypatch):
-    """Valid {ingest_repo, commit_hash} frame must reach the project flow.
+    """F-204: ingest frames fail closed — a WS client can always SEND bytes,
+    so no frame under a claimed repo URL may reach the project flow until
+    the server fetches the commit itself (unimplemented: host clone path
+    F-202). Valid shape still parses (spec validation), but the outcome is
+    an invalid refusal naming the reason, and the workflow never runs."""
 
-    RED pin (fails pre-W22: first frame died as type:invalid because only
-    ProjectSpec validated). Post-wire the ingest branch routes through
-    intake and the workflow's result arrives instead.
-    """
-    seen = []
-
-    async def workflow(project, emit, **kwargs):
-        seen.append(project)
-        return fake_result()
+    async def workflow(*args, **kwargs):
+        pytest.fail("Ingest frame reached the workflow without a server fetch")
 
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
@@ -77,17 +74,18 @@ def test_ingest_first_frame_is_accepted_not_invalid(monkeypatch):
                 {"ingest_repo": GOOD_URL, "commit_hash": GOOD_HASH, "file_list": ["package.json"]}
             )
             first = drain_snapshot(socket)
-            assert first.get("type") != "invalid", f"ingest frame rejected: {first}"
-    assert seen, "ingest frame never reached the project workflow"
+            assert first.get("type") == "invalid", f"ingest frame accepted: {first}"
+            assert "not fetched" in first.get("msg", "") or "not verified" in first.get(
+                "msg", ""
+            ), f"refusal must name the reason: {first}"
 
 
 def test_ingest_first_frame_carries_no_host_paths(monkeypatch):
-    """Ingest frames must not smuggle host filesystem paths into the flow."""
-    seen = []
+    """F-204: ingest frames fail closed, so no smuggled host path can ever
+    reach a workflow — the request dies at the refusal with no flow at all."""
 
-    async def workflow(project, emit, **kwargs):
-        seen.append(project)
-        return fake_result()
+    async def workflow(*args, **kwargs):
+        pytest.fail("Ingest frame reached the workflow without a server fetch")
 
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
@@ -102,10 +100,7 @@ def test_ingest_first_frame_carries_no_host_paths(monkeypatch):
                 }
             )
             first = drain_snapshot(socket)
-            assert first.get("type") != "invalid", f"ingest frame rejected: {first}"
-    assert seen, "ingest frame never reached the project workflow"
-    dumped = json.dumps(seen[0].model_dump() if hasattr(seen[0], "model_dump") else dict(seen[0]))
-    assert "/tmp/evil" not in dumped
+            assert first.get("type") == "invalid", f"ingest frame accepted: {first}"
 
 
 @pytest.mark.parametrize(
@@ -135,54 +130,15 @@ def test_ingest_validation_failures_are_invalid_and_never_start_workflow(monkeyp
 
 
 def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch):
-    """Intake stages in-container (Fake sandbox at Docker boundary); spec+runtime asserted."""
-    from modules.services import repo_intake as intake_mod
+    """F-204: the staged intake path is gone — no ingest frame stages or
+    delegates, even with an explicit runtime_command. The workflow never
+    runs; the frame dies at the fetch refusal."""
 
-    intake_calls = []
-    real_intake = intake_mod.intake_repo_to_snapshot
+    async def workflow(*args, **kwargs):
+        pytest.fail("Ingest frame delegated without a server fetch")
 
-    def spy_intake(spec, runtime_command=None, **kwargs):
-        intake_calls.append(
-            {"spec": spec, "runtime_command": runtime_command, "kwargs": dict(kwargs)}
-        )
-        return real_intake(spec, runtime_command, **kwargs)
-
-    monkeypatch.setattr(intake_mod, "intake_repo_to_snapshot", spy_intake)
-
-    from tests.helpers import TEST_CONFIG, project_verification
-    from tests.helpers import FakeProjectMuse as FakeMuse
-    from tests.helpers import FakeProjectSandbox as FakeSandbox
-
-    muse = FakeMuse(red_outcomes=["finding", "no_finding"])
-    sandbox = FakeSandbox(
-        [project_verification(1), project_verification(0), project_verification(1)]
-    )
-
-    async def fake_run_ingest(snapshot, emit, *, config=None, file_list=None, contract=""):
-        from modules.workflows.project_workflow import (
-            ProjectWorkflowInput,
-            execute_project_workflow,
-        )
-
-        project_input = ProjectWorkflowInput.model_validate(
-            {
-                "name": "ingest:demo",
-                "files": {"main.py": "value = input()\nprint(value)\n"},
-                "regression_command": list(snapshot.runtime_command),
-                "contract": "",
-            }
-        )
-        return await execute_project_workflow(
-            project_input,
-            emit,
-            config=TEST_CONFIG,
-            sandbox_factory=lambda _settings: sandbox,
-            muse_factory=lambda _settings: muse,
-        )
-
-    monkeypatch.setattr(main, "_run_ingest_workflow", fake_run_ingest)
-
-    with TestClient(main.create_app(TEST_CONFIG), base_url="http://localhost") as client:
+    monkeypatch.setattr(main, "execute_project_workflow", workflow)
+    with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
             socket.send_json(
                 {
@@ -192,47 +148,19 @@ def test_ingest_stages_through_intake_then_delegates_to_project_flow(monkeypatch
                     "file_list": [{"main.py": "value = input()\nprint(value)\n"}],
                 }
             )
-            reply = None
-            for _ in range(50):
-                frame_out = socket.receive_json()
-                if frame_out.get("type") == "result":
-                    reply = frame_out
-                    break
-                assert frame_out.get("type") in ("log", "snapshot"), (
-                    f"unexpected frame: {frame_out}"
-                )
-            assert reply is not None, "workflow closed without a result frame"
-            assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
-            assert reply.get("status") in ("verified", "partial", "unresolved")
-
-    assert intake_calls, "intake_repo_to_snapshot was never called"
-    call = intake_calls[0]
-    assert call["spec"].url == GOOD_URL
-    assert call["spec"].commit_hash == GOOD_HASH
-    assert list(call["runtime_command"]) == ["python3", "main.py"]
-    assert not hasattr(call["spec"], "host_path")
-    assert "host_path" not in call["kwargs"]
-    # The explicit runtime wins (detection bypassed); the file_list hint
-    # may ride the intake call or flow straight to the workflow mapper.
-    assert call["spec"].url == GOOD_URL
-    assert muse.closed and sandbox.closed
+            reply = drain_snapshot(socket)
+            assert reply.get("type") == "invalid", f"ingest frame accepted: {reply}"
+            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get(
+                "msg", ""
+            )
 
 
 def test_explicit_runtime_command_wins_over_detect(monkeypatch):
-    """An explicit frame runtime_command beats file_list auto-detect."""
-    from modules.services import repo_intake as intake_mod
+    """F-204: even an explicit runtime_command does not rescue the frame —
+    client bytes under a claimed URL are unverified by construction."""
 
-    intake_calls = []
-    real_intake = intake_mod.intake_repo_to_snapshot
-
-    def spy_intake(spec, runtime_command=None, **kwargs):
-        intake_calls.append({"runtime_command": runtime_command})
-        return real_intake(spec, runtime_command, **kwargs)
-
-    monkeypatch.setattr(intake_mod, "intake_repo_to_snapshot", spy_intake)
-
-    async def workflow(project, emit, **kwargs):
-        return fake_result()
+    async def workflow(*args, **kwargs):
+        pytest.fail("Ingest frame delegated without a server fetch")
 
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
@@ -246,27 +174,15 @@ def test_explicit_runtime_command_wins_over_detect(monkeypatch):
                 }
             )
             reply = drain_snapshot(socket)
-            assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
-    assert intake_calls
-    assert list(intake_calls[0]["runtime_command"]) == ["python3", "custom.py"]
+            assert reply.get("type") == "invalid", f"ingest frame accepted: {reply}"
 
 
 def test_detect_runtime_used_when_frame_omits_command(monkeypatch):
-    """file_list without runtime_command resolves via detect_runtime."""
-    from modules.services import repo_intake as intake_mod
+    """F-204: auto-detect does not run on client bytes — the frame dies at
+    the fetch refusal before any intake staging."""
 
-    intake_calls = []
-    real_intake = intake_mod.intake_repo_to_snapshot
-
-    def spy_intake(spec, runtime_command=None, **kwargs):
-        kwargs.setdefault("file_list", ["package.json"])
-        intake_calls.append({"runtime_command": runtime_command})
-        return real_intake(spec, runtime_command, **kwargs)
-
-    monkeypatch.setattr(intake_mod, "intake_repo_to_snapshot", spy_intake)
-
-    async def workflow(project, emit, **kwargs):
-        return fake_result()
+    async def workflow(*args, **kwargs):
+        pytest.fail("Ingest frame delegated without a server fetch")
 
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
@@ -279,19 +195,12 @@ def test_detect_runtime_used_when_frame_omits_command(monkeypatch):
                 }
             )
             reply = drain_snapshot(socket)
-            assert reply.get("type") != "invalid", f"ingest frame rejected: {reply}"
-    assert intake_calls
-    # file_list without an explicit command reaches intake uncommanded, so
-    # the intake layer resolves the runtime via detect_runtime (LAW 9C: real
-    # intake, fakes only at the Docker boundary).
-    assert intake_calls[0]["runtime_command"] is None
-    from modules.services.repo_intake import detect_runtime
-
-    assert detect_runtime(["package.json"]) == ["npm", "start"]
+            assert reply.get("type") == "invalid", f"ingest frame accepted: {reply}"
 
 
 def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
-    """No runtime_command + undetectable files -> actionable invalid, workflow never runs."""
+    """F-204: the fetch refusal fires before any runtime detection, so the
+    message names the fetch gap — not the missing runtime_command."""
 
     async def workflow(*args, **kwargs):
         pytest.fail("Undetectable ingest reached the workflow")
@@ -308,7 +217,9 @@ def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
             )
             reply = drain_snapshot(socket)
             assert reply["type"] == "invalid"
-            assert "runtime_command" in reply.get("msg", "")
+            assert "not fetched" in reply.get("msg", "") or "not verified" in reply.get(
+                "msg", ""
+            )
 
 
 def test_ingest_invalid_frame_closes_1008(monkeypatch):

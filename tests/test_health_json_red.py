@@ -105,8 +105,11 @@ def test_cli_runner_has_no_bare_stdout_prints():
 # F-04: busy follows the live lock when provided; stays False without one
 # (plain --health CLI runs with no server, so False is truthful there).
 def test_health_report_busy_follows_scan_lock():
-    assert main._health_report(PurpleBoxConfig(), scan_lock=_Locked())["busy"] is True
-    assert main._health_report(PurpleBoxConfig(), scan_lock=_Unlocked())["busy"] is False
+    # F-209: busy is the scan-phase flag, not lock.locked() (the acquire
+    # handoff left locked() True while no scan ran). scan_lock kwarg is
+    # legacy and ignored; busy= drives the verdict.
+    assert main._health_report(PurpleBoxConfig(), busy=True)["busy"] is True
+    assert main._health_report(PurpleBoxConfig(), busy=False)["busy"] is False
     assert main._health_report(PurpleBoxConfig())["busy"] is False
 
 
@@ -114,8 +117,9 @@ def test_health_report_busy_follows_scan_lock():
 def test_serve_path_health_uses_live_lock():
     src = inspect.getsource(main.create_app)
     assert "scan_lock" in src, "serve app must track the WS scan lock"
-    assert re.search(r"_health_report\(.*scan_lock", src), (
-        "serve-path _health_report call must receive the live scan lock"
+    assert "scan_phase" in src, "serve-path health must report the scan phase (F-209)"
+    assert re.search(r"_health_report\([\s\S]*?busy", src), (
+        "serve-path _health_report call must receive the scan-phase busy flag"
     )
 
 
@@ -129,7 +133,6 @@ _PINNED_INFRA = {
     "PURPLEBOX_MEM_LIMIT",
     "PURPLEBOX_CPU_NANO",
     "PURPLEBOX_NETWORK_PREFIX",
-    "PURPLEBOX_DOCKER_TIMEOUT_SECONDS",
     "PURPLEBOX_MAX_SOURCE_BYTES",
 }
 
