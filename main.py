@@ -130,6 +130,12 @@ def _ops_log_tail(limit: int) -> int:
     # mtime order keeps cross-signal recency; the sort is stable so records
     # from the same file stay in write order.
     lines.sort(key=lambda item: item[0])
+    if not lines:
+        print(
+            "no observability log lines under logs/ yet (run a scan first).",
+            file=sys.stderr,
+        )
+        return 0
     for _, line in lines[-limit:] if limit else []:
         print(line)
     return 0

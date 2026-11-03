@@ -75,3 +75,16 @@ def test_ops_log_caps_output_lines(monkeypatch, tmp_path, capsys):
     assert main.main() == 0
     lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
     assert 1 <= len(lines) <= 10
+
+
+def test_ops_log_empty_tree_prints_guidance(monkeypatch, tmp_path, capsys):
+    """Surface F3: empty-but-present logs/ must explain, not print nothing."""
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "logs" / "logs").mkdir(parents=True)
+    (tmp_path / "logs" / "metrics").mkdir(parents=True)
+    (tmp_path / "logs" / "traces").mkdir(parents=True)
+    assert main._ops_log_tail(20) == 0
+    out = capsys.readouterr()
+    assert "no observability log lines" in out.out.lower() or "no observability" in (out.out + out.err).lower()
