@@ -34,7 +34,7 @@ Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
 | `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor, 4=+chain (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 4-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
-| `--ingest-repo URL` | Clone a git repo at a pinned commit into an isolated Docker staging container, then run the project scan (requires `--commit-hash`; Phase 1, Wave 4) |
+| `--ingest-repo URL` (`--commit-hash HEX`) | Validated repo intake at a pinned commit (CLI refuses after validation — see refusal text; TUI `ingest` mode stages via Docker) |
 
 > Engine leaves (`sms_compress`, `sms_vault`, `sms_api`) are library modules, not CLI flags.
 
