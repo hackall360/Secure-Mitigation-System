@@ -236,3 +236,42 @@ live generation, live 180 s run-through, 100-scan soak, live benchmarks.
 - WebUI visual audit + doc-notes: setup pages lack cycles/intel/vault/ops controls (W7-8 scope, not a bug); visual layout verified (ids unique, toggle keyboard-reachable, no layout shift).
 - Document-only: keyless fixture scan by design, fingerprint prefix not a leak, symlinked TMPDIR env issue, /ws/system explicit-invalid + bare /ws/combat 403 by design.
 - Gate: **1392 passed + 2 skipped, All checks passed**.
+
+## Run #4 — 2026-11-03 ~09:15 UTC — overnight verification + dotenv/startup-gap close-out (`develop 7e7dfb9`)
+
+### A. Executive Judging Verdict & Regression Gate Status
+
+- **Evaluation Timestamp & Git Revision:** 2026-11-03 ~09:15 UTC · `develop 7e7dfb9` / `main 947168f` (both pushed, trees identical, tree clean)
+- **Stage 1 Viability Gate:** **PASS** (5/5; no notes)
+- **Stage 2 Weighted Composite Score:** **7.96 / 10.00** (held from Run #3 — no category moved; see §C)
+- **Baseline Score (S_baseline):** **7.06 / 10.00** (Run #1)
+- **Score Delta (Δscore):** **+0.90** vs baseline; **+0.00** vs Run #3 (verification + correctness wave, no new judge-visible capability by design on submit-eve)
+- **Monotonic Regression Gate Status:** **PASS: MONOTONIC_GAIN_OR_HOLD** (Δ ≥ 0 in every sub-criterion; zero regressions)
+- **Stage 3 Finalist Tier Projection:** **Top-5 Bubble** (unchanged; agentic 8.0→8.5 on live proof, open-weight holds 5.0, creative holds 6.5)
+
+Gate: **1508 passed + 3 skipped, All checks passed** (1392 + 8 dotenv + 16 sa-main + 21 sa-config/intake/vault/binary/tui/libmisc/docker + 5 config/env/health/docs pin reconciliations + 66 intake/TUI/MCP-preamble pins; flake hunt 5/5 green on `test_sa_main_red.py`). Smoke PASS (key-free server + assets). Offline sweep 4/4 `verified pre=0 post=1`. Keyed WS 1-pass `node_query_sink` verified live. No video recorded/rendered (ban honored).
+
+### C. Stage 2 Delta Detail (Run #4 vs Run #3)
+
+| Category | Run #3 | Run #4 | Δ | What moved it (evidence) |
+|---|---|---|---|---|
+| **1. Impact** | 8.25 | **8.25** | +0.00 | No new adoption proof (held) |
+| **2. Meta AI Tooling** | 9.00 | **9.00** | +0.00 | No new model/tooling surface (held) |
+| **3. Technical Depth** | 8.25 | **8.25** | +0.00 | +116 tests and 6 live-proven defect classes, but 3C was already capped for showcase wiring; depth credit held pending 100-scan soak + chaos matrix (deferred post-submission) |
+| **4. Demo Readiness** | 6.75 | **6.75** | +0.00 | No video artifact by directive; beat rig + driver + assets + narration toggle unchanged and live-verified |
+
+Composite: 0.30·8.25 + 0.25·9.00 + 0.20·8.25 + 0.25·6.75 = **7.96** (same arithmetic as Run #3; LAW-4 capping unchanged).
+
+Honest accounting of what Run #4 DID (below the scoring line, all verified):
+- **Shutdown of a real judging foot-gun:** production WebUI reported `api_key_configured=false` with the key in `.env` because nothing loaded it (keyed runs silently keyless). Fix: stdlib `load_dotenv_file()` at `load_config()` entry (exported env wins) + `PURPLEBOX_SKIP_DOTENV=1` for key-free harnesses. Live proof: key loads from file, keyed flip `verified 0→1`.
+- **22 confirmed defects F-201–F-222 fixed, all RED-first** (failure register + slice registry in `GUIDANCE_MATRIX.md` Run v2): fail-closed WS ingest (unverifiable-bytes verdict eliminated), single-acquire busy gate (phase-reported), pre-decode base64 cap, JSON-stdout purity on 3 runners, actionable config/consent text surviving the outer catch, key-gate before Greenhouse intel HTTP, single research-allowlist source, explicit-falsy-flag merge precedence, vuln intake host/userinfo guards, run-to-completion clone container, vault fail-closed + flock'd index, binary filename/size guards, TUI safe guidance + preflight, offline-CVE labelling, widened redaction, leftover networks/images in `--docker-status`.
+- **30-agent live verification wave** (serial, isolated worktrees, zero code edits): keyed matrix 4/4 verified, no-key/localhost matrices pass, all 5 failure-domain replays pass, all 8 hostile WS params refused as specified, frame-limit + slowloris + concurrency contracts hold, model-lock smuggling refused on all 6 surfaces, browser console zero-error + Fake-run renders.
+- **Disproven-on-contact (not shipped as fixes):** WS ingest clone path was dead live (Docker 409 on exec of never-started container); `ws_max_size` renamed to `WS_TRANSPORT_MAX_BYTES` so the name no longer overclaims; `--ingest-branch` confirmed TUI-only; title swap flag was a false positive (file `<title>` correct, probe misread).
+
+Explicit zeros remaining (unchanged): recorded video + 15 s hook, live Glimmer/Image generation, 100-scan soak, chaos matrix Stages 5–6, `/ws/system` explicit-invalid by design, vault `--ops-log` limit-0 silence (LOW, cosmetic), MCP `--mcp-snippet --format json` saved-report chatter on stdout only in table-adjacent paths (covered by table-mode contract).
+
+---
+
+## Regression log
+
+- **Run #4 — 2026-11-03 ~09:15 UTC** (`develop 7e7dfb9` + this ledger): Stage 1 PASS (no notes); Stage 2 **7.96/10.00** (Impact 8.25 / Tooling 9.00 / Depth 8.25 / Demo 6.75); Δ **+0.00** vs Run #3 (7.96), **+0.90** vs baseline (7.06). **STATUS: MONOTONIC_GAIN_OR_HOLD**. Gate 1508+3. No video recorded/rendered.
