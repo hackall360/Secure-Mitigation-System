@@ -43,18 +43,12 @@ def test_intake_clone_true_uses_staging_container_not_host():
         return buf.getvalue()
 
     class FakeContainers:
-        def create(self, *a, **k):
+        def run(self, *a, **k):
             calls["created"] = (a, k)
             stage = MagicMock()
-            # Wave-3 argv-list clone (commit 0fa5b5c): 1 git-presence probe +
-            # 4 steps (rm, clone, fetch, checkout). The mock must serve all 5.
-            stage.exec_run.side_effect = [
-                {"exit_code": 0, "output": b"git present"},
-                {"exit_code": 0, "output": b"cleaned"},
-                {"exit_code": 0, "output": b"cloned"},
-                {"exit_code": 0, "output": b"fetched"},
-                {"exit_code": 0, "output": b"checked out"},
-            ]
+            # F-202: one run-to-completion clone container (run + wait), not
+            # create + exec_run on a never-started container (Docker 409).
+            stage.wait.return_value = {"StatusCode": 0}
             tar_stream = [_real_tar_bytes()]
             stage.get_archive.side_effect = lambda path: (tar_stream, {})
             stage.put_archive.return_value = True
@@ -67,7 +61,13 @@ def test_intake_clone_true_uses_staging_container_not_host():
     repo_intake.intake_repo_to_snapshot(_spec(), ["python3", "app.py"], sandbox=sandbox, clone=True)
     assert calls, "clone=True must touch the staging container"
     _, kwargs = calls["created"]
-    assert kwargs.get("network_mode") == "none", "staging stays air-gapped"
+    # F-202: the clone container needs bridge network for the fetch only; it
+    # stays isolated from the host (no mounts, non-root, capped, read-only).
+    assert kwargs.get("network_mode") == "bridge", "clone fetch uses bridge only"
+    assert not kwargs.get("volumes") and not kwargs.get("mounts"), "no host mounts"
+    assert kwargs.get("user") == "10001" and kwargs.get("read_only") is True
+    assert kwargs.get("cap_drop") == ["ALL"] and kwargs.get("pids_limit")
+    assert "/work" in kwargs.get("tmpfs", {})
     assert "no host" in "no host mounts asserted by signature (no host_path kwarg)"
 
 
