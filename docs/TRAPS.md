@@ -384,3 +384,34 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   form.js: presets seed first visits, stored choices always win after.
   Lesson: any "sensible default" injection must state its precedence in
   a comment at the merge site, or the next surface will re-break it.
+
+## Ingest auto-detect (2026-11-03, Part 2 dry run)
+
+- **Trap: the server demanded what the form never collected.**
+  Wrong assumption: "the ingest form sends everything the server needs."
+  The console sent URL + contract only; the server required runtime_command
+  or file_list and refused with "runtime_command is required when file_list
+  is not given." The form had no field for either — the demand existed only
+  server-side. The Part 2 dry run died at the gate with zero scan.
+  Evidence: console showed `invalid` + the message; `intake_repo_to_snapshot`
+  raises when both are None.
+  Fix: with neither present, the WS path clones with a placeholder then
+  resolves the real runtime from the cloned tree via detect_runtime (same
+  derivation the library path uses). Explicit argv and file_list paths
+  untouched; undetectable trees still fail closed with an actionable
+  "pass an explicit runtime_command" message. Plus an optional
+  "Start command" field on the ingest form so power users can pin the argv.
+  Lesson: when server and form are built in different slices, the contract
+  lives in NEITHER file — pin the wire shape (required vs optional keys)
+  in a shared test, or the UI will keep sending frames the server refuses.
+- **Trap: three branches, two conditions.**
+  Wrong assumption: "if/else covers explicit vs auto." The original had
+  `if intake_files is None: clone(...) / else: clone(..., file_list)`.
+  Adding auto-detect inside the first branch while explicit+no-file_list
+  still routes there sent `["true"]`... no — sent the explicit argv into
+  the placeholder path. The condition must be three-way: auto (both None),
+  file_list, explicit-argv. My own RED pin caught it (expected explicit
+  argv, got placeholder).
+  Lesson: when a branch grows a third case, rewrite the condition as an
+  explicit three-way from the start — `if/else` with a hidden middle case
+  is a bug waiting for the next slice.

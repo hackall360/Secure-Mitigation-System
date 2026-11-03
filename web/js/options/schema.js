@@ -92,7 +92,8 @@
 
     // ---- Repo ingest
     ingest_repo: { type: 'text', label: 'Repository URL', wire: 'body', def: '', placeholder: 'https://github.com/org/repo', validate: (s) => (/^https:\/\/\S+$/.test(s) ? '' : 'Enter an https:// repository URL.') },
-    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, optional: true, placeholder: 'empty = HEAD · or 40-hex commit sha', help: 'Empty pins nothing: HEAD of the default branch is used as-is.', validate: (s) => (!s || /^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit, or leave empty for HEAD.') }
+    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, optional: true, placeholder: 'empty = HEAD · or 40-hex commit sha', help: 'Empty pins nothing: HEAD of the default branch is used as-is.', validate: (s) => (!s || /^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit, or leave empty for HEAD.') },
+    runtime_command: { type: 'code', label: 'Start command (optional)', badge: 'JSON argv', wire: 'body', def: '', rows: 2, optional: true, placeholder: 'empty = auto-detect from repo files, e.g. ["python3", "anycam.py"]', parse: (s) => (!String(s).trim() ? undefined : argv(s)), validate: (s) => (argv(s) || String(s).trim() === '' ? '' : 'Start command must be a JSON array of strings, or empty for auto-detect.') }
   };
 
   const RUN = ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget', 'sweep_passes', 'timeout_s', 'profile', 'research', 'research_scanners'];
@@ -105,7 +106,7 @@
     project: { label: 'Project', sub: 'Local repo', endpoint: () => '/ws/project', fields: ['path', 'image', 'command', 'test_command', 'contract', 'allow_remote_inference'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'] },
     snippet: { label: 'Snippet', sub: 'MCP · parsed map', endpoint: () => 'POST /mcp', fields: ['language', 'filename', 'source', 'contract'], body: true, run: [], noQuery: true },
     binary: { label: 'Binary', sub: 'ELF · parsed map', endpoint: () => '/ws/binary', fields: ['binary', 'filename', 'contract'], body: true, run: [] },
-    ingest: { label: 'Repo ingest', sub: 'HEAD or pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash', 'contract'], body: true, run: [] },
+    ingest: { label: 'Repo ingest', sub: 'HEAD or pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash', 'runtime_command', 'contract'], body: true, run: [] },
     system: { label: 'System snapshot', sub: 'Clone · proposed', endpoint: () => '/ws/system', fields: ['snapshot_ref', 'snapshot_kind', 'services', 'contract'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'], proposed: true }
   };
   // Which lens (core/lenses.js) each source is drawn with. Fixtures use the fixture's own lens.

@@ -1146,18 +1146,50 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             intake_files = frame_files
                         try:
                             staging = _SandboxMgr(scan_config)
-                            if intake_files is None:
-                                snapshot = _intake_to_snapshot(
-                                    intake_spec,
-                                    intake_command,
-                                    clone=True,
-                                    sandbox=staging,
+                            if intake_files is None and intake_command is None:
+                                # No explicit argv: clone with a placeholder,
+                                # then resolve the real runtime from the
+                                # cloned tree (same detect_runtime the
+                                # library path uses). Host paths never
+                                # honored; tree bytes decide.
+                                from modules.services.repo_intake import (
+                                    detect_runtime as _detect_runtime,
                                 )
-                            else:
+
+                                try:
+                                    snapshot = _intake_to_snapshot(
+                                        intake_spec,
+                                        ["true"],
+                                        clone=True,
+                                        sandbox=staging,
+                                    )
+                                    tree_names = [
+                                        k[5:] for k in snapshot.files if k.startswith("tree/")
+                                    ]
+                                    _real_runtime = _detect_runtime(sorted(tree_names))
+                                    snapshot = snapshot.__class__(
+                                        files=snapshot.files,
+                                        url=snapshot.url,
+                                        commit_hash=snapshot.commit_hash,
+                                        runtime_command=tuple(_real_runtime),
+                                        digest=snapshot.digest,
+                                    )
+                                except (ValueError, TypeError) as exc:
+                                    raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+                            elif intake_files is not None:
                                 snapshot = _intake_to_snapshot(
                                     intake_spec,
                                     intake_command,
                                     file_list=intake_files,
+                                    clone=True,
+                                    sandbox=staging,
+                                )
+                            else:
+                                # Explicit argv, no file_list: straight
+                                # through, no auto-detect.
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec,
+                                    intake_command,
                                     clone=True,
                                     sandbox=staging,
                                 )
