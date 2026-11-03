@@ -14,6 +14,7 @@ exploit material, intake never touches host paths.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 from dataclasses import dataclass
@@ -61,21 +62,34 @@ class RepoIntakeSpec:
     commit_hash: str
 
     def __post_init__(self) -> None:
-        parsed = urlparse(self.url) if isinstance(self.url, str) else None
-        host = (parsed.hostname or "") if parsed is not None else ""
-        bad = (
-            next((c for c in self.url if c in _SHELL_METACHARS), None)
-            if isinstance(self.url, str)
-            else None
-        )
+        # Error messages name the rule only: the URL may carry credentials.
+        if not isinstance(self.url, str):
+            raise ValueError("repo URL must be an https:// remote")
+        parsed = urlparse(self.url)
+        if "@" in parsed.netloc:
+            raise ValueError("Repository URL must not embed credentials.")
+        try:
+            if parsed.username is not None or parsed.password is not None:
+                raise ValueError("Repository URL must not embed credentials.")
+            parsed.port  # noqa: B018 - raises ValueError on a malformed port
+        except ValueError as exc:
+            if "credentials" in str(exc):
+                raise
+            raise ValueError("repo URL must be an https:// remote") from None
+        host = (parsed.hostname or "").rstrip(".").lower()
+        bad = next((c for c in self.url if c in _SHELL_METACHARS), None)
         if (
-            parsed is None
-            or parsed.scheme != "https"
+            parsed.scheme != "https"
             or not host
             or any(part in ("", ".", "..") for part in host.split("."))
             or bad is not None
         ):
             raise ValueError("repo URL must be an https:// remote")
+        if _is_blocked_host(host):
+            raise ValueError(
+                "Repository URL host must be public (no loopback, private, link-local, "
+                "reserved, multicast, or internal names)."
+            )
         commit = self.commit_hash
         if (
             not isinstance(commit, str)
@@ -83,6 +97,32 @@ class RepoIntakeSpec:
             or any(char not in _COMMIT_HEX_CHARS for char in commit)
         ):
             raise ValueError("commit_hash must be a 40-hex pinned commit")
+
+
+_BLOCKED_HOSTNAMES = frozenset({"localhost", "metadata.google.internal"})
+_BLOCKED_HOST_SUFFIXES = (".localhost", ".internal", ".local")
+
+
+def _is_blocked_host(host: str) -> bool:
+    """True for internal names and non-public IP literals (SSRF guard)."""
+    if host in _BLOCKED_HOSTNAMES or host.endswith(_BLOCKED_HOST_SUFFIXES):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        addr = mapped
+    return bool(
+        addr.is_loopback
+        or addr.is_private
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+        or not addr.is_global
+    )
 
 
 @dataclass(frozen=True)
@@ -262,6 +302,7 @@ def intake_repo_to_snapshot(
     clone=False,
     clone_dir="/repo",
     clone_timeout_seconds=120,
+    clone_image: str | None = None,
     **kwargs,
 ) -> RepoIntakeSnapshot:
     """Stage a validated repo intake via Docker staging-container semantics.
@@ -300,12 +341,9 @@ def intake_repo_to_snapshot(
         raise ValueError("runtime_command must be a non-empty argv list")
     if any(not isinstance(item, str) or not item for item in runtime_command):
         raise ValueError("runtime_command entries must be non-empty strings")
-    # Staging plan (Phase-1 record; real clone lands in a later wave):
-    # 1. manager.client.containers.create(base, command=["true"],
-    #        network_mode="none", **manager._options("verifier")) — never started.
-    # 2. git clone <url> inside the staged container filesystem only.
-    # 3. git checkout <commit_hash>; snapshot tree via snapshot_project path.
-    # 4. stage.remove(force=True); cleanup removes session images/networks.
+    # Staging plan (clone=True): one run-to-completion container clones the
+    # pinned commit into tmpfs /work, bytes leave via get_archive, and the
+    # container is removed in ``finally``. See ``_clone_in_staging``.
     manifest = MappingProxyType(
         {
             "repo.url": spec.url.encode("utf-8"),
@@ -328,7 +366,21 @@ def intake_repo_to_snapshot(
         sandbox=sandbox,
         clone_dir=clone_dir,
         clone_timeout_seconds=clone_timeout_seconds,
+        clone_image=clone_image,
     )
+
+
+_CLONE_SCRIPT = (
+    "git -c protocol.allow=never -c protocol.https.allow=always "
+    "-c submodule.recurse=false clone --depth 1 --no-recurse-submodules "
+    '-- "$1" /work/repo && '
+    "git -C /work/repo -c protocol.allow=never -c protocol.https.allow=always "
+    '-c submodule.recurse=false fetch --depth 1 origin "$2" && '
+    'git -C /work/repo -c submodule.recurse=false checkout --detach "$2"'
+)
+_NO_GIT_MESSAGE = (
+    "staging clone unavailable: no git in the staging image; build or pass a clone image with git"
+)
 
 
 def _clone_in_staging(
@@ -339,53 +391,75 @@ def _clone_in_staging(
     sandbox=None,
     clone_dir="/repo",
     clone_timeout_seconds=120,
+    clone_image: str | None = None,
 ) -> RepoIntakeSnapshot:
     """Perform the real staging-container clone (opt-in ``clone=True``).
 
-    LAW 4: the clone runs INSIDE a non-started container
-    (``network_mode="none"``, no host mounts, bounded PIDs/RAM/CPU);
-    bytes leave only via ``get_archive`` tar streaming (never ``docker cp``
-    on a tmpfs path — see TRAPS Wave-10 entry). Host network is used only
-    for the clone itself when the caller opts in; unit tests pass a fake.
+    Shape (F-202): a single run-to-completion container via
+    ``client.containers.run(image, command=[...], detach=True)`` then
+    ``container.wait(timeout=clone_timeout_seconds)``. Exec on a
+    never-started container is a Docker 409, so create+exec is not used.
+
+    LAW 4 isolation: the clone container has a bridge network for the git
+    fetch only, no host mounts, bounded pids/mem/cpu, runs as uid 10001
+    with all capabilities dropped and ``no-new-privileges``, and writes only
+    to tmpfs ``/work``. URL and commit are positional ``sh -c`` arguments
+    (``$1``/``$2``), never interpolated into the script; ``--`` precedes the
+    URL; git is limited to https with submodules off; prompts and LFS smudge
+    are disabled. Bytes leave only via ``get_archive`` tar streaming. Exit
+    127 (no git in the image) fails closed; nothing is ever installed.
+    ``clone_dir`` is retained for compatibility; the clone lives at
+    ``/work/repo``.
     """
     import io
     import tarfile
 
+    del clone_dir  # clone always lands in tmpfs /work/repo
     if sandbox is None:
         raise ValueError("clone=True requires a sandbox (DockerSandboxManager or test double)")
     client = getattr(sandbox, "client", None)
     if client is None:
         raise ValueError("clone=True requires a sandbox with a Docker client")
-    options = dict(sandbox._options("verifier")) if hasattr(sandbox, "_options") else {}
-    options.setdefault("network_mode", "none")
-    base = getattr(getattr(sandbox, "config", None), "target_base_image", None) or getattr(
-        getattr(sandbox, "config", None), "clone_repo_prefix", "sms-target"
+    config = getattr(sandbox, "config", None)
+    configured = getattr(config, "target_base_image", None)
+    image = clone_image or (configured if isinstance(configured, str) else None) or "sms-target"
+    if not isinstance(image, str) or not image:
+        raise ValueError("clone=True requires a clone image (sandbox.config.target_base_image)")
+    host = urlparse(spec.url).hostname or "?"
+    where = f"{host} @ {spec.commit_hash[:12]}"
+    container = client.containers.run(
+        image,
+        command=["sh", "-c", _CLONE_SCRIPT, "sh", spec.url, spec.commit_hash],
+        detach=True,
+        network_mode="bridge",
+        user="10001",
+        working_dir="/work",
+        tmpfs={"/work": "rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700"},
+        environment={
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_LFS_SKIP_SMUDGE": "1",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "HOME": "/work",
+        },
+        pids_limit=128,
+        mem_limit="512m",
+        nano_cpus=1_000_000_000,
+        cap_drop=["ALL"],
+        security_opt=["no-new-privileges"],
+        read_only=True,
+        entrypoint=[],
     )
-    stage = client.containers.create(base, command=["true"], **options)
     try:
-        # git must exist in staging; install is best-effort (base images vary).
-        stage.exec_run(
-            ["sh", "-c", "command -v git >/dev/null || (apt-get update && apt-get install -y git)"],
-            timeout=clone_timeout_seconds,
-        )
-        # No shell: every step is an argv-list exec so URL/commit bytes are
-        # always git argv elements, never shell text. A hostile remote
-        # (metachars rejected above as defense-in-depth) cannot execute
-        # here even if validation were bypassed.
-        for step in (
-            ["rm", "-rf", clone_dir],
-            ["git", "clone", "--depth", "1", spec.url, clone_dir],
-            ["git", "-C", clone_dir, "fetch", "--depth", "1", "origin", spec.commit_hash],
-            ["git", "-C", clone_dir, "checkout", spec.commit_hash],
-        ):
-            cloned = stage.exec_run(step, timeout=clone_timeout_seconds)
-        if isinstance(cloned, dict):
-            code, _out = cloned.get("exit_code", 1), cloned.get("output", b"")
-        else:
-            code, _out = getattr(cloned, "exit_code", 1), getattr(cloned, "output", b"")
+        try:
+            status = container.wait(timeout=clone_timeout_seconds)
+        except Exception:
+            raise ValueError(f"staging clone failed (timeout or wait error) for {where}") from None
+        code = status.get("StatusCode", 1) if isinstance(status, dict) else 1
+        if code == 127:
+            raise ValueError(_NO_GIT_MESSAGE)
         if code != 0:
-            raise ValueError(f"staging clone failed for {spec.url} @ {spec.commit_hash[:12]}")
-        stream, _stat = stage.get_archive(clone_dir)
+            raise ValueError(f"staging clone failed for {where} (exit {code})")
+        stream, _stat = container.get_archive("/work/repo")
         chunks = list(stream) if not isinstance(stream, (bytes, bytearray)) else [bytes(stream)]
         tar_bytes = b"".join(chunks)
         files: dict[str, bytes] = {}
@@ -394,8 +468,12 @@ def _clone_in_staging(
                 if not member.isfile():
                     continue
                 name = member.name
-                # Strip the leading clone dir + .git tree: untrusted bytes stay bounded.
-                if "/.git/" in name or name.rstrip("/").endswith("/.git"):
+                # Strip the .git tree: untrusted bytes stay bounded.
+                if (
+                    "/.git/" in name
+                    or name.startswith(".git/")
+                    or name.rstrip("/").endswith("/.git")
+                ):
                     continue
                 rel = name
                 if rel.startswith("."):
@@ -418,6 +496,6 @@ def _clone_in_staging(
         )
     finally:
         try:
-            stage.remove(force=True)
+            container.remove(force=True)
         except Exception:
             pass

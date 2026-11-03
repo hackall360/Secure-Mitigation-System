@@ -211,6 +211,7 @@ def load_config() -> PurpleBoxConfig:
                 )
             ),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
+            docker_timeout_seconds=int(os.getenv("PURPLEBOX_DOCKER_TIMEOUT_SECONDS", "30")),
         )
         config.validate()
         return config

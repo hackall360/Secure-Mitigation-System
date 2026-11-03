@@ -9,11 +9,21 @@ and analyzed/executed ONLY inside the air-gapped sandbox.
 
 from __future__ import annotations
 
+import math
+import stat
 from dataclasses import dataclass
 
 from modules.core.project_models import MAX_BINARY_BYTES as BINARY_MAX_BYTES
 
 BINARY_CONTRACT_MAX_CHARS = 8_192
+
+
+def max_b64_chars_for(limit_bytes: int) -> int:
+    """Max base64 length (padded) that can decode to at most limit_bytes."""
+    return 4 * math.ceil(limit_bytes / 3)
+
+
+BINARY_MAX_B64_CHARS = max_b64_chars_for(BINARY_MAX_BYTES)
 
 _ELF_MAGIC = b"\x7fELF"
 _PE_MAGIC = b"MZ"
@@ -56,6 +66,12 @@ def validate_binary_blob(blob: bytes, *, filename: str, contract: str) -> Binary
         raise BinaryRejected("Filename must be a bare filename, no paths.")
     if len(filename) > 128:
         raise BinaryRejected("Filename exceeds 128 characters.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in filename):
+        raise BinaryRejected("Binary filename contains control characters.")
+    if not filename.strip():
+        raise BinaryRejected("Binary filename is whitespace only.")
+    if filename != filename.strip():
+        raise BinaryRejected("Binary filename has surrounding whitespace.")
     if not contract or not contract.strip():
         raise BinaryRejected("A behavior contract is required (what must hold).")
     if len(contract) > BINARY_CONTRACT_MAX_CHARS:
@@ -83,8 +99,17 @@ def validate_binary_file(path: str, *, contract: str) -> BinarySpec:
     from pathlib import Path
 
     candidate = Path(path)
+    too_big = "Binary exceeds the 8 MiB intake budget."
     try:
-        blob = candidate.read_bytes()
+        info = candidate.stat()
+        if not stat.S_ISREG(info.st_mode):
+            raise BinaryRejected("Cannot read binary file (not a regular file).")
+        if info.st_size > BINARY_MAX_BYTES:
+            raise BinaryRejected(too_big)
+        with candidate.open("rb") as handle:
+            blob = handle.read(BINARY_MAX_BYTES + 1)
     except OSError as exc:
         raise BinaryRejected(f"Cannot read binary file ({type(exc).__name__}).") from exc
+    if len(blob) > BINARY_MAX_BYTES:
+        raise BinaryRejected(too_big)
     return validate_binary_blob(blob, filename=candidate.name, contract=contract)

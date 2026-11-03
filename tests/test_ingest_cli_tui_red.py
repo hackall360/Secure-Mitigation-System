@@ -139,8 +139,10 @@ def _one_file_tar_bytes():
 
 
 class _FakeStage:
-    def exec_run(self, argv, timeout=None):
-        return {"exit_code": 0, "output": b""}
+    status_code = 0
+
+    def wait(self, timeout=None):
+        return {"StatusCode": self.status_code}
 
     def get_archive(self, path):
         return ([_one_file_tar_bytes()], {"size": 1})
@@ -150,7 +152,7 @@ class _FakeStage:
 
 
 class _FakeContainers:
-    def create(self, *args, **kwargs):
+    def run(self, *args, **kwargs):
         return _FakeStage()
 
 
@@ -206,11 +208,10 @@ async def test_cli_ingest_clone_failure_fails_closed(monkeypatch):
     import main
 
     class _BadStage(_FakeStage):
-        def exec_run(self, argv, timeout=None):
-            return {"exit_code": 128, "output": b"fatal: no such ref"}
+        status_code = 128
 
     class _BadClient:
-        containers = type("C", (), {"create": staticmethod(lambda *a, **k: _BadStage())})()
+        containers = type("C", (), {"run": staticmethod(lambda *a, **k: _BadStage())})()
 
     async def _bomb(*args, **kwargs):
         raise AssertionError("workflow must not run on failed clone")

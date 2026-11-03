@@ -166,7 +166,11 @@ def merge_config(env: dict | None, file_values: dict, flags: dict) -> dict:
     merged: dict = {}
     source = dict(env) if env is not None else _env_values()
     for key in CONFIG_KEYS:
-        if key in flags and flags[key] not in (None, "", False):
+        if key in flags and flags[key] not in (None, ""):
+            # Explicit flag wins even when falsy (F-206): argparse only ever
+            # puts explicit choices into `flags` (main.py compares against
+            # defaults), so False/0 are real choices that beat file and env.
+            # store_true flags can never pass False — absence means unset.
             merged[key] = flags[key]
         elif key in file_values:
             merged[key] = file_values[key]
@@ -178,15 +182,22 @@ def merge_config(env: dict | None, file_values: dict, flags: dict) -> dict:
 
 
 def _env_values() -> dict:
+    # Fill vars only present in ./.env (exported env wins) so main() sees
+    # them before load_config() runs. Lazy import keeps this module a leaf.
+    from library.core.config import load_dotenv_file
+
+    load_dotenv_file()
     out: dict = {}
-    if os.getenv("PURPLEBOX_RESEARCH", "off").strip().lower() == "on":
-        out["research"] = True
-    scanners = os.getenv("PURPLEBOX_RESEARCH_SCANNERS", "").strip()
-    if scanners:
-        out["research_scanners"] = scanners
-    offline = os.getenv("PURPLEBOX_INTEL_OFFLINE", "").strip().lower()
-    if offline in ("1", "true", "yes", "on"):
-        out["intel_offline"] = True
+    for key, name in ENV_FALLBACKS.items():
+        raw = os.getenv(name, "").strip()
+        if key == "research":
+            if raw.lower() == "on":
+                out[key] = True
+        elif key == "intel_offline":
+            if raw.lower() in ("1", "true", "yes", "on"):
+                out[key] = True
+        elif raw:
+            out[key] = raw
     return out
 
 
