@@ -614,6 +614,16 @@ def _summarize_result(prefix: str, result: object) -> str:
             status = _result_field(result, "status", "?")
             message = _result_field(result, "message", "")
             text = f"{status}: {message}".strip(": ").strip()
+            # Surface finding: dict outcomes carrying per-cycle evidence or
+            # intel provenance must name them (counts + first CVE), not drop them.
+            cycles = result.get("cycles")
+            if isinstance(cycles, (list, tuple)) and cycles:
+                text += f" | {len(cycles)} cycle(s)"
+            intel = result.get("intel_provenance")
+            if isinstance(intel, (list, tuple)) and intel:
+                first = intel[0] if isinstance(intel[0], dict) else {}
+                cve = first.get("cve_id", "") if isinstance(first, dict) else ""
+                text += f" | intel {len(intel)} ({cve})" if cve else f" | intel {len(intel)}"
             return f"{prefix}: {text}"[:200] if text else f"{prefix}: done"
         return f"{prefix}: {_result_target(result)} -> {describe_result(result)}"[:200]
     except Exception:

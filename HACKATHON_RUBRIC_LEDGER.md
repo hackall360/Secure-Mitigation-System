@@ -226,3 +226,13 @@ live generation, live 180 s run-through, 100-scan soak, live benchmarks.
 - Fixes: CSP `addEventListener` fallback (+ no-inline-handler pin), TUI mode/depth routing (+ RED pins), 80-col footer (vault/ops visible). Follow-up: assets fallback assertion updated to CSP-safe form.
 - `.jcode/` fully untracked (46 files, all on disk); shared harness moved to tracked `scripts/dev/` (git renames, path/import/test rewrites); pin test RED-verified on old tree.
 - Gate: **1388 passed + 2 skipped, All checks passed**.
+
+## Note — 2026-11-03 ~03:32 UTC — remaining surface issues fixed (no score change)
+
+- CLI F2 (real bug): CVE `--format json` printed nothing to stdout — added machine-pure redacted JSON honoring `--cve-limit`/`--cve-reach-only`; pin updated to sanction both payload shapes.
+- CLI F3: `--ops-log` empty-but-present tree now prints guidance (was silent exit 0).
+- TUI dict branch now surfaces `cycles` + `intel_provenance` counts/first-CVE (was silently dropped).
+- MCP: `submit_code_snippet` offline now returns explicit -32001 (was indistinguishable -32602).
+- WebUI visual audit + doc-notes: setup pages lack cycles/intel/vault/ops controls (W7-8 scope, not a bug); visual layout verified (ids unique, toggle keyboard-reachable, no layout shift).
+- Document-only: keyless fixture scan by design, fingerprint prefix not a leak, symlinked TMPDIR env issue, /ws/system explicit-invalid + bare /ws/combat 403 by design.
+- Gate: **1392 passed + 2 skipped, All checks passed**.
