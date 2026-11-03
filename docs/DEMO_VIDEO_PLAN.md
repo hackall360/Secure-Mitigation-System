@@ -30,6 +30,22 @@ marks for each beat moment (verdict landed at mm:ss, receipt visible,
 good reaction shot) so the editor never hunts. The click paths below are
 the shot list; the cue log is the edit map.
 
+## Dry-run protocol (decided 2026-11-03)
+
+A dry run is the full recording choreography minus recording: the agent
+drives everything end to end in the browser (human watches live), with
+dry-run sizing (1 red / 1 blue — NOT the recording's 5 red / 3 blue).
+After each part's run completes, the agent documents what was actually
+visible in the web UI (cue marks, verdict, timings), writes the VO lines
+to match that observed reality (adjusting the draft script as needed),
+renders them as scratch TTS WAVs (`test_demo_*.wav`), and reports their
+paths. The human listens + judges against what they saw; if both pass,
+the recording run (5 red / 3 blue) and edit follow.
+
+Dry-run WAV naming: `video-demo/TTSServer/takes/test_demo_<part>_<beat>.wav`
+(e.g. `test_demo_part1_hook.wav`, `test_demo_part2_findings.wav`). Scratch
+only — never mistaken for final booth takes.
+
 ## Part 1 — Demo path (raw capture, slimmed to ~1:00 in post)
 
 On screen: `index.html` hold ~3 s.
