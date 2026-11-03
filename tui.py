@@ -1190,6 +1190,10 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
                 break
             print(f"[{kind}] {text}")
         print(describe_result(result))
+        # F-style guard: an error-status fixture result is a refusal, not a
+        # pass — exit nonzero even when the backend returns (not raises).
+        if str(getattr(result, "status", "") or "").lower() == "error":
+            return 1
         return 0 if getattr(result, "success", False) else 1
     print(f"Secure Mitigation System [plain mode] fixture={args.fixture} {depth}")
     try:
@@ -1218,6 +1222,9 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
             break
         print(f"[{kind}] {text}")
     print(describe_result(result))
+    # Same refusal guard as the binary branch above.
+    if str(getattr(result, "status", "") or "").lower() == "error":
+        return 1
     return 0
 
 
