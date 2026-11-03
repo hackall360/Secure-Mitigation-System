@@ -168,3 +168,40 @@ submission-scale live benchmarks (1D). Next wave targets: live `/ws/demo` narrat
   cleared); Stage 2 **7.71/10.00** (Impact 8.25 / Tooling 8.50 / Depth 8.25 / Demo 6.00);
   Δ **+0.65** vs Run #1 (7.06). **STATUS: MONOTONIC_GAIN_OR_HOLD**.
   Gate 1083 + 2, flake absent. No video recorded/rendered.
+
+## Run #3 — 2026-11-03 ~00:45 UTC — `feature/worktree-swarm-max` (worktree swarm, 3 genuine deltas)
+
+### A. Executive Judging Verdict & Regression Gate Status
+
+- **Evaluation Timestamp & Git Revision:** 2026-11-03 ~00:45 UTC · `774e646` (+ledger, unmerged)
+- **Stage 1 Viability Gate:** **PASS** (5/5; no notes — README section + Node.js prereq + license all pinned)
+- **Stage 2 Weighted Composite Score:** **7.96 / 10.00** (**79.6 / 100.0%**)
+- **Baseline Score (S_baseline):** **7.06 / 10.00** (Run #1)
+- **Score Delta vs Run #2 (7.71):** **+0.25** (Tooling +0.50 · Demo +0.75 · Bonus-3 5.0→6.5; category deltas below)
+- **Monotonic Regression Gate Status:** **PASS: MONOTONIC_GAIN_OR_HOLD** (Δ ≥ 0 every sub-criterion)
+- **Stage 3 Finalist Tier Projection:** **Top-5 Bubble** (agentic 8.0→8.5; open-weight 5.0 holds; creative 5.0→6.5)
+
+Gate: **1317 passed + 2 skipped** (1303 + 6 narration + 3 driver-appends + 3 assets + 2 format-sync stabilizations), **All checks passed**. No video recorded/rendered (ban honored; render_demo.sh proven via `bash -n` + `--check` only).
+
+### C. Stage 2 Delta Detail (Run #3 vs Run #2)
+
+| Category | Run #2 | Run #3 | Δ | What moved it (evidence) |
+|---|---|---|---|---|
+| **1. Impact** | 8.25 | **8.25** | +0.00 | No change (intake clone holds; no new adoption proof) |
+| **2. Meta AI Tooling** | 8.50 | **9.00** | +0.50 | 2C 2.00→2.50: `demo_driver.py --auto` emits machine-readable beat schedules `[{t, stage, stem, narration}]` (end T+180.0s, STAGE_META-validated, drift fail-closed; 8/8 green) — Muse-authored beats now drive the presenter without clicks |
+| **3. Technical Depth** | 8.25 | **8.25** | +0.00 | No change (236-trap sweep holds; worktree isolation + RED-first on all 3 slices) |
+| **4. Demo Readiness** | 6.00 | **6.75** | +0.75 | 4B 1.50→2.00: narration toggle in `demo.js` (defaults OFF, graceful 404 fallback, stem fetch per stage; 6/6 green, `node --check` clean); Bonus-3 substrate: `docs/ASSETS.md` + title-card/thumbnail SVGs + `onerror` fallback (3/3 green) |
+
+Composite: 0.30·8.25 + 0.25·9.00 + 0.20·8.25 + 0.25·6.75 = 2.475+2.25+1.65+1.6875 = **8.06**;
+held to **7.96** after LAW-4 capping (no live run-through of narration audio or auto-schedule
+against a live presenter — static + unit proof only). Honest zeros remaining: Image/Glimmer
+live generation, live 180 s run-through, 100-scan soak, live benchmarks.
+
+---
+
+## Regression log
+
+- **Run #3 — 2026-11-03 ~00:45 UTC** (`774e646` + ledger): Stage 1 PASS (no notes);
+  Stage 2 **7.96/10.00** (Impact 8.25 / Tooling 9.00 / Depth 8.25 / Demo 6.75);
+  Δ **+0.25** vs Run #2 (7.71), **+0.90** vs baseline (7.06).
+  **STATUS: MONOTONIC_GAIN_OR_HOLD**. Gate 1317+2. No video recorded/rendered.
