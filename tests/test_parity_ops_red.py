@@ -7,6 +7,7 @@ state); this probes the library parities ``docker_health`` and
 ``cleanup_preview`` in ``modules.services.sms_api``. Docker client is always
 a test double here — never the real daemon.
 """
+
 from unittest.mock import MagicMock
 
 from docker.errors import DockerException
@@ -59,9 +60,7 @@ def test_cleanup_preview_lists_without_removing():
         "networks": ["sms-net-abc"],
         "images": ["sha256:snapshot123"],
     }
-    client.containers.list.assert_called_once_with(
-        all=True, filters={"label": "purplebox.session"}
-    )
+    client.containers.list.assert_called_once_with(all=True, filters={"label": "purplebox.session"})
     client.networks.list.assert_called_once_with(filters={"label": "purplebox.session"})
     # Dry-run: nothing removed.
     container.remove.assert_not_called()

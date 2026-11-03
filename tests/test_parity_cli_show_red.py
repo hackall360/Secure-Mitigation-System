@@ -38,6 +38,7 @@ def test_showcase_status_prints_four_sections(monkeypatch, capsys):
 
 def test_ingest_dry_run_bad_url_exits_1_without_clone(monkeypatch):
     """Bad URL + --ingest-dry-run exits 1 and never touches Docker."""
+
     def _bomb(*args, **kwargs):
         raise AssertionError("Docker must not be contacted during --ingest-dry-run")
 

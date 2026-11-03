@@ -87,5 +87,13 @@ def test_replay_summary_is_redacted(tmp_path):
     assert summary["status"] == "KNOWN_ARCHETYPE"
     assert summary["created"]
     leaked = str(summary)
-    for forbidden in ("SECRET-MARKER-XYZ", "KEY-MATERIAL-ABC", "secret_blob", "api_key", "payload", "ciphertext", "nonce"):
+    for forbidden in (
+        "SECRET-MARKER-XYZ",
+        "KEY-MATERIAL-ABC",
+        "secret_blob",
+        "api_key",
+        "payload",
+        "ciphertext",
+        "nonce",
+    ):
         assert forbidden not in leaked, forbidden
