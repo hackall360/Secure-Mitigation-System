@@ -298,3 +298,22 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: "a lazy import inside one branch is contained to that branch." Python scoping is function-wide at compile time: c5's `--showcase-status` dispatch did a lazy `from modules.services.sms_api import showcase_status` while c3's `--ops-status` dispatch (same `main()`) called the top-level `showcase_status`. Running `--ops-status` skipped the import line, leaving the local unbound — the generic handler reported "could not start (UnboundLocalError)". The failure appeared only when both slices merged; each slice was green alone.
   Evidence: 3 ops tests failed post-merge, `grep showcase main.py` showed the local import at :3280 vs top-level at :43 and the unconditional call at :3353; deleting the lazy import (top-level already provides it) → 23/23 green.
   Lesson: never lazy-import a name that is also top-level-imported in the same module — or that any merged slice may top-level-import. One import site per name per module; grep co-slices before adding a second.
+
+## Repo-intake-live merge reconciliations (2026-11-03, branch feature/repo-intake-live)
+
+- **Trap: six green slices + a red merge — merged code is unverified until the merged gate runs.**
+  Wrong assumption: "each slice was gate-green alone, so the merge is green." Slice-32's None short-circuit (`if not commit_hash: parsed=None`) bypassed the spec constructor that slice-31 made optional-aware — HEAD-as-is died at the intake gate with a 40-hex lecture. Each slice green alone, merged RED.
+  Evidence: `test_ingest_accepts_then_workflow_receives...HEAD...` failed post-merge; slice-31's spec accepted `(GOOD_URL, None)`, slice-32 never called it for None.
+  Lesson: the merge commit gets its own RED-first run, not just each slice. Budget the reconciliation pass before promising ship.
+- **Trap: optional-commit display code assumed the old required shape.**
+  Wrong assumption: `commit_hash[:12]` is safe because the parser requires the pair.
+  Evidence: two `ValueError: None has no len()` sites in main.py WS progress + refusal paths after D2 made commit optional; fixed with `(spec.commit_hash or 'HEAD')[:12]` at both sites (lines ~2492, ~2534).
+  Lesson: when a LAW/pin changes a field from required to optional, grep every `[:12]`, `len(`, and f-string interpolation of that field in the same commit.
+- **Trap: stale F-204 refusal pins outlive the refusal.**
+  Wrong assumption: "the gate will tell me which pins are stale." It did — 4 pins across 3 files asserted `exit 2 on bare --ingest-repo`, `not fetched/not verified` refusal text, and refusal-before-runtime-detection. Each needed a retarget to the live path (parse-clean + HEAD default, mocked-Docker staging into the workflow, README-only fails at runtime detection not fetch).
+  Evidence: `test_ingest_args_red.py::test_ingest_repo_requires_commit_hash`, `test_sa_main_red.py::test_f204...`, `test_w22_ingest_wire_red.py` pair.
+  Lesson: when a brief retires a refusal, grep the refusal's signature strings (`not fetched`, `requires --`, `never fetched`) across tests/ in the same commit — the pins that enforced the old rule are now the bug.
+- **Trap: the fake workflow must return a result shaped like the real one.**
+  Wrong assumption: `return None` from a mocked `execute_project_workflow` is fine because the test only checks routing.
+  Evidence: retargeted F-204 WS test routed correctly, then died at `result.model_dump()` → `AttributeError: NoneType`. A `_FakeResult` with the 7-field `model_dump()` dict (target/status/message/diff/cleanup_ok/cycles/total_tokens+cost_usd) fixed it — same shape w22 already used.
+  Lesson: mocks must satisfy the downstream contract, not just the assertion under test. Copy the existing fake-result shape instead of inventing a thinner one.
