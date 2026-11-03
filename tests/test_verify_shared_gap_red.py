@@ -3,7 +3,7 @@
 """RED-first gap tests for library/shared/ (P4 verification sweep).
 
 Targets the lowest-coverage shared functions measured with
-`.jcode/tools/verify_cov.py` over the pre-existing shared tests
+`scripts/dev/verify_cov.py` over the pre-existing shared tests
 (test_sms_leaves, test_compression, test_transport_bounds_red,
 test_observability_modes_red, test_compress_hud_red,
 test_sms_history_redact). Baseline (<100% line-covered):

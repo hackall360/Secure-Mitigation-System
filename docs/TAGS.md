@@ -20,7 +20,7 @@ branch is superseded; this doc replaces `TAGS_NOTES.md`.
   zero `data-feature` references (test-pinned). New `demo-*` controls added
   by later waves are cli-only tags (no hook) unless the registry gives them
   a ui id — the checker enforces the DOM subset.
-- `dev.py tags`: `python3 .jcode/tools/dev.py tags` prints
+- `dev.py tags`: `python3 scripts/dev/dev.py tags` prints
   `127/127 covered` or lists UNCOVERED lines and fails.
 - `tests/test_feature_tags.py` (LAW 9 red-first): bogus-binding fixture
   fails pre-registration; 127/127 live post-implementation; versions

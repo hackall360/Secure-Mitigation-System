@@ -8,7 +8,7 @@ file are fixed here, never in library/. A REAL library bug stops the run
 as [FT]. Parsers ONLY: no scanner subprocesses, no network; every payload
 below is CANNED, mirroring tests/test_scanners.py fixture shapes.
 
-Uncovered branches pinned here (baseline via .jcode/tools/verify_cov.py
+Uncovered branches pinned here (baseline via scripts/dev/verify_cov.py
 over test_compression + test_scanners + test_sms_leaves):
 - sms_compress 86.7%: blank-line filler drop (89), corrupt dict load
   (162), dict eviction (172-173), fold_marker (176-177), chmod-fail

@@ -10,10 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_offline_browser_bootstrap_imports_current_modules():
-    spec = importlib.util.spec_from_file_location("ui_scan", ROOT / ".jcode/tools/ui_scan.py")
+    spec = importlib.util.spec_from_file_location("ui_scan", ROOT / "scripts/dev/ui_scan.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    code = module.OFFLINE_SERVER.format(root=str(ROOT), tools=str(ROOT / ".jcode/tools"), port=8797)
+    code = module.OFFLINE_SERVER.format(root=str(ROOT), tools=str(ROOT / "scripts/dev"), port=8797)
     # Execute only imports, not the server or its patching, against the real modules.
     imports = [n for n in ast.parse(code).body if isinstance(n, (ast.Import, ast.ImportFrom))]
     imports = [

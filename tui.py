@@ -41,7 +41,7 @@ FIXTURE_ORDER = ("node_query_sink", "node_chain_link", "php_command_sink", "mysq
 FIXTURE_SHORT = ("Node query", "Chain link", "PHP cmd", "MySQL conf")
 PANES = ("red", "blue", "system")
 
-FOOTER_HELP = "1/2/3/4 fixture  m mcp  b binary  p project  i ingest  g sweep  v demo  c cve  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
+FOOTER_HELP = "1/2/3/4 fixture  m mcp  b binary  p project  i ingest  g sweep  v demo  c cve  y vault  o ops  +/- depth  Enter/s start  x/Esc stop  f filter  h help  arrows scroll  q quit"
 
 # Exec-audience overlay mirror of main.CAPABILITIES_EPILOG (no new flags,
 # same plain-English value lines). Toggled with h; must stay terminal-safe.
@@ -113,7 +113,18 @@ def queue_emit(event_queue: "queue.Queue[tuple[str, str]]"):
 
 # Known scan-mode values for TuiState.mode (LAW 4: user-typed metadata only,
 # never scan output; probe/payload content must not live in rendered text).
-TUI_MODES = ("fixture", "sweep", "mcp", "binary", "project", "ingest", "demo", "cve")
+TUI_MODES = (
+    "fixture",
+    "sweep",
+    "mcp",
+    "binary",
+    "project",
+    "ingest",
+    "demo",
+    "cve",
+    "vault",
+    "ops",
+)
 
 # Canonical mode order shared by dispatch routing and --mode choices.
 MODE_ORDER = TUI_MODES
@@ -298,6 +309,10 @@ def parse_key(key: object) -> str:
         return "mode:demo"
     if lowered == "c":
         return "mode:cve"
+    if lowered == "y":
+        return "mode:vault"
+    if lowered == "o":
+        return "mode:ops"
     if char == "+":
         return "depth:inc"
     if char == "-":
@@ -558,7 +573,37 @@ def _summarize_result(prefix: str, result: object) -> str:
             return f"{prefix}: {'done' if result else 'failed'}"
         if isinstance(result, int):
             return f"{prefix}: exit {int(result)}"
+        if isinstance(result, (list, tuple)):
+            # Vault browse: fixed enum namespace names + record counts only.
+            parts = []
+            for entry in result:
+                if isinstance(entry, dict):
+                    parts.append(f"{entry.get('namespace', '?')}({entry.get('record_count', '?')})")
+            body = ", ".join(parts) if parts else "empty"
+            return f"{prefix}: {body}"[:200]
         if isinstance(result, dict):
+            if {"docker", "leftovers", "knobs", "showcase"} <= set(result):
+                # Ops bundle (read-only): state + leftover counts + knobs
+                # timeout + showcase presence. No payloads, keys, or blobs.
+                docker = result.get("docker")
+                docker = docker if isinstance(docker, dict) else {}
+                leftovers = result.get("leftovers")
+                leftovers = leftovers if isinstance(leftovers, dict) else {}
+                knobs = result.get("knobs")
+                knobs = knobs if isinstance(knobs, dict) else {}
+                showcase = result.get("showcase")
+                showcase = showcase if isinstance(showcase, dict) else {}
+                n_c = len(leftovers.get("containers", []) or [])
+                n_n = len(leftovers.get("networks", []) or [])
+                n_i = len(leftovers.get("images", []) or [])
+                tts = showcase.get("tts")
+                tts_present = bool(tts.get("present")) if isinstance(tts, dict) else False
+                return (
+                    f"{prefix}: docker {docker.get('state', '?')} "
+                    f"leftovers {n_c}c/{n_n}n/{n_i}i "
+                    f"knobs t={knobs.get('timeout_seconds', '?')} "
+                    f"showcase tts={'present' if tts_present else 'absent'}"
+                )[:200]
             status = _result_field(result, "status", "?")
             message = _result_field(result, "message", "")
             text = f"{status}: {message}".strip(": ").strip()
@@ -732,6 +777,42 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
             fast_lane=bool(getattr(state, "project_fast_lane", False)),
         )
         return _summarize_result("cve", result), result
+    if mode == "vault":
+        # Parity W5: vault browse/replay via ingest-style fields.
+        # Empty repo field -> browse namespaces; "NAMESPACE:ID" (or repo
+        # + commit fields) -> redacted replay summary. Backends raise
+        # ValueError fail-closed; dispatch never swallows it.
+        from modules.services import sms_api as _sms_api
+
+        ref = _state_field(state, "ingest_repo", "vault_ref").strip()
+        commit = _state_field(state, "ingest_commit", "vault_record_id").strip()
+        if ":" in ref:
+            namespace, _, record_id = ref.partition(":")
+        elif ref and commit:
+            namespace, record_id = ref, commit
+        else:
+            namespace, record_id = "", ""
+        namespace = namespace.strip()
+        record_id = record_id.strip()
+        if namespace and record_id:
+            record = _sms_api.replay_vault_record(None, namespace, record_id)
+            return _summarize_result("vault replay", record), record
+        if namespace and not record_id:
+            # Half-formed replay handle: refuse, never fall back to browse.
+            raise ValueError("Vault replay needs NAMESPACE:ID; refusing to guess.")
+        namespaces = _sms_api.list_vault_namespaces()
+        return _summarize_result("vault", namespaces), namespaces
+    if mode == "ops":
+        # Parity W5: read-only ops status (no mutations, never removes).
+        from modules.services import sms_api as _sms_api
+
+        bundle = {
+            "docker": _sms_api.docker_health(),
+            "leftovers": _sms_api.cleanup_preview(),
+            "knobs": _sms_api.effective_knobs(),
+            "showcase": _sms_api.showcase_status(),
+        }
+        return _summarize_result("ops", bundle), bundle
     from modules.workflows.workflow import execute_purple_workflow
 
     result = await execute_purple_workflow(state.fixture_key, emit)

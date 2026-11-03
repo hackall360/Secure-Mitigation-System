@@ -3,7 +3,7 @@
 """P2 workflows gap tests (verification sweep, LAW 9 RED-first).
 
 Scope: library/workflows/ (6 files). Targets the lowest-coverage pure
-helpers found by .jcode/tools/verify_cov.py on the existing workflow
+helpers found by scripts/dev/verify_cov.py on the existing workflow
 test sets (receipt building, vault-status classification, gate
 predicates, chain-link probe splitting, redaction of results).
 

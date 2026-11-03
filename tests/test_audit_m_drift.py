@@ -18,11 +18,11 @@ CLI_MD = ROOT / "docs" / "reference" / "CLI.md"
 
 
 def test_mcp_tool_count_matches_docs():
-    """(a) All 6 MCP_TOOLS names appear in CLI.md."""
+    """(a) All 10 MCP_TOOLS names appear in CLI.md."""
     from library.services.mcp_bridge import MCP_TOOLS
 
     names = [tool["name"] for tool in MCP_TOOLS]
-    assert len(names) == 6, names
+    assert len(names) == 10, names
     doc = CLI_MD.read_text()
     for name in names:
         assert name in doc, name

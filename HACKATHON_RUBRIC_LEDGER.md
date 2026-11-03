@@ -205,3 +205,10 @@ live generation, live 180 s run-through, 100-scan soak, live benchmarks.
   Stage 2 **7.96/10.00** (Impact 8.25 / Tooling 9.00 / Depth 8.25 / Demo 6.75);
   Δ **+0.25** vs Run #2 (7.71), **+0.90** vs baseline (7.06).
   **STATUS: MONOTONIC_GAIN_OR_HOLD**. Gate 1315+2. No video recorded/rendered.
+
+## Note — 2026-11-03 ~02:48 UTC — `.jcode/` privacy + `scripts/dev/` move (no score change)
+
+- Entire `.jcode/` tree untracked (46 files: AGENTS, agents/, laws/, session/, tools/) + `.gitignore`d; all files intact on disk. No live secrets were ever in the tracked set (verified: only the key *name* in prose/code).
+- Shared dev harness moved to tracked `scripts/dev/` (12 tools, git rename detection) with ROOT-depth + import + doc/test path rewrites; pin test `test_jcode_tree_fully_untracked_and_ignored` (RED-verified against old tree).
+- Incidental: MCP 6→10 tool-count pins + README/CLI.md tool lists updated for the parity wave (were red after W6).
+- Gate: **1385 passed + 2 skipped, All checks passed**. No rubric delta (structure-only change).

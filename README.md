@@ -78,8 +78,8 @@ You need **Python 3.12+**, **Node.js** (syntax checks + Node fixtures), and **Do
 ```bash
 git clone https://github.com/hackall360/Secure-Mitigation-System.git
 cd Secure-Mitigation-System
-python3 .jcode/tools/dev.py quickstart            # .venv via uv (stdlib fallback), images, chain proof — no key
-python3 .jcode/tools/dev.py quickstart --keyed    # same, plus one live chain scan with your .env key
+python3 scripts/dev/dev.py quickstart            # .venv via uv (stdlib fallback), images, chain proof — no key
+python3 scripts/dev/dev.py quickstart --keyed    # same, plus one live chain scan with your .env key
 ```
 
 Keyless default runs the offline harness (no key, no Muse calls) and prints the verdict + receipt per fixture. `--keyed` reads the key from the owner-only `.env` first and fails closed without it, then runs one live `node_chain_link` scan. Add CI/CD adoption: the same command runs in a pipeline — gate on exit 0, archive the receipt line as the build artifact.
@@ -87,7 +87,7 @@ Keyless default runs the offline harness (no key, no Muse calls) and prints the 
 Manual path (same stages, step by step):
 
 ```bash
-python3 .jcode/tools/dev.py setup
+python3 scripts/dev/dev.py setup
 source .venv/bin/activate
 python main.py --list-targets
 python main.py --init-images
@@ -111,7 +111,7 @@ python main.py --ai-demo --scan-profile extra_light --output-dir reports
 python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, SQL injection"
 ```
 
-Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`, `sms_verify_receipt`, `sms_scan_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
+Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_query_vault_stats`, `sms_list_vault_namespaces`, `sms_replay_vault_record`, `sms_verify_receipt`, `sms_scan_status`, `sms_ops_status`, `sms_showcase_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
 
 ## 3-minute demo guide
 
