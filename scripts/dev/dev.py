@@ -105,9 +105,12 @@ def smoke():
     with socket.socket() as available:
         available.bind(("127.0.0.1", 0))
         port = available.getsockname()[1]
-    # This smoke test must never use a developer's inference credentials.
+    # This smoke test must never use a developer's inference credentials:
+    # unset the exported var AND ignore the repo .env file (load_dotenv_file
+    # would otherwise refill the key from ./.env into the child process).
     env = os.environ.copy()
     env.pop("META_MUSE_API_KEY", None)
+    env["PURPLEBOX_SKIP_DOTENV"] = "1"
     process = subprocess.Popen(
         [str(PYTHON), "main.py", "--serve", "--port", str(port)], cwd=ROOT, env=env
     )

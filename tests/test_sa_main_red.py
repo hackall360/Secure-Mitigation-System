@@ -39,10 +39,10 @@ def test_f201_ws_transport_cap_admits_binary_frame():
     from modules.services.binary_intake import BINARY_MAX_BYTES
 
     b64_frame = 4 * -(-BINARY_MAX_BYTES // 3) + 16_384  # 8 MiB blob as base64 + JSON envelope
-    assert main.WS_MAX_MESSAGE_BYTES >= b64_frame, (
+    assert main.WS_TRANSPORT_MAX_BYTES >= b64_frame, (
         "uvicorn ws_max_size must admit an 8 MiB binary first frame; 65536 killed any real ELF"
     )
-    assert main.WS_MAX_MESSAGE_BYTES <= 16 * 1024 * 1024, "keep the transport cap bounded"
+    assert main.WS_TRANSPORT_MAX_BYTES <= 16 * 1024 * 1024, "keep the transport cap bounded"
 
 
 def test_f201_serve_paths_use_the_shared_cap():
@@ -50,7 +50,7 @@ def test_f201_serve_paths_use_the_shared_cap():
 
     source = inspect.getsource(main.main)
     assert "ws_max_size=65536" not in source
-    assert source.count("ws_max_size=WS_MAX_MESSAGE_BYTES") >= 2
+    assert source.count("ws_max_size=WS_TRANSPORT_MAX_BYTES") >= 2
 
 
 # ---------- F-209: first-frame reads must not hold the global scan lock ----------
