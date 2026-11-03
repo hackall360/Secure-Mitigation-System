@@ -274,20 +274,11 @@ bom.xml
 geckodriver.log
 chromedriver.log
 *.har
-# Agent scratch and local tooling state.
-.jcode/*
-!.jcode/tools/
-.jcode/scratch/
-.jcode/briefs/
-.jcode/session/
-.jcode/tools/__pycache__/
-# Harness-private notes (machine-specific, session journals, ledgers).
-# The shared dev harness in .jcode/tools/ stays tracked; everything else
-# in .jcode/ is local-only and never committed.
-/.jcode/AGENTS.md
-/.jcode/agents/
-/.jcode/laws/
-/.jcode/session/
+# Agent scratch and local tooling state. The entire .jcode/ tree is
+# machine-local (harness notes, dev scripts, session journals, ledgers)
+# and is never committed. Fresh clones do not get it; the README
+# quickstart must not depend on it.
+.jcode/
 *.tmp
 .DS_Store
 Thumbs.db

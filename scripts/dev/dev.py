@@ -87,8 +87,8 @@ def tags():
 def check():
     tags()
     python("-m", "pytest", "-q")
-    python("-m", "ruff", "check", ".", ".jcode/tools")
-    python("-m", "ruff", "format", "--check", ".", ".jcode/tools")
+    python("-m", "ruff", "check", ".", "scripts/dev")
+    python("-m", "ruff", "format", "--check", ".", "scripts/dev")
     python("-m", "compileall", "-q", "-x", r"/(\.git|\.venv)/", ".")
     scripts = ["targets/node_query_sink/app.js"]
     scripts += sorted(str(p.relative_to(ROOT)) for p in ROOT.glob("web/js/**/*.js"))
@@ -344,7 +344,7 @@ def quickstart(keyed=False, docker_timeout=15):
             env={**env, "PYTHONUNBUFFERED": "1"},
         )
     else:
-        python(".jcode/tools/offline_scan.py")
+        python("scripts/dev/offline_scan.py")
     print("Quickstart complete: verdict + receipt above, zero leftovers expected.")
 
 
@@ -377,11 +377,11 @@ def doctor():
         all_ok = all_ok and ok
     if not all_ok:
         print(
-            "Fix: python3 .jcode/tools/dev.py setup && python3 .jcode/tools/dev.py images",
+            "Fix: python3 scripts/dev/dev.py setup && python3 scripts/dev/dev.py images",
             flush=True,
         )
         raise RuntimeError("Preflight found missing prerequisites (see FAIL lines above).")
-    print("Doctor: all prerequisites present. Next: python3 .jcode/tools/dev.py smoke", flush=True)
+    print("Doctor: all prerequisites present. Next: python3 scripts/dev/dev.py smoke", flush=True)
 
 
 def main():
@@ -436,7 +436,7 @@ def main():
     elif args.command == "docker-test":
         python("test_harness.py", "--docker")
     elif args.command == "offline-scan":
-        python(".jcode/tools/offline_scan.py")
+        python("scripts/dev/offline_scan.py")
     elif args.command == "quickstart":
         quickstart(keyed=args.keyed)
     elif args.command == "serve":

@@ -228,10 +228,10 @@ The model verifier must explicitly exit `0` (boundary observed), `1` (blocked), 
 ## Tests and acceptance
 
 ```bash
-python3 .jcode/tools/dev.py check   # the full gate: lint, format, tests, fixtures
+python3 scripts/dev/dev.py check   # the full gate: lint, format, tests, fixtures
 python test_harness.py --docker     # live Docker (needs base images, no key)
 python test_harness.py --api        # two real Muse calls (normal usage cost)
-.venv/bin/python .jcode/tools/ui_scan.py node_query_sink --offline --browser firefox
+.venv/bin/python scripts/dev/ui_scan.py node_query_sink --offline --browser firefox
 ```
 
 Default tests are mocked (no Meta/Docker contact). See [`archive/VALIDATION.md`](archive/VALIDATION.md) for the acceptance runs and [`guides/DEVELOPMENT.md`](guides/DEVELOPMENT.md) for the environment, traps, and the browser matrix (Chrome/Chromium/Edge/Brave via CDP, Firefox via WebDriver).

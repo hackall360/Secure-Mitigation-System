@@ -14,7 +14,7 @@ GD_PORT = 19501
 
 def main() -> int:
     sys.path.insert(0, ".")
-    sys.path.insert(0, ".jcode/tools")
+    sys.path.insert(0, "scripts/dev")
     from ui_scan import wd_request  # noqa: E402 (path bootstrap like other tools)
 
     server = subprocess.Popen(

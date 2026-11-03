@@ -878,7 +878,7 @@ def test_fixture_chatter_flows_over_log_pipeline():
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".jcode" / "tools"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "dev"))
     from offline_scan import KnownMuse
 
     from modules.workflows.workflow import execute_purple_workflow
@@ -916,7 +916,7 @@ def test_cross_platform_compat_guards():
     # ui_scan: portable chrome discovery + terminate-based shutdown (no POSIX signals)
     from pathlib import Path
 
-    ui = (Path(__file__).resolve().parents[1] / ".jcode" / "tools" / "ui_scan.py").read_text()
+    ui = (Path(__file__).resolve().parents[1] / "scripts" / "dev" / "ui_scan.py").read_text()
     for name in ("chrome.exe", '"chrome"', '"chromium"'):
         assert name in ui, name
     assert "import signal" not in ui and ".terminate()" in ui
@@ -930,7 +930,7 @@ def test_cross_platform_compat_guards():
     # never pkill/killall of user processes
     assert "pkill" not in ui and "killall" not in ui
     # dev tool: owner-only .env creation + nt-aware venv python
-    dev = (Path(__file__).resolve().parents[1] / ".jcode" / "tools" / "dev.py").read_text()
+    dev = (Path(__file__).resolve().parents[1] / "scripts" / "dev" / "dev.py").read_text()
     assert "Scripts/python.exe" in dev and "os.open(env" in dev
     # container paths stay POSIX by design: backslash rejected, PurePosixPath used
     import pytest as _pt
@@ -952,7 +952,7 @@ def test_cross_platform_compat_guards():
     # no POSIX-only stdlib imports in host runtime
     root = Path(__file__).resolve().parents[1]
     hits = []
-    for py in list(root.glob("*.py")) + list((root / ".jcode" / "tools").glob("*.py")):
+    for py in list(root.glob("*.py")) + list((root / "scripts" / "dev").glob("*.py")):
         for line in py.read_text(encoding="utf-8").splitlines():
             sline = line.strip()
             if sline.startswith(("import fcntl", "import termios", "import pty", "import pwd")):

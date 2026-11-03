@@ -1,10 +1,10 @@
 # Final acceptance: October 28, 2026
 
-- `.venv/bin/python .jcode/tools/dev.py check`: **176 tests passed**, Ruff lint
+- `.venv/bin/python scripts/dev/dev.py check`: **176 tests passed**, Ruff lint
   and format checks, Python compilation, JavaScript syntax, fixture/schema
   harness, and CLI target listing passed. One upstream Starlette warning remains.
 - **Real Muse plus real Docker:**
-  `.jcode/tools/project_scan.py --live --cycles 1 --output-dir reports/project-live-structured`
+  `scripts/dev/project_scan.py --live --cycles 1 --output-dir reports/project-live-structured`
   passed against the configured Meta API, using Spark for red and Wonder for blue.
   Only the generated acceptance fixture was sent. Six real model calls consumed
   27,091 reported tokens, estimated $0.21268 for the successful run. Earlier failed
@@ -15,7 +15,7 @@
   context, final Blue produced a retained-patch report, and cleanup succeeded.
   This is evidence for that tested boundary, not a general security guarantee.
 - **Real Firefox dashboard, WebSocket, loopback inference HTTP, and Docker:**
-  `.jcode/tools/project_ui_scan.py` served the generated local project. Two cycles
+  `scripts/dev/project_ui_scan.py` served the generated local project. Two cycles
   completed with retained cumulative SQL parameterization and input-allowlisting
   patches. The browser showed baseline Passed, pre-probe 2/2 reachable, regression
   Passed, post-probe 2/2 blocked, Resources removed, both retained cycle reports,
@@ -26,7 +26,7 @@
   server's complete cycle evidence and cumulative diff byte-for-byte.
   This local test endpoint returned deterministic JSON, not real model inference.
 - **Pure-Python project-import probes in real Docker:**
-  `.jcode/tools/project_scan.py --source-import-probes --cycles 1 --output-dir reports/project-import-acceptance`
+  `scripts/dev/project_scan.py --source-import-probes --cycles 1 --output-dir reports/project-import-acceptance`
   passed, including pre/post probes, original regression checks, original source
   preservation, and cleanup. Project containers now use explicit /workspace CWD.
 - Live diagnostics exposed a missing source-import path and prompt-only schema
@@ -55,11 +55,11 @@ final acceptance above where their environment or validation status differs.
 
 # Arbitrary-project validation: October 28, 2026
 
-- `.venv/bin/python .jcode/tools/dev.py check` passed: pytest, Ruff lint and
+- `.venv/bin/python scripts/dev/dev.py check` passed: pytest, Ruff lint and
   formatting, Python compilation, JavaScript syntax, schema/fixture harness, and
   CLI target listing. Current suite: **173 passed**, one upstream Starlette
   test-client deprecation warning.
-- `.venv/bin/python .jcode/tools/project_scan.py` passed with real Docker target
+- `.venv/bin/python scripts/dev/project_scan.py` passed with real Docker target
   and verifier containers. Two cycles retained cumulative SQL parameterization
   and decimal-input allowlisting replacements. Original probes confirmed the
   vulnerabilities before each change and were blocked afterward. The unchanged

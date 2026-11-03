@@ -54,9 +54,9 @@ tests, receipt/rationale tests, repeat-net tests).
 
 ## Live proof
 
-- `.jcode/tools/offline_scan.py`: 3/3 fixtures verified through real
+- `scripts/dev/offline_scan.py`: 3/3 fixtures verified through real
   Docker (recorded in TODO S3).
-- `.jcode/tools/project_scan.py`: 2/2 cycles retained, properties exit 0
+- `scripts/dev/project_scan.py`: 2/2 cycles retained, properties exit 0
   both cycles after the T1/T2 shape-split fix (recorded in TODO T2).
 - Dashboard: browser-operated demo controls on `:18099` (own server,
   killed after; TODO L5).

@@ -251,11 +251,11 @@ genuinely parallel writer work.
 
 ## 2026-11-01 — `ui_scan.py` needs the project venv for Chrome (GG5)
 
-Wrong assumption: `python3 .jcode/tools/ui_scan.py --browser chrome` works
+Wrong assumption: `python3 scripts/dev/ui_scan.py --browser chrome` works
 with system python. What the evidence showed: the CDP drive path does
 `import websockets`, which only exists in `.venv` — instant ModuleNotFoundError.
 Firefox (WebDriver/urllib path) works on either. Rule: always run browser
-proof as `.venv/bin/python .jcode/tools/ui_scan.py ...`.
+proof as `.venv/bin/python scripts/dev/ui_scan.py ...`.
 
 ## 2026-11-01 — physical `web/` is safe, `tui/` is not (GG2 follow-up, webui-v3 branch)
 

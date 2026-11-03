@@ -10,7 +10,7 @@ A keyboard-only user gets no feedback and double-presses into a wrong value.
 
 Gate 3 vehicle: real headless Firefox via geckodriver (repo venv lacks
 selenium/playwright by design; the stdlib WebDriver path in
-.jcode/tools/ui_scan.py is the house way). Skips cleanly without geckodriver.
+scripts/dev/ui_scan.py is the house way). Skips cleanly without geckodriver.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / ".jcode" / "tools"))
+sys.path.insert(0, str(ROOT / "scripts" / "dev"))
 
 from ui_scan import start_server, wd_request  # noqa: E402
 

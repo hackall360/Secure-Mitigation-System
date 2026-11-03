@@ -1,7 +1,7 @@
 # V1.0.0 Guidance State Matrix — live telemetry ledger
 
 > LAW 2 source: `.jcode/briefs/2026-10-30-v1-guidance-directive.md`.
-> Baseline (2026-10-29 21:30 -0700): `python3 .jcode/tools/dev.py check` GREEN —
+> Baseline (2026-10-29 21:30 -0700): `python3 scripts/dev/dev.py check` GREEN —
 > 557 passed. Branch: `feature/v1-guidance-matrix`.
 > Latest Gate 1 (2026-10-29 21:53 -0700): **599 passed**, ruff clean/format
 > clean, harness PASS, `--list-targets` OK (4 entries incl. binary_argv_echo).

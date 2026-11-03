@@ -85,7 +85,7 @@ FEATURE_TAGS: dict[str, dict[str, object]] = {
     },
     "quickstart": {
         "surfaces": ["api"],
-        "backend": ".jcode/tools/dev.py:quickstart",
+        "backend": "scripts/dev/dev.py:quickstart",
         "ui": None,
         "cli": None,
         "tui": None,

@@ -84,7 +84,7 @@ V3_RENDER_CHECK = """(async () => {
 
 
 def drive_firefox_v3(port):
-    sys.path.insert(0, str(ROOT / ".jcode" / "tools"))
+    sys.path.insert(0, str(ROOT / "scripts" / "dev"))
     import importlib
 
     ui_scan = importlib.import_module("ui_scan")
@@ -184,7 +184,7 @@ async def drive_chrome_v3(port, devtools_port=9336):
     import shutil
     import tempfile as _tf
 
-    sys.path.insert(0, str(ROOT / ".jcode" / "tools"))
+    sys.path.insert(0, str(ROOT / "scripts" / "dev"))
     import importlib
 
     ui_scan = importlib.import_module("ui_scan")

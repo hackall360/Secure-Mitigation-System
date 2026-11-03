@@ -164,7 +164,7 @@ def start_server(port: int, offline: bool) -> subprocess.Popen:
     if "HOME" in os.environ:  # absent in some Windows service contexts
         env["HOME"] = os.environ["HOME"]
     if offline:
-        code = OFFLINE_SERVER.format(root=str(ROOT), tools=str(ROOT / ".jcode/tools"), port=port)
+        code = OFFLINE_SERVER.format(root=str(ROOT), tools=str(ROOT / "scripts/dev"), port=port)
         cmd = [str(PYTHON), "-c", code]
     else:
         env_file = ROOT / ".env"

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / ".jcode" / "tools"))
+sys.path.insert(0, str(ROOT / "scripts" / "dev"))
 import ui_scan  # noqa: E402 (server + browser helpers, no re-derivation)
 
 CHECKS = """(() => {

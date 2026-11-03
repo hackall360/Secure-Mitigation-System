@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / ".jcode" / "tools"))
+sys.path.insert(0, str(ROOT / "scripts" / "dev"))
 import ui_scan  # noqa: E402  (reuse server + browser helpers, no re-derivation)
 
 # Evaluated in-page; returns JSON once the live verdict lands, else null.

@@ -11,7 +11,7 @@ import pytest
 
 @pytest.fixture
 def dev(tmp_path, monkeypatch):
-    path = Path(__file__).resolve().parents[1] / ".jcode/tools/dev.py"
+    path = Path(__file__).resolve().parents[1] / "scripts/dev/dev.py"
     spec = importlib.util.spec_from_file_location("purplebox_dev", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
