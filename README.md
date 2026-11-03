@@ -69,7 +69,10 @@ flowchart LR
     VLT -.-> BLUE
 ```
 
-Each `verified` result ships a `VerdictReceipt`: the fix hash plus the exact exit codes behind the claim.
+Each `verified` result ships a `VerdictReceipt` (`library/workflows/workflow.py:237`):
+fields `pre_exit_code` / `post_exit_code` / `regression_passed` bind the fix
+SHA-256 to the exact Docker exits behind the claim. Verify one with
+`sms_verify_receipt`; the receipt re-attests the same patch only.
 
 ## Try it
 
@@ -82,7 +85,19 @@ python3 scripts/dev/dev.py quickstart            # .venv via uv (stdlib fallback
 python3 scripts/dev/dev.py quickstart --keyed    # same, plus one live chain scan with your .env key
 ```
 
-Keyless default runs the offline harness (no key, no Muse calls) and prints the verdict + receipt per fixture. `--keyed` reads the key from the owner-only `.env` first and fails closed without it, then runs one live `node_chain_link` scan. Add CI/CD adoption: the same command runs in a pipeline — gate on exit 0, archive the receipt line as the build artifact.
+Keyless default runs the offline harness (no key, no Muse calls). Real output
+(`python scripts/dev/dev.py offline_scan`, 2026-11-03):
+
+```text
+node_query_sink: status=verified pre=0 post=1 baseline=True regression=True cleanup=True events=19
+node_chain_link: status=verified pre=0 post=1 baseline=True regression=True cleanup=True events=19
+php_command_sink: status=verified pre=0 post=1 baseline=True regression=True cleanup=True events=19
+mysql_insecure_conf: status=verified pre=0 post=1 baseline=True regression=True cleanup=True events=19
+```
+
+`pre=0` = probe reached the boundary. `post=1` = after the patch it held.
+`verified` prints only when both plus regression hold on a fresh clone.
+`--keyed` reads the key from the owner-only `.env` first and fails closed without it, then runs one live `node_chain_link` scan. Add CI/CD adoption: the same command runs in a pipeline — gate on exit 0, archive the receipt line as the build artifact.
 
 Manual path (same stages, step by step):
 
@@ -169,11 +184,29 @@ Prior work is the fixture/loop skeleton; the hackathon turned it into a product.
 - **Agentic autonomy.** Vault recall replays prior patches onto renamed schemas for
   cents; the 4-pass sweep and chain synthesis run without human step-through; fail-closed
   contracts (honest refusals, JSON-stdout purity, per-session Docker cleanup) hold under
-  fault. Human review gates every merge (`feature → develop → main`, green gate only).
+  fault. Human review gates every merge — the ship path is always:
+
+```bash
+git checkout -b feature/<short-description>   # never main/develop
+# ... edits + dev.py check green ...
+git checkout develop && git merge --no-ff feature/<short-description>
+git push origin develop
+git checkout main && git merge --no-ff develop
+git push origin main
+git checkout develop
+```
 
 ## Why Muse?
 
-We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Per-token prices live in `library/core/pricing.py`: Spark runs about a third of Wonder on input and a fifth on output, so the split saves money. Our tests ran on the hackathon's small credit pool. Docker scores each verdict, so bigger models would add cost, not quality.
+We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Real per-1M prices from `library/core/pricing.py`:
+
+```text
+muse-spark-1.3-contributor: input 0.10 / output 0.20 USD per 1M tokens
+muse-wonder-1.0:            input 4.00 / output 20.00 USD per 1M tokens
+```
+
+Red runs the cheap tier, blue runs the deep tier — the split is ~40x on input.
+Our tests ran on the hackathon's small credit pool. Docker scores each verdict, so bigger models would add cost, not quality.
 
 The loop needs a model that will attack its own code inside a locked sandbox and then patch it. Muse Spark and Wonder both do that here. Some hosted models are built to refuse the attack step even for defense — the contest brief names Opus 5.5, Fable 5.1, Luna 6, and Sol 6.1 as models that decline offensive probing — so tools built on refusers stay point-and-fix: they flag a line and stop.
 
