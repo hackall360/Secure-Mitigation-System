@@ -40,6 +40,12 @@ from modules.services.mcp_bridge import (
     validate_snippet_arguments,
 )
 from modules.services.projects import ProjectSpec
+from modules.services.sms_api import (
+    cleanup_preview,
+    docker_health,
+    effective_knobs,
+    showcase_status,
+)
 from modules.workflows.cve_workflow import execute_cve_scan
 from modules.workflows.project_workflow import execute_project_workflow, redact_report_for_user
 from modules.workflows.sweep import execute_sweep_scan, redact_sweep_result_for_user
@@ -2122,6 +2128,67 @@ def _ingest_refusal_message(ingest_repo: object, commit_hash: object) -> str:
     )
 
 
+def _cycles_table(result) -> str:
+    """Per-cycle evidence table (LAW 4-safe: exit codes + gate booleans only).
+
+    Rows come from ``sms_api.summarize_cycle_evidence`` on the live result
+    (fixture sweep, project, and binary sweep results all carry per-cycle
+    nodes). Missing cycles -> a one-line 'no cycle evidence' note; odd-shaped
+    nodes never raise (library returns [] defensively).
+    """
+    try:
+        from library.services import sms_api as _cycles_api
+
+        rows = _cycles_api.summarize_cycle_evidence(result)
+    except Exception:
+        rows = []
+    if not rows:
+        return "Per-cycle evidence: none reported"
+    header = (
+        f"{'Cycle':<7} {'Pre':>4} {'Post':>5} {'Mutation':<9} {'Property':<9} {'Repeat':<7} Verdict"
+    )
+    lines = ["Per-cycle evidence", header]
+    for row in rows:
+        gates = row.get("gates") or {}
+
+        def _mark(value):
+            return "pass" if value is True else ("fail" if value is False else "skip")
+
+        lines.append(
+            f"{str(row.get('cycle')):<7} {str(row.get('pre_exit')):>4} "
+            f"{str(row.get('post_exit')):>5} {_mark(gates.get('mutation')):<9} "
+            f"{_mark(gates.get('property')):<9} {_mark(gates.get('repeat')):<7} "
+            f"{row.get('verdict')}"
+        )
+    return "\n".join(lines)
+
+
+def _intel_provenance_table(result) -> str:
+    """Render the intel provenance table grounding a scan finding (W3 parity).
+
+    Pure display over ``result.research_records`` via the library's
+    ``summarize_intel_provenance`` (allowlisted fields only — payloads,
+    keys, and blobs never reach the output). Never raises: hostile shapes
+    render as "none recorded".
+    """
+    try:
+        from modules.services.sms_api import summarize_intel_provenance
+
+        rows = summarize_intel_provenance(getattr(result, "research_records", None))
+    except Exception:
+        rows = []
+    if not rows:
+        return "Intel provenance: none recorded for this scan."
+    lines = ["Intel provenance:"]
+    for row in rows:
+        kev = " KEV" if row.get("kev") else ""
+        epss = f" EPSS {row['epss']}" if row.get("epss") else ""
+        lines.append(f"  {row.get('source', '?')}: {row.get('cve_id', '')}{epss}{kev}")
+        if row.get("summary_snippet"):
+            lines.append(f"    {row['summary_snippet']}")
+    return "\n".join(lines)
+
+
 async def cli_runner(
     target_key: str | None,
     output_dir: Path | None = None,
@@ -2139,6 +2206,8 @@ async def cli_runner(
     out_format: str = "table",
     show_usage: bool = False,
     sweep_passes: int | None = None,
+    show_cycles: bool = False,
+    show_intel: bool = False,
 ) -> int:
     use_color: bool | None = None
     json_mode = out_format == "json"
@@ -2170,6 +2239,8 @@ async def cli_runner(
             out_format=out_format,
             show_usage=show_usage,
             sweep_passes=sweep_passes,
+            show_cycles=show_cycles,
+            show_intel=show_intel,
         )
 
     def _out(message: str):
@@ -2242,9 +2313,20 @@ async def cli_runner(
         user_report = redact_report_for_user(result)
     if out_format == "json":
         # LAW 4: only the redacted report reaches stdout; probe scripts stay in Docker.
+        if show_cycles:
+            try:
+                from library.services import sms_api as _cycles_api
+
+                user_report["cycles"] = _cycles_api.summarize_cycle_evidence(result)
+            except Exception:
+                pass
         print(json.dumps(user_report, indent=2, default=str))
     else:
         _out(fact_table(result, use_color=use_color))
+        if show_cycles:
+            _out(_cycles_table(result))
+        if show_intel and project is None:
+            _out(_intel_provenance_table(result))
         if show_usage or result.usage.calls:
             _out(usage_table(result, use_color=use_color))
         _out(f"Status: {status_color(str(result.status), use_color)}")
@@ -2566,6 +2648,63 @@ def _build_summary_markdown(target_key: str | None, project, settings, result) -
     return "\n".join(lines)
 
 
+def _vault_list_main() -> int:
+    """Print vault namespaces + record counts (W3 parity, no scan needed).
+
+    LAW 4: names and counts only — payloads, keys, and blobs never print.
+    Fail closed: an unreadable vault refuses with an actionable message
+    (exit 1), never a traceback.
+    """
+    from modules.services.sms_api import list_vault_namespaces
+
+    try:
+        namespaces = list_vault_namespaces()
+    except Exception as exc:
+        print(f"Cannot list vault ({type(exc).__name__}): {exc}", file=sys.stderr)
+        return 1
+    if not namespaces:
+        print("Vault: no namespaces recorded.")
+        return 0
+    print("Vault namespaces:")
+    for ns in namespaces:
+        print(f"  {ns.get('namespace', '?')}: {ns.get('record_count', 0)} records")
+    return 0
+
+
+def _vault_replay_main(spec: str) -> int:
+    """Replay one vault record as a redacted summary (W3 parity, no scan needed).
+
+    ``spec`` is ``NAMESPACE:ID`` (e.g. ``red:<32-hex-id>``). LAW 4: the
+    summary carries the opaque id, fingerprint prefix, status, and mtime —
+    payloads, keys, and blobs never print. Fail closed: a bad namespace,
+    malformed id, or missing record refuses with an actionable message
+    (exit 1), never a traceback.
+    """
+    from modules.services.sms_api import replay_vault_record
+
+    namespace, sep, record_id = str(spec or "").partition(":")
+    if not sep or not namespace or not record_id:
+        print(
+            "Cannot replay vault record: expected NAMESPACE:ID "
+            "(e.g. --vault-replay red:<32-hex-id>).",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        summary = replay_vault_record(None, namespace, record_id)
+    except ValueError as exc:
+        print(f"Cannot replay vault record: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Cannot replay vault record ({type(exc).__name__}).", file=sys.stderr)
+        return 1
+    print(f"Record {summary['id']}:")
+    print(f"  status: {summary['status']}")
+    print(f"  fingerprint: {summary['fingerprint_prefix']}...")
+    print(f"  created: {summary['created']}")
+    return 0
+
+
 def _health_report(settings: PurpleBoxConfig, *, scan_lock=None) -> dict:
     """Readiness snapshot for --health (table or redacted JSON). Never raises.
 
@@ -2677,6 +2816,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--cleanup",
         action="store_true",
         help="Remove leftover Secure Mitigation System session resources",
+    )
+    commands.add_argument(
+        "--ops-status",
+        action="store_true",
+        help="Unified ops status: Docker state, missing images, leftovers, "
+        "effective knobs, and showcase presence (one table or JSON)",
+    )
+    commands.add_argument(
+        "--cleanup-dry-run",
+        action="store_true",
+        help="Preview what --cleanup would remove (containers, networks, "
+        "snapshots); removes nothing",
     )
     commands.add_argument("--serve", action="store_true", help="Serve the local dashboard")
     commands.add_argument(
@@ -2858,6 +3009,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Always print the token/cost table even when no model calls were made",
     )
     parser.add_argument(
+        "--show-cycles",
+        action="store_true",
+        help="Print per-cycle evidence (cycle, pre→post exits, mutation/property/"
+        "repeat gates) after any scan via sms_api.summarize_cycle_evidence",
+    )
+    commands.add_argument(
+        "--vault-list",
+        action="store_true",
+        help="List vault namespaces with record counts (no scan needed; payloads never print)",
+    )
+    commands.add_argument(
+        "--vault-replay",
+        default=None,
+        metavar="NAMESPACE:ID",
+        help="Replay one vault record as a redacted summary, e.g. red:<32-hex-id> (no scan needed)",
+    )
+    parser.add_argument(
+        "--show-intel",
+        action="store_true",
+        help="After --scan, print the intel provenance table grounding the finding (sources + CVE + EPSS/KEV)",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Save scan JSON and candidate diff to a new run directory (includes receipt.json sandbox proof)",
@@ -2980,6 +3153,8 @@ def main() -> int:
         parser.error("--demo-seed requires --ai-demo")
     if args.sweep_passes is not None and not args.scan:
         parser.error("--sweep-passes requires --scan")
+    if args.show_intel and not args.scan:
+        parser.error("--show-intel requires --scan")
     if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 4:
         parser.error("--sweep-passes must be between 1 and 4")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
@@ -3078,6 +3253,56 @@ def main() -> int:
             removed = remove_stale_resources(settings)
             print("Removed " + ", ".join(f"{count} {kind}" for kind, count in removed.items()))
             return 0
+        if args.ops_status:
+            docker_report = docker_health(settings)
+            preview = cleanup_preview(settings)
+            knobs = effective_knobs(settings)
+            showcase = showcase_status()
+            payload = {
+                "docker": docker_report,
+                "cleanup_preview": preview,
+                "knobs": knobs,
+                "showcase": showcase,
+            }
+            if out_format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                missing = ", ".join(docker_report.get("missing_images", [])) or "none"
+                leftovers = docker_report.get("leftover_containers", 0)
+                knob_rows = ", ".join(f"{key}={value}" for key, value in knobs.items())
+                shown = sum(1 for section in showcase.values() if section.get("present"))
+                lines = [
+                    "Ops status",
+                    f"  Docker state         {docker_report.get('state', '?')}",
+                    f"  Missing images       {missing}",
+                    f"  Leftover containers  {leftovers}",
+                    f"  Cleanup preview      "
+                    f"{len(preview.get('containers', []))} containers, "
+                    f"{len(preview.get('networks', []))} networks, "
+                    f"{len(preview.get('images', []))} snapshots",
+                    f"  Effective knobs      {knob_rows}",
+                    f"  Showcase             {shown}/{len(showcase)} sections present",
+                ]
+                print("\n".join(lines))
+            if docker_report.get("state") == "unavailable":
+                print("Docker daemon unreachable.", file=sys.stderr)
+                return 1
+            return 0
+        if args.cleanup_dry_run:
+            docker_report = docker_health(settings)
+            if docker_report.get("state") == "unavailable":
+                print("Docker daemon unreachable.", file=sys.stderr)
+                return 1
+            preview = cleanup_preview(settings)
+            if out_format == "json":
+                print(json.dumps({"dry_run": True, "preview": preview}, indent=2))
+            else:
+                lines = ["Cleanup dry-run (removes nothing)"]
+                for kind in ("containers", "networks", "images"):
+                    names = preview.get(kind, [])
+                    lines.append(f"  {kind:<11} {len(names)}: " + (", ".join(names) or "none"))
+                print("\n".join(lines))
+            return 0
         if args.serve:
             uvicorn.run(create_app(settings), host="127.0.0.1", port=args.port, ws_max_size=65536)
             return 0
@@ -3125,6 +3350,8 @@ def main() -> int:
                     out_format=out_format,
                     show_usage=args.show_usage,
                     sweep_passes=args.sweep_passes,
+                    show_cycles=args.show_cycles,
+                    show_intel=args.show_intel,
                 )
             )
         if args.ai_demo:
@@ -3201,8 +3428,13 @@ def main() -> int:
                     fast_lane=args.fast_lane,
                     out_format=out_format,
                     show_usage=args.show_usage,
+                    show_cycles=args.show_cycles,
                 )
             )
+        if args.vault_list:
+            return _vault_list_main()
+        if args.vault_replay is not None:
+            return _vault_replay_main(args.vault_replay)
         if args.ingest_repo:
             # F-01/F-02 honest refusal: validate first (exit 2 on bad input),
             # then refuse — never run the fixture loop. A fixture scan would
