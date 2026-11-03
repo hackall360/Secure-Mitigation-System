@@ -169,6 +169,7 @@ class CveScanReport(BaseModel):
     deep_assessment: dict[str, Any] | None = None
     errors: list[str] = Field(default_factory=list)
     cleanup_ok: bool = True
+    osv_queried: bool = True
 
     @property
     def success(self) -> bool:
@@ -378,6 +379,8 @@ async def execute_cve_scan(
             await log("system", f"Deep scan: OSV lookup unavailable ({type(exc).__name__}).")
     elif include_osv:
         await log("system", "Deep scan: no dependency manifests found; skipping OSV lookup.")
+    else:
+        await log("system", "Deep scan: skipping OSV lookup (offline mode).")
 
     deep_report_dict: dict[str, Any] | None = None
     if include_deep_assessment:
@@ -392,6 +395,7 @@ async def execute_cve_scan(
                 dependencies=deps,
                 vulnerabilities=summaries,
                 errors=errors,
+                osv_queried=include_osv,
             )
         await log("red", "Deep scan: Muse triaging static signals and CVE context.")
         muse = MetaMuseClient(settings)
@@ -483,6 +487,8 @@ async def execute_cve_scan(
         f"Deep scan completed: {len(static_findings)} static signals, "
         f"{len(deps)} dependencies, {cve_count} CVE records."
     )
+    if not include_osv:
+        message = f"Offline (no OSV lookup): {message}"
     if fast_lane:
         message = f"Fast lane: {message}"
     if errors:
@@ -497,4 +503,5 @@ async def execute_cve_scan(
         vulnerabilities=summaries,
         deep_assessment=deep_report_dict,
         errors=errors,
+        osv_queried=include_osv,
     )
