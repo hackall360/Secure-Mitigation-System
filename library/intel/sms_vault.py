@@ -38,10 +38,16 @@ import json
 import os
 import re
 import secrets
+import stat
 import tempfile
 import time
 from enum import Enum
 from pathlib import Path
+
+try:  # POSIX only; non-POSIX keeps unlocked index updates (no fcntl there).
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX
+    fcntl = None  # type: ignore[assignment]
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -82,8 +88,54 @@ class VaultQueryResult(BaseModel):
 def default_vault_dir() -> Path:
     override = os.getenv("PURPLEBOX_VAULT_DIR", "").strip()
     if override:
-        return Path(override)
-    return Path.home() / ".cache" / "secure-mitigation-system" / "vault"
+        try:
+            path = Path(override).expanduser()
+        except RuntimeError as exc:
+            raise VaultError(
+                "Vault directory unavailable: set PURPLEBOX_VAULT_DIR or HOME."
+            ) from exc
+        if not path.is_absolute():
+            raise VaultError("PURPLEBOX_VAULT_DIR must be an absolute path.")
+        return path
+    try:
+        home = Path.home()
+    except (RuntimeError, KeyError, OSError) as exc:
+        raise VaultError("Vault directory unavailable: set PURPLEBOX_VAULT_DIR or HOME.") from exc
+    return home / ".cache" / "secure-mitigation-system" / "vault"
+
+
+_STALE_TMP_SECONDS = 3600
+
+
+def _enforce_mode(path: Path, mode: int) -> None:
+    """chmod to an owner-only mode and, on POSIX, verify it stuck.
+
+    Non-POSIX (Windows) has no meaningful group/other mode bits: chmod only
+    toggles read-only, so verification would always fail and is skipped.
+    """
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+    if os.name != "posix":
+        return
+    try:
+        actual = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        raise VaultError(f"Vault permissions could not be checked ({type(exc).__name__}).") from exc
+    if actual & 0o077:
+        raise VaultError(
+            "Vault permissions could not be restricted "
+            "(filesystem does not support owner-only modes)."
+        )
+
+
+def _mkdir_private(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise VaultError(f"Vault directory not writable ({type(exc).__name__}).") from exc
+    _enforce_mode(path, 0o700)
 
 
 def _key_path(vault_dir: Path) -> Path:
@@ -92,11 +144,7 @@ def _key_path(vault_dir: Path) -> Path:
 
 def load_or_create_key(vault_dir: Path) -> bytes:
     """Load the local 32-byte vault key, creating it owner-only if absent."""
-    vault_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        vault_dir.chmod(0o700)
-    except OSError:
-        pass
+    _mkdir_private(vault_dir)
     key_path = _key_path(vault_dir)
     if key_path.exists():
         try:
@@ -104,11 +152,12 @@ def load_or_create_key(vault_dir: Path) -> bytes:
         except OSError as exc:
             raise VaultError(f"Vault key unreadable ({type(exc).__name__}).") from exc
         if len(raw) != VAULT_KEY_BYTES:
-            raise VaultError("Vault key has an unexpected length; refusing to use it.")
-        try:
-            key_path.chmod(0o600)
-        except OSError:
-            pass
+            raise VaultError(
+                "Vault key has an unexpected length; refusing to use it. "
+                "Restore the original vault.key or move the vault directory aside "
+                "to start fresh (existing records will not decrypt)."
+            )
+        _enforce_mode(key_path, 0o600)
         return raw
     key = secrets.token_bytes(VAULT_KEY_BYTES)
     try:
@@ -122,6 +171,7 @@ def load_or_create_key(vault_dir: Path) -> bytes:
             handle.write(key)
     except OSError as exc:
         raise VaultError(f"Vault key cannot be written ({type(exc).__name__}).") from exc
+    _enforce_mode(key_path, 0o600)
     return key
 
 
@@ -212,10 +262,20 @@ class VaultStore:
         self.key_path = _key_path(self.vault_dir)
         self._key = load_or_create_key(self.vault_dir)
         self.namespace_dir = self.vault_dir / namespace.value
-        self.namespace_dir.mkdir(parents=True, exist_ok=True)
+        _mkdir_private(self.namespace_dir)
+        self._clean_stale_tmp()
+
+    def _clean_stale_tmp(self) -> None:
+        """Best-effort removal of crash-orphaned *.tmp files older than 1h."""
         try:
-            self.namespace_dir.chmod(0o700)
-        except OSError:
+            cutoff = time.time() - _STALE_TMP_SECONDS
+            for tmp in self.namespace_dir.glob("*.tmp"):
+                try:
+                    if tmp.stat().st_mtime < cutoff:
+                        tmp.unlink()
+                except OSError:
+                    continue
+        except Exception:
             pass
 
     def _blob_path(self, record_id: str) -> Path:
@@ -250,20 +310,46 @@ class VaultStore:
         """Best-effort index update; failures never break the commit."""
         if not fingerprint:
             return
+        # POSIX: advisory flock on a sidecar serializes read-modify-write
+        # across threads and processes (flock binds to the open file
+        # description, so separate opens contend). Non-POSIX: unlocked,
+        # as before; a lost update only degrades the index, never records.
+        lock_fd = None
         try:
+            if fcntl is not None:
+                lock_fd = os.open(
+                    str(self.namespace_dir / "index.lock"), os.O_RDWR | os.O_CREAT, 0o600
+                )
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
             counts = self._read_index() or {}
             counts[fingerprint] = counts.get(fingerprint, 0) + 1
             encoded = json.dumps(counts, sort_keys=True).encode("utf-8")
             if len(encoded) > 1_000_000:
                 return
             path = self._index_path()
-            path.write_bytes(encoded)
+            fd, tmp_name = tempfile.mkstemp(
+                dir=str(self.namespace_dir), prefix="_fingerprints.", suffix=".tmp"
+            )
             try:
-                path.chmod(0o600)
-            except OSError:
-                pass
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(tmp_name, 0o600)
+                os.replace(tmp_name, path)
+            finally:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
+            _enforce_mode(path, 0o600)
         except (OSError, ValueError, TypeError):
             pass
+        finally:
+            if lock_fd is not None:
+                try:
+                    if fcntl is not None:
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
 
     def commit(self, payload: dict, *, fingerprint: str = "") -> str:
         """Encrypt + persist one payload; returns its deterministic record id.
