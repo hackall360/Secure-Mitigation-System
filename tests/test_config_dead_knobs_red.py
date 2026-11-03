@@ -18,7 +18,7 @@ alive):
      intersects with the allowlist, so an UNLISTED scanner name is silently
      dropped from research_scanners before validation can reject it
      (validate's Unknown-scanner branch, config.py:142-144, unreachable).
-  7. META_MUSE_TIMEOUT_SECONDS validated (1-300) but: (a) never passed to any
+  7. META_MUSE_TIMEOUT_SECONDS validated (0=no-timeout, 1-3600) but: (a) never passed to any
      scanner subprocess (scanner_binaries DEFAULT_TIMEOUT=300 /
      dep-check 900 ignore it), (b) require_api_key re-validates the whole
      config on every call so a late mutation of api_timeout_seconds is

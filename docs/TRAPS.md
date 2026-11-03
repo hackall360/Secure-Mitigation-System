@@ -360,3 +360,27 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   its node's liveness (`btn.isConnected`) before re-firing — especially
   when the handler synchronously triggers a re-render. The clearer only
   works if it shares a lifetime with the timer.
+
+## Timeout + preset pass (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the timeout knob existed but reached nothing per-run.**
+  Wrong assumption: "META_MUSE_TIMEOUT_SECONDS covers it — the deep pass
+  just needs a bigger env value." The env knob required a server restart
+  per budget, the default (180 s) sat below the standard red call's own
+  166 s answer time, and 0 was rejected — so "wait as long as needed" was
+  inexpressible. The dry run proved it: 4 x 180 s timeouts + ladder waits =
+  392 s of nothing, killing a 10-minute live run.
+  Evidence: `logs/traces/core.agents.jsonl` red-pass 392161 ms error x2
+  (tonight + the earlier 90 s deep timeout at 19:58).
+  Lesson: a budget knob that cannot be set per-run and cannot express
+  "unlimited" is a fixed constant with extra steps. Ship default 300,
+  0 = uncapped read, `?timeout_s=` + `--timeout-s` + MCP/library params.
+- **Trap: presets via o.values lose to stored choices — or clobber them.**
+  Wrong assumption: "pass values into OptionForm and first visit gets the
+  recording setup." Constructor merged stored-over-values, so a stale
+  localStorage would silently override the director's presets — or, if
+  reversed naively, presets would clobber a returning user's explicit
+  picks. The merge order is now schema < presets < stored, documented in
+  form.js: presets seed first visits, stored choices always win after.
+  Lesson: any "sensible default" injection must state its precedence in
+  a comment at the merge site, or the next surface will re-break it.

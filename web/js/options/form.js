@@ -25,7 +25,10 @@
       this.o = o;
       this.ctx = o.ctx || { page: 'console' };
       this.keys = o.keys.filter((k) => FIELDS[k]);
-      this.v = Object.assign(defaults(this.keys, this.ctx), this._load(), o.values || {});
+      // Merge order: schema defaults < presets (o.values: first-visit seeds
+      // like the demo recording setup) < stored user choices. A returning
+      // user's explicit pick always wins over a preset.
+      this.v = Object.assign(defaults(this.keys, this.ctx), o.values || {}, this._load());
       this.nodes = {};
       this.disabled = false;
       this.render();

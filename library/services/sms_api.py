@@ -847,6 +847,7 @@ async def scan_repo(
     commit_hash: str | None = None,
     contract: str = "",
     config: PurpleBoxConfig | None = None,
+    timeout_s: float | None = None,
 ):
     """Run the evidence-gated project loop over a remote repo (D7 surface).
 
@@ -885,6 +886,10 @@ async def scan_repo(
         {"repo_url": repo_url, "commit_hash": commit_hash, "contract": contract or ""}
     )
     settings = config or load_config()
+    if timeout_s is not None:
+        if not 0 <= timeout_s <= 3600:
+            raise ValueError("timeout_s must be 0 (no timeout) or 1-3600.")
+        settings = settings.__class__(**{**settings.__dict__, "api_timeout_seconds": timeout_s})
     require_api_key(settings)
 
     async def _emit(team: str, message: str) -> None:

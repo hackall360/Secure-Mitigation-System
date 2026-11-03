@@ -226,6 +226,18 @@ def _obs_report_call(role: str, calls: list[CallUsage]) -> None:
         _obs_metric(_OBS_AGENTS, "cost_usd", last.cost_usd, unit="usd")
 
 
+def _httpx_timeout(timeout_s: float) -> httpx.Timeout | float:
+    """Map the timeout knob to an httpx timeout.
+
+    0 = no read timeout: connect/write/pool stay bounded (30 s), only the
+    read wait is uncapped — "wait as long as the model needs" without
+    parking the connect phase forever.
+    """
+    if timeout_s == 0:
+        return httpx.Timeout(connect=30.0, read=None, write=30.0, pool=30.0)
+    return timeout_s
+
+
 class MetaMuseClient:
     def __init__(
         self, config: PurpleBoxConfig, *, transport: httpx.AsyncBaseTransport | None = None
@@ -237,7 +249,7 @@ class MetaMuseClient:
             headers=(
                 {"Authorization": f"Bearer {config.meta_api_key}"} if config.meta_api_key else {}
             ),
-            timeout=config.api_timeout_seconds,
+            timeout=_httpx_timeout(config.api_timeout_seconds),
             follow_redirects=False,
             trust_env=False,
             transport=transport,
@@ -274,7 +286,12 @@ class MetaMuseClient:
         schema: type[ResponseModel],
         role: str = "",
         max_payload_bytes: int = 256_000,
+        timeout_s: float | None = None,
     ) -> ResponseModel:
+        # Per-call timeout override (WS ?timeout_s=, 0 = no read timeout).
+        # Falls back to config when unset; applied per attempt via the
+        # stream options so a late override never leaks across calls.
+        effective_timeout = self.config.api_timeout_seconds if timeout_s is None else timeout_s
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
         throttled = False
@@ -312,6 +329,7 @@ class MetaMuseClient:
                     "POST",
                     "chat/completions",
                     json=request_body,
+                    timeout=_httpx_timeout(effective_timeout),
                 ) as response:
                     if (
                         response.status_code in TRANSIENT_STATUS_CODES
