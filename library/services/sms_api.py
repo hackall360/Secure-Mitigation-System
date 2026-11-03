@@ -27,7 +27,7 @@ from library.shared.sms_observability import get_aspect
 from library.shared.sms_observability import log as obs_log
 from library.shared.sms_observability import record_metric as obs_record_metric
 from library.shared.sms_observability import trace as obs_trace
-from modules.core.config import PurpleBoxConfig
+from modules.core.config import ConfigurationError, PurpleBoxConfig, load_config
 from modules.workflows.workflow import ScanResult, VerdictReceipt
 
 _API_ASPECT = get_aspect("services.api")
@@ -584,12 +584,21 @@ def docker_health(config: PurpleBoxConfig | None = None, *, client: Any = None) 
     """
     from modules.core.docker_manager import docker_status
 
-    return docker_status(config if config is not None else PurpleBoxConfig(), client=client)
+    if config is None:
+        try:
+            config = load_config()
+        except ConfigurationError:
+            # Read-only helper: still answer, fail closed, flag the cause.
+            return {
+                "state": "unavailable",
+                "missing_images": [],
+                "leftover_containers": 0,
+                "configuration_error": True,
+            }
+    return docker_status(config, client=client)
 
 
-def cleanup_preview(
-    config: PurpleBoxConfig | None = None, *, client: Any = None
-) -> dict[str, list[str]]:
+def cleanup_preview(config: PurpleBoxConfig | None = None, *, client: Any = None) -> dict[str, Any]:
     """Dry-run for CLI ``--cleanup``: LIST what would be removed, remove nothing.
 
     Mirrors the label scoping of ``remove_stale_resources`` (session
@@ -597,7 +606,12 @@ def cleanup_preview(
     calls ``remove`` on anything. Fail-closed per scope: a dead daemon
     mid-list yields empty lists instead of raising.
     """
-    settings = config if config is not None else PurpleBoxConfig()
+    if config is None:
+        try:
+            config = load_config()
+        except ConfigurationError:
+            return {"containers": [], "networks": [], "images": [], "configuration_error": True}
+    settings = config
     if client is None:
         try:
             import docker as _docker
