@@ -314,7 +314,7 @@ def test_snippet_schema_definitions():
     assert {"status", "pre_probe_exit", "post_probe_exit"} <= set(out["required"])
     tool = B.snippet_tool_definition()
     assert tool["name"] == "submit_code_snippet"
-    assert B.MCP_TOOLS and len(B.MCP_TOOLS) == 10
+    assert B.MCP_TOOLS and len(B.MCP_TOOLS) == 11
     src = B.sms_scan_source_tool_definition()
     assert src["inputSchema"]["properties"]["max_passes"] == {
         "type": "integer",

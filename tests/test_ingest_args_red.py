@@ -34,11 +34,13 @@ GOOD_URL = "https://github.com/example/demo"
 GOOD_HASH = "a" * 40
 
 
-def test_ingest_repo_requires_commit_hash():
+def test_ingest_repo_commit_hash_optional_head_demo():
+    """Brief 2026-11-03-repo-intake-live D2: --commit-hash is optional
+    (omitted = HEAD as-is demo path). A bare --ingest-repo parses clean."""
     parser = _parser()
-    with pytest.raises(SystemExit) as error:
-        parser.parse_args(["--ingest-repo", GOOD_URL])
-    assert error.value.code == 2
+    args = parser.parse_args(["--ingest-repo", GOOD_URL])
+    assert args.ingest_repo == GOOD_URL
+    assert args.commit_hash is None
 
 
 def test_commit_hash_requires_ingest_repo():

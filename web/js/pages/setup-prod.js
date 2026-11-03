@@ -11,7 +11,7 @@
   const $ = (id) => document.getElementById(id);
 
   const BADGES = { node_query_sink: ['JS', '#facc15'], php_command_sink: ['PHP', '#b06cff'], mysql_insecure_conf: ['SQL', '#38bdf8'], binary_argv_echo: ['ELF', '#ff3b5c'], repo_notes_app: ['REPO', '#22d3ee'], system_shop_stack: ['SYS', '#f0abfc'] };
-  const TARGET_TITLE = { fixture: 'Choose a fixture', build: 'Describe the demo to grow', project: 'Point at a local repository', snippet: 'Paste the code', binary: 'Choose a compiled binary', ingest: 'Repository and pinned commit', system: 'Describe the snapshot to clone' };
+  const TARGET_TITLE = { fixture: 'Choose a fixture', build: 'Describe the demo to grow', project: 'Point at a local repository', snippet: 'Paste the code', binary: 'Choose a compiled binary', ingest: 'Repository, HEAD or pinned commit', system: 'Describe the snapshot to clone' };
   const LAUNCH_LABEL = { fixture: 'Launch fixture run →', build: 'Grow and verify →', project: 'Launch project run →', snippet: 'Verify snippet →', binary: 'Sweep binary →', ingest: 'Ingest and verify →', system: 'Clone and verify →' };
 
   $('ver').textContent = `v${L.VERSION.version}`;
@@ -69,7 +69,15 @@
     if (state.mode === 'snippet') return (v.filename || '').trim() || `${v.language} snippet`;
     if (state.mode === 'binary') return state.binary ? state.binary.name : '—';
     if (state.mode === 'system') return (v.snapshot_ref || '').trim() || '—';
-    return (v.ingest_repo || '').trim() || '—';
+    if (state.mode === 'ingest') {
+      const repo = (v.ingest_repo || '').trim();
+      if (!repo) return '—';
+      // LAW-4: host only in the Target summary row — never the full URL.
+      let host = repo;
+      try { host = new URL(repo).hostname || repo; } catch { host = repo.replace(/\.git$/, '').split('/').filter(Boolean).pop() || repo; }
+      const sha = (v.commit_hash || '').trim();
+      return sha ? `${host} @ ${sha.slice(0, 12)}` : `${host} · HEAD (default branch)`;
+    }
   }
 
   function onSourceChange(mode, key, v) {
@@ -88,7 +96,15 @@
     if (state.mode === 'fixture') return { type: 'profile', key: state.fixture, target: state.targets[state.fixture] || {} };
     if (state.mode === 'build') return { type: 'profile', key: 'node_query_sink', target: { filename: 'app.js' } };
     if (state.mode === 'project') return { type: 'project', spec: { path: (v.path || '').trim() || 'project', image: v.image, command: safeArgv(v.command), test_command: safeArgv(v.test_command) } };
-    if (state.mode === 'ingest') return { type: 'project', spec: { path: ((v.ingest_repo || '').trim() || 'repository').replace(/\.git$/, ''), commit: (v.commit_hash || '').slice(0, 12) } };
+    if (state.mode === 'ingest') {
+      const repo = (v.ingest_repo || '').trim() || 'repository';
+      // LAW-4: display the host only — the full URL (which may carry
+      // credentials) never lands in the summary rows or the map.
+      let host = repo;
+      try { host = new URL(repo).hostname || repo; } catch { host = repo.replace(/\.git$/, '').split('/').filter(Boolean).pop() || repo; }
+      const sha = (v.commit_hash || '').trim();
+      return { type: 'project', spec: { path: host, commit: sha ? `${host} @ ${sha.slice(0, 12)}` : 'HEAD (default branch)' } };
+    }
     if (state.mode === 'system') return { type: 'system', services: v.services || '', ref: (v.snapshot_ref || '').trim() || 'snapshot', kindLabel: `${v.snapshot_kind || 'compose'} snapshot` };
     if (state.mode === 'snippet') return { type: 'source', source: v.source || '', language: v.language || 'javascript', filename: (v.filename || '').trim() || ({ javascript: 'app.js', python: 'app.py', php: 'index.php' }[v.language || 'javascript']) };
     return { type: 'binary', filename: (v.filename || '').trim() || (state.binary && state.binary.name) || 'binary' };

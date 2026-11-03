@@ -91,7 +91,7 @@
 
     // ---- Repo ingest
     ingest_repo: { type: 'text', label: 'Repository URL', wire: 'body', def: '', placeholder: 'https://github.com/org/repo', validate: (s) => (/^https:\/\/\S+$/.test(s) ? '' : 'Enter an https:// repository URL.') },
-    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, placeholder: '40-hex commit sha', validate: (s) => (/^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit.') }
+    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, optional: true, placeholder: 'empty = HEAD · or 40-hex commit sha', help: 'Empty pins nothing: HEAD of the default branch is used as-is.', validate: (s) => (!s || /^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit, or leave empty for HEAD.') }
   };
 
   const RUN = ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget', 'sweep_passes', 'profile', 'research', 'research_scanners'];
@@ -104,12 +104,12 @@
     project: { label: 'Project', sub: 'Local repo', endpoint: () => '/ws/project', fields: ['path', 'image', 'command', 'test_command', 'contract', 'allow_remote_inference'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'] },
     snippet: { label: 'Snippet', sub: 'MCP · parsed map', endpoint: () => 'POST /mcp', fields: ['language', 'filename', 'source', 'contract'], body: true, run: [], noQuery: true },
     binary: { label: 'Binary', sub: 'ELF · parsed map', endpoint: () => '/ws/binary', fields: ['binary', 'filename', 'contract'], body: true, run: [] },
-    ingest: { label: 'Repo ingest', sub: 'Pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash'], body: true, run: [] },
+    ingest: { label: 'Repo ingest', sub: 'HEAD or pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash', 'contract'], body: true, run: [] },
     system: { label: 'System snapshot', sub: 'Clone · proposed', endpoint: () => '/ws/system', fields: ['snapshot_ref', 'snapshot_kind', 'services', 'contract'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'], proposed: true }
   };
   // Which lens (core/lenses.js) each source is drawn with. Fixtures use the fixture's own lens.
   const SOURCE_LENS = { fixture: null, build: 'file', project: 'repo', snippet: 'file', binary: 'binary', ingest: 'repo', system: 'system' };
-  const REQUIRED = { build: [], project: ['path', 'image', 'command', 'test_command', 'contract'], snippet: ['source', 'contract'], binary: ['contract'], ingest: ['ingest_repo', 'commit_hash'], system: ['snapshot_ref', 'services', 'contract'], fixture: [] };
+  const REQUIRED = { build: [], project: ['path', 'image', 'command', 'test_command', 'contract'], snippet: ['source', 'contract'], binary: ['contract'], ingest: ['ingest_repo'], system: ['snapshot_ref', 'services', 'contract'], fixture: [] };
 
   /* ------------------------------------------------------------------ */
   /* Context: limits for the demo page, server overrides                 */

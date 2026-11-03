@@ -41,6 +41,19 @@ class ApiScanRequest(BaseModel):
     max_passes: int = 1
 
 
+class ApiRepoScanRequest(BaseModel):
+    """Programmatic repo-intake scan request: HTTPS remote + optional pin.
+
+    ``commit_hash`` None means HEAD: the API pins it via staging
+    ``git ls-remote`` before cloning, so the scan still runs on exact bytes.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    repo_url: str = ""
+    commit_hash: str | None = None
+    contract: str = ""
+
+
 async def scan_source(
     target: str,
     emit: Callable[[str, str], Awaitable[None] | None] | None = None,
@@ -730,3 +743,265 @@ def showcase_status(root: Any = None) -> dict[str, Any]:
             "bash_syntax_ok": bool(bash_syntax_ok),
         },
     }
+
+
+_LS_REMOTE_SCRIPT = (
+    "git -c protocol.allow=never -c protocol.https.allow=always "
+    '-c submodule.recurse=false ls-remote -- "$1" HEAD'
+)
+_HEAD_HEX = frozenset("0123456789abcdefABCDEF")
+
+
+def _repo_host_prefix(repo_url: object, commit_hash: object | None = None) -> str:
+    """LAW 4 redaction: host + short commit only, never the URL."""
+    try:
+        host = urlparse(str(repo_url)).hostname or str(repo_url)
+    except Exception:
+        host = str(repo_url)
+    prefix = str(commit_hash or "")[:12] if commit_hash else "(HEAD)"
+    return f"repo host {host!r} at commit {prefix}"
+
+
+def _resolve_head_commit(repo_url: str, sandbox, *, timeout_seconds: int = 60) -> str:
+    """Pin HEAD via a staging ``git ls-remote`` container (clone=True needs a pin).
+
+    Same LAW 4 isolation shape as the intake clone: the URL rides as a
+    positional ``sh -c`` argument (``$1``, never interpolated), bridge
+    network for the fetch only, no host mounts, bounded pids/mem/cpu,
+    read-only with all capabilities dropped and ``no-new-privileges``.
+    Fail closed: non-zero exit, unreadable output, or no 40-hex HEAD line
+    raises ``ValueError`` naming the host only.
+    """
+    client = getattr(sandbox, "client", None)
+    if client is None:
+        raise ValueError("HEAD resolution requires a sandbox with a Docker client")
+    configured = getattr(getattr(sandbox, "config", None), "target_base_image", None)
+    image = configured if isinstance(configured, str) and configured else "sms-target"
+    where = _repo_host_prefix(repo_url)
+    container = client.containers.run(
+        image,
+        command=["sh", "-c", _LS_REMOTE_SCRIPT, "sh", repo_url],
+        detach=True,
+        network_mode="bridge",
+        user="10001",
+        working_dir="/work",
+        tmpfs={"/work": "rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700"},
+        environment={
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_LFS_SKIP_SMUDGE": "1",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "HOME": "/work",
+        },
+        pids_limit=128,
+        mem_limit="512m",
+        nano_cpus=1_000_000_000,
+        cap_drop=["ALL"],
+        security_opt=["no-new-privileges"],
+        read_only=True,
+        entrypoint=[],
+    )
+    try:
+        try:
+            status = container.wait(timeout=timeout_seconds)
+        except Exception:
+            raise ValueError(
+                f"staging ls-remote failed (timeout or wait error) for {where}"
+            ) from None
+        code = status.get("StatusCode", 1) if isinstance(status, dict) else 1
+        if code != 0:
+            raise ValueError(f"staging ls-remote failed for {where} (exit {code})")
+        try:
+            raw = container.logs()
+        except Exception as exc:
+            raise ValueError(f"staging ls-remote unreadable for {where}") from exc
+        text = (
+            bytes(raw).decode("ascii", errors="strict")
+            if isinstance(raw, (bytes, bytearray))
+            else str(raw)
+        )
+        sha = ""
+        for line in text.splitlines():
+            parts = line.split()
+            if (
+                len(parts) >= 2
+                and parts[1] == "HEAD"
+                and len(parts[0]) == 40
+                and all(char in _HEAD_HEX for char in parts[0])
+            ):
+                sha = parts[0].lower()
+                break
+        if not sha:
+            raise ValueError(f"staging ls-remote returned no HEAD pin for {where}")
+        return sha
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
+
+
+async def scan_repo(
+    repo_url: str,
+    emit: Callable[[str, str], Awaitable[None] | None] | None = None,
+    *,
+    commit_hash: str | None = None,
+    contract: str = "",
+    config: PurpleBoxConfig | None = None,
+):
+    """Run the evidence-gated project loop over a remote repo (D7 surface).
+
+    Separate-project surface: validates via ``RepoIntakeSpec`` (``commit_hash``
+    None means HEAD, pinned first through a staging ``git ls-remote`` so the
+    scan still runs on exact bytes), clones inside Docker staging via
+    ``intake_repo_to_snapshot(..., clone=True)``, materializes the staged
+    tree into an owner-only temp dir, detects the runtime, and delegates to
+    ``execute_project_workflow`` with a caller-contract ``ProjectSpec``.
+    Returns the raw project result, same as the project scan path.
+
+    No ``main`` import by design (main imports this module: importing it
+    back would be a cycle): the snapshot-to-ProjectSpec mapping is inline
+    here, following the shape of ``main._ingest_repo_to_project``.
+
+    D3: ``allow_remote_inference=True`` is set on the built spec because
+    this explicit call IS the consent grant. LAW 4: the URL is redacted to
+    host + short commit in every message, log, and error — never the URL.
+    """
+    # Lazy imports: this module is imported by main at top level, so the
+    # heavier workflow/sandbox pieces stay function-local (same convention
+    # as scan_source/scan_binary).
+    from modules.core.config import require_api_key
+    from modules.core.docker_manager import DockerSandboxManager
+    from modules.services.repo_intake import (
+        RepoIntakeSpec,
+        detect_runtime,
+        intake_repo_to_snapshot,
+    )
+    from modules.workflows.project_workflow import (
+        execute_project_workflow,
+        validate_safe_path,
+    )
+
+    request = ApiRepoScanRequest.model_validate(
+        {"repo_url": repo_url, "commit_hash": commit_hash, "contract": contract or ""}
+    )
+    settings = config or load_config()
+    require_api_key(settings)
+
+    async def _emit(team: str, message: str) -> None:
+        if emit is None:
+            return
+        outcome = emit(team, message)
+        if isinstance(outcome, Awaitable):
+            await outcome
+
+    try:
+        host = urlparse(str(request.repo_url)).hostname or "unknown-host"
+    except (ValueError, AttributeError, TypeError):
+        host = "unknown-host"
+    # LAW 4: host + commit prefix only (never the URL or the contract).
+    obs_log(
+        _API_ASPECT,
+        "scan_repo.start",
+        message="scan_repo started",
+        host=str(host)[:64],
+        commit_prefix=str(request.commit_hash or "")[:12] or "HEAD",
+    )
+    started = time.monotonic()
+    with obs_trace(_API_ASPECT, "scan_repo"):
+        manager = DockerSandboxManager(settings)
+        pin = request.commit_hash
+        if pin is None:
+            pin = _resolve_head_commit(request.repo_url, manager)
+        try:
+            spec = RepoIntakeSpec(url=request.repo_url, commit_hash=pin)
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid repo intake ({exc}); {_repo_host_prefix(request.repo_url, pin)}"
+            ) from exc
+        try:
+            snapshot = intake_repo_to_snapshot(
+                spec,
+                ["true"],
+                file_list=None,
+                clone=True,
+                sandbox=manager,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(
+                "repo-intake scan refused: staging clone failed for "
+                f"{_repo_host_prefix(spec.url, spec.commit_hash)}"
+            ) from exc
+        tree = {
+            key[5:]: value
+            for key, value in dict(snapshot.files or {}).items()
+            if key.startswith("tree/")
+        }
+        if not tree:
+            raise ValueError(
+                "repo-intake scan refused: empty staged tree for "
+                f"{_repo_host_prefix(spec.url, spec.commit_hash)}"
+            )
+        import tempfile
+        from pathlib import Path
+
+        staged = Path(tempfile.mkdtemp(prefix="sms-scan-repo-")).resolve()
+        staged.chmod(0o700)
+        for rel, content in tree.items():
+            # Untrusted remote bytes: never let absolute paths or ".."
+            # escape the staged dir (defense in depth over the intake strip).
+            clean = rel.lstrip("/").replace("\\", "/")
+            parts = [part for part in clean.split("/") if part not in ("", ".", "..")]
+            if not parts:
+                continue
+            safe_rel = "/".join(parts)
+            try:
+                validate_safe_path(safe_rel)
+            except ValueError as exc:
+                raise ValueError(
+                    "repo-intake scan refused: unsafe staged path for "
+                    f"{_repo_host_prefix(spec.url, spec.commit_hash)}"
+                ) from exc
+            dest = staged.joinpath(*parts)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(
+                content if isinstance(content, bytes) else str(content).encode("utf-8")
+            )
+        runtime = detect_runtime(sorted(tree))
+        contract_text = (request.contract or "").strip() or (
+            f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. "
+            "Preserve the public API. Only sanitize untrusted input."
+        )
+        from modules.services.projects import ProjectSpec
+
+        project = ProjectSpec.model_validate(
+            {
+                "path": str(staged),
+                "command": runtime,
+                "test_command": list(runtime),
+                "contract": contract_text[:32_768],
+                "scan_profile": "custom",
+                "cycles": 1,
+                # D3: this explicit scan_repo call IS the remote-inference grant.
+                "allow_remote_inference": True,
+            }
+        )
+        result = await execute_project_workflow(project, _emit, config=settings)
+    duration_ms = round((time.monotonic() - started) * 1000, 3)
+    obs_log(
+        _API_ASPECT,
+        "scan_repo.verdict",
+        message="scan_repo verdict",
+        host=str(host)[:64],
+        status=getattr(result, "status", "unknown"),
+        duration_ms=duration_ms,
+    )
+    obs_record_metric(_API_ASPECT, "scan_repo.duration_ms", duration_ms, unit="ms")
+    obs_record_metric(
+        _API_ASPECT,
+        f"scan_repo.status.{getattr(result, 'status', 'unknown')}",
+        1,
+        unit="count",
+    )
+    return result
