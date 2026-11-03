@@ -2489,7 +2489,9 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
         spec = RepoIntakeSpec(url=ingest_repo, commit_hash=commit_hash)
     except ValueError as err:
         raise ValueError(_ingest_refusal_message(ingest_repo, commit_hash)) from err
-    emit_progress("system", f"Cloning {spec.url} at {spec.commit_hash[:12]} in Docker staging")
+    emit_progress(
+        "system", f"Cloning {spec.url} at {(spec.commit_hash or 'HEAD')[:12]} in Docker staging"
+    )
     try:
         # Clone phase: runtime is unknown until the tree lands, so pass a
         # placeholder argv (manifest only); the real runtime is detected
@@ -2531,7 +2533,7 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
             "path": str(staged),
             "command": runtime,
             "test_command": test_command,
-            "contract": f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. Preserve the public API. Only sanitize untrusted input.",
+            "contract": f"Ingest scan of {spec.url} at commit {(spec.commit_hash or 'HEAD')[:12]}. Preserve the public API. Only sanitize untrusted input.",
             "scan_profile": "custom",
             "cycles": 1,
             "allow_remote_inference": True,
