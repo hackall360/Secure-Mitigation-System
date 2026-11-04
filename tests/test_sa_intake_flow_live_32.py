@@ -99,7 +99,7 @@ def test_cli_valid_spec_runs_helper_not_refusal(monkeypatch, tmp_path, capsys):
 
     seen = {}
 
-    async def fake_helper(url, commit, emit, settings=None):
+    async def fake_helper(url, commit, emit, settings=None, **kwargs):
         seen["url"] = url
         seen["commit"] = commit
         return _project_spec_on(tmp_path)
@@ -155,7 +155,7 @@ def test_cli_repo_alone_never_mentions_pair_requirement(monkeypatch, tmp_path, c
 
     seen = {}
 
-    async def fake_helper(ingest_repo, commit_hash, emit_progress=None, settings=None):
+    async def fake_helper(ingest_repo, commit_hash, emit_progress=None, settings=None, **kwargs):
         seen["helper_args"] = (ingest_repo, commit_hash)
         return _PSreal.model_validate(
             {
@@ -422,7 +422,7 @@ def test_tui_ingest_flows_through_shared_helper(monkeypatch, tmp_path):
 
     calls = {}
 
-    async def fake_helper(url, commit, emit, settings=None):
+    async def fake_helper(url, commit, emit, settings=None, **kwargs):
         calls["url"] = url
         calls["commit"] = commit
         return _project_spec_on(tmp_path)

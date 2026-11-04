@@ -1738,6 +1738,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                                 repo_arguments.commit_hash,
                                 _emit_repo_sync,
                                 settings=_repo_settings,
+                                runtime_command=repo_arguments.runtime_command,
                             )
                             # D3: the explicit tool call IS the remote-inference
                             # grant — the same grant a dashboard checkbox /
@@ -2284,6 +2285,7 @@ def _mcp_stdio_loop() -> int:
                         _args.commit_hash,
                         _emit_repo_stdio_sync,
                         settings=settings,
+                        runtime_command=_args.runtime_command,
                     )
                     # D3: the explicit tool call IS the remote-inference grant.
                     try:

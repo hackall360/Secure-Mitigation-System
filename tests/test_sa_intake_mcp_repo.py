@@ -60,7 +60,7 @@ def _fake_project():
 
 
 def _patch_intake(monkeypatch, seen):
-    async def fake_ingest(repo_url, commit_hash, emit, settings=None):
+    async def fake_ingest(repo_url, commit_hash, emit, settings=None, **kwargs):
         seen.append((repo_url, commit_hash))
         return _fake_project()
 
@@ -206,7 +206,7 @@ def test_mcp_http_scan_repo_keyless_guidance(client, monkeypatch):
     """Key/config failure: established -32603 envelope with guidance."""
     seen_ingest: list = []
 
-    async def fake_ingest(repo_url, commit_hash, emit, settings=None):
+    async def fake_ingest(repo_url, commit_hash, emit, settings=None, **kwargs):
         seen_ingest.append(repo_url)
         from modules.core.config import ConfigurationError
 
@@ -289,7 +289,7 @@ def test_mcp_stdio_scan_repo_keyless_guidance(monkeypatch):
     """Keyless/config failure: -32603 envelope carrying the guidance."""
     from modules.core.config import ConfigurationError
 
-    async def fake_ingest(repo_url, commit_hash, emit, settings=None):
+    async def fake_ingest(repo_url, commit_hash, emit, settings=None, **kwargs):
         raise ConfigurationError(
             "META_MUSE_API_KEY is required for scans. Secure Mitigation System uses Meta Muse only."
         )
