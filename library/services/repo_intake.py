@@ -207,6 +207,10 @@ if "--smoke" in sys.argv[1:]:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "sms-ingest/1.0"
+    # Oversize probe contract (overnight coverage): red evidences
+    # bounded-vs-unbounded by requesting absurd byte ranges. Fail closed
+    # with 413 instead of serving unbounded bytes with 200.
+    MAX_BODY_BYTES = 8 * 1024 * 1024
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -231,6 +235,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(sorted(FILES)))
         name = path.lstrip("/")
         if name in FILES:
+            body = FILES[name]
+            # Fail closed on absurd reads: oversize Range requests and
+            # bodies past the cap get 413, so red's coverage probe can
+            # evidence bounded-vs-unbounded instead of inferring it.
+            range_header = self.headers.get("Range", "")
+            if range_header.startswith("bytes="):
+                try:
+                    _, span = range_header.split("=", 1)
+                    _, end = span.split("-", 1)
+                    if end and int(end) > self.MAX_BODY_BYTES:
+                        return self._send(
+                            413, json.dumps({"status": "too_large"})
+                        )
+                except (ValueError, IndexError):
+                    return self._send(416, json.dumps({"status": "bad_range"}))
+            data = body if isinstance(body, bytes) else body.encode("utf-8")
+            if len(data) > self.MAX_BODY_BYTES:
+                return self._send(413, json.dumps({"status": "too_large"}))
             ctype = "text/html; charset=utf-8" if name.endswith((".html", ".htm")) else "text/plain; charset=utf-8"
             return self._send(200, FILES[name], ctype)
         return self._send(404, json.dumps({"status": "not_found"}))

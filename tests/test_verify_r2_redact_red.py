@@ -269,9 +269,9 @@ def test_socket_emit_forwards_msg_verbatim_with_log_type_and_ts():
 
 
 def test_zero_and_negative_index_wrap_around():
-    assert red_persona(0).name == "Cartographer"
+    assert red_persona(0).name == "Blacklight"  # (0-1) % 7 == 6
     assert blue_persona(0).name == "Proofreader"
-    assert red_persona(-1).name == "Sparkler"  # (-1-1) % 5 == 3
+    assert red_persona(-1).name == "Bloodsniffer"  # (-1-1) % 7 == 5
     assert blue_persona(-6).name == "Sentinel"  # (-6-1) % 5 == 3
 
 

@@ -29,7 +29,7 @@
     { v: 'ultra_heavy', l: 'Ultra heavy', cycles: 12, d: '12 cycles · tunable agent swarm · bounded auto-discovery' },
     { v: 'custom', l: 'Custom', cycles: null, d: 'Legacy single-pass cycles, 1–20' }
   ];
-  const SWEEP_LABELS = { 1: 'single finding', 2: '+ deep pass', 3: '+ threat-actor pass', 4: '+ chain pass' };
+  const SWEEP_LABELS = { 1: 'single finding', 2: '+ deep pass', 3: '+ threat-actor pass', 4: '+ chain pass', 5: '+ coverage pass' };
 
   /* ------------------------------------------------------------------ */
   /* Fields                                                              */
@@ -44,7 +44,7 @@
     red_agents: { type: 'number', group: 'run', label: 'Red agents', wire: 'body', def: 5, min: 1, max: 12, step: 1, unit: 'agents', help: 'Tunable in Ultra heavy.', lockedIf: (v) => v.scan_profile !== 'ultra_heavy', demo: { max: 5 } },
     blue_agents: { type: 'number', group: 'run', label: 'Blue agents', wire: 'body', def: 5, min: 1, max: 12, step: 1, unit: 'agents', help: 'Tunable in Ultra heavy.', lockedIf: (v) => v.scan_profile !== 'ultra_heavy', demo: { max: 5 } },
     context_budget: { type: 'number', group: 'run', label: 'Context budget', wire: 'body', def: 32768, min: 1024, max: 131072, step: 1024, unit: 'tokens', demo: { max: 32768 } },
-    sweep_passes: { type: 'number', group: 'run', label: 'Sweep depth', wire: 'query', def: 1, min: 1, max: 4, step: 1, unit: 'passes', describe: (n) => SWEEP_LABELS[n] || '', omitIf: (n) => n === 1, demo: { max: 2 } },
+    sweep_passes: { type: 'number', group: 'run', label: 'Sweep depth', wire: 'query', def: 1, min: 1, max: 5, step: 1, unit: 'passes', describe: (n) => SWEEP_LABELS[n] || '', omitIf: (n) => n === 1, demo: { max: 2 } },
     timeout_s: { type: 'number', group: 'run', label: 'Model timeout', wire: 'query', def: 300, min: 0, max: 3600, step: 60, unit: 's', help: 'Per-call model wait. 0 = no read timeout (wait as long as needed).', omitIf: (n) => n === 300, demo: { hidden: true } },
     profile: { type: 'select', group: 'run', label: 'Model profile', wire: 'query', def: '', options: [], hideIfEmpty: true },
     research: { type: 'toggle', group: 'run', label: 'Ground with threat intel', help: 'OSV, CIRCL, GHSA, EPSS. Docker evidence still decides.', wire: 'query', def: false, encode: (on) => (on ? 'on' : undefined) },

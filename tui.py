@@ -58,7 +58,7 @@ CAPABILITIES_LINES = (
     "mcp: POST /mcp submit_code_snippet or CLI --mcp-snippet FILE",
     "binary: /ws/binary sweep or CLI --binary-target FILE (ELF/Mach-O/PE)",
     "mode:fixture scan one bundled fixture end to end",
-    "mode:sweep re-run the check up to 4 passes (+/- depth)",
+    "mode:sweep re-run the check up to 5 passes (+/- depth)",
     "mode:mcp submit a code snippet for review (key m)",
     "mode:binary sweep one compiled binary file (key b)",
     "mode:project two-cycle project workout (key p)",
@@ -158,7 +158,7 @@ def _state_sweep_passes(state: TuiState) -> int:
     for value in (depth, passes):
         if value is not None:
             try:
-                return max(1, min(4, int(value)))
+                return max(1, min(5, int(value)))
             except (TypeError, ValueError):
                 pass
     return 1
@@ -337,7 +337,7 @@ def apply_action(state: TuiState, action: str) -> str:
         if mode in TUI_MODES:
             state.mode = mode
     elif action == "depth:inc":
-        state.sweep_depth = min(4, state.sweep_depth + 1)
+        state.sweep_depth = min(5, state.sweep_depth + 1)
     elif action == "depth:dec":
         state.sweep_depth = max(1, state.sweep_depth - 1)
     elif action == "filter":
@@ -1302,7 +1302,7 @@ def _run_plain_legacy(args: argparse.Namespace) -> int:
                 execute_sweep_scan(
                     args.fixture,
                     queue_emit(event_queue),
-                    max_passes=max(1, min(4, args.sweep_passes)),
+                    max_passes=max(1, min(5, args.sweep_passes)),
                 )
             )
         else:
@@ -1391,7 +1391,7 @@ def run_plain(argv: list[str] | None = None) -> int:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth 1-4 (max 4 on TUI; default: single finding loop)",
+        help="Multi-pass sweep depth 1-5 (max 5 on TUI; default: single finding loop)",
     )
     parser.add_argument(
         "--binary-target",

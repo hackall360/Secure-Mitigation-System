@@ -18,6 +18,7 @@ from modules.core.prompts import (
     BLUE_RESEARCH_SYSTEM_PROMPT,
     BLUE_TEAM_SYSTEM_PROMPT,
     RED_CHAIN_SYSTEM_PROMPT,
+    RED_COVERAGE_SWEEP_SYSTEM_PROMPT,
     RED_DEEP_SWEEP_SYSTEM_PROMPT,
     RED_RESEARCH_SYSTEM_PROMPT,
     RED_TEAM_SYSTEM_PROMPT,
@@ -494,6 +495,8 @@ class MetaMuseClient:
             system = RED_THREAT_ACTOR_SYSTEM_PROMPT
         elif pass_id == "chain":
             system = RED_CHAIN_SYSTEM_PROMPT
+        elif pass_id == "coverage":
+            system = RED_COVERAGE_SWEEP_SYSTEM_PROMPT
         elif pass_id == "standard":
             system = RED_TEAM_SYSTEM_PROMPT
         else:

@@ -65,4 +65,4 @@ def test_tui_sweep_help_states_cap():
     result = subprocess.run(
         [sys.executable, "tui.py", "--help"], capture_output=True, text=True, cwd=ROOT
     )
-    assert "max 4" in result.stdout.lower(), result.stdout
+    assert "max 5" in result.stdout.lower(), result.stdout

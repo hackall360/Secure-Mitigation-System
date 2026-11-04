@@ -79,14 +79,14 @@ async def scan_source(
         "scan_source.start",
         message="scan_source started",
         target=str(target)[:64],
-        max_passes=max(1, min(4, int(max_passes))),
+        max_passes=max(1, min(5, int(max_passes))),
         sweep=sweep,
     )
     started = time.monotonic()
     with obs_trace(_API_ASPECT, "scan_source"):
         if sweep:
             result = await execute_sweep_scan(
-                target, _emit, config=config, max_passes=max(1, min(4, max_passes))
+                target, _emit, config=config, max_passes=max(1, min(5, max_passes))
             )
         else:
             result = await execute_purple_workflow(target, _emit, config=config)
@@ -143,12 +143,12 @@ async def scan_binary(
         message="scan_binary started",
         binary_format=getattr(spec, "binary_format", "unknown"),
         size_bytes=getattr(spec, "size_bytes", 0),
-        max_passes=max(1, min(4, int(max_passes))),
+        max_passes=max(1, min(5, int(max_passes))),
     )
     started = time.monotonic()
     with obs_trace(_API_ASPECT, "scan_binary"):
         result = await execute_binary_sweep(
-            spec, _emit, config=config, max_passes=max(1, min(4, max_passes))
+            spec, _emit, config=config, max_passes=max(1, min(5, max_passes))
         )
     duration_ms = round((time.monotonic() - started) * 1000, 3)
     obs_log(
