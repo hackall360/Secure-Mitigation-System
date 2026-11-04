@@ -775,8 +775,8 @@ def _resolve_head_commit(repo_url: str, sandbox, *, timeout_seconds: int = 60) -
     client = getattr(sandbox, "client", None)
     if client is None:
         raise ValueError("HEAD resolution requires a sandbox with a Docker client")
-    configured = getattr(getattr(sandbox, "config", None), "target_base_image", None)
-    image = configured if isinstance(configured, str) and configured else "sms-target"
+    configured = getattr(getattr(sandbox, "config", None), "clone_base_image", None)
+    image = configured if isinstance(configured, str) and configured else "sms-clone"
     where = _repo_host_prefix(repo_url)
     container = client.containers.run(
         image,
@@ -975,7 +975,7 @@ async def scan_repo(
             )
         runtime = detect_runtime(
             sorted(tree),
-            str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+            str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git").lower(),
         )
         contract_text = (request.contract or "").strip() or (
             f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. "
