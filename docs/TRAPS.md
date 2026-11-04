@@ -792,3 +792,27 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Compiled snippet argv probe for the toolchain first; absent => exit 2
   (inconclusive, fail-closed verdict), never a language refusal. The
   refusal shape must never re-enter through a missing binary.
+
+## Slice F recon traps (2026-11-04, branch feature/slice-f-recon)
+
+- **Trap: `client.stream` is httpx plumbing, not server-sent events.**
+  Wrong assumption: `async with self.client.stream("POST",
+  "chat/completions", ...)` in `library/core/agents.py:329` means the
+  transport streams tokens (SSE). It does not — `stream` is httpx's
+  response-reading API; the JSON body never sets `"stream": true`, and
+  `_read_capped` buffers the whole body before parsing. The endpoint DOES
+  support SSE (`stream: true` + `Accept: text/event-stream`, `data: `
+  lines to `[DONE]`; documented at `protocols/chat-completions`
+  "Streaming"), but this transport deliberately leaves that benefit —
+  exemption from the non-streaming 504 `gateway_timeout` limit — on the
+  table for schema-validated single-object calls. Lesson: grep the request
+  BODY for the `stream` flag, not the call-site verb, before claiming
+  streaming.
+- **Trap: `reasoning_effort: max` is model-gated, not universal.**
+  Wrong assumption: config accepts `minimal..max` (config.py) so `max` is
+  safe on any Muse model. The live reasoning page grants `max` to
+  `muse-wonder-1.0` and `muse-spark-1.3` but NOT to
+  `muse-spark-1.3-contributor` — the repo's own DEFAULT red model. Setting
+  effort `max` on the default red model risks HTTP 400. Lesson: an enum in
+  config is the union of per-model capabilities; check the per-model
+  matrix before raising the knob globally.
