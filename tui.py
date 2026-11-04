@@ -196,6 +196,7 @@ class TuiState:
     ingest_repo: str = ""
     ingest_commit: str = ""
     ingest_branch: str = ""
+    ingest_command: str = ""
     demo_theme: str = ""
     demo_vulns: str = ""
     running: bool = False
@@ -889,7 +890,13 @@ async def _dispatch_core(state: TuiState, emit) -> tuple[str, object]:
         async def _tui_ingest_emit(team, message):
             await emit(team, message)
 
-        project = await main_mod._ingest_repo_to_project(url, commit_hash, _tui_ingest_emit)
+        _ingest_argv = _coerce_argv(getattr(state, "ingest_command", None), [])
+        project = await main_mod._ingest_repo_to_project(
+            url,
+            commit_hash,
+            _tui_ingest_emit,
+            runtime_command=_ingest_argv or None,
+        )
         from modules.workflows import project_workflow as _project_workflow
 
         result = await _project_workflow.execute_project_workflow(project, emit)
@@ -1041,6 +1048,7 @@ def _state_from_args(args: argparse.Namespace) -> TuiState:
         "ingest_repo",
         "ingest_commit",
         "ingest_branch",
+        "ingest_command",
         "allow_remote",
         "demo_theme",
         "demo_vulns",
@@ -1171,6 +1179,11 @@ def _add_dispatch_flags(parser: argparse.ArgumentParser) -> None:
         "--ingest-branch",
         default="",
         help="Branch label recorded with the ingest intake (metadata only, never executed)",
+    )
+    parser.add_argument(
+        "--ingest-command",
+        default="",
+        help='Explicit runtime argv as JSON for ingest mode, e.g. ["node", "server.js"] (omitted = auto-detect)',
     )
     parser.add_argument(
         "--project-deep-assessment",
@@ -1448,6 +1461,7 @@ def run_plain(argv: list[str] | None = None) -> int:
         or getattr(args, "ingest_repo", "")
         or getattr(args, "ingest_commit", "")
         or getattr(args, "ingest_branch", "")
+        or getattr(args, "ingest_command", "")
         or getattr(args, "contract", "")
         or getattr(args, "snippet_language", "")
     ):
