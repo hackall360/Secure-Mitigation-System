@@ -33,7 +33,10 @@ def test_mcp_repo_args_validate_runtime_command():
     from modules.services.mcp_bridge import validate_scan_repo_arguments
 
     args = validate_scan_repo_arguments(
-        {"repo_url": "https://github.com/example/demo.git", "runtime_command": ["node", "server.js"]}
+        {
+            "repo_url": "https://github.com/example/demo.git",
+            "runtime_command": ["node", "server.js"],
+        }
     )
     assert list(args.runtime_command) == ["node", "server.js"]
     args2 = validate_scan_repo_arguments({"repo_url": "https://github.com/example/demo.git"})
@@ -56,6 +59,4 @@ def test_both_transports_forward_runtime_command():
         idx = src.find(marker)
         assert idx != -1
         window = src[idx : idx + 3000]
-        assert "runtime_command" in window, (
-            f"handler at {marker} must forward runtime_command"
-        )
+        assert "runtime_command" in window, f"handler at {marker} must forward runtime_command"

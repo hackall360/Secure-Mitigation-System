@@ -39,6 +39,5 @@ def test_ingest_repo_to_project_honors_explicit_argv():
 
     src = inspect.getsource(_main._ingest_repo_to_project)
     assert "command" in src.split("def _ingest_repo_to_project")[1][:3000].lower(), (
-        "_ingest_repo_to_project must accept explicit runtime/test argv, "
-        "not detect unconditionally"
+        "_ingest_repo_to_project must accept explicit runtime/test argv, not detect unconditionally"
     )

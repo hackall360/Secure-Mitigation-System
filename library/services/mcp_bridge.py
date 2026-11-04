@@ -648,8 +648,8 @@ class McpScanRepoArguments(BaseModel):
     repo_url: str = Field(min_length=1, max_length=SCAN_REPO_MAX_URL_CHARS)
     commit_hash: str | None = Field(default=None, max_length=40)
     contract: str = Field(default="", max_length=MCP_CONTRACT_MAX_CHARS)
-    runtime_command: list[Annotated[str, Field(min_length=1, max_length=512)]] | None = (
-        Field(default=None, min_length=1, max_length=16)
+    runtime_command: list[Annotated[str, Field(min_length=1, max_length=512)]] | None = Field(
+        default=None, min_length=1, max_length=16
     )
     timeout_s: float | None = Field(
         default=None, ge=0, le=3600, description="Per-call model timeout, 0 = no read timeout"

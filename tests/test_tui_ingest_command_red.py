@@ -31,6 +31,4 @@ def test_tui_ingest_command_parses_and_forwards():
     src = open("tui.py").read()
     idx = src.find("await main_mod._ingest_repo_to_project(")
     assert idx != -1
-    assert "runtime_command" in src[idx : idx + 600], (
-        "TUI ingest run must forward runtime_command"
-    )
+    assert "runtime_command" in src[idx : idx + 600], "TUI ingest run must forward runtime_command"

@@ -4195,9 +4195,7 @@ def main() -> int:
                     show_usage=args.show_usage,
                     show_cycles=args.show_cycles,
                     command=json.loads(args.command) if args.command else None,
-                    test_command=(
-                        json.loads(args.test_command) if args.test_command else None
-                    ),
+                    test_command=(json.loads(args.test_command) if args.test_command else None),
                     contract=args.contract,
                     scan_profile=args.scan_profile,
                     cycles=args.cycles,
