@@ -175,7 +175,7 @@ async def test_cli_ingest_with_clone_reaches_project_workflow(monkeypatch):
 
     async def fake_workflow(project, emit, **kwargs):
         seen["path"] = str(project.path)
-        assert (project.path / "repo" / "app.js").is_file(), "cloned bytes must land on disk"
+        assert (project.path / "app.js").is_file(), "cloned bytes must land on disk"
 
         class _R:
             status = "verified"

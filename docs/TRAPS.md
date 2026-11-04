@@ -317,3 +317,348 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: `return None` from a mocked `execute_project_workflow` is fine because the test only checks routing.
   Evidence: retargeted F-204 WS test routed correctly, then died at `result.model_dump()` → `AttributeError: NoneType`. A `_FakeResult` with the 7-field `model_dump()` dict (target/status/message/diff/cleanup_ok/cycles/total_tokens+cost_usd) fixed it — same shape w22 already used.
   Lesson: mocks must satisfy the downstream contract, not just the assertion under test. Copy the existing fake-result shape instead of inventing a thinner one.
+
+## Demo live bugs (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the segmented test that never tested the arrows.**
+  Wrong assumption: "the demo setup controls work with a keyboard because the stepper test covers ArrowUp/Down." That test drove the *stepper* input; the *segmented* radiogroup ("Operational mode") had its own keydown map with only left/right — up/down silently no-op'd on exactly the two-option control where wrap matters most.
+  Evidence: node probe of the handler map pre-fix (`ArrowUp -> undefined`); post-fix round-trip Right/Down/Up/Left returns to start.
+  Lesson: one keyboard test per widget type, not per page. When a form file has N keydown handlers, each needs its own pin.
+- **Trap: retry covered statuses but not the transport.**
+  Wrong assumption: "RETRY_MAX_ATTEMPTS = 2 means two tries." Only for HTTP *statuses*. An httpx.HTTPError (timeout/DNS/reset) raised AgentError on attempt 0 — the loop's second iteration never ran. A single blip produced status=error and the demo's "Scan could not complete / Nothing was changed" verdict.
+  Evidence: RED pin (blip-then-success) failed pre-fix, green post-fix; persistent-failure pin still fails closed with the identical no-fallback message in exactly 2 calls.
+  Lesson: when a retry loop has two failure ingresses (status vs exception), pin both. SPEC's no-fallback lock constrains *providers*, not *attempts* — one bounded re-try of the same provider is policy-safe.
+
+## Retry-budget change retargets (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the attempt index is not the failure count.**
+  Wrong assumption: passing `attempt` (0-based) to the delay helper yields immediate/10s/20s. It yields 0.5s/10s/20s — the first *failure* must map to the immediate slot, so the helper takes a 1-based *failure count* incremented per failure, and both call sites (status path, transport path) bump the same counter. My own new pin caught it ([0.5, 10] vs expected [10, 20]) before the gate did.
+  Evidence: `_retry_delay_seconds(failures, ...)` + `consecutive_failures` in `_request`; corrected pin `test_transport_ladder_waits_immediate_10s_then_20s` asserts [~0.5, ~10, ~20].
+  Lesson: name delay-helper params for what they count (`failures`, never `attempt`/`index`), and assert the full sleep vector in the pin, not just the last value.
+- **Trap: raising the retry budget breaks every pin that counted attempts.**
+  Wrong assumption: "RETRY_MAX_ATTEMPTS 2→4 is a one-line change." Eight pins across four files asserted exactly 2 calls / 1 sleep / `== 2` — all RED post-change, all correct-by-construction under the old budget. Each needed retargeting to the ladder (4 calls, [immediate, 10s, 20s] sleeps) while keeping its original *intent* (no body leak, rate-limit named, hostile Retry-After capped, UI survivable).
+  Evidence: `test_config_agents`, `test_w29_load_red`, `test_w13_throttle_ui_red`, `test_recovery_convergence_red` retargeted in the same commit; gate green after.
+  Lesson: a budget constant is a load-bearing contract — grep every reference in tests/ before changing it, and retarget in the same commit as the implementation.
+
+## Stepper zombie hold-timers (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the pressed button does not survive its own click.**
+  Wrong assumption: "pointerdown ... pointerup bracket one press, so the
+  repeat timer always gets cleared." bump()->set() fires onChange->refresh->
+  setContext->render()->replaceChildren, which DESTROYS the pressed button
+  mid-press. pointerup lands on the NEW node and clears the NEW closure's
+  (idle) timer; the OLD closure's pending setTimeout fires as a zombie,
+  bumps, re-renders, reschedules — a stuck ~14 Hz repeat. One click leaves
+  one invisible zombie; opposing clicks (+ then -) fight forever: the
+  visible 1<->2 sweep oscillation. Every further click adds another zombie,
+  and each zombie rewrite flickers the Request preview.
+  Evidence: traced from the hold()/render()/refresh() call chain (headless
+  Firefox unusable here — desktop profile lock — so the pin simulates the
+  DOM-lifetime race in node); post-fix simulation shows exactly one bump
+  per click with the zombie tick killed.
+  Lesson: any setTimeout/setInterval chained from a DOM event must check
+  its node's liveness (`btn.isConnected`) before re-firing — especially
+  when the handler synchronously triggers a re-render. The clearer only
+  works if it shares a lifetime with the timer.
+
+## Timeout + preset pass (2026-11-03, branch feature/test-web-2026-11-03)
+
+- **Trap: the timeout knob existed but reached nothing per-run.**
+  Wrong assumption: "META_MUSE_TIMEOUT_SECONDS covers it — the deep pass
+  just needs a bigger env value." The env knob required a server restart
+  per budget, the default (180 s) sat below the standard red call's own
+  166 s answer time, and 0 was rejected — so "wait as long as needed" was
+  inexpressible. The dry run proved it: 4 x 180 s timeouts + ladder waits =
+  392 s of nothing, killing a 10-minute live run.
+  Evidence: `logs/traces/core.agents.jsonl` red-pass 392161 ms error x2
+  (tonight + the earlier 90 s deep timeout at 19:58).
+  Lesson: a budget knob that cannot be set per-run and cannot express
+  "unlimited" is a fixed constant with extra steps. Ship default 300,
+  0 = uncapped read, `?timeout_s=` + `--timeout-s` + MCP/library params.
+- **Trap: presets via o.values lose to stored choices — or clobber them.**
+  Wrong assumption: "pass values into OptionForm and first visit gets the
+  recording setup." Constructor merged stored-over-values, so a stale
+  localStorage would silently override the director's presets — or, if
+  reversed naively, presets would clobber a returning user's explicit
+  picks. The merge order is now schema < presets < stored, documented in
+  form.js: presets seed first visits, stored choices always win after.
+  Lesson: any "sensible default" injection must state its precedence in
+  a comment at the merge site, or the next surface will re-break it.
+
+## Ingest auto-detect (2026-11-03, Part 2 dry run)
+
+- **Trap: the server demanded what the form never collected.**
+  Wrong assumption: "the ingest form sends everything the server needs."
+  The console sent URL + contract only; the server required runtime_command
+  or file_list and refused with "runtime_command is required when file_list
+  is not given." The form had no field for either — the demand existed only
+  server-side. The Part 2 dry run died at the gate with zero scan.
+  Evidence: console showed `invalid` + the message; `intake_repo_to_snapshot`
+  raises when both are None.
+  Fix: with neither present, the WS path clones with a placeholder then
+  resolves the real runtime from the cloned tree via detect_runtime (same
+  derivation the library path uses). Explicit argv and file_list paths
+  untouched; undetectable trees still fail closed with an actionable
+  "pass an explicit runtime_command" message. Plus an optional
+  "Start command" field on the ingest form so power users can pin the argv.
+  Lesson: when server and form are built in different slices, the contract
+  lives in NEITHER file — pin the wire shape (required vs optional keys)
+  in a shared test, or the UI will keep sending frames the server refuses.
+- **Trap: three branches, two conditions.**
+  Wrong assumption: "if/else covers explicit vs auto." The original had
+  `if intake_files is None: clone(...) / else: clone(..., file_list)`.
+  Adding auto-detect inside the first branch while explicit+no-file_list
+  still routes there sent `["true"]`... no — sent the explicit argv into
+  the placeholder path. The condition must be three-way: auto (both None),
+  file_list, explicit-argv. My own RED pin caught it (expected explicit
+  argv, got placeholder).
+  Lesson: when a branch grows a third case, rewrite the condition as an
+  explicit three-way from the start — `if/else` with a hidden middle case
+  is a bug waiting for the next slice.
+
+## Docker 29 get_archive vs read-only/tmpfs (2026-11-03, Part 2 dry run)
+
+- **Trap: get_archive 404s on read-only/tmpfs-mounted containers.**
+  Wrong assumption: "the clone wrote bytes, so get_archive can read them."
+  On Docker 29 (overlay2 here), archiving ANY path inside a `read_only`
+  and/or tmpfs-mounted container 404s ("Could not find the file") — even
+  though the same archive call works on plain containers. Bisected across
+  5 variants (baseline/user/readonly/tmpfs/combos): baseline + user-only
+  pass, every readonly/tmpfs combination fails. The clone DID succeed
+  (exit 0, bytes on disk, verified via logs) — only the extraction lied.
+  Evidence: `/work/repo` 404s but `/work` and `/` return; `/work` tar holds
+  a single `work` dir entry (tmpfs contents invisible to the daemon's
+  archive path).
+  Fix: clone container runs with a WRITABLE root (still no host mounts,
+  still uid 10001, still all-caps-dropped, still no-new-privileges) and
+  clones into plain `/work`. Only the staged tree leaves via get_archive.
+  Lesson: the "hardened container" checklist (read-only + tmpfs) breaks
+  Docker's own archive API on this storage driver. Harden the PROBE
+  containers (they never export bytes); the CLONE container must stay
+  readable. Bisect isolation flags against the extraction API, not just
+  the workload.
+- **Trap: the tree prefix moved and nobody told the pins.**
+  Wrong assumption: "tree/ paths are stable." Stripping the repo dir
+  (`tree/repo/app.js` → `tree/app.js`) broke 3 pins across 3 files that
+  asserted the old prefix. Retargeted in the same commit.
+  Lesson: a path-shape change is a contract change — grep `tree/` across
+  tests/ in the same commit.
+
+## Ingest binary-blob refusal (2026-11-04, Part 2 dry run)
+
+- **Trap: refusing the whole tree for one font file.**
+  Wrong assumption: "non-UTF-8 bytes in the snapshot = hostile or broken
+  input, refuse." AnyCam's tree carries DejaVuSans.ttf (Rust GUI assets) —
+  a legitimate repo file that is neither model-readable nor patchable.
+  The old code refused the entire 44-file staging over one font. The
+  "pass an explicit runtime_command" hint was doubly wrong: the argv was
+  already pinned, the blob was the problem.
+  Evidence: `ValueError: staged snapshot holds non-UTF-8 bytes at
+  'tree/rust/src/gui/assets/DejaVuSans.ttf'` killed the Part 2 run at the
+  ingest gate after the clone fix landed.
+  Fix: skip undecodable blobs, keep the text tree. The runtime argv + text
+  files carry the verification; fonts/images/compiled artifacts ride along
+  as names only (still visible to red as attack surface, never sent as
+  model text). A tree with ZERO decodable text files still needs a guard
+  (future: refuse "no text files staged" explicitly rather than passing
+  an empty file set downstream).
+  Lesson: fail-closed means refusing the THREAT, not the bystander. A
+  blob is not an attack — it is absence of signal. Skip absence, refuse
+  malice.
+
+## Ingest target writable scratch cwd (2026-11-04, Part 2 dry run)
+
+- **Trap: staged source is not a working directory.**
+  Wrong assumption: "the target runs with cwd=/workspace, where its files
+  are." Real apps (AnyCam: `./cert`) persist runtime state under cwd —
+  and /workspace is the read-only staged source. `OSError: [Errno 30]
+  Read-only file system: '/workspace/cert'` killed the Part 2 run at
+  target start, after the clone fix landed.
+  Evidence: target container exited 1 with the makedirs traceback; only
+  the SECOND failure in the chain (clone extraction, then this).
+  Fix: the ingest target wrapper copies the tree to /tmp/scratch (bounded
+  tmpfs: rw, nosuid, nodev, uid 10001) and execs the runtime argv there.
+  Relative reads find staged bytes, relative writes land on scratch, never
+  on staged bytes. Absolute writes still fail closed on the read-only
+  root. Plus openssl pinned into the target image (AnyCam's self-signed
+  cert needs it; the base had node+php only).
+  Lesson: fixtures never write, so the read-only-everywhere posture went
+  unchallenged until a real app arrived. Any "real project" target needs
+  a writable scratch cwd by default — pristine source and working state
+  are different directories, always.
+
+## Ingest service wrapper (2026-11-04, Part 2 dry run)
+
+- **Trap: the harness only probes 8080, but real repos serve nothing there.**
+  Wrong assumption: "detect_runtime finds the entrypoint, the target runs
+  it, readiness passes." AnyCam IS a server — but on 8443/MJPEG/portal
+  paths, with cert generation that needs openssl + LAN. The entrypoint
+  runs, serves everything except 8080, and the 10 s readiness probe fails
+  closed. Correct refusal, wrong outcome for the video: the harness can
+  only verify HTTP-on-8080 targets.
+  Evidence: Part 2 dry run attempt 4, "Ingested target did not become
+  ready", target logs showing AnyCam alive on its own ports.
+  Fix: with no explicit argv, the WS ingest path wraps the staged tree as
+  a plain stdlib HTTP service on 8080 — every decodable staged text file
+  served at /<path>, /files lists, /health answers, / serves index or
+  listing. Red/blue work against REAL staged bytes over the REAL probe
+  surface; the original entrypoint is never executed by the harness
+  (explicit argv still runs the real thing).
+  Lesson: the probe surface is the contract. A target that cannot speak
+  it must be ADAPTED to it (serve its bytes), not executed and hoped.
+  The day a second probe shape exists, the wrapper gains a sibling —
+  not a flag.
+- **Trap: ARG_MAX kills the inline wrapper.**
+  Wrong assumption: "the file map fits in argv." AnyCam's 41 text files
+  serialize to 447 KB — triple the 128 KB exec limit. OSError E2BIG, no
+  fallback. Fix: the map rides as tree/.wrapper_files.json (a staged file
+  like any other, hidden from its own listing); the argv is a fixed small
+  loader (~2 KB). Data travels as files, never as arguments.
+  Lesson: bytes that scale with the repo must never ride the command
+  line. If it grows with input size, it is a file.
+- **Trap: TMPDIR vs cwd breaks map-relative loading in tests.**
+  Wrong assumption: "cwd=tmp_path means relative opens see tmp_path."
+  On this box pytest's tmp_path honors $TMPDIR (~/.jcode/scratch, mounted
+  volume) while the loader child resolved relatives against the process
+  cwd — map file present on disk, "not found" at boot. Production is
+  unaffected (sandbox cwd IS the staged tree). The test passes the map by
+  absolute path; the loader keeps its relative candidates.
+  Lesson: a test that boots a subprocess must not assume tmp_path and
+  child-cwd agree — or it will fail only on machines with redirected
+  TMPDIR. Prefer absolute paths in test harnesses; keep relatives in
+  shipped code.
+
+## Staged service wrapper + Docker timeouts (2026-11-04, Part 2 dry run)
+
+- **Trap: non-HTTP repos cannot pass an HTTP readiness gate.**
+  Wrong assumption: "detect the entrypoint, run it, probe 8080." AnyCam
+  binds 8443/MJPEG/portal paths and needs openssl + LAN for its cert —
+  none of which is 8080. The 10 s readiness probe failed closed, correctly
+  but uselessly for the video: the harness could only verify HTTP-shaped
+  targets, so "any repo" really meant "any web app."
+  Evidence: Part 2 attempt 5, "Ingested target did not become ready",
+  AnyCam alive on its own ports in the sandbox (verified via exec).
+  Fix: with no explicit argv, the WS ingest path wraps the staged tree as
+  a plain stdlib HTTP service on 8080 — every decodable staged text file
+  served at /<path>, /files lists, /health answers, / serves the tree's
+  own index page when one exists (the app's front door, not a listing).
+  Red/blue work against REAL staged bytes over the REAL probe surface;
+  the original entrypoint is never executed by the harness (explicit argv
+  still runs the real thing — same three-way branch as auto-detect).
+  Any repo is now verifiable for static content exposure; behaviour-level
+  verification of non-HTTP runtimes stays an explicit-argv job.
+  Lesson: the probe surface is the contract. Adapt the target TO it
+  (serve its bytes) rather than executing arbitrary code and hoping.
+- **Trap: ARG_MAX kills inline file maps.**
+  Wrong assumption: "the file map fits in argv." 41 files → 447 KB of
+  JSON, triple the 128 KB exec limit (E2BIG). Fix: the map rides as
+  tree/.wrapper_files.json (a staged file, hidden from its own listing);
+  the argv is a fixed ~2 KB loader. Data that scales with input travels
+  as files, never as arguments.
+- **Trap: Docker daemon timeouts under image-build load.**
+  Wrong assumption: "30 s docker timeout is plenty." The baseline check
+  failed with UnixHTTPConnectionPool Read timed out — not a code bug, a
+  wedged daemon (build cache pressure + orphaned containers + a stray
+  system AnyCam squatting on 8080 during tests). Fix: default
+  docker_timeout_seconds 30 → 120 (env + example.env), pruned orphans,
+  and the wrapper unit test uses a random free port with a stale-server
+  guard instead of assuming 8080 is free.
+  Lesson: "project check failed before producing a result" with a
+  ConnectionError underneath is infrastructure, not logic — check daemon
+  health (`docker system df`, orphans, port squatters) before touching
+  workflow code.
+
+## OOM naming + container budget knobs (2026-11-04, Part 2 dry run)
+
+- **Trap: exit 137 masquerades as a generic check failure.**
+  Wrong assumption: "the wait call failed, so the check failed." A
+  SIGKILLed container (OOMKilled, exit 137) wedges `container.wait` with a
+  ConnectionError — and the old code reported only "Project check failed
+  before producing a result." 20 minutes of daemon debugging before the
+  events log showed `die ... exitCode=137`. The fix names the killer:
+  inspect OOMKilled/ExitCode on wait failure and say the memory limit +
+  the knob (PURPLEBOX_CONTAINER_MEM_LIMIT). A SIGKILL must never read as
+  a logic failure.
+  Evidence: warmed-up wrapper container, `die execDuration=20 exitCode=137`
+  in docker events; baseline direct-repro then passed at 1g after failing
+  at 256m.
+  Lesson: every fail-closed error should name the most likely resource
+  cause when one exists. "Check failed" with no resource hint is a trap
+  that burns the next debugger's night.
+- **Trap: raising a default breaks the dead-knob pins.**
+  Wrong assumption: "256m → 1g is a one-line change." Two TRUE-DEAD pins
+  asserted the mem/cpu env vars do NOT exist — they were written when the
+  knobs were dead, and the OOM fix made them live (PURPLEBOX_CONTAINER_
+  MEM_LIMIT/_CPU_NANO). Retargeted: dead list shrinks, new LIVE test pins
+  the env wiring. Same commit, same gate.
+  Lesson: "dead" is a temporary property. When a knob goes live, its pins
+  must flip from pinned-dead to pinned-live in the same commit — or the
+  gate enforces the old world.
+
+## wait() timeout means alive, not failed (2026-11-04, Part 2 dry run)
+
+- **Trap: the wrong ConnectionError.**
+  Wrong assumption: "the codebase has one ConnectionError." The
+  `except ConnectionError` in run_project_check caught the BUILTIN — but
+  the Docker SDK raises `requests.exceptions.ConnectionError` (urllib3
+  ReadTimeoutError underneath). The branch never fired; every still-
+  running baseline fell through to the generic SandboxError. The code was
+  right, the exception type was wrong — verified by printing the actual
+  type (`requests.exceptions.ConnectionError: ... Read timed out`).
+  Evidence: sleeper test (300 s sleep) raised SandboxError pre-fix,
+  timed_out post-fix; quick-exit still returns 0 fast.
+  Lesson: `except ConnectionError` in a file that talks HTTP is a trap —
+  requests, urllib3, and builtin all define one. Name the module
+  (`requests.exceptions.ConnectionError`) or catch the behavior (message
+  match), never the bare name.
+- **Trap: fixing it twice.**
+  Wrong assumption: the first edit (bare ConnectionError + message match)
+  was sufficient. It was not — the handler never ran at all. Always
+  re-run the LIVE repro after the fix, not just the unit pin: the pin
+  asserted source text ("STILL-"), which passed while the runtime path
+  still failed. The sleeper/baseline repro is the real gate.
+  Lesson: a source-text pin proves the comment exists. Only a live
+  behavioral repro proves the branch runs. Both are needed — neither
+  alone.
+
+## Wrapper smoke vs serve argv (2026-11-04, Part 2 dry run)
+
+- **Trap: the probe surface is not a regression command.**
+  Wrong assumption: "the target argv runs for both probing and baseline."
+  The wrapper SERVES forever by design — so the baseline regression check
+  (which waits for exit) wedged until the daemon timed out, then failed
+  the run as "Project check failed" / "regression failed". The 9th Part 2
+  attempt died on this: correct refusal, wrong command.
+  Evidence: attempt 9, "Original project failed its preserved regression
+  command"; the long-lived wrapper never exits by design.
+  Fix: the wrapper ships TWO argv — serve (long-lived 8080, the probe
+  surface, `runtime_command`) and `--smoke` (verifies the file map,
+  prints the servable count, exits 0 — the preserved `regression_command`).
+  The harness runs smoke for baseline + post-patch regression, serve for
+  probes. Explicit-argv runs keep their real regression command.
+  Lesson: a serving target and a checking target are different verbs.
+  Any wrapper that serves forever must also ship an exit-0 health verb —
+  or the baseline will (correctly) refuse a run that never ends.
+
+## Verifier probe surface: cyber, not just text (2026-11-04, Part 2 dry run)
+
+- **Trap: the wrapper serves text, but red needs sockets.**
+  Wrong assumption: "serving staged files on 8080 generalizes the probe
+  surface." It generalizes the CONTENT, not the CHANNEL. A purple-team
+  probe must open real connections: raw TCP/UDP to arbitrary ports, TLS
+  handshakes, DNS — cyber, not just HTTP-text. The verifier containers
+  already rode the scan network (no network_mode=none on the RUNTIME —
+  only the image-build STAGE is isolated), so the capability was there;
+  only the red prompt still said "http://target-service:8080" as if it
+  were the only surface.
+  Evidence: live proof — a raw-socket probe from a verifier container hit
+  a listening target on port 9999, resolved target-service via DNS, and
+  confirmed the TLS module (test_verifier_reaches_target_on_arbitrary_port).
+  Fix: all four red prompts now describe the full surface (8080 file
+  service by default + direct sockets/TLS/DNS to target-service on any
+  port). socket/ssl were never forbidden (only subprocess/pty/ctypes/
+  multiprocessing/shutil/resource/signal are) — no allowlist change
+  needed, just permission stated.
+  Lesson: an unadvertised capability is an unused capability. The network
+  plumbing existed; the prompt was the lock. When expanding a surface,
+  check what the sandbox ALREADY permits before building new pipes.

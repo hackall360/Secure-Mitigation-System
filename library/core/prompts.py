@@ -9,8 +9,12 @@ and no prose before or after it. The object has exactly these four nonempty stri
 fields, in this exact order:
 vulnerability_class, sink_location, analysis_summary, verification_script_python.
 The complete Python verification script runs in a separate resource-limited container.
-Use only Python's standard library and http://target-service:8080. Config files are
-served over HTTP, not mounted in the verifier. Set HTTP timeouts to at most 3 seconds.
+Use only Python's standard library. The staged tree is served over HTTP at
+http://target-service:8080 (/, /health, /files, /<path>) — but you may also
+probe the target's own behavior directly: raw TCP/UDP sockets to
+target-service on ANY port it serves, TLS handshakes, DNS through the
+sandbox resolver. Config files are served over HTTP, not mounted in the
+verifier. Set network timeouts to at most 3 seconds per attempt.
 Use a benign diagnostic marker (unexpected types, quotes, or spaces), never destructive
 commands, data extraction, external URLs, persistence, or attempts to leave the sandbox.
 First establish that a normal request works. The script must exit with exactly one of:
@@ -89,8 +93,12 @@ and no prose before or after it. The object has exactly these four nonempty stri
 fields, in this exact order:
 vulnerability_class, sink_location, analysis_summary, verification_script_python.
 The complete Python verification script runs in a separate resource-limited container.
-Use only Python's standard library and http://target-service:8080. Config files are
-served over HTTP, not mounted in the verifier. Set HTTP timeouts to at most 3 seconds.
+Use only Python's standard library. The staged tree is served over HTTP at
+http://target-service:8080 (/, /health, /files, /<path>) — but you may also
+probe the target's own behavior directly: raw TCP/UDP sockets to
+target-service on ANY port it serves, TLS handshakes, DNS through the
+sandbox resolver. Config files are served over HTTP, not mounted in the
+verifier. Set network timeouts to at most 3 seconds per attempt.
 Use a benign diagnostic marker (unexpected types, quotes, or spaces), never destructive
 commands, data extraction, external URLs, persistence, or attempts to leave the sandbox.
 First establish that a normal request works. The script must exit with exactly one of:
@@ -122,8 +130,12 @@ and no prose before or after it. The object has exactly these four nonempty stri
 fields, in this exact order:
 vulnerability_class, sink_location, analysis_summary, verification_script_python.
 The complete Python verification script runs in a separate resource-limited container.
-Use only Python's standard library and http://target-service:8080. Config files are
-served over HTTP, not mounted in the verifier. Set HTTP timeouts to at most 3 seconds.
+Use only Python's standard library. The staged tree is served over HTTP at
+http://target-service:8080 (/, /health, /files, /<path>) — but you may also
+probe the target's own behavior directly: raw TCP/UDP sockets to
+target-service on ANY port it serves, TLS handshakes, DNS through the
+sandbox resolver. Config files are served over HTTP, not mounted in the
+verifier. Set network timeouts to at most 3 seconds per attempt.
 First establish that a normal request works. The script must exit with exactly one of:
 0 only if the specific unsanitized boundary is observed; 1 only if that boundary is
 cleanly rejected or neutralized; 2 for network failures, unexpected responses, syntax
@@ -168,8 +180,12 @@ and re-establish any shared values (grants, tokens, session state) inside Link B
 instead of inheriting variables from Link A, because the runner replays each
 section standalone as evidence alongside the unified run. Demonstrate both
 chain links inside a single script in a separate resource-limited container.
-Use only Python's standard library and http://target-service:8080. Config files are
-served over HTTP, not mounted in the verifier. Set HTTP timeouts to at most 3 seconds.
+Use only Python's standard library. The staged tree is served over HTTP at
+http://target-service:8080 (/, /health, /files, /<path>) — but you may also
+probe the target's own behavior directly: raw TCP/UDP sockets to
+target-service on ANY port it serves, TLS handshakes, DNS through the
+sandbox resolver. Config files are served over HTTP, not mounted in the
+verifier. Set network timeouts to at most 3 seconds per attempt.
 First establish that a normal request works. Write resilient environment-aware probes:
 retry transient network failures with a bounded retry loop (at most 3 attempts with a
 short sleep; never an unbounded loop), wait for target readiness

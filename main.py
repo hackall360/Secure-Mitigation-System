@@ -305,11 +305,11 @@ async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, c
         if isinstance(content, bytes):
             try:
                 text = content.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise ValueError(
-                    "Invalid ingest settings (staged snapshot holds non-UTF-8 "
-                    f"bytes at {path!r}; pass an explicit runtime_command)."
-                ) from exc
+            except UnicodeDecodeError:
+                # Binary blob (fonts, images, compiled artifacts): not
+                # model-readable, not patchable — skip it, keep the tree.
+                # The runtime argv + text files carry the verification.
+                continue
         else:
             text = str(content)
         files[str(path)] = text
@@ -389,11 +389,19 @@ async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, c
             files[name] = overlay_text
     contract_text = contract if isinstance(contract, str) else ""
     repo_name = str(getattr(snapshot, "url", "") or "").rstrip("/").rsplit("/", 1)[-1]
+    # Preserved regression command: the wrapper's --smoke mode (verifies
+    # the staged file map, exits 0) — NOT the serve argv (long-lived by
+    # design). The serve argv stays the probe surface (runtime_command).
+    try:
+        _smoke = json.loads(snapshot.files.get("repo.smoke_command", b"[]").decode("utf-8"))
+        _regression_argv = list(_smoke) if _smoke else list(snapshot.runtime_command)
+    except (ValueError, AttributeError, TypeError):
+        _regression_argv = list(snapshot.runtime_command)
     project_input = ProjectWorkflowInput.model_validate(
         {
             "name": f"ingest:{repo_name or 'repo'}"[:256],
             "files": files,
-            "regression_command": list(snapshot.runtime_command),
+            "regression_command": _regression_argv,
             "contract": contract_text[:32_768],
         }
     )
@@ -497,7 +505,20 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
                     image,
                     self._network,
                     "target",
-                    list(pair_runtime),
+                    # Real apps persist runtime state (certs, caches) under
+                    # their cwd — but /workspace holds the staged source and
+                    # must stay pristine. Copy the tree to /tmp/scratch
+                    # (writable tmpfs) and run there: relative reads find
+                    # staged bytes, relative writes land on scratch, never
+                    # on staged bytes. Absolute-path writes still fail
+                    # closed on the read-only root (defense in depth).
+                    [
+                        "sh",
+                        "-c",
+                        'mkdir -p /tmp/scratch && cp -r /workspace/. /tmp/scratch/ && cd /tmp/scratch && exec "$@"',
+                        "sh",
+                    ]
+                    + list(pair_runtime),
                     aliases=["target-service"],
                     clear_entrypoint=True,
                     working_dir="/workspace",
@@ -959,6 +980,24 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             else:
                 await socket.close(code=1008)
                 return
+            # Per-run model timeout (?timeout_s=): 0 = no read timeout,
+            # otherwise 1..3600 s. Same validation as the env knob; a bad
+            # value refuses before any Docker or API work starts.
+            timeout_raw = socket.query_params.get("timeout_s")
+            if timeout_raw in (None, ""):
+                pass
+            else:
+                import dataclasses as _dc_timeout
+
+                try:
+                    timeout_val = float(timeout_raw)
+                except (TypeError, ValueError):
+                    await socket.close(code=1008)
+                    return
+                if not 0 <= timeout_val <= 3600:
+                    await socket.close(code=1008)
+                    return
+                scan_config = _dc_timeout.replace(scan_config, api_timeout_seconds=timeout_val)
         except (ProfileError, ConfigurationError):
             await socket.close(code=1008)
             return
@@ -1128,18 +1167,43 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             intake_files = frame_files
                         try:
                             staging = _SandboxMgr(scan_config)
-                            if intake_files is None:
-                                snapshot = _intake_to_snapshot(
-                                    intake_spec,
-                                    intake_command,
-                                    clone=True,
-                                    sandbox=staging,
+                            if intake_files is None and intake_command is None:
+                                # No explicit argv: run the staged tree as a
+                                # plain HTTP service on 8080 (the harness's
+                                # probe surface). The wrapper serves every
+                                # staged text file and reports the runtime
+                                # argv it replaced — red/blue work against
+                                # real staged bytes over HTTP. Undetectable
+                                # trees (no servable content) still fail
+                                # closed asking for an explicit argv.
+                                from modules.services.repo_intake import (
+                                    build_service_wrapper as _build_wrapper,
                                 )
-                            else:
+
+                                try:
+                                    snapshot = _intake_to_snapshot(
+                                        intake_spec,
+                                        ["true"],
+                                        clone=True,
+                                        sandbox=staging,
+                                    )
+                                    snapshot = _build_wrapper(snapshot)
+                                except (ValueError, TypeError) as exc:
+                                    raise ValueError(f"Invalid ingest settings ({exc}).") from exc
+                            elif intake_files is not None:
                                 snapshot = _intake_to_snapshot(
                                     intake_spec,
                                     intake_command,
                                     file_list=intake_files,
+                                    clone=True,
+                                    sandbox=staging,
+                                )
+                            else:
+                                # Explicit argv, no file_list: straight
+                                # through, no auto-detect.
+                                snapshot = _intake_to_snapshot(
+                                    intake_spec,
+                                    intake_command,
                                     clone=True,
                                     sandbox=staging,
                                 )
@@ -1661,11 +1725,19 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                             )
                         _repo_register(repo_scan_id, phase="red")
                         try:
+                            _repo_settings = settings
+                            if repo_arguments.timeout_s is not None:
+                                _repo_settings = settings.__class__(
+                                    **{
+                                        **settings.__dict__,
+                                        "api_timeout_seconds": repo_arguments.timeout_s,
+                                    }
+                                )
                             project = await _ingest_repo_to_project(
                                 repo_arguments.repo_url,
                                 repo_arguments.commit_hash,
                                 _emit_repo_sync,
-                                settings=settings,
+                                settings=_repo_settings,
                             )
                             # D3: the explicit tool call IS the remote-inference
                             # grant — the same grant a dashboard checkbox /
@@ -2342,6 +2414,7 @@ async def ai_demo_runner(
     cycles: int | None = None,
     red_agents: int = 5,
     blue_agents: int = 5,
+    timeout_s: float | None = None,
     intel_theme: str = "input validation SQL injection XSS deserialization",
     intel_offline: bool = False,
     build_brief: str = "",
@@ -2363,6 +2436,8 @@ async def ai_demo_runner(
     from modules.services.demo_gen import generate_demo_project, materialize_demo_project
 
     settings = _apply(_load(), profile)
+    if timeout_s is not None:
+        settings = settings.__class__(**{**settings.__dict__, "api_timeout_seconds": timeout_s})
     # F-212: --format json keeps stdout machine-pure (report only); all team
     # chatter goes to stderr. Table mode keeps the legacy stdout stream.
     json_mode = out_format == "json"
@@ -2522,7 +2597,10 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
         dest = staged.joinpath(*parts)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content if isinstance(content, bytes) else str(content).encode())
-    runtime = detect_runtime(sorted(tree))
+    runtime = detect_runtime(
+        sorted(tree),
+        (ingest_repo or "").rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+    )
     test_command = list(runtime)
     # Brief 2026-11-03-repo-intake-live D3: the explicit repo action IS the
     # remote-inference grant — the operator asked for this repo's bytes to be
@@ -2648,6 +2726,7 @@ async def cli_runner(
     cve_reach_only: bool = False,
     red_agents: int = 5,
     blue_agents: int = 5,
+    timeout_s: float | None = None,
     out_format: str = "table",
     show_usage: bool = False,
     sweep_passes: int | None = None,
@@ -2704,6 +2783,8 @@ async def cli_runner(
         emit_progress(team, message)
 
     settings = apply_profile(load_config(), profile)
+    if timeout_s is not None:
+        settings = settings.__class__(**{**settings.__dict__, "api_timeout_seconds": timeout_s})
     if research or os.getenv("PURPLEBOX_RESEARCH", "off").strip().lower() == "on":
         # Single allowlist source (F-222). The merged `research` flag already
         # honors flag > config > env and .env; only consult raw env when the
@@ -3422,6 +3503,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--blue-agents", type=int, default=5, help="Blue agent team size, 1 to 12 (default: 5)"
     )
     parser.add_argument(
+        "--timeout-s",
+        type=float,
+        default=None,
+        help="Per-call model timeout in seconds, 0 = no read timeout (default: server 300 s)",
+    )
+    parser.add_argument(
         "--context-budget", type=int, default=32768, help="Bounded per-call source context budget"
     )
     parser.add_argument(
@@ -3692,6 +3779,8 @@ def main() -> int:
         parser.error("--blue-agents must be between 1 and 12")
     if not 1024 <= args.context_budget <= 131072:
         parser.error("--context-budget must be between 1024 and 131072")
+    if args.timeout_s is not None and not 0 <= args.timeout_s <= 3600:
+        parser.error("--timeout-s must be 0 (no timeout) or between 1 and 3600")
     intensity_warnings: list[str] = []
     if args.red_agents + args.blue_agents >= 20:
         intensity_warnings.append(
@@ -3914,6 +4003,7 @@ def main() -> int:
                     show_intel=args.show_intel,
                     red_agents=args.red_agents,
                     blue_agents=args.blue_agents,
+                    timeout_s=args.timeout_s,
                 )
             )
         if args.ai_demo:
@@ -3925,6 +4015,7 @@ def main() -> int:
                     cycles=args.cycles,
                     red_agents=args.red_agents,
                     blue_agents=args.blue_agents,
+                    timeout_s=args.timeout_s,
                     intel_theme=args.intel_theme,
                     intel_offline=args.intel_offline,
                     build_brief=args.build_brief,

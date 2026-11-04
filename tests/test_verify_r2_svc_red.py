@@ -231,6 +231,26 @@ def test_detect_runtime_precedence_and_content_forms():
     # app.py is itself an entry candidate: resolves to app.py, not fallback.
     assert detect_runtime([("app.py", "x"), ("pyproject.toml", "")]) == ["python3", "app.py"]
     assert detect_runtime([("other.py", "x"), ("pyproject.toml", "")]) == ["python3", "main.py"]
+    # Bare-name fallback: repo-named top-level module (anycam.py in AnyCam),
+    # then a lone top-level .py. Old behavior (main.py guess) preserved
+    # when neither applies.
+    assert detect_runtime([("anycam.py", "x"), ("requirements.txt", "")], "AnyCam") == [
+        "python3",
+        "anycam.py",
+    ]
+    assert detect_runtime([("only.py", "x"), ("requirements.txt", "")], "Whatever") == [
+        "python3",
+        "only.py",
+    ]
+    # No repo name, no bare fallback: old main.py guess preserved.
+    assert detect_runtime([("only.py", "x"), ("requirements.txt", "")]) == [
+        "python3",
+        "main.py",
+    ]
+    assert detect_runtime([("a.py", "x"), ("b.py", "y"), ("requirements.txt", "")], "R") == [
+        "python3",
+        "main.py",
+    ]
     with pytest.raises(ValueError, match="could not detect"):
         detect_runtime(["notes.txt"])
     with pytest.raises(ValueError, match="could not detect"):

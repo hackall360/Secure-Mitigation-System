@@ -61,6 +61,10 @@ def test_staging_and_verifier_limits_and_cleanup():
     }
     create_stage, create_runtime = client.containers.create.call_args_list
     assert create_stage.kwargs["network_mode"] == "none"
+    assert create_runtime.kwargs.get("network") == "internal-net", (
+        "verifier runtime must join the scan network (not none) so probes "
+        "reach target-service on any port; the STAGE stays network=none"
+    )
     stage.start.assert_not_called()
     for call in (create_stage, create_runtime):
         assert call.kwargs["cap_drop"] == ["ALL"]

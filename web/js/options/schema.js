@@ -45,6 +45,7 @@
     blue_agents: { type: 'number', group: 'run', label: 'Blue agents', wire: 'body', def: 5, min: 1, max: 12, step: 1, unit: 'agents', help: 'Tunable in Ultra heavy.', lockedIf: (v) => v.scan_profile !== 'ultra_heavy', demo: { max: 5 } },
     context_budget: { type: 'number', group: 'run', label: 'Context budget', wire: 'body', def: 32768, min: 1024, max: 131072, step: 1024, unit: 'tokens', demo: { max: 32768 } },
     sweep_passes: { type: 'number', group: 'run', label: 'Sweep depth', wire: 'query', def: 1, min: 1, max: 4, step: 1, unit: 'passes', describe: (n) => SWEEP_LABELS[n] || '', omitIf: (n) => n === 1, demo: { max: 2 } },
+    timeout_s: { type: 'number', group: 'run', label: 'Model timeout', wire: 'query', def: 300, min: 0, max: 3600, step: 60, unit: 's', help: 'Per-call model wait. 0 = no read timeout (wait as long as needed).', omitIf: (n) => n === 300, demo: { hidden: true } },
     profile: { type: 'select', group: 'run', label: 'Model profile', wire: 'query', def: '', options: [], hideIfEmpty: true },
     research: { type: 'toggle', group: 'run', label: 'Ground with threat intel', help: 'OSV, CIRCL, GHSA, EPSS. Docker evidence still decides.', wire: 'query', def: false, encode: (on) => (on ? 'on' : undefined) },
     research_scanners: { type: 'toggle', group: 'run', label: 'Run local scanners', help: 'Trivy, Grype, OSV-Scanner, Dependency-Check, Dependency-Track.', wire: 'query', def: false, enabledIf: (v) => v.research, encode: (on, v) => (on && v.research ? 'trivy,grype,osv-scanner,dependency-check,dependency-track' : undefined), demo: { hidden: true } },
@@ -91,10 +92,11 @@
 
     // ---- Repo ingest
     ingest_repo: { type: 'text', label: 'Repository URL', wire: 'body', def: '', placeholder: 'https://github.com/org/repo', validate: (s) => (/^https:\/\/\S+$/.test(s) ? '' : 'Enter an https:// repository URL.') },
-    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, optional: true, placeholder: 'empty = HEAD · or 40-hex commit sha', help: 'Empty pins nothing: HEAD of the default branch is used as-is.', validate: (s) => (!s || /^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit, or leave empty for HEAD.') }
+    commit_hash: { type: 'text', label: 'Pinned commit', wire: 'body', def: '', max: 40, optional: true, placeholder: 'empty = HEAD · or 40-hex commit sha', help: 'Empty pins nothing: HEAD of the default branch is used as-is.', validate: (s) => (!s || /^[0-9a-fA-F]{40}$/.test(s) ? '' : 'Enter the full 40-hex pinned commit, or leave empty for HEAD.') },
+    runtime_command: { type: 'code', label: 'Start command (optional)', badge: 'JSON argv', wire: 'body', def: '', rows: 2, optional: true, placeholder: 'empty = run as a plain HTTP service on port 8080', parse: (s) => (!String(s).trim() ? undefined : argv(s)), validate: (s) => (argv(s) || String(s).trim() === '' ? '' : 'Start command must be a JSON array of strings, or empty for the default service wrapper.') }
   };
 
-  const RUN = ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget', 'sweep_passes', 'profile', 'research', 'research_scanners'];
+  const RUN = ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget', 'sweep_passes', 'timeout_s', 'profile', 'research', 'research_scanners'];
   const PROPOSED = Object.keys(FIELDS).filter((k) => FIELDS[k].proposed);
 
   // Source = what is being verified. `run` lists which run fields the endpoint body accepts.
@@ -104,7 +106,7 @@
     project: { label: 'Project', sub: 'Local repo', endpoint: () => '/ws/project', fields: ['path', 'image', 'command', 'test_command', 'contract', 'allow_remote_inference'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'] },
     snippet: { label: 'Snippet', sub: 'MCP · parsed map', endpoint: () => 'POST /mcp', fields: ['language', 'filename', 'source', 'contract'], body: true, run: [], noQuery: true },
     binary: { label: 'Binary', sub: 'ELF · parsed map', endpoint: () => '/ws/binary', fields: ['binary', 'filename', 'contract'], body: true, run: [] },
-    ingest: { label: 'Repo ingest', sub: 'HEAD or pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash', 'contract'], body: true, run: [] },
+    ingest: { label: 'Repo ingest', sub: 'HEAD or pinned commit', endpoint: () => '/ws/project', fields: ['ingest_repo', 'commit_hash', 'runtime_command', 'contract'], body: true, run: [] },
     system: { label: 'System snapshot', sub: 'Clone · proposed', endpoint: () => '/ws/system', fields: ['snapshot_ref', 'snapshot_kind', 'services', 'contract'], body: true, run: ['scan_profile', 'cycles', 'red_agents', 'blue_agents', 'context_budget'], proposed: true }
   };
   // Which lens (core/lenses.js) each source is drawn with. Fixtures use the fixture's own lens.

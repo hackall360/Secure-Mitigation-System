@@ -16,9 +16,13 @@ from modules.core import agents as agents_mod
 
 
 def test_retry_bounds_are_tight():
-    assert agents_mod.RETRY_MAX_ATTEMPTS <= 3, "attempts must stay bounded for UI survival"
+    # Ladder (2026-11-03 directive): fail → retry → 10 s → 20 s, same
+    # model/provider. Worst case ≈ 30 s + jitter per call — bounded, survivable.
+    assert agents_mod.RETRY_MAX_ATTEMPTS <= 4, "attempts must stay bounded for UI survival"
     assert agents_mod.RETRY_AFTER_MAX_SECONDS <= 10, "Retry-After honor must be capped"
     assert agents_mod.RETRY_BASE_SECONDS <= 1.0
+    total = sum(agents_mod.RETRY_LADDER_SECONDS) + agents_mod.RETRY_JITTER_SECONDS * 3
+    assert total <= 35, f"worst-case ladder wait must stay inside a scan step, got {total}"
 
 
 def test_sustained_429_names_rate_limit_and_stops():
@@ -26,8 +30,9 @@ def test_sustained_429_names_rate_limit_and_stops():
 
     Drives the REAL MetaMuseClient._request with a fake stream transport
     (SDK boundary, LAW 9C) and records sleeps instead of sleeping. Pins:
-    exactly RETRY_MAX_ATTEMPTS HTTP posts, total sleep bounded by the cap,
-    and the raised AgentError names rate limiting (UI-renderable).
+    exactly RETRY_MAX_ATTEMPTS HTTP posts, ladder sleeps (immediate, 10 s,
+    20 s), total sleep bounded by the ladder, and the raised AgentError
+    names rate limiting (UI-renderable).
     """
     import asyncio
 
@@ -76,9 +81,12 @@ def test_sustained_429_names_rate_limit_and_stops():
 
     asyncio.new_event_loop().run_until_complete(run())
     assert posts["n"] == am.RETRY_MAX_ATTEMPTS, f"bounded posts, got {posts['n']}"
-    assert len(sleeps) == 1 and sleeps[0] <= am.RETRY_AFTER_MAX_SECONDS + am.RETRY_JITTER_SECONDS, (
-        f"one capped sleep, got {sleeps}"
+    assert len(sleeps) == am.RETRY_MAX_ATTEMPTS - 1, f"ladder sleeps, got {sleeps}"
+    assert sleeps[0] <= am.RETRY_AFTER_MAX_SECONDS + am.RETRY_JITTER_SECONDS, (
+        f"first sleep capped, got {sleeps}"
     )
+    assert sleeps[1] == pytest.approx(10.0, abs=1.0), f"second sleep ~10s, got {sleeps}"
+    assert sleeps[2] == pytest.approx(20.0, abs=1.0), f"third sleep ~20s, got {sleeps}"
     assert all(s >= 0 for s in sleeps)
 
 

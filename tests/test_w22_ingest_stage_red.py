@@ -62,12 +62,14 @@ def test_intake_clone_true_uses_staging_container_not_host():
     assert calls, "clone=True must touch the staging container"
     _, kwargs = calls["created"]
     # F-202: the clone container needs bridge network for the fetch only; it
-    # stays isolated from the host (no mounts, non-root, capped, read-only).
+    # stays isolated from the host (no mounts, non-root, capped). Docker 29
+    # quirk: writable root (no read_only/tmpfs) so get_archive can see the
+    # staged tree; isolation via uid/caps/no-new-privileges.
     assert kwargs.get("network_mode") == "bridge", "clone fetch uses bridge only"
     assert not kwargs.get("volumes") and not kwargs.get("mounts"), "no host mounts"
-    assert kwargs.get("user") == "10001" and kwargs.get("read_only") is True
+    assert kwargs.get("user") == "10001" and kwargs.get("read_only") is not True
     assert kwargs.get("cap_drop") == ["ALL"] and kwargs.get("pids_limit")
-    assert "/work" in kwargs.get("tmpfs", {})
+    assert "tmpfs" not in kwargs
     assert "no host" in "no host mounts asserted by signature (no host_path kwarg)"
 
 
