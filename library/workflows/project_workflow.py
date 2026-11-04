@@ -1307,6 +1307,162 @@ def proposal_report_evidence(proposal: BlueProposal) -> dict[str, object]:
     }
 
 
+def _blue_escalation_enabled(settings: PurpleBoxConfig) -> bool:
+    """Escalation runs only when keyed: a configured model plus an API key (or local mode)."""
+    model = (getattr(settings, "blue_escalation_model", "") or "").strip()
+    if not model:
+        return False
+    if getattr(settings, "inference_mode", "hosted") != "local" and not settings.meta_api_key:
+        return False
+    return True
+
+
+async def _run_escalated_blue_attempt(
+    *,
+    agents: ProjectAgentRunner,
+    log,
+    documents,
+    safe_project: ProjectWorkflowInput,
+    cycle: int,
+    red_report,
+    protected_paths: Sequence[str],
+    bounds: ProjectWorkflowLimits,
+    payload_budget: int,
+    sandbox: ProjectSandbox,
+    evidence: CycleEvidence,
+    candidate_files: dict[str, str],
+    candidate_diff: str,
+) -> tuple[BlueProposal, ReplacementValidation, dict[str, str], SnapshotVerification]:
+    """One explicit stronger-model blue attempt: separate call, fresh validation, fresh probe.
+
+    Returns the escalated (proposal, validation, replacements, patched verification).
+    Never raises for an empty/disabled knob — the caller checks _blue_escalation_enabled
+    first; AgentError from propose_blue_escalated propagates so a misconfigured key
+    fails closed instead of silently falling back to Spark.
+    """
+    await log(
+        "blue",
+        "Blue escalation: first patch did not hold; requesting one stronger-model retry.",
+    )
+    # The first attempt's files are the escalation base: build escalated source
+    # documents from the FIRST-patched map (candidate_files), so the stronger
+    # model's original_sha256 binds to that content (no hash mismatch). Its
+    # output then merges: identical paths union line-wise (first content +
+    # escalated-only lines, order-preserved), new paths are added. Validation
+    # runs against candidate_files so the merged map stays guard-clean.
+    import hashlib as _hashlib
+
+    from modules.services.project_agents import BlueProposal as _BlueProposal
+    from modules.services.project_agents import SourceDocument as _SourceDocument
+
+    esc_documents = [
+        _SourceDocument(path=path, content=content)
+        for path, content in sorted(candidate_files.items())
+    ]
+    proposal = await agents.propose_blue_escalated(
+        esc_documents,
+        project_name=safe_project.name,
+        cycle=cycle,
+        red_report=red_report,
+        pre_verification=evidence.pre_verification.model_dump()
+        if evidence.pre_verification is not None
+        else {},
+        contract=safe_project.contract,
+        protected_paths=protected_paths,
+        max_changed_files=bounds.max_changed_files,
+        max_changed_bytes=bounds.max_changed_bytes,
+        max_payload_bytes=payload_budget,
+    )
+    validation, replacements = validate_replacements(
+        proposal,
+        candidate_files,
+        max_changed_files=bounds.max_changed_files,
+        max_changed_bytes=bounds.max_changed_bytes,
+        protected_paths=protected_paths,
+        cycle=cycle,
+    )
+    if not validation.accepted:
+        patched = SnapshotVerification(
+            probe=ExecutionEvidence(exit_code=2, output="Escalated proposal rejected by guards."),
+            regression=ExecutionEvidence(
+                exit_code=2, output="Escalated proposal rejected by guards."
+            ),
+            fresh_target=True,
+        )
+        return proposal, validation, {}, patched
+    # Merge: union the first attempt's lines with the escalated-only lines per
+    # path (order-preserved), then validate the merged map against the
+    # first-patched base so all guards (hash chain, budgets, sinks) re-apply.
+    from modules.services.project_agents import FileReplacement as _FileReplacement
+
+    merged: dict[str, str] = {}
+    for item in proposal.replacements:
+        base_content = candidate_files.get(item.path)
+        if base_content is None:
+            merged[item.path] = item.replacement_content
+            continue
+        base_lines = base_content.splitlines()
+        seen = set(base_lines)
+        extra = [line for line in item.replacement_content.splitlines() if line not in seen]
+        merged[item.path] = "\n".join([*base_lines, *extra]) + "\n"
+    merged_replacements = [
+        _FileReplacement(
+            path=path,
+            original_sha256=_hashlib.sha256(candidate_files[path].encode("utf-8")).hexdigest(),
+            replacement_content=content,
+            rationale="Merged first-attempt and escalated blue guards.",
+            change_kind="input_validation",
+        )
+        for path, content in merged.items()
+        if path in candidate_files
+    ] + [
+        _FileReplacement(
+            path=item.path,
+            original_sha256=item.original_sha256,
+            replacement_content=item.replacement_content,
+            rationale=item.rationale,
+            change_kind=item.change_kind,
+        )
+        for item in proposal.replacements
+        if item.path not in candidate_files
+    ]
+    merged_proposal = _BlueProposal(
+        strategy=proposal.strategy,
+        replacements=merged_replacements,
+        limitations=[*proposal.limitations, "Merged onto the first-attempt patch."],
+    )
+    merged_validation, merged_replacements_map = validate_replacements(
+        merged_proposal,
+        candidate_files,
+        max_changed_files=bounds.max_changed_files,
+        max_changed_bytes=bounds.max_changed_bytes,
+        protected_paths=protected_paths,
+        cycle=cycle,
+    )
+    if not merged_validation.accepted:
+        patched = SnapshotVerification(
+            probe=ExecutionEvidence(exit_code=2, output="Escalated merge rejected by guards."),
+            regression=ExecutionEvidence(exit_code=2, output="Escalated merge rejected by guards."),
+            fresh_target=True,
+        )
+        return proposal, merged_validation, {}, patched
+    escalated_files = dict(candidate_files)
+    escalated_files.update(merged_replacements_map)
+    escalated_diff = render_diff(candidate_files, escalated_files, bounds.max_diff_chars)
+    patched_raw = await blocking(
+        sandbox.verify_project_snapshot,
+        safe_project,
+        escalated_files,
+        red_report.verification_script_python,
+        tuple(safe_project.regression_command),
+        label=f"cycle-{cycle}-escalated-patched",
+    )
+    patched = normalize_snapshot_verification(patched_raw, bounds.max_evidence_chars)
+    _ = escalated_diff
+    _ = candidate_diff
+    return merged_proposal, merged_validation, merged_replacements_map, patched
+
+
 async def execute_project_workflow(
     project: ProjectSpec | ProjectWorkflowInput | Mapping[str, Any] | Any,
     emit: Emit,
@@ -1912,6 +2068,73 @@ async def execute_project_workflow(
                             and property_gate_passed(independent_check)
                             and mutation_gate_passed(independent_check)
                         )
+                    # Slice A one-shot escalation: Spark first; on rollback retry ONCE
+                    # with the keyed stronger model via the separate explicit call.
+                    # Disabled (empty knob) or keyless = stay rolled back, fail closed.
+                    escalated = False
+                    if not retained and _blue_escalation_enabled(settings):
+                        (
+                            esc_proposal,
+                            esc_validation,
+                            esc_replacements,
+                            esc_patched,
+                        ) = await _run_escalated_blue_attempt(
+                            agents=agents,
+                            log=log,
+                            documents=documents,
+                            safe_project=safe_project,
+                            cycle=cycle,
+                            red_report=red.report,
+                            protected_paths=protected_paths,
+                            bounds=bounds,
+                            payload_budget=payload_budget,
+                            sandbox=sandbox,
+                            evidence=evidence,
+                            candidate_files=candidate_files,
+                            candidate_diff=candidate_diff,
+                        )
+                        if esc_validation.accepted and esc_replacements:
+                            esc_files = dict(candidate_files)
+                            esc_files.update(esc_replacements)
+                            esc_retained = (
+                                esc_patched.fresh_target
+                                and esc_patched.probe.blocked
+                                and esc_patched.regression.exit_code == 0
+                                and not esc_patched.probe.inconclusive
+                                and differential_passed(
+                                    result.baseline_verification.regression.exit_code
+                                    if result.baseline_verification is not None
+                                    else None,
+                                    esc_patched.regression.exit_code,
+                                )
+                                and property_gate_passed(esc_patched)
+                                and mutation_gate_passed(esc_patched)
+                                and (
+                                    (
+                                        esc_patched.properties is not None
+                                        or esc_patched.mutations is not None
+                                    )
+                                    or repeat_stability_passed(esc_patched)
+                                )
+                            )
+                            if esc_retained:
+                                escalated = True
+                                proposal = esc_proposal
+                                validation = esc_validation
+                                replacements = esc_replacements
+                                candidate_files = esc_files
+                                candidate_diff = render_diff(
+                                    cumulative_files, candidate_files, bounds.max_diff_chars
+                                )
+                                patched = esc_patched
+                                evidence.patched_verification = patched
+                                evidence.differential_passed = differential_passed(
+                                    result.baseline_verification.regression.exit_code
+                                    if result.baseline_verification is not None
+                                    else None,
+                                    patched.regression.exit_code,
+                                )
+                                retained = True
                     disposition = "retained" if retained else "rolled_back"
                     try:
                         await log(
@@ -1932,6 +2155,7 @@ async def execute_project_workflow(
                         "proposal": proposal_report_evidence(proposal),
                         "replacement_validation": validation.model_dump(),
                         "patched_verification": patched.model_dump(),
+                        "blue_escalated": escalated,
                         "independent_red": (
                             {
                                 "report": independent_red.report.model_dump(),
@@ -1981,6 +2205,12 @@ async def execute_project_workflow(
                             "Candidate replacements were retained after the same probe was blocked on a fresh "
                             "target and the original regression command passed; no general security claim is made."
                         )
+                        if escalated:
+                            message = (
+                                "Candidate replacements were retained after a one-shot blue escalation "
+                                "(stronger model retry) blocked the same probe on a fresh target and the "
+                                "original regression command passed; no general security claim is made."
+                            )
                     else:
                         status = "rolled_back"
                         message = (

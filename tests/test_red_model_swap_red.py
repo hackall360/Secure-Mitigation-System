@@ -33,5 +33,6 @@ def test_contributor_id_validates_and_prices():
     assert estimate_cost("muse-spark-1.3-contributor", 1000, 0, 500) is not None
 
 
-def test_blue_default_unchanged():
-    assert PurpleBoxConfig().blue_team_model == "muse-wonder-1.0"
+def test_blue_default_is_spark_with_wonder_escalation_off():
+    assert PurpleBoxConfig().blue_team_model == "muse-spark-1.3-contributor"
+    assert PurpleBoxConfig().blue_escalation_model == ""

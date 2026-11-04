@@ -166,7 +166,8 @@ Everything below was built during the hackathon window on the 0.x line (current 
 Prior work is the fixture/loop skeleton; the hackathon turned it into a product.
 
 - **Red/blue/green agent loop on Meta models.** Red default `muse-spark-1.3-contributor`
-  (fast triage), blue default `muse-wonder-1.0` (deep patch); per-token pricing and the
+  (fast triage), blue default `muse-spark-1.3-contributor` (fast patch, with a keyed
+  Wonder escalation in reserve); per-token pricing and the
   economy/balanced/quality profiles live in `library/core/pricing.py` and
   `library/core/profiles.py`. Greenhouse (`library/services/demo_gen.py`) is a third
   Muse role: it authors novel vulnerable demo services from live threat-intel summaries,
@@ -201,14 +202,14 @@ git checkout develop
 
 ## Why Muse?
 
-We use hosted Meta models: **Muse Spark 1.3** for fast red checks and **Muse Wonder 1.0** for hard blue patches. Real per-1M prices from `library/core/pricing.py`:
+We use hosted Meta models: **Muse Spark 1.3** for fast red checks and default blue patches, with **Muse Wonder 1.0** in reserve as a keyed one-shot escalation after a rollback. Real per-1M prices from `library/core/pricing.py`:
 
 ```text
 muse-spark-1.3-contributor: input 0.10 / output 0.20 USD per 1M tokens
 muse-wonder-1.0:            input 4.00 / output 20.00 USD per 1M tokens
 ```
 
-Red runs the cheap tier, blue runs the deep tier — the split is ~40x on input.
+Both roles run the cheap tier by default — the Wonder split is ~40x on input, so Wonder stays a keyed escalation, not the default.
 Our tests ran on the hackathon's small credit pool. Docker scores each verdict, so bigger models would add cost, not quality.
 
 The loop needs a model that will attack its own code inside a locked sandbox and then patch it. Muse Spark and Wonder both do that here. Some hosted models are built to refuse the attack step even for defense — the contest brief names Opus 5.5, Fable 5.1, Luna 6, and Sol 6.1 as models that decline offensive probing — so tools built on refusers stay point-and-fix: they flag a line and stop.
