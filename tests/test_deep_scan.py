@@ -799,11 +799,12 @@ def test_arena_name_lists_match_backend_wrap_order():
     agents = json.loads(re.sub(r"(\w+):", r'"\1":', raw[raw.index("[") :].replace("'", '"')))
     red = [a["id"] for a in agents if a["team"] == "red"]
     blue = [a["id"] for a in agents if a["team"] == "blue"]
-    # v3 seats each family with its leader first, then the five backend
-    # workers in order: backend red_persona/blue_persona cycle 5 names, so
-    # workers == backend 1..5 exactly (leader excluded).
+    # v3 seats each family with its leader first, then the backend
+    # workers in order: red has 7 (Bloodsniffer + Blacklight joined in the
+    # overnight coverage expansion), blue has 5. Workers == backend 1..N
+    # exactly (leader excluded).
     assert red[0] == "Warlord" and blue[0] == "Warden", (red[0], blue[0])
-    assert red[1:] == [red_persona(i).name for i in range(1, 6)], (red, "red")
+    assert red[1:] == [red_persona(i).name for i in range(1, 8)], (red, "red")
     assert blue[1:] == [blue_persona(i).name for i in range(1, 6)], (blue, "blue")
     leaders = {a["id"] for a in agents if a.get("leader") and a["team"] in ("red", "blue")}
     assert leaders == {"Warlord", "Warden"}, leaders
