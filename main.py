@@ -497,7 +497,20 @@ def _ingest_sandbox_factory(snapshot, contract_text="", merged_files=None):
                     image,
                     self._network,
                     "target",
-                    list(pair_runtime),
+                    # Real apps persist runtime state (certs, caches) under
+                    # their cwd — but /workspace holds the staged source and
+                    # must stay pristine. Copy the tree to /tmp/scratch
+                    # (writable tmpfs) and run there: relative reads find
+                    # staged bytes, relative writes land on scratch, never
+                    # on staged bytes. Absolute-path writes still fail
+                    # closed on the read-only root (defense in depth).
+                    [
+                        "sh",
+                        "-c",
+                        'mkdir -p /tmp/scratch && cp -r /workspace/. /tmp/scratch/ && cd /tmp/scratch && exec "$@"',
+                        "sh",
+                    ]
+                    + list(pair_runtime),
                     aliases=["target-service"],
                     clear_entrypoint=True,
                     working_dir="/workspace",

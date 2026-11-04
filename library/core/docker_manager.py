@@ -475,7 +475,15 @@ class DockerSandboxManager:
             "networking_config": endpoints,
             "read_only": True,
             "healthcheck": {"test": ["NONE"]},
-            "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001"},
+            # Writable scratch: real apps persist certs, caches, uploads
+            # under /tmp and /var/tmp at runtime (AnyCam: ./cert resolves
+            # under cwd — see _ensure_target which runs with cwd=/tmp/scratch).
+            # The image layers stay read-only; only these tmpfs mounts are
+            # mutable. noexec + nosuid + nodev + non-root hold the posture.
+            "tmpfs": {
+                "/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001",
+                "/var/tmp": "rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001",
+            },
             **self._options(role),
         }
         if clear_entrypoint:

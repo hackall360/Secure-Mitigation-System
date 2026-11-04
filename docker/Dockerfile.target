@@ -5,7 +5,7 @@ FROM python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39c
 # `docker inspect python:3.12-alpine3.22` (RepoDigests) on 2026-10-29.
 # apk versions locked to the offline-installed set of the current
 # purplebox-target-base image (`apk info -v`: nodejs-22.23.4-r0, php84-8.4.27-r0).
-RUN apk add --no-cache nodejs=22.23.4-r0 php84=8.4.27-r0 \
+RUN apk add --no-cache nodejs=22.23.4-r0 php84=8.4.27-r0 openssl=3.5.9-r0 \
     && ln -s /usr/bin/php84 /usr/local/bin/php \
     && addgroup -g 10001 purplebox \
     && adduser -D -u 10001 -G purplebox purplebox \

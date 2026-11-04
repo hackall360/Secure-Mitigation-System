@@ -465,3 +465,24 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: fail-closed means refusing the THREAT, not the bystander. A
   blob is not an attack — it is absence of signal. Skip absence, refuse
   malice.
+
+## Ingest target writable scratch cwd (2026-11-04, Part 2 dry run)
+
+- **Trap: staged source is not a working directory.**
+  Wrong assumption: "the target runs with cwd=/workspace, where its files
+  are." Real apps (AnyCam: `./cert`) persist runtime state under cwd —
+  and /workspace is the read-only staged source. `OSError: [Errno 30]
+  Read-only file system: '/workspace/cert'` killed the Part 2 run at
+  target start, after the clone fix landed.
+  Evidence: target container exited 1 with the makedirs traceback; only
+  the SECOND failure in the chain (clone extraction, then this).
+  Fix: the ingest target wrapper copies the tree to /tmp/scratch (bounded
+  tmpfs: rw, nosuid, nodev, uid 10001) and execs the runtime argv there.
+  Relative reads find staged bytes, relative writes land on scratch, never
+  on staged bytes. Absolute writes still fail closed on the read-only
+  root. Plus openssl pinned into the target image (AnyCam's self-signed
+  cert needs it; the base had node+php only).
+  Lesson: fixtures never write, so the read-only-everywhere posture went
+  unchallenged until a real app arrived. Any "real project" target needs
+  a writable scratch cwd by default — pristine source and working state
+  are different directories, always.
