@@ -501,10 +501,10 @@ def test_persona_prompts_carry_voice_and_safety_override():
     )
     from modules.services.project_agents import blue_persona_prompt, red_persona_prompt
 
-    assert len(RED_PERSONAS) == 5 and len(BLUE_PERSONAS) == 5
+    assert len(RED_PERSONAS) == 7 and len(BLUE_PERSONAS) == 5
     assert "Warlord" in RED_LEADER_PERSONA.name and "Warden" in BLUE_LEADER_PERSONA.name
     assert "Greenhouse" in GREEN_PERSONA.name
-    for i in range(1, 6):
+    for i in range(1, 8):
         assert "probe contract" in red_persona_prompt(i)
         assert "sanitation-only" in blue_persona_prompt(i)
 
@@ -706,7 +706,14 @@ def test_persona_roster_wraps_and_safety_overrides_voice():
         "Bloodhound",
         "Sparkler",
         "Cartographer",
-    ] * 2 + ["Breakwater", "Lockpick"]
+        "Bloodsniffer",
+        "Blacklight",
+        "Breakwater",
+        "Lockpick",
+        "Bloodhound",
+        "Sparkler",
+        "Cartographer",
+    ]
     assert blue_persona(7).name == "Stitch"  # (7-1) % 5 == 1
     # every worker prompt carries its own name + beat + safety override
     for i in range(1, 6):

@@ -78,10 +78,10 @@ def test_f6_v3_version_mapped_to_release():
 
 
 def test_f7_tui_sweep_depth_matches_cli_max():
-    """F7: TUI sweep clamp must allow 4 passes like the CLI documents."""
+    """F7: TUI sweep clamp must allow 5 passes like the CLI documents."""
     import tui
 
-    assert tui._state_sweep_passes(tui.TuiState(mode="sweep", sweep_depth=4)) == 4
+    assert tui._state_sweep_passes(tui.TuiState(mode="sweep", sweep_depth=5)) == 5
     import subprocess
     import sys
 
@@ -92,7 +92,7 @@ def test_f7_tui_sweep_depth_matches_cli_max():
         cwd=ROOT,
         timeout=60,
     ).stdout
-    assert "1-4" in plain_help or "max 4" in plain_help
+    assert "1-5" in plain_help or "max 5" in plain_help
 
 
 def test_f8_binary_contract_not_self_contradictory():

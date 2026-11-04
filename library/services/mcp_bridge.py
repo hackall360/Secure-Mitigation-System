@@ -259,14 +259,14 @@ def sms_scan_source_tool_definition() -> dict[str, Any]:
         "name": "sms_scan_source",
         "title": "Scan a bundled source fixture",
         "description": (
-            "Run the evidence-gated red/blue cycle (or 3-pass sweep) over a "
+            "Run the evidence-gated red/blue cycle (or 5-pass sweep) over a "
             "bundled fixture key. Docker evidence alone decides the verdict."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "target": {"type": "string", "maxLength": 64},
-                "max_passes": {"type": "integer", "minimum": 1, "maximum": 3},
+                "max_passes": {"type": "integer", "minimum": 1, "maximum": 5},
             },
             "required": ["target"],
             "additionalProperties": False,

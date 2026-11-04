@@ -975,7 +975,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
             sweep_raw = socket.query_params.get("sweep_passes")
             if sweep_raw in (None, "", "1"):
                 sweep_depth: int | None = None
-            elif sweep_raw in ("2", "3", "4"):
+            elif sweep_raw in ("2", "3", "4", "5"):
                 sweep_depth = int(sweep_raw)
             else:
                 await socket.close(code=1008)
@@ -2874,7 +2874,7 @@ async def cli_runner(
                     target_key,
                     emit,
                     config=settings,
-                    max_passes=max(1, min(4, sweep_passes)),
+                    max_passes=max(1, min(5, sweep_passes)),
                 )
                 user_report = redact_sweep_result_for_user(result)
             else:
@@ -3471,7 +3471,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--sweep-passes",
         type=int,
         default=None,
-        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor, 4=+chain; default 1, single finding loop)",
+        help="Multi-pass sweep depth for --scan: run the first N red/blue passes (1=standard, 2=+deep, 3=+threat-actor, 4=+chain, 5=+coverage; default 1, single finding loop)",
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
@@ -3768,8 +3768,8 @@ def main() -> int:
         parser.error("--show-intel requires --scan")
     if not 1 <= args.cve_limit <= 1000:
         parser.error("--cve-limit must be between 1 and 1000")
-    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 4:
-        parser.error("--sweep-passes must be between 1 and 4")
+    if args.sweep_passes is not None and not 1 <= args.sweep_passes <= 5:
+        parser.error("--sweep-passes must be between 1 and 5")
     # Intensity validation: hard errors for invalid bounds, warnings for heavy-but-valid.
     if args.cycles is not None and not 1 <= args.cycles <= 20:
         parser.error("--cycles must be between 1 and 20")

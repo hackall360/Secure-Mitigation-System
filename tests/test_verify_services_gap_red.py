@@ -173,6 +173,12 @@ def test_detect_runtime_all_branches():
     assert detect_runtime(["composer.json"]) == ["php", "index.php"]
     assert detect_runtime(["Makefile"]) == ["make"]
     assert detect_runtime({"app.py": "", "package.json": ""}) == ["npm", "start"]
+    # Bare-name fallback: staged tree paths (tree/anycam.py) with repo name.
+    assert detect_runtime(["tree/anycam.py", "tree/README.md"], "AnyCam") == [
+        "python3",
+        "tree/anycam.py",
+    ]
+    assert detect_runtime(["tree/main.py"], "") == ["python3", "tree/main.py"]
     with pytest.raises(ValueError, match="could not detect"):
         detect_runtime([])
     with pytest.raises(ValueError, match="could not detect"):

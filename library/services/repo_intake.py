@@ -207,6 +207,10 @@ if "--smoke" in sys.argv[1:]:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "sms-ingest/1.0"
+    # Oversize probe contract (overnight coverage): red evidences
+    # bounded-vs-unbounded by requesting absurd byte ranges. Fail closed
+    # with 413 instead of serving unbounded bytes with 200.
+    MAX_BODY_BYTES = 8 * 1024 * 1024
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -231,6 +235,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(sorted(FILES)))
         name = path.lstrip("/")
         if name in FILES:
+            body = FILES[name]
+            # Fail closed on absurd reads: oversize Range requests and
+            # bodies past the cap get 413, so red's coverage probe can
+            # evidence bounded-vs-unbounded instead of inferring it.
+            range_header = self.headers.get("Range", "")
+            if range_header.startswith("bytes="):
+                try:
+                    _, span = range_header.split("=", 1)
+                    _, end = span.split("-", 1)
+                    if end and int(end) > self.MAX_BODY_BYTES:
+                        return self._send(
+                            413, json.dumps({"status": "too_large"})
+                        )
+                except (ValueError, IndexError):
+                    return self._send(416, json.dumps({"status": "bad_range"}))
+            data = body if isinstance(body, bytes) else body.encode("utf-8")
+            if len(data) > self.MAX_BODY_BYTES:
+                return self._send(413, json.dumps({"status": "too_large"}))
             ctype = "text/html; charset=utf-8" if name.endswith((".html", ".htm")) else "text/plain; charset=utf-8"
             return self._send(200, FILES[name], ctype)
         return self._send(404, json.dumps({"status": "not_found"}))
@@ -373,9 +395,17 @@ def _package_json_command(content: str | None) -> list[str]:
 
 
 def _python_command(names: set[str], repo_name: str = "") -> list[str]:
+    # ``names`` may be full staged paths (tree/anycam.py) or bare file
+    # names: compare basenames for entry candidates, full relpaths for
+    # src/ layouts.
+    base_of = {name: name.rsplit("/", 1)[-1] for name in names}
+    base_set = set(base_of.values())
     for candidate in _PYTHON_ENTRY_CANDIDATES:
         if candidate in names:
             return ["python3", candidate]
+        if "/" not in candidate and candidate in base_set:
+            hit = sorted(n for n, b in base_of.items() if b == candidate)[0]
+            return ["python3", hit]
     # Bare-name fallback: only when the repo name is known. <repo>.py at
     # top level (anycam.py in AnyCam) wins; a lone top-level *.py needs the
     # repo name too (it is the "<repo>.py, unknown repo dir" case). Without
@@ -385,6 +415,9 @@ def _python_command(names: set[str], repo_name: str = "") -> list[str]:
         bare = f"{repo_name}.py"
         if bare in names:
             return ["python3", bare]
+        if bare in base_set:
+            hit = sorted(n for n, b in base_of.items() if b == bare)[0]
+            return ["python3", hit]
         tops = sorted(
             n for n in names if n.endswith(".py") and "/" not in n and not n.startswith(".")
         )
@@ -446,6 +479,30 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         candidates["python"] = _python_command(names, _repo_slug(repo_name))
     if "composer.json" in basenames:
         candidates["composer.json"] = _php_command(names)
+    if "python" not in candidates:
+        # Bare-name fallback: a repo whose tree carries its own entry file
+        # (anycam.py in AnyCam) must resolve even with no manifest at all.
+        # Check tree presence directly — never the main.py guess.
+        _bare_hit: list[str] | None = None
+        for _cand in _PYTHON_ENTRY_CANDIDATES:
+            if _cand in names:
+                _bare_hit = ["python3", _cand]
+                break
+            if "/" not in _cand and _cand in basenames:
+                _bare_hit = [
+                    "python3",
+                    sorted(n for n in names if _basename(n) == _cand)[0],
+                ]
+                break
+        if _bare_hit is None and repo_name:
+            _slug_bare = f"{_repo_slug(repo_name)}.py"
+            if _slug_bare in basenames:
+                _bare_hit = [
+                    "python3",
+                    sorted(n for n in names if _basename(n) == _slug_bare)[0],
+                ]
+        if _bare_hit is not None:
+            candidates["python"] = _bare_hit
     makefile_hit = basenames & _MAKEFILE_NAMES
     if makefile_hit:
         candidates["makefile"] = _makefile_command(_content_for(*sorted(makefile_hit)))
