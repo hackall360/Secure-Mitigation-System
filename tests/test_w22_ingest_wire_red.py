@@ -233,13 +233,36 @@ def test_detect_runtime_used_when_frame_omits_command(monkeypatch):
 
 
 def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
-    """Live intake: a README-only tree cannot yield a runtime, so the frame
-    fails closed at runtime detection (actionable invalid, workflow never
-    runs, no hang). Docker is mocked at the intake boundary."""
+    """Live intake: a README-only tree resolves to the generic probe
+    (OMNI-INGEST Wave 1), so the frame proceeds to the workflow with a
+    terminating probe argv — never hangs, never refuses. Docker is mocked
+    at the intake boundary (canned snapshot, like the first-frame test)."""
+    from types import MappingProxyType, SimpleNamespace
 
-    async def workflow(*args, **kwargs):
-        pytest.fail("Undetectable ingest reached the workflow")
+    def fake_intake(spec, runtime_command=None, **kwargs):
+        assert kwargs.get("clone") is True
+        return SimpleNamespace(
+            files=MappingProxyType(
+                {
+                    "repo.url": GOOD_URL.encode(),
+                    "repo.commit_hash": GOOD_HASH.encode(),
+                    "repo.runtime_command": b'["sh", "-c", "probe"]',
+                    "repo.smoke_command": b'["sh", "-c", "probe"]',
+                }
+            ),
+            url=spec.url,
+            commit_hash=spec.commit_hash,
+            runtime_command=("sh", "-c", "probe"),
+            digest="fake",
+        )
 
+    async def workflow(project, emit, **kwargs):
+        # OMNI-INGEST Wave 1: the generic probe IS a valid runtime — the
+        # workflow runs against staged bytes with a terminating argv.
+        assert list(project.regression_command)[0] == "sh"
+        return fake_result()
+
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
     monkeypatch.setattr(main, "execute_project_workflow", workflow)
     with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         with connect(client) as socket:
@@ -251,11 +274,14 @@ def test_manifest_less_repo_without_runtime_is_invalid_not_hang(monkeypatch):
                 }
             )
             reply = drain_snapshot(socket)
-            assert reply["type"] == "invalid"
-            assert (
-                "runtime" in reply.get("msg", "").lower()
-                or "detect" in reply.get("msg", "").lower()
-            ), f"refusal must name runtime detection: {reply}"
+            seen = [reply.get("type")]
+            while reply.get("type") not in ("result", "done", "verdict", "complete"):
+                try:
+                    reply = socket.receive_json()
+                except Exception:
+                    break
+                seen.append(reply.get("type"))
+            assert "invalid" not in seen, f"generic probe must not refuse: {seen}"
 
 
 def test_ingest_invalid_frame_closes_1008(monkeypatch):

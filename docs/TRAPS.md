@@ -740,3 +740,55 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
 - **Trap: push-after-merge races need rebase.** Two merges in one night
   collided on the remote twice; `git pull --rebase origin develop`
   before push is the routine, not the exception.
+
+## MISSION OMNI-INGEST Wave 1 traps (2026-11-04, branch feature/omni-ingest-wave1)
+- **Trap: retiring a refusal breaks every pin that asserted it.**
+  Removing UNSUPPORTED touched `test_intake_runtimes_red.py` (rewritten as
+  build-argv pins), `test_verify_services_gap_red.py` + `test_verify_r2_svc_red.py`
+  (notes.txt now resolves to the `sh` generic probe; only `[]` still raises).
+  Lesson: grep for the error STRING, not just the code path — pins in
+  unrelated files assert refusal text.
+- **Trap: the eco block can clobber the parsed makefile command.**
+  Adding `candidates["c"] = ["make"]` unconditionally overwrote the parsed
+  `["make", "zzz"]`. Fix: only fill `c` when no `makefile` candidate exists.
+  The parsed target is more specific than the bare fallback — specificity
+  must win at every layer, not just in `_DETECT_PRECEDENCE`.
+- **Trap: pin the wrong layer, fail for the wrong reason.**
+  First RED draft pinned `ecosystem == "c"` for a CMakeLists tree — the
+  observer correctly returns `c-cmake`. The pin was wrong, the code right.
+  Lesson: when a RED pin fails, check whether the pin or the code is wrong
+  before "fixing" the implementation.
+
+## MISSION OMNI-INGEST cop-out kill traps (Wave 1 follow-through)
+- **Trap: the same refusal lives in N surfaces, not one.**
+  Removing UNSUPPORTED from detect_runtime left the identical shape in
+  `submit_code_snippet` (3-language gate), the CLI `--snippet-language`
+  choices, the TUI inference tuple + choices, the filename/suffix maps,
+  and the mcp_snippet baseline. Lesson: grep the CONCEPT ("which
+  languages may enter"), not the function — refusals replicate per
+  surface by design.
+- **Trap: the baseline script needs a branch for the new key.**
+  `normal_behavior_script("mcp_snippet")` falls to `else: raise
+  Unknown fixture` — compiled snippets reach the workflow but die at the
+  trusted baseline unless a branch exists. Every new execution path
+  needs its normal-behavior contract, not just its command.
+- **Trap: single-source pins guard map drift — extend them, don't bypass.**
+  `SNIPPET_FILENAME_BY_LANGUAGE` is asserted value-for-value in two
+  files. Adding c/rust/go broke both pins exactly as designed. The fix
+  is extending the pins, never weakening them to subset checks.
+
+## MISSION OMNI-INGEST Wave 2 traps (branch feature/omni-ingest-wave2)
+- **Trap: thick image needs live version verification, not memory.**
+  Pinned apk versions (gcc-14.2.0-r6 etc.) were verified with a live
+  `apk search` against the exact base BEFORE writing the Dockerfile —
+  training-data versions would fail the build or install the wrong ABI.
+- **Trap: volume-mount perms mask toolchain proof.**
+  The first C proof failed with "Permission denied" — not a missing gcc
+  but a read-only bind mount as uid 10001. Output to /tmp (writable
+  scratch, same rule as the harness) proved the toolchain in one retry.
+  Lesson: distinguish mount failures from toolchain failures before
+  concluding the image is broken.
+- **Trap: `command -v X || exit 2` is the honest absent-toolchain path.**
+  Compiled snippet argv probe for the toolchain first; absent => exit 2
+  (inconclusive, fail-closed verdict), never a language refusal. The
+  refusal shape must never re-enter through a missing binary.

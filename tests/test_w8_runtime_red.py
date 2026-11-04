@@ -66,9 +66,11 @@ def test_detect_makefile_names_only_defaults_to_make():
     assert detect(["Makefile"]) == ["make"]
 
 
-def test_unknown_repo_raises_actionable_valueerror():
-    with pytest.raises(ValueError, match="runtime_command"):
-        detect(["README.md", "docs/guide.txt"])
+def test_unknown_repo_resolves_to_generic_probe():
+    # OMNI-INGEST Wave 1: unknown trees resolve to the thick-image generic
+    # probe (LAW 3) instead of raising. Empty trees still fail closed.
+    got = detect(["README.md", "docs/guide.txt"])
+    assert got[0] == "sh" and any("AST-OK" in part for part in got)
 
 
 def test_empty_repo_raises_valueerror():
@@ -99,10 +101,12 @@ def test_intake_without_runtime_or_file_list_fails_closed():
         intake_repo_to_snapshot(spec, sandbox=MagicMock())
 
 
-def test_intake_with_undetectable_files_fails_closed():
+def test_intake_with_undetectable_files_resolves_generic_probe():
+    # OMNI-INGEST Wave 1: manifest-less trees resolve to the generic probe
+    # (Wave 2 provisions the thick image) instead of failing closed.
     spec = RepoIntakeSpec(url=GOOD_URL, commit_hash=GOOD_HASH)
-    with pytest.raises(ValueError, match="runtime_command"):
-        intake_repo_to_snapshot(spec, file_list=["README.md"], sandbox=MagicMock())
+    snap = intake_repo_to_snapshot(spec, file_list=["README.md"], sandbox=MagicMock())
+    assert list(snap.runtime_command)[0] == "sh"
 
 
 def test_detect_accepts_snapshot_with_files_mapping():
@@ -127,5 +131,6 @@ def test_detect_performs_no_execution_or_network(monkeypatch):
     assert detect(["requirements.txt"]) == ["python3", "main.py"]
     assert detect([evil_files[1]]) == ["make", "run"]
     assert detect([evil_files[2]]) == ["npm", "start"]
-    with pytest.raises(ValueError):
-        detect([evil_files[0]])
+    # OMNI-INGEST Wave 1: an adversarial filename matches no marker, so it
+    # resolves to the generic probe (never executes — pure basename match).
+    assert detect([evil_files[0]])[0] == "sh"

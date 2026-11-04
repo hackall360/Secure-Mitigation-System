@@ -73,6 +73,14 @@ elif target == 'binary_argv_echo':
     params = urllib.parse.urlencode({'argv': 'hello', 'stdin': ''})
     response = json.loads(get('/?' + params))
     assert response.get('status') in ('ok', 'exec_error', 'timeout'), response
+elif target == 'mcp_snippet':
+    # MISSION OMNI-INGEST: snippet normal-behavior = the program compiled
+    # (where applicable) and produced ANY output without crashing the harness.
+    # The harness reports ok/timeout/exec_error envelopes; only a harness
+    # transport failure (non-JSON, unreachable) fails the baseline.
+    response = json.loads(get('/'))
+    assert isinstance(response, dict), response
+    assert response.get('status') in ('ok', 'exec_error', 'timeout'), response
 else:
     raise AssertionError('Unknown fixture (FAIL: no normal-behavior contract for this target; evidence: target matched none of node_query_sink/node_chain_link/php_command_sink/mysql_insecure_conf)')
 print('Trusted normal-input checks passed for ' + target + ' (PASS: every expected lookup, 404-route, and config value matched; boundary verifier not involved)')

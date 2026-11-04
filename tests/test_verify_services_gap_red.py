@@ -181,8 +181,9 @@ def test_detect_runtime_all_branches():
     assert detect_runtime(["tree/main.py"], "") == ["python3", "tree/main.py"]
     with pytest.raises(ValueError, match="could not detect"):
         detect_runtime([])
-    with pytest.raises(ValueError, match="could not detect"):
-        detect_runtime(["notes.txt"])
+    # OMNI-INGEST Wave 1: unknown trees resolve to the thick-image generic
+    # probe instead of refusing.
+    assert detect_runtime(["notes.txt"])[0] == "sh"
 
 
 def test_intake_auto_detect_and_argv_guards():

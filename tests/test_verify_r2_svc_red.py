@@ -251,8 +251,9 @@ def test_detect_runtime_precedence_and_content_forms():
         "python3",
         "main.py",
     ]
-    with pytest.raises(ValueError, match="could not detect"):
-        detect_runtime(["notes.txt"])
+    # OMNI-INGEST Wave 1: unknown trees resolve to the thick-image generic
+    # probe instead of refusing.
+    assert detect_runtime(["notes.txt"])[0] == "sh"
     with pytest.raises(ValueError, match="could not detect"):
         detect_runtime([])
 
@@ -319,16 +320,31 @@ def test_mcp_language_filename_and_suffix_maps():
         "javascript": "app.js",
         "python": "app.py",
         "php": "index.php",
+        # OMNI-INGEST: compiled snippet filenames.
+        "c": "snippet.c",
+        "rust": "snippet.rs",
+        "go": "snippet.go",
     }
     assert SNIPPET_LANGUAGE_BY_SUFFIX[".mjs"] == "javascript"
     assert SNIPPET_LANGUAGE_BY_SUFFIX[".py"] == "python"
+    assert SNIPPET_LANGUAGE_BY_SUFFIX[".c"] == "c"
+    assert SNIPPET_LANGUAGE_BY_SUFFIX[".rs"] == "rust"
+    assert SNIPPET_LANGUAGE_BY_SUFFIX[".go"] == "go"
 
 
 def test_snippet_schema_definitions():
     from modules.services import mcp_bridge as B
 
     schema = B.snippet_input_schema()
-    assert schema["properties"]["language"]["enum"] == ["javascript", "python", "php"]
+    # OMNI-INGEST: snippet gate admits compiled languages (c/rust/go).
+    assert schema["properties"]["language"]["enum"] == [
+        "javascript",
+        "python",
+        "php",
+        "c",
+        "rust",
+        "go",
+    ]
     assert schema["additionalProperties"] is False
     out = B.snippet_output_schema()
     assert {"status", "pre_probe_exit", "post_probe_exit"} <= set(out["required"])

@@ -38,11 +38,113 @@ _SHELL_METACHARS = frozenset("$`;&|(){}[]!#*?~<>\\'\"\n\r\t ")
 _MAKE_TARGET_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.\-]*)\s*:(?![=:])", re.MULTILINE)
 _MAKEFILE_NAMES = frozenset({"Makefile", "makefile", "GNUmakefile"})
 _PYTHON_ENTRY_CANDIDATES = ("main.py", "app.py", "src/main.py", "src/app.py")
+# MISSION OMNI-INGEST Wave 1 (PreScanObserver): ecosystem marker sets for
+# compiled/polyglot languages. Detection is pure basename matching — no
+# execution, no I/O — same discipline as the web-ecosystem sets above.
+_RUST_MANIFESTS = frozenset({"Cargo.toml", "Cargo.lock"})
+_GO_MANIFESTS = frozenset({"go.mod", "go.sum"})
+_C_MAKE_MANIFESTS = frozenset(
+    {
+        "CMakeLists.txt",
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "Kconfig",
+        "configure",
+        "configure.ac",
+    }
+)
+_C_SOURCE_SUFFIXES = (".c", ".h", ".cc", ".cpp", ".hpp", ".cxx")
+# Wave 2 (DynamicProvisioner) consumes this: ecosystem -> binaries that
+# must exist (or be installed during the online provisioning phase)
+# before the air-gapped execution wave starts.
+_ECOSYSTEM_TOOLCHAINS: dict[str, tuple[str, ...]] = {
+    "rust": ("cargo", "rustc"),
+    "go": ("go",),
+    "c": ("make", "gcc"),
+    "c-cmake": ("cmake", "make", "gcc"),
+    "python": ("python3", "pip"),
+    "node": ("node", "npm"),
+    "php": ("php", "composer"),
+    "make": ("make", "gcc"),
+    "generic": ("sh", "python3", "make", "gcc"),
+}
+
+
+@dataclass(frozen=True)
+class EcosystemReport:
+    """PreScanObserver output: detected ecosystem + toolchain needs.
+
+    Pure value object: ``ecosystem`` is one of rust/go/c/c-cmake/python/
+    node/php/make/generic; ``toolchains`` names the binaries Wave 2 must
+    provision; ``markers`` lists the matched basenames for evidence.
+    """
+
+    ecosystem: str
+    toolchains: tuple[str, ...]
+    markers: tuple[str, ...]
+
+
+def observe_ecosystem(file_list_or_snapshot, repo_name: str = "") -> EcosystemReport:
+    """Pre-flight reconnaissance: map staged relpaths to an ecosystem.
+
+    Pure function on file names — no subprocesses, no I/O, no network.
+    Precedence: rust > go > c-cmake > c > python/node/php (manifests) >
+    make > generic thick-image fallback (LAW 3: never refuse).
+    """
+    entries = _normalise_file_entries(file_list_or_snapshot)
+    names = {name for name, _ in entries}
+    basenames = {_basename(name) for name in names}
+
+    def _has_any(wanted: frozenset[str]) -> tuple[str, ...]:
+        return tuple(sorted(basenames & wanted))
+
+    def _has_suffix(suffixes: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(b for b in basenames if b.lower().endswith(suffixes)))
+
+    rust_markers = _has_any(_RUST_MANIFESTS)
+    if rust_markers:
+        return EcosystemReport("rust", _ECOSYSTEM_TOOLCHAINS["rust"], rust_markers)
+    go_markers = _has_any(_GO_MANIFESTS)
+    if go_markers:
+        return EcosystemReport("go", _ECOSYSTEM_TOOLCHAINS["go"], go_markers)
+    if "CMakeLists.txt" in basenames:
+        markers = ("CMakeLists.txt",) + _has_suffix(_C_SOURCE_SUFFIXES)
+        return EcosystemReport("c-cmake", _ECOSYSTEM_TOOLCHAINS["c-cmake"], markers)
+    c_sources = _has_suffix(_C_SOURCE_SUFFIXES)
+    if c_sources or "Kconfig" in basenames:
+        markers = c_sources + (("Kconfig",) if "Kconfig" in basenames else ())
+        return EcosystemReport("c", _ECOSYSTEM_TOOLCHAINS["c"], markers)
+    if "package.json" in basenames:
+        return EcosystemReport("node", _ECOSYSTEM_TOOLCHAINS["node"], ("package.json",))
+    if "requirements.txt" in basenames or "pyproject.toml" in basenames:
+        markers = tuple(sorted(basenames & {"requirements.txt", "pyproject.toml"}))
+        return EcosystemReport("python", _ECOSYSTEM_TOOLCHAINS["python"], markers)
+    if "composer.json" in basenames:
+        return EcosystemReport("php", _ECOSYSTEM_TOOLCHAINS["php"], ("composer.json",))
+    if basenames & _MAKEFILE_NAMES:
+        return EcosystemReport(
+            "make", _ECOSYSTEM_TOOLCHAINS["make"], tuple(sorted(basenames & _MAKEFILE_NAMES))
+        )
+    # LAW 3 polyglot fallback: unknown trees get the thick-image generic
+    # probe (sh + python3 + make + gcc utilities) — never a refusal.
+    return EcosystemReport("generic", _ECOSYSTEM_TOOLCHAINS["generic"], ())
+
+
+def required_toolchains(report: EcosystemReport) -> tuple[str, ...]:
+    """Binaries Wave 2 must provision for the observed ecosystem."""
+    if not isinstance(report, EcosystemReport):
+        raise ValueError("required_toolchains needs an EcosystemReport")
+    return report.toolchains
+
+
 _NODE_ENTRY_CANDIDATES = ("server.js", "index.js", "src/server.js", "src/index.js")
 _PHP_ENTRY_CANDIDATES = ("public/index.php", "index.php", "src/index.php")
-# Toolchains the target image cannot run (python:3.12-alpine + node + php
-# only): refuse as UNSUPPORTED, never ask for argv that cannot succeed.
-_UNSUPPORTED_MANIFESTS = frozenset({"go.mod", "Cargo.toml", "Cargo.lock", "go.sum"})
+# MISSION OMNI-INGEST Wave 1: the UNSUPPORTED refusal is DEPRECATED and
+# removed. Fail-closed applies to security verdicts, not language support:
+# every ecosystem maps to a buildable/runnable argv (Wave 2 provisions the
+# toolchain), and unknown trees fall through to the thick-image generic
+# probe. This block intentionally performs no refusal.
 # Bare-name fallback: a repo whose only Python file shares its name with the
 # repo dir (anycam.py in AnyCam) or is the lone top-level entry point.
 _PYTHON_BARE_FALLBACK = ("__main__.py",)
@@ -59,7 +161,17 @@ def _repo_slug(repo_name: str) -> str:
 
 # Deterministic precedence when several manifests are present: the most
 # specific ecosystem manifest wins; a generic Makefile loses to all of them.
-_DETECT_PRECEDENCE = ("package.json", "composer.json", "python", "node", "makefile")
+_DETECT_PRECEDENCE = (
+    "package.json",
+    "composer.json",
+    "python",
+    "node",
+    "rust",
+    "go",
+    "c-cmake",
+    "c",
+    "makefile",
+)
 
 _ACTIONABLE_SUFFIX = (
     "pass an explicit runtime_command argv (e.g. ['python3', 'main.py']) to intake_repo_to_snapshot"
@@ -313,6 +425,12 @@ def build_service_wrapper(snapshot: RepoIntakeSnapshot) -> RepoIntakeSnapshot:
     files["repo.runtime_command"] = json.dumps(list(wrapper_argv)).encode("utf-8")
     files["repo.smoke_command"] = json.dumps(list(smoke_argv)).encode("utf-8")
     files["repo.service_wrapper"] = b"http-8080"
+    # MISSION OMNI-INGEST: record the PreScanObserver verdict so Wave 2
+    # (DynamicProvisioner) knows what to install without re-scanning.
+    # Serve path unchanged — sources stay the probe surface.
+    eco = observe_ecosystem([k[5:] for k in files if k.startswith("tree/")])
+    files["repo.ecosystem"] = eco.ecosystem.encode("utf-8")
+    files["repo.toolchains"] = ",".join(eco.toolchains).encode("utf-8")
     return RepoIntakeSnapshot(
         files=MappingProxyType(files),
         url=snapshot.url,
@@ -477,7 +595,9 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         return None
 
     candidates: dict[str, list[str]] = {}
-    _unsupported_hit = basenames & _UNSUPPORTED_MANIFESTS
+    # MISSION OMNI-INGEST Wave 1: no refusal gate. The observer below maps
+    # every ecosystem to a command; presence of a compiled-language marker
+    # can only ADD candidates, never refuse the scan.
     _slug_bare = f"{_repo_slug(repo_name)}.py" if repo_name else ""
     _has_supported = (
         "package.json" in basenames
@@ -485,6 +605,10 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         or "pyproject.toml" in basenames
         or "composer.json" in basenames
         or bool(basenames & _MAKEFILE_NAMES)
+        or bool(_GO_MANIFESTS & basenames)
+        or bool(_RUST_MANIFESTS & basenames)
+        or "CMakeLists.txt" in basenames
+        or any(_basename(n).lower().endswith(_C_SOURCE_SUFFIXES) for n in names)
         or any(_basename(n) in _PYTHON_ENTRY_CANDIDATES for n in names)
         or any(_basename(n) in _NODE_ENTRY_CANDIDATES for n in names)
         or any(_basename(n) in _PHP_ENTRY_CANDIDATES for n in names)
@@ -492,12 +616,7 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         # even though no manifest or entry-candidate names it.
         or (_slug_bare and _slug_bare in basenames)
     )
-    if _unsupported_hit and not _has_supported:
-        raise ValueError(
-            "unsupported runtime: this repo needs a toolchain the harness "
-            f"image cannot run ({sorted(_unsupported_hit)[0]}); the target "
-            "image runs python3 + node + php only. " + _ACTIONABLE_SUFFIX
-        )
+    _ = _has_supported  # informational only; Wave 1 never refuses.
     if "package.json" in basenames:
         candidates["package.json"] = _package_json_command(_content_for("package.json"))
     if "requirements.txt" in basenames or "pyproject.toml" in basenames:
@@ -544,13 +663,40 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
     makefile_hit = basenames & _MAKEFILE_NAMES
     if makefile_hit:
         candidates["makefile"] = _makefile_command(_content_for(*sorted(makefile_hit)))
+    # MISSION OMNI-INGEST Wave 1: compiled ecosystems resolve to
+    # build/test argv Wave 2 will provision for. `cargo test` / `go test`
+    # run the repo's own suite as the behavioral surface; `make` covers
+    # C/Make; CMakeLists gets a canonical out-of-tree build+ctest shape.
+    eco = observe_ecosystem(entries)
+    if eco.ecosystem == "rust":
+        candidates["rust"] = ["cargo", "test"]
+    elif eco.ecosystem == "go":
+        candidates["go"] = ["go", "test", "./..."]
+    elif eco.ecosystem == "c-cmake":
+        candidates["c-cmake"] = [
+            "sh",
+            "-c",
+            "cmake -S . -B build && cmake --build build && (ctest --test-dir build || true)",
+        ]
+    elif eco.ecosystem in ("c", "make"):
+        # A Makefile with explicit targets keeps its parsed command
+        # (e.g. ["make", "zzz"]) — the eco fallback only fires when no
+        # makefile candidate exists.
+        if "makefile" not in candidates:
+            candidates["c"] = ["make"]
     for key in _DETECT_PRECEDENCE:
         if key in candidates:
             return candidates[key]
-    raise ValueError(
-        "could not detect runtime_command from repo contents "
-        f"({len(entries)} file(s) seen); " + _ACTIONABLE_SUFFIX
-    )
+    # LAW 3 polyglot fallback: unknown trees resolve to the thick-image
+    # generic probe — list + fingerprint the staged tree, exit 0. Never
+    # refuse the scan; Wave 2 provisions sh/python3/make/gcc regardless.
+    return [
+        "sh",
+        "-c",
+        'ls -R . | head -100; python3 -c "import ast,sys,pathlib; '
+        "[ast.parse(p.read_text(errors='replace')) for p in "
+        "list(pathlib.Path('.').rglob('*.py'))[:50]]; print('AST-OK')\"",
+    ]
 
 
 def intake_repo_to_snapshot(
