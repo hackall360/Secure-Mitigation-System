@@ -27,10 +27,12 @@ New here? Start with the plain guide: [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS
 A bare `--scan` runs a single finding loop: context compression, vault
 recall, baseline, one red/blue cycle, regression + re-probe, receipt.
 Nothing in that loop is skipped. The multi-pass ladder in the diagram
-(Pass 1–4) runs only with `--sweep-passes N`, where N=1..4 selects a
+(Pass 1–5) runs only with `--sweep-passes N`, where N=1..5 selects a
 prefix of `SWEEP_PASSES`: 1=standard (common CVE sink patterns),
 2=+deep (encoding/coercion/truncation), 3=+threat-actor (logic abuse +
-novel synthesis), 4=+chain (multi-step logic-abuse chains).
+novel synthesis), 4=+chain (multi-step logic-abuse chains),
+5=+coverage (hardcoded secrets, vulnerable dependencies, weak crypto,
+missing authz, dangerous config).
 
 ```mermaid
 flowchart TD
@@ -41,7 +43,8 @@ flowchart TD
     P1 --> P2["Pass 2 DEEP<br/>encoding / coercion / truncation"]
     P2 --> P3["Pass 3 THREAT-ACTOR<br/>logic abuse + novel zero-day synthesis"]
     P3 --> P4["Pass 4 CHAIN<br/>multi-step logic-abuse chains"]
-    P4 --> RED["RED agent (Muse Spark)<br/>finding + verification probe"]
+    P4 --> P5["Pass 5 COVERAGE<br/>secrets / deps / crypto / auth / config"]
+    P5 --> RED["RED agent (Muse Spark)<br/>finding + verification probe"]
     RED --> PROBE{"sandbox probe<br/>exit 0 = reached<br/>exit 1 = blocked<br/>exit 2 = inconclusive"}
     PROBE -- 0 --> BLUE["BLUE agent (Muse Wonder)<br/>minimal patch / binary mitigation rules"]
     PROBE -- 1/2 --> FAIL["not_confirmed / failed<br/>fail closed"]
@@ -126,7 +129,7 @@ python main.py --ai-demo --scan-profile extra_light --output-dir reports
 python main.py --ai-demo --build-brief "tiny notes app" --vulns "CVE-2024-3094, SQL injection"
 ```
 
-Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_scan_repo`, `sms_query_vault_stats`, `sms_list_vault_namespaces`, `sms_replay_vault_record`, `sms_verify_receipt`, `sms_scan_status`, `sms_ops_status`, `sms_showcase_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
+Green builds a new flawed service from live intel. Red breaks it in Docker. Blue fixes it. Other ways in: `--scan`, `--project`, `--cve-scan`, `--tui`, `--mcp-snippet`, `--mcp` (tools `submit_code_snippet`, `sms_scan_source`, `sms_scan_binary`, `sms_scan_repo`, `sms_query_vault_stats`, `sms_list_vault_namespaces`, `sms_replay_vault_record`, `sms_verify_receipt`, `sms_scan_status`, `sms_ops_status`, `sms_showcase_status`), `--sweep-passes 3` (first three passes: standard, deep, threat-actor; use 4 to add the chain pass, 5 for the coverage pass), `--binary-target binary_argv_echo`. Full flags: [`docs/reference/CLI.md`](docs/reference/CLI.md).
 
 ## 3-minute demo guide
 
