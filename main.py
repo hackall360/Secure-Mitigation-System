@@ -389,11 +389,19 @@ async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, c
             files[name] = overlay_text
     contract_text = contract if isinstance(contract, str) else ""
     repo_name = str(getattr(snapshot, "url", "") or "").rstrip("/").rsplit("/", 1)[-1]
+    # Preserved regression command: the wrapper's --smoke mode (verifies
+    # the staged file map, exits 0) — NOT the serve argv (long-lived by
+    # design). The serve argv stays the probe surface (runtime_command).
+    try:
+        _smoke = json.loads(snapshot.files.get("repo.smoke_command", b"[]").decode("utf-8"))
+        _regression_argv = list(_smoke) if _smoke else list(snapshot.runtime_command)
+    except (ValueError, AttributeError, TypeError):
+        _regression_argv = list(snapshot.runtime_command)
     project_input = ProjectWorkflowInput.model_validate(
         {
             "name": f"ingest:{repo_name or 'repo'}"[:256],
             "files": files,
-            "regression_command": list(snapshot.runtime_command),
+            "regression_command": _regression_argv,
             "contract": contract_text[:32_768],
         }
     )

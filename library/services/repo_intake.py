@@ -179,9 +179,10 @@ def _manifest_digest(spec: RepoIntakeSpec, runtime_command: tuple) -> str:
 _WRAPPER_MAP_NAME = ".wrapper_files.json"
 _WRAPPER_LOADER = """\
 import json
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-_MAP_CANDIDATES = ("wrapper_files.json", "/workspace/.wrapper_files.json")
+_MAP_CANDIDATES = (".wrapper_files.json", "wrapper_files.json", "/workspace/.wrapper_files.json")
 for _map_path in _MAP_CANDIDATES:
     try:
         with open(_map_path, encoding="utf-8") as _fh:
@@ -191,6 +192,17 @@ for _map_path in _MAP_CANDIDATES:
         continue
 else:
     raise SystemExit("sms-ingest wrapper: wrapper_files.json not found")
+
+if "--smoke" in sys.argv[1:]:
+    # Regression mode: verify the map loads and every value is text,
+    # then exit 0 WITHOUT serving. The harness runs this as the
+    # preserved regression command (baseline + post-patch); the
+    # long-lived serve mode above is the probe surface.
+    assert isinstance(FILES, dict) and FILES, "empty file map"
+    for _name, _content in FILES.items():
+        assert isinstance(_content, str), f"non-text staged file: {_name}"
+    print(f"sms-ingest wrapper smoke: {len(FILES)} text files servable")
+    raise SystemExit(0)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -238,6 +250,12 @@ def build_service_wrapper(snapshot: RepoIntakeSnapshot) -> RepoIntakeSnapshot:
     as the ingest workflow). The wrapper REPLACES the runtime argv — the
     original entrypoint is recorded in the manifest but never executed by
     the harness. Repos with no servable text still fail closed (ValueError).
+
+    Two argv are produced: the serve argv (long-lived HTTP service, the
+    probe surface) is ``runtime_command``; the smoke argv (``--smoke``,
+    verifies the map and exits 0) is recorded as
+    ``repo.smoke_command`` for the harness to use as the preserved
+    regression command.
     """
     text_files: dict[str, str] = {}
     for key, content in dict(snapshot.files).items():
@@ -263,9 +281,11 @@ def build_service_wrapper(snapshot: RepoIntakeSnapshot) -> RepoIntakeSnapshot:
             "could not serve staged tree: no decodable text files; " + _ACTIONABLE_SUFFIX
         )
     wrapper_argv = ("python3", "-c", _WRAPPER_LOADER)
+    smoke_argv = ("python3", "-c", _WRAPPER_LOADER, "--smoke")
     files = dict(snapshot.files)
     files["tree/.wrapper_files.json"] = json.dumps(text_files).encode("utf-8")
     files["repo.runtime_command"] = json.dumps(list(wrapper_argv)).encode("utf-8")
+    files["repo.smoke_command"] = json.dumps(list(smoke_argv)).encode("utf-8")
     files["repo.service_wrapper"] = b"http-8080"
     return RepoIntakeSnapshot(
         files=MappingProxyType(files),

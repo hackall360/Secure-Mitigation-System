@@ -296,3 +296,16 @@ def test_service_wrapper_no_text_fails_closed():
     )
     with pytest.raises(ValueError, match="no decodable text"):
         build_service_wrapper(snap)
+
+
+def test_wrapper_smoke_command_exits_zero():
+    """The smoke argv verifies the map and exits 0 (regression command)."""
+    import json
+
+    from library.services.repo_intake import build_service_wrapper
+
+    snap = _canned_snapshot()
+    wrapped = build_service_wrapper(snap)
+    smoke = json.loads(wrapped.files["repo.smoke_command"].decode("utf-8"))
+    assert smoke[:2] == ["python3", "-c"] and smoke[-1] == "--smoke"
+    assert len(json.dumps(smoke).encode()) < 8192, "smoke argv must stay small"

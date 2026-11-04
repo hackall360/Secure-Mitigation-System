@@ -620,3 +620,22 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: a source-text pin proves the comment exists. Only a live
   behavioral repro proves the branch runs. Both are needed — neither
   alone.
+
+## Wrapper smoke vs serve argv (2026-11-04, Part 2 dry run)
+
+- **Trap: the probe surface is not a regression command.**
+  Wrong assumption: "the target argv runs for both probing and baseline."
+  The wrapper SERVES forever by design — so the baseline regression check
+  (which waits for exit) wedged until the daemon timed out, then failed
+  the run as "Project check failed" / "regression failed". The 9th Part 2
+  attempt died on this: correct refusal, wrong command.
+  Evidence: attempt 9, "Original project failed its preserved regression
+  command"; the long-lived wrapper never exits by design.
+  Fix: the wrapper ships TWO argv — serve (long-lived 8080, the probe
+  surface, `runtime_command`) and `--smoke` (verifies the file map,
+  prints the servable count, exits 0 — the preserved `regression_command`).
+  The harness runs smoke for baseline + post-patch regression, serve for
+  probes. Explicit-argv runs keep their real regression command.
+  Lesson: a serving target and a checking target are different verbs.
+  Any wrapper that serves forever must also ship an exit-0 health verb —
+  or the baseline will (correctly) refuse a run that never ends.
