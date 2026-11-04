@@ -86,7 +86,9 @@ def summarize_profile(profile_text: str) -> dict:
     # from __stack_chk_fail. Absent markers read as unknown, never as safe.
     mitigations: list[str] = []
     if "gnu_stack" in lowered:
-        mitigations.append("mitigation:NX" if "rwe" not in lowered else "mitigation:no-NX(RWE-stack)")
+        mitigations.append(
+            "mitigation:NX" if "rwe" not in lowered else "mitigation:no-NX(RWE-stack)"
+        )
     if "gnu_relro" in lowered:
         mitigations.append("mitigation:RELRO")
     if "__stack_chk_fail" in lowered or "stack_chk" in lowered:
