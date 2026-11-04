@@ -38,7 +38,7 @@ MCP_CONTRACT_MAX_CHARS = 8_192
 # snippet contract narrows it further at the red/blue layer). The snippet
 # key stays "mcp_snippet" so receipts identify the external submission;
 # execute_mcp_snippet_scan maps the baseline script for that key only.
-MCP_ALLOWED_LANGUAGES: tuple[str, ...] = ("javascript", "python", "php")
+MCP_ALLOWED_LANGUAGES: tuple[str, ...] = ("javascript", "python", "php", "c", "rust", "go")
 #: Canonical file-suffix -> snippet language map (C1: single source of truth;
 #: main.py + tui.py import this instead of carrying duplicate copies).
 SNIPPET_LANGUAGE_BY_SUFFIX: dict[str, str] = {
@@ -47,11 +47,22 @@ SNIPPET_LANGUAGE_BY_SUFFIX: dict[str, str] = {
     ".cjs": "javascript",
     ".py": "python",
     ".php": "php",
+    ".c": "c",
+    ".h": "c",
+    ".rs": "rust",
+    ".go": "go",
 }
 _MCP_LANGUAGE_BASELINE_KEY: dict[str, str] = {
     "javascript": "node_query_sink",
     "python": "node_query_sink",
     "php": "php_command_sink",
+    # MISSION OMNI-INGEST: compiled snippets reuse the closest behavioral
+    # baseline (normal-input contract shape); the command below performs
+    # the actual build+run inside the sandbox. Absent toolchain => the
+    # verifier exits 2 (inconclusive), never a refusal.
+    "c": "node_query_sink",
+    "rust": "node_query_sink",
+    "go": "node_query_sink",
 }
 
 
@@ -66,12 +77,22 @@ SNIPPET_FILENAME_BY_LANGUAGE: dict[str, str] = {
     "javascript": "app.js",
     "python": "app.py",
     "php": "index.php",
+    "c": "snippet.c",
+    "rust": "snippet.rs",
+    "go": "snippet.go",
 }
 _MCP_LANGUAGE_FILENAME = SNIPPET_FILENAME_BY_LANGUAGE
 _MCP_LANGUAGE_COMMAND: dict[str, tuple[str, ...]] = {
     "javascript": ("node", "/workspace/app.js"),
     "python": ("python3", "/workspace/app.py"),
     "php": ("php", "-S", "0.0.0.0:8080", "-t", "/workspace"),
+    # MISSION OMNI-INGEST: compile-then-run inside the sandbox. Each shell
+    # probes for its toolchain first — absent => exit 2 (inconclusive),
+    # never a refusal. `|| true` keeps link/run failures as probe evidence
+    # (exit 0/1 from the program) rather than shell noise.
+    "c": ("sh", "-c", "command -v gcc >/dev/null || exit 2; gcc -O1 -o /tmp/snippet /workspace/snippet.c && /tmp/snippet"),
+    "rust": ("sh", "-c", "command -v rustc >/dev/null || exit 2; rustc -O -o /tmp/snippet /workspace/snippet.rs && /tmp/snippet"),
+    "go": ("sh", "-c", "command -v go >/dev/null || exit 2; cd /tmp && cp /workspace/snippet.go ./snippet_main.go && go run ./snippet_main.go"),
 }
 SNIPPET_TOOL_NAME = "submit_code_snippet"
 SCAN_STATUS_TOOL_NAME = "sms_scan_status"
@@ -242,7 +263,7 @@ def snippet_tool_definition() -> dict[str, Any]:
         "name": SNIPPET_TOOL_NAME,
         "title": "Submit code snippet for red/blue Docker verification",
         "description": (
-            "Submit a bounded source snippet (javascript, python, or php). "
+            "Submit a bounded source snippet (javascript, python, php, c, rust, or go). "
             "The Secure Mitigation System runs it through the evidence-gated "
             "red/blue Docker loop and returns the VerdictReceipt plus the "
             "pre/post probe Docker exit codes. Docker evidence alone decides "

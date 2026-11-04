@@ -1914,7 +1914,7 @@ async def mcp_snippet_runner(
     resolved = language or _SNIPPET_LANGUAGE_BY_SUFFIX.get(snippet_path.suffix.lower(), "")
     if not resolved:
         print(
-            "Cannot infer snippet language; pass --snippet-language javascript|python|php.",
+            "Cannot infer snippet language; pass --snippet-language javascript|python|php|c|rust|go.",
             file=sys.stderr,
         )
         return 1
@@ -3502,7 +3502,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--snippet-language",
-        choices=["javascript", "python", "php"],
+        choices=["javascript", "python", "php", "c", "rust", "go"],
         default=None,
         help="Snippet language for --mcp-snippet (default: inferred from file extension)",
     )
