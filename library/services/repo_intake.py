@@ -44,7 +44,15 @@ _PYTHON_ENTRY_CANDIDATES = ("main.py", "app.py", "src/main.py", "src/app.py")
 _RUST_MANIFESTS = frozenset({"Cargo.toml", "Cargo.lock"})
 _GO_MANIFESTS = frozenset({"go.mod", "go.sum"})
 _C_MAKE_MANIFESTS = frozenset(
-    {"CMakeLists.txt", "Makefile", "makefile", "GNUmakefile", "Kconfig", "configure", "configure.ac"}
+    {
+        "CMakeLists.txt",
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "Kconfig",
+        "configure",
+        "configure.ac",
+    }
 )
 _C_SOURCE_SUFFIXES = (".c", ".h", ".cc", ".cpp", ".hpp", ".cxx")
 # Wave 2 (DynamicProvisioner) consumes this: ecosystem -> binaries that
@@ -128,6 +136,8 @@ def required_toolchains(report: EcosystemReport) -> tuple[str, ...]:
     if not isinstance(report, EcosystemReport):
         raise ValueError("required_toolchains needs an EcosystemReport")
     return report.toolchains
+
+
 _NODE_ENTRY_CANDIDATES = ("server.js", "index.js", "src/server.js", "src/index.js")
 _PHP_ENTRY_CANDIDATES = ("public/index.php", "index.php", "src/index.php")
 # MISSION OMNI-INGEST Wave 1: the UNSUPPORTED refusal is DEPRECATED and
@@ -677,7 +687,7 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
     return [
         "sh",
         "-c",
-        "ls -R . | head -100; python3 -c \"import ast,sys,pathlib; "
+        'ls -R . | head -100; python3 -c "import ast,sys,pathlib; '
         "[ast.parse(p.read_text(errors='replace')) for p in "
         "list(pathlib.Path('.').rglob('*.py'))[:50]]; print('AST-OK')\"",
     ]
