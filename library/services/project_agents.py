@@ -346,6 +346,7 @@ class RedAnalysisArtifacts(BaseModel):
     report: RedReport
     coverage: ContextCoverage
     leader_plan: ReviewTeamPlan | None = None
+    skipped_units: int = Field(default=0, ge=0)
 
 
 _LEADER_DECISION_LINE_LIMIT = 220
@@ -1107,13 +1108,27 @@ class ProjectAgentRunner:
                 units.append((len(units), payload, role, system))
         total_units = len(units)
         semaphore = asyncio.Semaphore(bound)
+        early_exit_high = getattr(self.config, "red_early_exit_high", 0)
+        early_exit_high = early_exit_high if isinstance(early_exit_high, int) else 0
+        high_seen = 0
+        skipped: list[int] = []
 
         async def _collect(
             position: int, payload: dict, role: str, system: str
-        ) -> RedBatchEvidence:
+        ) -> RedBatchEvidence | None:
+            nonlocal high_seen
             async with semaphore:
+                if early_exit_high and high_seen >= early_exit_high:
+                    skipped.append(position)
+                    if on_progress is not None:
+                        await on_progress(
+                            "red",
+                            f"[phase red evidence] batch {position + 1}/{total_units} "
+                            "skipped (early exit)",
+                        )
+                    return None
                 try:
-                    return await self._call(
+                    result = await self._call(
                         self.config.red_team_model,
                         system,
                         payload,
@@ -1121,6 +1136,8 @@ class ProjectAgentRunner:
                         role=role,
                         max_payload_bytes=max_payload_bytes,
                     )
+                    high_seen += sum(1 for c in result.candidates if c.confidence == "high")
+                    return result
                 finally:
                     if on_progress is not None:
                         await on_progress(
@@ -1146,7 +1163,19 @@ class ProjectAgentRunner:
                         f"({type(outcome).__name__}); no evidence was collected."
                     )
                 ) from outcome
-            evidence.append(outcome)
+            if outcome is not None:
+                evidence.append(outcome)
+        if skipped:
+            coverage = coverage.model_copy(
+                update={
+                    "complete": False,
+                    "notes": [
+                        *coverage.notes,
+                        f"Red early exit: {len(skipped)} of {total_units} evidence batches "
+                        f"skipped after {early_exit_high} high-confidence candidate(s).",
+                    ],
+                }
+            )
 
         digests: list[RedEvidenceDigest] = []
         pending = [item.model_dump() for item in evidence]
@@ -1278,6 +1307,7 @@ class ProjectAgentRunner:
             report=report,
             coverage=coverage,
             leader_plan=leader_plan,
+            skipped_units=len(skipped),
         )
 
     async def propose_blue(

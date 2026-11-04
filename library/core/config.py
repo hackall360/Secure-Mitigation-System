@@ -99,6 +99,9 @@ class PurpleBoxConfig:
     # asyncio.Semaphore cap on concurrent evidence calls (fail-closed gather);
     # per-batch progress emits keep the WS stream live on big trees.
     red_evidence_parallelism: int = 4
+    # Opt-in backpressure: after N high-confidence red candidates, skip
+    # evidence units that have not started. 0 = off (review everything).
+    red_early_exit_high: int = 0
     # Legacy single-blob cap: superseded by per-call context_budget plumbing
     # (snapshot + Muse payload limits). Kept so older configs still validate.
     max_source_bytes: int = 65_536
@@ -178,6 +181,8 @@ class PurpleBoxConfig:
             raise ConfigurationError("PURPLEBOX_DOCKER_TIMEOUT_SECONDS must be between 1 and 600.")
         if not 1 <= self.red_evidence_parallelism <= 8:
             raise ConfigurationError("PURPLEBOX_RED_EVIDENCE_PARALLELISM must be between 1 and 8.")
+        if not 0 <= self.red_early_exit_high <= 16:
+            raise ConfigurationError("PURPLEBOX_RED_EARLY_EXIT_HIGH must be between 0 and 16.")
         if not 1 <= self.container_cpu_nano <= 64_000_000_000:
             raise ConfigurationError(
                 "Container CPU quota must be between 1 and 64000000000 nano CPUs."
@@ -243,6 +248,7 @@ def load_config() -> PurpleBoxConfig:
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
             docker_timeout_seconds=int(os.getenv("PURPLEBOX_DOCKER_TIMEOUT_SECONDS", "120")),
             red_evidence_parallelism=int(os.getenv("PURPLEBOX_RED_EVIDENCE_PARALLELISM", "4")),
+            red_early_exit_high=int(os.getenv("PURPLEBOX_RED_EARLY_EXIT_HIGH", "0")),
             container_mem_limit=os.getenv("PURPLEBOX_CONTAINER_MEM_LIMIT", "1g").strip() or "1g",
             container_cpu_nano=int(os.getenv("PURPLEBOX_CONTAINER_CPU_NANO", "500000000")),
         )
