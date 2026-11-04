@@ -211,6 +211,9 @@ passwords anywhere in the staged tree (source, config, comments, fixtures).
 Probe: fetch the file over HTTP at http://target-service:8080/<path> and exit
 0 only if secret-looking material is served verbatim; exit 1 if the file is
 absent, redacted, or the value is clearly a placeholder/test fixture.
+LAW 4: never reproduce the secret VALUE in any response field — name the
+kind and the exact path:line, describe the shape (length/prefix pattern),
+match patterns without echoing full values in the probe script.
 2. DEPENDENCIES: manifest pins (requirements.txt, package.json, go.mod,
 Gemfile, Cargo.toml, composer.json) naming versions with known-bad ranges.
 Probe: fetch the manifest over HTTP and exit 0 only if a pinned version
