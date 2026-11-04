@@ -57,6 +57,8 @@ class FakeProjectMuse:
             BlueProposal,
             FileReplacement,
             FinalBlueReport,
+            ManifestRankOrder,
+            RankedFile,
             RedBatchEvidence,
             RedCandidate,
             RedReport,
@@ -66,6 +68,14 @@ class FakeProjectMuse:
             {"model": model, "system": system, "payload": payload, "schema": schema, "role": role}
         )
         assert "messages" not in payload and "conversation" not in payload
+        if schema is ManifestRankOrder:
+            manifest = payload["manifest"]
+            return ManifestRankOrder(
+                ranks=[
+                    RankedFile(path=row["path"], rank=index, score=1.0 / (index + 1), reason="test")
+                    for index, row in enumerate(manifest)
+                ]
+            )
         if schema is RedBatchEvidence:
             path = payload["batch"]["chunks"][0]["path"]
             return RedBatchEvidence(

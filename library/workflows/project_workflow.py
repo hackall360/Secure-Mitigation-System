@@ -416,6 +416,8 @@ class ProjectWorkflowLimits(BaseModel):
     max_context_files: int = Field(default=512, ge=1, le=4096)
     max_context_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=32 * 1024 * 1024)
     max_payload_bytes: int = Field(default=256_000, ge=16_384, le=4_000_000)
+    triage_enabled: bool = Field(default=True)
+    triage_max_files: int | None = Field(default=None, ge=1, le=4096)
 
 
 def validate_safe_path(path: str) -> None:
@@ -1361,6 +1363,7 @@ async def execute_project_workflow(
     snapshot_total_paths = 0
     snapshot_total_bytes = 0
     verified_history: list[dict[str, object]] = []
+    backtrack_paths: list[str] = []
 
     log = make_log(emit)
 
@@ -1582,6 +1585,9 @@ async def execute_project_workflow(
                         coverage_notes=coverage_notes,
                         max_payload_bytes=payload_budget,
                         prior_verified_history=verified_history,
+                        triage_enabled=bounds.triage_enabled,
+                        triage_max_files=bounds.triage_max_files,
+                        backtrack_paths=backtrack_paths,
                     )
                     result.context_coverage.append(red.coverage)
                     evidence = CycleEvidence(red=red)
@@ -1617,6 +1623,10 @@ async def execute_project_workflow(
                         raise ProjectWorkflowError(
                             "Red report referenced paths outside the safe snapshot."
                         )
+                    if red.report.outcome == "finding":
+                        for path in red.report.affected_paths:
+                            if path not in backtrack_paths:
+                                backtrack_paths.append(path)
 
                     await log(
                         "red",
@@ -1851,6 +1861,8 @@ async def execute_project_workflow(
                             coverage_notes=coverage_notes,
                             max_payload_bytes=payload_budget,
                             prior_verified_history=verified_history,
+                            triage_enabled=bounds.triage_enabled,
+                            triage_max_files=bounds.triage_max_files,
                         )
                         evidence.independent_red = independent_red
                         result.context_coverage.append(independent_red.coverage)

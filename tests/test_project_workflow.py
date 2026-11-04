@@ -76,17 +76,19 @@ async def test_agent_calls_are_fresh_stateless_and_reports_are_separate_calls():
         documents, project_name="demo", cycle=1, max_batch_bytes=1024
     )
     assert artifacts.coverage.complete and artifacts.coverage.batches == 2
-    assert len(muse.calls) == 3
+    assert len(muse.calls) == 4
     assert [call["role"] for call in muse.calls] == [
+        "project_red_triage_rank_cycle_1",
         "project_red_initial_evidence_cycle_1_batch_0",
         "project_red_initial_evidence_cycle_1_batch_1",
         "project_red_initial_report_cycle_1",
     ]
-    assert "batch" in muse.calls[0]["payload"]
+    assert "manifest" in muse.calls[0]["payload"]
+    assert "batch" in muse.calls[1]["payload"]
     assert "batch" not in muse.calls[-1]["payload"]
     assert "evidence_digests" in muse.calls[-1]["payload"]
     assert all("response_schema" in call["payload"] for call in muse.calls)
-    assert len({id(call["payload"]) for call in muse.calls}) == 3
+    assert len({id(call["payload"]) for call in muse.calls}) == 4
 
 
 async def test_complete_cycle_retains_only_verified_candidate_and_preserves_source():
