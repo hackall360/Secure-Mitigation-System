@@ -28,6 +28,8 @@
     { id: 'Bloodhound',   team: 'red',    color: '#ff9aab', glyph: 'Bh', personality: 'Tracker', role: 'Follows tainted data to the sink' },
     { id: 'Sparkler',     team: 'red',    color: '#ff4f3a', glyph: 'Sp', personality: 'Chaotic', role: 'Mutation fuzzing, odd encodings' },
     { id: 'Cartographer', team: 'red',    color: '#9f1239', glyph: 'Ca', personality: 'Mapper', role: 'Recon of routes, files and symbols' },
+    { id: 'Bloodsniffer', team: 'red',   color: '#fb7185', glyph: 'Bs', personality: 'Quartermaster', role: 'Sniffs manifests, pins and defaults' },
+    { id: 'Blacklight',  team: 'red',    color: '#e11d48', glyph: 'Bl', personality: 'Auditor', role: 'UV-scans comments and fixtures for secrets' },
 
     { id: 'Warden',       team: 'blue',   color: '#1fb6ff', leader: true, glyph: 'W', personality: 'Commander', role: 'Triages findings, assigns fixes' },
     { id: 'Bastion',      team: 'blue',   color: '#7dd3fc', glyph: 'Ba', personality: 'Hardener', role: 'Adds the smallest effective guard' },
