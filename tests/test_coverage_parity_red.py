@@ -32,7 +32,10 @@ def test_no_min4_clamps_remain_on_source_paths():
     for i, line in enumerate(src.splitlines(), 1):
         if re.search(r"min\(\s*4\s*,", line) and "max_passes" in line:
             context = "\n".join(src.splitlines()[max(0, i - 12) : i])
-            if "binary_sweep" not in context and "binary" not in context.lower().split("max_passes")[0][-200:]:
+            if (
+                "binary_sweep" not in context
+                and "binary" not in context.lower().split("max_passes")[0][-200:]
+            ):
                 bad.append(f"main.py:{i}: {line.strip()}")
     assert not bad, f"max_passes clamps still cap at 4: {bad}"
 

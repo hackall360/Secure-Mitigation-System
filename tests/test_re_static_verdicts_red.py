@@ -35,8 +35,7 @@ def test_binary_static_profile_reaches_red_prompt():
     # input — not just emitted as a log line.
     call_site = src.split("run_red_team_pass_analysis")[1].split("SweepPassResult")[0]
     assert "profile" in call_site.lower(), (
-        "static profile text must reach the red analysis call, "
-        "not stop at the emit log"
+        "static profile text must reach the red analysis call, not stop at the emit log"
     )
 
 
