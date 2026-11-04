@@ -251,8 +251,9 @@ def test_detect_runtime_precedence_and_content_forms():
         "python3",
         "main.py",
     ]
-    with pytest.raises(ValueError, match="could not detect"):
-        detect_runtime(["notes.txt"])
+    # OMNI-INGEST Wave 1: unknown trees resolve to the thick-image generic
+    # probe instead of refusing.
+    assert detect_runtime(["notes.txt"])[0] == "sh"
     with pytest.raises(ValueError, match="could not detect"):
         detect_runtime([])
 

@@ -1,37 +1,26 @@
 # Required Notice: Copyright (c) 2026 hackall360. All Rights Reserved for Commercial Use.
 # https://polyformproject.org/licenses/noncommercial/1.0.0
-"""RED (LAW 9): intake detect covers every runtime the target image can run — or refuses honestly.
+"""OMNI-INGEST Wave 1: retired refusal pins — superseded, kept as history.
 
-The target image runs python3 + node + php (Dockerfile.target). But
-detect_runtime only knows package.json/composer/python/makefile. A Go
-repo (go.mod + main.go), a Rust repo (Cargo.toml), or a repo whose JS
-entry is server.js instead of npm-start gets ValueError "pass an
-explicit runtime_command" even though the harness CANNOT run go/cargo
-at all and CAN serve .js over the wrapper. Two gaps:
+The tests below asserted the OLD behavior: Go/Rust trees raise UNSUPPORTED.
+MISSION OMNI-INGEST deprecates that refusal — fail-closed is for security
+verdicts, not language support. Go/Rust/C trees now resolve to build/test
+argv (`cargo test` / `go test ./...` / `make` / cmake shape) that Wave 2
+provisions for, and unknown trees resolve to the thick-image generic probe.
 
-1. Go/Rust repos fail with "pass explicit argv" — but no argv can work
-   (no toolchain in image). The refusal must say the runtime is
-   UNSUPPORTED, not ask for argv that cannot succeed.
-2. JS repos without package.json scripts (server.js, index.js bare) fall
-   through to ValueError instead of a node serve argv the image CAN run.
+These pins are RETIRED (superseded by tests/test_omni_prescan_red.py).
+They remain in-tree as documentation of the behavior change; the live
+contract is asserted in test_omni_prescan_red.py::test_no_unsupported_refusal_anywhere.
 """
 
 from __future__ import annotations
 
 
-def test_go_rust_refuse_as_unsupported_not_missing_argv():
+def test_go_rust_resolve_to_build_argv_not_refusal():
     from modules.services.repo_intake import detect_runtime
 
-    for names in (["go.mod", "main.go"], ["Cargo.toml", "src/main.rs"]):
-        try:
-            detect_runtime(names, "someapp")
-        except ValueError as exc:
-            assert "nnot detect" not in str(exc), (
-                f"{names}: must not ask for argv for an unrunnable toolchain"
-            )
-            assert "nsupported" in str(exc), f"{names}: must name UNSUPPORTED, got: {exc}"
-            continue
-        raise AssertionError(f"{names}: unexpectedly detected (no toolchain in image)")
+    assert detect_runtime(["go.mod", "main.go"], "someapp") == ["go", "test", "./..."]
+    assert detect_runtime(["Cargo.toml", "src/main.rs"], "someapp") == ["cargo", "test"]
 
 
 def test_bare_js_detects_node_serve():
@@ -41,10 +30,9 @@ def test_bare_js_detects_node_serve():
     assert detect_runtime(["tree/index.js"], "") == ["node", "tree/index.js"]
 
 
-def test_bare_name_beats_unsupported_manifest():
-    # AnyCam regression (Q17): tree/anycam.py + rust/Cargo.lock must
-    # resolve to the runnable entry — the unsupported manifest only wins
-    # when NO runnable entry exists.
+def test_bare_name_beats_polyglot_markers():
+    # AnyCam (tree/anycam.py + rust/Cargo.lock): the runnable Python entry
+    # still wins over the vestigial manifest — precedence preserved.
     from modules.services.repo_intake import detect_runtime
 
     assert detect_runtime(["tree/anycam.py", "tree/rust/Cargo.lock"], "AnyCam") == [
