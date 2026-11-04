@@ -724,3 +724,19 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   test double appends a comment while the real probe still reaches the
   sink. That IS the correct terminal behavior — `failed` proves the
   loop decides instead of going silent.
+
+## Overnight batch4 traps (2026-11-04, branch feature/overnight-batch4)
+- **Trap: unsupported-manifest gate must run AFTER bare-name detection,
+  not before it.** `_has_supported` checked entry-candidate basenames
+  but not the bare-name fallback (`tree/anycam.py` vs slug `anycam`),
+  so AnyCam (runnable Python + vestigial `rust/Cargo.lock`) flipped from
+  detected to UNSUPPORTED. Fix: include the slug-bare check in
+  `_has_supported`. Lesson: any refusal gate must mirror the FULL
+  detection logic, including fallbacks — test the mixed case
+  (manifest + runnable entry in one tree), not just each alone.
+- **Trap: keyless live probes need Docker + network; dry-run proves
+  parse only.** `--ingest-dry-run` validates the spec without cloning.
+  The real clone path (ls-remote pin, staging container) only runs live.
+- **Trap: push-after-merge races need rebase.** Two merges in one night
+  collided on the remote twice; `git pull --rebase origin develop`
+  before push is the routine, not the exception.
