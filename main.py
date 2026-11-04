@@ -305,11 +305,11 @@ async def _run_ingest_workflow(snapshot, emit, *, config=None, file_list=None, c
         if isinstance(content, bytes):
             try:
                 text = content.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise ValueError(
-                    "Invalid ingest settings (staged snapshot holds non-UTF-8 "
-                    f"bytes at {path!r}; pass an explicit runtime_command)."
-                ) from exc
+            except UnicodeDecodeError:
+                # Binary blob (fonts, images, compiled artifacts): not
+                # model-readable, not patchable — skip it, keep the tree.
+                # The runtime argv + text files carry the verification.
+                continue
         else:
             text = str(content)
         files[str(path)] = text

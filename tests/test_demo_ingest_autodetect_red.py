@@ -130,3 +130,61 @@ def test_ingest_explicit_runtime_still_wins(monkeypatch):
             assert reply.get("type") != "invalid", f"explicit argv refused: {reply}"
     assert seen.get("ran") is True
     assert seen["argv"] == ["python3", "-m", "http.server"]
+
+
+def test_ingest_skips_binary_blobs_keeps_text(monkeypatch):
+    """Font/image bytes in the cloned tree are skipped, text runs."""
+    import main
+
+    seen = {}
+
+    def fake_intake(spec, runtime_command=None, **kwargs):
+        return SimpleNamespace(
+            files=MappingProxyType(
+                {
+                    "repo.url": b"https://x/y.git",
+                    "repo.commit_hash": b"b" * 40,
+                    "repo.runtime_command": b'["python3", "anycam.py"]',
+                    "tree/anycam.py": b"print('hi')\n",
+                    "tree/requirements.txt": b"",
+                    "tree/font.ttf": b"\x00\x01\xff\xfe" * 100,
+                }
+            ),
+            url="https://x/y.git",
+            commit_hash="b" * 40,
+            runtime_command=("python3", "anycam.py"),
+            digest="fake",
+        )
+
+    async def workflow(project_input, emit, **kwargs):
+        seen["names"] = sorted(project_input.files.keys())
+
+        class _R:
+            def model_dump(self, mode="json"):
+                return {
+                    "target": "x",
+                    "status": "verified",
+                    "message": "ok",
+                    "diff": "",
+                    "cleanup_ok": True,
+                    "cycles": [],
+                    "total_tokens": 0,
+                    "cost_usd": None,
+                }
+
+        return _R()
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr("modules.services.repo_intake.intake_repo_to_snapshot", fake_intake)
+    monkeypatch.setattr(main, "execute_project_workflow", workflow)
+    with TestClient(main.create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
+        from tests.test_w22_ingest_wire_red import connect, drain_snapshot
+
+        with connect(client) as socket:
+            socket.send_json({"ingest_repo": "https://x/y.git"})
+            reply = drain_snapshot(socket)
+            assert reply.get("type") != "invalid", f"binary blob refused: {reply}"
+    assert "tree/anycam.py" in seen["names"]
+    assert "tree/requirements.txt" in seen["names"]
+    assert not any(n.endswith(".ttf") for n in seen["names"])

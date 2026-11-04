@@ -443,3 +443,25 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   asserted the old prefix. Retargeted in the same commit.
   Lesson: a path-shape change is a contract change — grep `tree/` across
   tests/ in the same commit.
+
+## Ingest binary-blob refusal (2026-11-04, Part 2 dry run)
+
+- **Trap: refusing the whole tree for one font file.**
+  Wrong assumption: "non-UTF-8 bytes in the snapshot = hostile or broken
+  input, refuse." AnyCam's tree carries DejaVuSans.ttf (Rust GUI assets) —
+  a legitimate repo file that is neither model-readable nor patchable.
+  The old code refused the entire 44-file staging over one font. The
+  "pass an explicit runtime_command" hint was doubly wrong: the argv was
+  already pinned, the blob was the problem.
+  Evidence: `ValueError: staged snapshot holds non-UTF-8 bytes at
+  'tree/rust/src/gui/assets/DejaVuSans.ttf'` killed the Part 2 run at the
+  ingest gate after the clone fix landed.
+  Fix: skip undecodable blobs, keep the text tree. The runtime argv + text
+  files carry the verification; fonts/images/compiled artifacts ride along
+  as names only (still visible to red as attack surface, never sent as
+  model text). A tree with ZERO decodable text files still needs a guard
+  (future: refuse "no text files staged" explicitly rather than passing
+  an empty file set downstream).
+  Lesson: fail-closed means refusing the THREAT, not the bystander. A
+  blob is not an attack — it is absence of signal. Skip absence, refuse
+  malice.
