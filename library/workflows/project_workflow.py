@@ -1447,9 +1447,7 @@ async def execute_project_workflow(
                                 for hit in scanner_hits[:20]
                             )
                             project_digest = (
-                                (project_digest or "")
-                                + "\n\nLocal scanner hits:\n"
-                                + scanner_lines
+                                (project_digest or "") + "\n\nLocal scanner hits:\n" + scanner_lines
                             )
                             project_records = list(project_records) + [
                                 {"scanner": True, **h} if isinstance(h, dict) else {"raw": h}
