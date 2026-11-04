@@ -1397,9 +1397,7 @@ class ProjectAgentRunner:
             worker_proposals.append(
                 await self._call(
                     model,
-                    blue_persona_prompt(assignment.agent_index)
-                    + "\n"
-                    + BLUE_WORKER_SYSTEM_PROMPT,
+                    blue_persona_prompt(assignment.agent_index) + "\n" + BLUE_WORKER_SYSTEM_PROMPT,
                     worker_payload,
                     BlueProposal,
                     role=(
@@ -1419,9 +1417,7 @@ class ProjectAgentRunner:
             BLUE_LEADER_PERSONA.voice + "\n" + BLUE_LEADER_SYNTHESIS_SYSTEM_PROMPT,
             synthesis_payload,
             BlueProposal,
-            role=(
-                f"project_blue_leader_synthesis_cycle_{cycle}_batch_0{role_suffix}"
-            ),
+            role=(f"project_blue_leader_synthesis_cycle_{cycle}_batch_0{role_suffix}"),
             max_payload_bytes=blue_budget,
         )
 
