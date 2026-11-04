@@ -35,6 +35,7 @@ from modules.services.project_agents import (
     ProjectAgentRunner,
     RedAnalysisArtifacts,
     documents_from_mapping,
+    resolve_snapshot_paths,
 )
 from modules.services.projects import (
     ProjectSnapshot,
@@ -1839,13 +1840,16 @@ async def execute_project_workflow(
                             continue
                         break
 
-                    unknown_paths = sorted(set(red.report.affected_paths) - set(cumulative_files))
+                    resolved_paths, unknown_paths = resolve_snapshot_paths(
+                        list(red.report.affected_paths), set(cumulative_files)
+                    )
+                    unknown_paths = sorted(unknown_paths)
                     if unknown_paths:
                         raise ProjectWorkflowError(
                             "Red report referenced paths outside the safe snapshot."
                         )
                     if red.report.outcome == "finding":
-                        for path in red.report.affected_paths:
+                        for path in resolved_paths:
                             if path not in backtrack_paths:
                                 backtrack_paths.append(path)
 

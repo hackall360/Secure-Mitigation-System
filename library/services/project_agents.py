@@ -622,6 +622,39 @@ def _order_documents_by_rank(
     return ordered
 
 
+def resolve_snapshot_paths(
+    affected: Sequence[str], snapshot_keys: set[str] | frozenset[str] | Sequence[str]
+) -> tuple[list[str], list[str]]:
+    """Resolve red's affected paths against staged snapshot keys.
+
+    Ingest stages keys as ``tree/<relpath>`` (+ ``repo.*`` service keys);
+    red legitimately reports the repo-relative ``<relpath>`` (Gate-2
+    insecure-web failure) or echoes the staged shape verbatim (AnyCam).
+    Exact match wins; otherwise one unique suffix match (``tree/``-stripped)
+    resolves; ``repo.*`` never resolves; 0 or 2+ matches stay unknown
+    (fail closed, no guessing).
+    """
+    keys = set(snapshot_keys)
+    stripped = {k[5:] if k.startswith("tree/") else k: k for k in keys}
+    resolved: list[str] = []
+    unknown: list[str] = []
+    for path in affected:
+        if path in keys:
+            resolved.append(path)
+            continue
+        if path.startswith("repo."):
+            unknown.append(path)
+            continue
+        candidates = [
+            full for rel, full in stripped.items() if rel == path or rel.endswith("/" + path)
+        ]
+        if len(candidates) == 1 and not candidates[0].startswith("repo."):
+            resolved.append(candidates[0])
+        else:
+            unknown.append(path)
+    return resolved, unknown
+
+
 def build_source_batches(
     documents: Sequence[SourceDocument], *, max_batch_bytes: int
 ) -> tuple[list[SourceBatch], ContextCoverage]:
@@ -739,11 +772,8 @@ def build_blue_dossier(
     """
     by_path = {document.path: document for document in documents}
     protected = set(protected_paths)
-    selected = [
-        by_path[path]
-        for path in red_report.affected_paths
-        if path in by_path and path not in protected
-    ]
+    resolved, _ = resolve_snapshot_paths(list(red_report.affected_paths), set(by_path))
+    selected = [by_path[path] for path in resolved if path in by_path and path not in protected]
     pre = dict(pre_verification)
     probe = pre.get("probe")
     regression = pre.get("regression")
