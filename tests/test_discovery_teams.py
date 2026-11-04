@@ -8,7 +8,9 @@ from modules.services.project_agents import (
     BlueProposal,
     FileReplacement,
     FinalBlueReport,
+    ManifestRankOrder,
     ProjectAgentRunner,
+    RankedFile,
     RedBatchEvidence,
     RedReport,
     ReviewAssignment,
@@ -44,6 +46,14 @@ class TeamMuse:
                 cost_usd=0.0001,
             )
         )
+        if schema is ManifestRankOrder:
+            manifest = payload["manifest"]
+            return ManifestRankOrder(
+                ranks=[
+                    RankedFile(path=row["path"], rank=index, score=1.0 / (index + 1), reason="t")
+                    for index, row in enumerate(manifest)
+                ]
+            )
         if schema is ReviewTeamPlan:
             count = payload["requested_worker_count"]
             indices = range(1, count + 1)
@@ -152,17 +162,18 @@ async def test_ultra_heavy_red_uses_model_plan_five_workers_and_leader_synthesis
     )
 
     roles = [call["role"] for call in muse.calls]
-    assert roles[0] == "project_red_leader_plan_cycle_1"
-    assert roles[1:6] == [
+    assert roles[0] == "project_red_triage_rank_cycle_1"
+    assert roles[1] == "project_red_leader_plan_cycle_1"
+    assert roles[2:7] == [
         f"project_red_initial_evidence_cycle_1_batch_0_worker_{index}" for index in range(1, 6)
     ]
-    assert roles[6] == "project_red_initial_leader_synthesis_cycle_1"
+    assert roles[7] == "project_red_initial_leader_synthesis_cycle_1"
     assert len(artifacts.batch_evidence) == 5
     assert artifacts.leader_plan is not None
     assert [item.agent_index for item in artifacts.leader_plan.assignments] == list(range(1, 6))
     assert artifacts.report.outcome == "no_finding"
     assert [item.role for item in muse.usage] == roles
-    for call in muse.calls[1:6]:
+    for call in muse.calls[2:7]:
         assert call["payload"]["leader_assignment"]["agent_index"] in range(1, 6)
         assert "untrusted model output" in call["system"]
 

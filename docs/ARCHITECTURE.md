@@ -195,14 +195,15 @@ routing error; `binary_telemetry.summarize_profile` interprets in-sandbox
 
 ## Configuration
 
-All inference goes through `agents.MetaMuseClient`: HTTPX against Meta's compatible `/chat/completions` endpoint, strict Pydantic response validation, bounded response size, no redirects, no fallback provider. Only Muse Spark/Wonder IDs and `meta-models/muse-spark-open[-suffix]` validate. **Verified default:** red `muse-spark-1.3-contributor`, blue `muse-wonder-1.0`.
+All inference goes through `agents.MetaMuseClient`: HTTPX against Meta's compatible `/chat/completions` endpoint, strict Pydantic response validation, bounded response size, no redirects, no fallback provider. Only Muse Spark/Wonder IDs and `meta-models/muse-spark-open[-suffix]` validate. **Verified default:** red `muse-spark-1.3-contributor`, blue `muse-spark-1.3-contributor`; key `META_MUSE_BLUE_ESCALATION_MODEL` (e.g. `muse-wonder-1.0`) for one explicit stronger-model blue retry after a project rollback.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `META_MUSE_API_KEY` | unset | Meta Model API key (`dev.meta.ai`). Required for scans |
 | `META_MUSE_BASE_URL` | `https://api.meta.ai/v1` | Meta Model API. Baseten/Modal allowed for the open model |
 | `META_MUSE_RED_MODEL` | `muse-spark-1.3-contributor` | Boundary analysis |
-| `META_MUSE_BLUE_MODEL` | `muse-wonder-1.0` | Sanitization patch generation |
+| `META_MUSE_BLUE_MODEL` | `muse-spark-1.3-contributor` | Sanitization patch generation |
+| `META_MUSE_BLUE_ESCALATION_MODEL` | unset (off) | One explicit stronger-model blue retry after a project rollback |
 | `META_MUSE_TIMEOUT_SECONDS` | `300` | Per-request API timeout, 0 (no read timeout) or 1–3600 s; per-run `?timeout_s=` overrides |
 | `META_MUSE_MAX_TOKENS` | `32768` | Output budget, 1024–131072. **Reasoning tokens count toward it** |
 | `META_MUSE_REASONING_EFFORT` | unset | `minimal` / `low` / `medium` / `high` / `xhigh` / `max`. Unset = model default |

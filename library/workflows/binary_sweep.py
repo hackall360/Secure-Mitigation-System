@@ -34,6 +34,7 @@ from modules.shared.sms_observability import get_aspect as _get_aspect
 from modules.shared.sms_observability import log as _obs_log
 from modules.shared.sms_observability import record_metric as _obs_metric
 from modules.shared.sms_observability import trace as _obs_trace
+from modules.shared.sms_progress import verify_traced as _verify_traced
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.sweep import SWEEP_PASSES, SweepPassResult, SweepScanResult
 from modules.workflows.workflow import build_verdict_receipt
@@ -177,8 +178,13 @@ async def execute_binary_sweep(
                 f"{compressed_profile.compressed_tokens_sent} tokens).",
             )
             container, snapshot = await blocking(sandbox.start_binary_harness, network, spec.blob)
-            baseline = await blocking(
-                sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
+            baseline = await _verify_traced(
+                log,
+                "baseline",
+                blocking,
+                sandbox.run_isolated_verifier,
+                network,
+                BINARY_BASELINE_SCRIPT,
             )
             result.traces["baseline"] = baseline.output
             _obs_log(
@@ -231,8 +237,13 @@ async def execute_binary_sweep(
                         f"[sweep {pass_id}] {finding.vulnerability_class} at "
                         f"{finding.sink_location}: {finding.analysis_summary}",
                     )
-                    pre = await blocking(
-                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    pre = await _verify_traced(
+                        log,
+                        f"{pass_id}-pre",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        finding.verification_script_python,
                     )
                     passed.pre_exit_code = pre.exit_code
                     result.traces[f"{pass_id}:before"] = pre.output
@@ -312,8 +323,13 @@ async def execute_binary_sweep(
                         network,
                         mitigation=mitigation,
                     )
-                    regression = await blocking(
-                        sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
+                    regression = await _verify_traced(
+                        log,
+                        f"{pass_id}-regression",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        BINARY_BASELINE_SCRIPT,
                     )
                     result.traces[f"{pass_id}:regression"] = regression.output
                     if regression.exit_code != 0:
@@ -321,8 +337,13 @@ async def execute_binary_sweep(
                             f"Binary sweep pass {pass_id} mitigated harness failed baseline."
                         )
                     passed.regression_passed = True
-                    post = await blocking(
-                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    post = await _verify_traced(
+                        log,
+                        f"{pass_id}-post",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        finding.verification_script_python,
                     )
                     passed.post_exit_code = post.exit_code
                     result.traces[f"{pass_id}:after"] = post.output
@@ -343,8 +364,13 @@ async def execute_binary_sweep(
                         raise SandboxError(
                             f"Binary sweep pass {pass_id} post-mitigation verifier was inconclusive."
                         )
-                    final_health = await blocking(
-                        sandbox.run_isolated_verifier, network, BINARY_BASELINE_SCRIPT
+                    final_health = await _verify_traced(
+                        log,
+                        f"{pass_id}-final",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        BINARY_BASELINE_SCRIPT,
                     )
                     result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
                     if final_health.exit_code != 0:

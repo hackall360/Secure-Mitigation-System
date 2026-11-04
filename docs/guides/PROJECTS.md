@@ -60,6 +60,27 @@ Hosted-inference prompts must use only relative snapshot paths and must disclose
 `skipped` and any `binary_files` omitted from model text. Never include `spec.path`
 or another full local filesystem path in a hosted request.
 
+## Entrypoint-first triage (Slice D)
+
+Red review is ordered by a cheap one-call manifest ranker, on by default:
+
+- `ProjectAgentRunner.analyze_red` first builds a content-free manifest per file
+  (`path`, `size_bytes`, first-line `shebang`, stdlib-matched `imports` over the
+  first 4 KiB, bounded `entrypoint_markers` such as `createServer`/`listen(`/
+  `if __name__`/`sys.argv`). One Spark call returns a ranked file list; batches
+  are built in rank order. No source content ever enters the rank payload.
+- Budget knob `ProjectWorkflowLimits.triage_max_files` (default `None` = no cap)
+  defers low-rank files; deferred paths land in `coverage.omitted_paths` with a
+  `deferred` note and `coverage.complete = False`.
+- Backtrack: `execute_project_workflow` accumulates every finding cycle's
+  `affected_paths`; the next pass's manifest leads with importing/neighbor files
+  (`expand_backtrack_paths`: stem import match or same-directory sibling; tests
+  and docs never expand).
+- Flag `ProjectWorkflowLimits.triage_enabled` (default `True`); `False` restores
+  the exact legacy call sequence (no rank call). Any ranker failure (model error,
+  malformed order) fails closed to a full scan of every file with a
+  `fell back to a full scan` coverage note — never to no-scan.
+
 ## Docker lifecycle
 
 Create the network through `DockerSandboxManager.create_isolated_network()`. It is

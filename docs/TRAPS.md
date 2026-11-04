@@ -792,3 +792,83 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Compiled snippet argv probe for the toolchain first; absent => exit 2
   (inconclusive, fail-closed verdict), never a language refusal. The
   refusal shape must never re-enter through a missing binary.
+
+## Slice F recon traps (2026-11-04, branch feature/slice-f-recon)
+
+- **Trap: `client.stream` is httpx plumbing, not server-sent events.**
+  Wrong assumption: `async with self.client.stream("POST",
+  "chat/completions", ...)` in `library/core/agents.py:329` means the
+  transport streams tokens (SSE). It does not — `stream` is httpx's
+  response-reading API; the JSON body never sets `"stream": true`, and
+  `_read_capped` buffers the whole body before parsing. The endpoint DOES
+  support SSE (`stream: true` + `Accept: text/event-stream`, `data: `
+  lines to `[DONE]`; documented at `protocols/chat-completions`
+  "Streaming"), but this transport deliberately leaves that benefit —
+  exemption from the non-streaming 504 `gateway_timeout` limit — on the
+  table for schema-validated single-object calls. Lesson: grep the request
+  BODY for the `stream` flag, not the call-site verb, before claiming
+  streaming.
+- **Trap: `reasoning_effort: max` is model-gated, not universal.**
+  Wrong assumption: config accepts `minimal..max` (config.py) so `max` is
+  safe on any Muse model. The live reasoning page grants `max` to
+  `muse-wonder-1.0` and `muse-spark-1.3` but NOT to
+  `muse-spark-1.3-contributor` — the repo's own DEFAULT red model. Setting
+  effort `max` on the default red model risks HTTP 400. Lesson: an enum in
+  config is the union of per-model capabilities; check the per-model
+  matrix before raising the knob globally.
+
+## Slice E live-feedback emits (2026-11-04, branch feature/slice-e-feedback)
+- **Trap: a verify "done" line carrying an exit code double-counts findings in the v3 interpreter.**
+  Wrong assumption: "`[phase verify] done (pre) exited 0` is a harmless progress bracket — the parser only reads the canonical exit lines." The interpreter's exit entity regex (`web/js/model/extract.js` EXIT_RE) matches ANY `exit(ed) N` token: a done-line with `exited 0` fires the `probe-reachable` beat and inflates `stats.findings` (live full-verified stream went 1 -> 2 findings with exit-coded done lines). Fix shipped: done brackets carry the stage label only (`[phase verify] done (pre)`), never codes; the existing exit-code line stays the single source of truth. Pinned by `test_new_lines_do_not_change_interpreter_counts` (live stream through real node vm Interpreter, counts pinned).
+  Lesson: never emit a second code-shaped token anywhere near the stream — grep EXIT_RE before adding any line with digits after exit-like words. Proven live: base stream also yields findings=2 (pre-existing `red_proof` chatter `exit 0`), so the pin asserts parity with base, not an idealized 1.
+- **Trap: `label=` collides between the progress helper and the sandbox call it wraps.**
+  Wrong assumption: "`verify_traced(log, label, func, *args, label=...)` — the helper's bracket name and the sandbox's keyword-only `label` are different scopes." They collide in one signature: `TypeError: got multiple values for argument 'label'`, and the workflow swallows it into a bare "failed (TypeError)" status. Fix shipped: helper param renamed to `stage`; sandbox calls keep `label=...`. Lesson: when wrapping calls with prominent kwarg names, prefix/rename the wrapper's own params first — and a bare `except Exception -> error status` workflow will hide the collision, so reproduce with a traceback-catching shim, not the status string.
+- **Trap: bounding per-emit latency does NOT bound the scan tail — N serial emits x timeout still sums.**
+  Wrong assumption: "EMIT_TIMEOUT_S=0.5 bounds backpressure cost to 0.5 s." Twenty sequential `await log(...)` calls under a dead socket cost 20 x 0.5 s = ~10-14 s before cleanup. The bound guarantees cleanup is never blocked FOREVER (the actual LAW 4 invariant), not that it is fast. The RED pin therefore uses a hanging emit + `wait_for(30 s)` asserting completion + `sandbox.closed`, not a wall-clock budget. Lesson: timeout-per-call bounds liveness, not latency; pin the invariant (cleanup runs), not the budget.
+- **Trap: `run_project` test helper hardcodes `silent_emit` — capturing emits needs a direct `execute_*` call.**
+  Wrong assumption: "the helper forwards my emit." `tests/helpers.py::run_project` has no emit parameter; a progress test using it sees zero lines and fails for the wrong reason. Fix: call `execute_project_workflow(..., emit, ...)` directly in emit-asserting tests. Same for fixture RED: `run_fixture(codes, emit=emit)` does forward — check the helper signature before assuming.
+## Slice B dossier traps (branch feature/slice-b-dossier)
+- **Trap: `ruff format` reflows the tail re-export shim and breaks its `noqa`.**
+  `library/workflows/project_workflow.py` ends with single-line
+  `from ... import X as X  # noqa: E402` re-exports. The formatter
+  rewrites them multi-line, which moves the `noqa` so E402 fires (3 new
+  errors that were clean before). Wrong assumption: "format is always
+  safe to run tree-wide". Evidence: `ruff check` delta clean tree 2
+  errors -> 4 after format; reverting only the shim hunk restored the
+  baseline. Lesson: keep that shim byte-identical; run `ruff format`
+  on touched regions only and diff the tail.
+- **Trap: `RedReport` has no `confidence` field — do not invent one.**
+  Slice B grounds the dossier finding with probe/regression exit codes
+  plus bounded output digests instead. Fabricating a confidence value
+  the red stage never produced would be ungrounded model input.
+
+## Docs accuracy pass (2026-11-04, branch feature/testing-2026-11-04)
+
+- **Trap: red reports bare repo paths, the snapshot stages `tree/`-prefixed keys.**
+  Wrong assumption: "affected_paths match snapshot keys verbatim." Ingest
+  stages `tree/<relpath>` (+ `repo.*` service keys); red legitimately reports
+  `app/app.py` and the lookup misses. Fix: `resolve_snapshot_paths`
+  (`library/services/project_agents.py:639`; callers at
+  `project_agents.py:789`, `project_workflow.py:1843`) — exact match wins,
+  else one unique `tree/`-stripped suffix match resolves, `repo.*` never
+  resolves, 0 or 2+ matches stay unknown (fail closed).
+- **Trap: a red probe with a syntax error kills the run before blue.**
+  Wrong assumption: "the sandbox verifier's rejection is the repair path."
+  It ends the run with no patch. Fix: one bounded repair
+  (`library/services/project_agents.py:1279-1301`) — `ast.parse` the probe,
+  re-ask the report step ONCE with the parse error; a second bad probe is
+  returned unchanged so the sandbox guard still fails closed.
+- **Trap: `--sweep-passes` is fixture-only, not a project-scan ladder.**
+  Wrong assumption: "N passes deepens an ingest run." The CLI requires
+  `--scan` (`main.py:3804` errors otherwise) and only the fixture branch
+  honors it (`main.py:2911-2912`); the project path
+  (`main.py:2924`) runs the standard project loop unchanged. Ingest depth
+  comes from the source review passes, not this flag.
+- **Trap: `demo_run.py` takes no args but still spawns a live run.**
+  Wrong assumption: "`--help` is safe on a wrapper script." `demo_run.py`
+  has no argparse (`main()` at `demo_run.py:81`); an unknown flag is
+  ignored and the pinned insecure-web ingest launches, burning API credit.
+  (Verified live this session: had to `kill` the child scan and
+  `docker rm -f` its clone container.) Check `scale_run.py` (which DOES
+  take `--early-exit/--parallelism/--commit`) vs `demo_run.py` before
+  passing flags to either.

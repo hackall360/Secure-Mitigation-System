@@ -535,6 +535,16 @@ class _PersonaWireClient:
 
     async def _request(self, model, system, payload, schema, **kwargs):
         self.systems.append(system)
+        if schema is not None and getattr(schema, "__name__", "") == "ManifestRankOrder":
+            from modules.services.project_agents import ManifestRankOrder, RankedFile
+
+            manifest = payload["manifest"]
+            return ManifestRankOrder(
+                ranks=[
+                    RankedFile(path=row["path"], rank=index, score=1.0, reason="t")
+                    for index, row in enumerate(manifest)
+                ]
+            )
         if schema is not None and getattr(schema, "__name__", "") == "ReviewTeamPlan":
             from modules.services.project_agents import ReviewAssignment, ReviewTeamPlan
 
