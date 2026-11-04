@@ -173,7 +173,14 @@ def _state_field(state: TuiState, *names: str, default: str = "") -> str:
 
 
 def _infer_snippet_language(filename: str, explicit: str = "") -> str:
-    if explicit and str(explicit).strip().lower() in ("javascript", "python", "php", "c", "rust", "go"):
+    if explicit and str(explicit).strip().lower() in (
+        "javascript",
+        "python",
+        "php",
+        "c",
+        "rust",
+        "go",
+    ):
         return str(explicit).strip().lower()
     import os as _os
 

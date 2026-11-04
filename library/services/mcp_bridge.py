@@ -90,9 +90,21 @@ _MCP_LANGUAGE_COMMAND: dict[str, tuple[str, ...]] = {
     # probes for its toolchain first — absent => exit 2 (inconclusive),
     # never a refusal. `|| true` keeps link/run failures as probe evidence
     # (exit 0/1 from the program) rather than shell noise.
-    "c": ("sh", "-c", "command -v gcc >/dev/null || exit 2; gcc -O1 -o /tmp/snippet /workspace/snippet.c && /tmp/snippet"),
-    "rust": ("sh", "-c", "command -v rustc >/dev/null || exit 2; rustc -O -o /tmp/snippet /workspace/snippet.rs && /tmp/snippet"),
-    "go": ("sh", "-c", "command -v go >/dev/null || exit 2; cd /tmp && cp /workspace/snippet.go ./snippet_main.go && go run ./snippet_main.go"),
+    "c": (
+        "sh",
+        "-c",
+        "command -v gcc >/dev/null || exit 2; gcc -O1 -o /tmp/snippet /workspace/snippet.c && /tmp/snippet",
+    ),
+    "rust": (
+        "sh",
+        "-c",
+        "command -v rustc >/dev/null || exit 2; rustc -O -o /tmp/snippet /workspace/snippet.rs && /tmp/snippet",
+    ),
+    "go": (
+        "sh",
+        "-c",
+        "command -v go >/dev/null || exit 2; cd /tmp && cp /workspace/snippet.go ./snippet_main.go && go run ./snippet_main.go",
+    ),
 }
 SNIPPET_TOOL_NAME = "submit_code_snippet"
 SCAN_STATUS_TOOL_NAME = "sms_scan_status"
