@@ -639,3 +639,26 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: a serving target and a checking target are different verbs.
   Any wrapper that serves forever must also ship an exit-0 health verb —
   or the baseline will (correctly) refuse a run that never ends.
+
+## Verifier probe surface: cyber, not just text (2026-11-04, Part 2 dry run)
+
+- **Trap: the wrapper serves text, but red needs sockets.**
+  Wrong assumption: "serving staged files on 8080 generalizes the probe
+  surface." It generalizes the CONTENT, not the CHANNEL. A purple-team
+  probe must open real connections: raw TCP/UDP to arbitrary ports, TLS
+  handshakes, DNS — cyber, not just HTTP-text. The verifier containers
+  already rode the scan network (no network_mode=none on the RUNTIME —
+  only the image-build STAGE is isolated), so the capability was there;
+  only the red prompt still said "http://target-service:8080" as if it
+  were the only surface.
+  Evidence: live proof — a raw-socket probe from a verifier container hit
+  a listening target on port 9999, resolved target-service via DNS, and
+  confirmed the TLS module (test_verifier_reaches_target_on_arbitrary_port).
+  Fix: all four red prompts now describe the full surface (8080 file
+  service by default + direct sockets/TLS/DNS to target-service on any
+  port). socket/ssl were never forbidden (only subprocess/pty/ctypes/
+  multiprocessing/shutil/resource/signal are) — no allowlist change
+  needed, just permission stated.
+  Lesson: an unadvertised capability is an unused capability. The network
+  plumbing existed; the prompt was the lock. When expanding a surface,
+  check what the sandbox ALREADY permits before building new pipes.
