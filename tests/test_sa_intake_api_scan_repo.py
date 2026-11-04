@@ -73,12 +73,8 @@ class _FakeSnapshot:
             "tree/requirements.txt": b"requests\n",
             # Wrapper manifest entries (build_service_wrapper would add
             # these): the scan path reads them for serve/smoke argv.
-            "repo.runtime_command": _json.dumps(
-                ["python3", "-c", "wrapper"]
-            ).encode(),
-            "repo.smoke_command": _json.dumps(
-                ["python3", "-c", "wrapper", "--smoke"]
-            ).encode(),
+            "repo.runtime_command": _json.dumps(["python3", "-c", "wrapper"]).encode(),
+            "repo.smoke_command": _json.dumps(["python3", "-c", "wrapper", "--smoke"]).encode(),
         }
 
 
