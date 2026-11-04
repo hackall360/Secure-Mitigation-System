@@ -740,3 +740,21 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
 - **Trap: push-after-merge races need rebase.** Two merges in one night
   collided on the remote twice; `git pull --rebase origin develop`
   before push is the routine, not the exception.
+
+## MISSION OMNI-INGEST Wave 1 traps (2026-11-04, branch feature/omni-ingest-wave1)
+- **Trap: retiring a refusal breaks every pin that asserted it.**
+  Removing UNSUPPORTED touched `test_intake_runtimes_red.py` (rewritten as
+  build-argv pins), `test_verify_services_gap_red.py` + `test_verify_r2_svc_red.py`
+  (notes.txt now resolves to the `sh` generic probe; only `[]` still raises).
+  Lesson: grep for the error STRING, not just the code path — pins in
+  unrelated files assert refusal text.
+- **Trap: the eco block can clobber the parsed makefile command.**
+  Adding `candidates["c"] = ["make"]` unconditionally overwrote the parsed
+  `["make", "zzz"]`. Fix: only fill `c` when no `makefile` candidate exists.
+  The parsed target is more specific than the bare fallback — specificity
+  must win at every layer, not just in `_DETECT_PRECEDENCE`.
+- **Trap: pin the wrong layer, fail for the wrong reason.**
+  First RED draft pinned `ecosystem == "c"` for a CMakeLists tree — the
+  observer correctly returns `c-cmake`. The pin was wrong, the code right.
+  Lesson: when a RED pin fails, check whether the pin or the code is wrong
+  before "fixing" the implementation.
