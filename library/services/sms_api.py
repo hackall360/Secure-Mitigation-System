@@ -948,6 +948,22 @@ async def scan_repo(
                 "repo-intake scan refused: empty staged tree for "
                 f"{_repo_host_prefix(spec.url, spec.commit_hash)}"
             )
+        from modules.services.repo_intake import build_service_wrapper
+
+        _already_wrapped = "repo.smoke_command" in dict(snapshot.files or {})
+        if not _already_wrapped:
+            try:
+                snapshot = build_service_wrapper(snapshot)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(
+                    "repo-intake scan refused: no servable staged content for "
+                    f"{_repo_host_prefix(spec.url, spec.commit_hash)} ({exc})"
+                ) from exc
+        tree = {
+            key[5:]: value
+            for key, value in dict(snapshot.files or {}).items()
+            if key.startswith("tree/")
+        }
         import tempfile
         from pathlib import Path
 
@@ -973,10 +989,30 @@ async def scan_repo(
             dest.write_bytes(
                 content if isinstance(content, bytes) else str(content).encode("utf-8")
             )
-        runtime = detect_runtime(
-            sorted(tree),
-            str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git").lower(),
-        )
+        import json as _json
+
+        try:
+            _smoke = _json.loads(
+                dict(snapshot.files or {}).get("repo.smoke_command", b"[]").decode("utf-8")
+            )
+            smoke_argv = list(_smoke) if _smoke else None
+        except (ValueError, AttributeError, TypeError):
+            smoke_argv = None
+        try:
+            _serve = _json.loads(
+                dict(snapshot.files or {}).get("repo.runtime_command", b"[]").decode("utf-8")
+            )
+            serve_argv = list(_serve) if _serve else None
+        except (ValueError, AttributeError, TypeError):
+            serve_argv = None
+        if serve_argv:
+            runtime = serve_argv
+        else:
+            runtime = detect_runtime(
+                sorted(tree),
+                str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git").lower(),
+            )
+        regression_argv = smoke_argv or list(runtime)
         contract_text = (request.contract or "").strip() or (
             f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. "
             "Preserve the public API. Only sanitize untrusted input."
@@ -987,7 +1023,7 @@ async def scan_repo(
             {
                 "path": str(staged),
                 "command": runtime,
-                "test_command": list(runtime),
+                "test_command": regression_argv,
                 "contract": contract_text[:32_768],
                 "scan_profile": "custom",
                 "cycles": 1,
