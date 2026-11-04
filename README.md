@@ -137,7 +137,7 @@ Green builds a new flawed service from live intel. Red breaks it in Docker. Blue
 
 **The showcase (90 seconds).** Run `python main.py --list-targets`, then run the bundled demo. Watch the pass steps (Standard, Deep, Threat-actor, Chain), the Vault recall badge on a repeat run, and the Context compression badge.
 
-**Your own target (90 seconds).** Scan a repo, sweep `binary_argv_echo`, or call `sms_scan_source` and check it with `sms_verify_receipt`.
+**Your own target (90 seconds).** Scan a repo, sweep `binary_argv_echo`, or call `sms_scan_source` and check it with `sms_verify_receipt`. Any repo in any language: the PreScanObserver detects the ecosystem (Python, Node, PHP, C, C++, Rust, Go, Make) and maps it to a build command — no language is refused. The thick polyglot image carries gcc/make/cmake/go/rustc/cargo, and compiled snippets (`--snippet-language c|rust|go`) compile-and-run inside the sandbox.
 
 ## Why this design
 

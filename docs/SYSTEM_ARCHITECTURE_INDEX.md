@@ -163,7 +163,11 @@ original and fixed code. Only a 0→1 flip with unchanged normal behavior is
 - **`repo_intake.py`**: `RepoIntakeSpec` (https + 40-hex validation),
   `intake_repo_to_snapshot`, `_clone_in_staging` (non-started container,
   argv-list git exec, `get_archive` tar, .git strip, 2000-file/8MB caps),
-  `detect_runtime` (package.json/requirements/composer/Makefile).
+  `observe_ecosystem` PreScanObserver (rust/go/c/c-cmake/python/node/php/
+  make/generic) + `required_toolchains`, `detect_runtime` (never refuses:
+  compiled ecosystems resolve to build/test argv, unknown trees to the
+  thick-image generic probe), `build_service_wrapper` (records
+  `repo.ecosystem` + `repo.toolchains` for the provisioner).
 - **`projects.py`**: `ProjectSpec` intake from state/args; **`project_agents.py`**:
   red/blue/green agent runners; **`binary_intake.py`**: `validate_binary_blob/file`
   (ELF/Mach-O/PE, size caps); **`binary_telemetry.py`**: binary scan metrics.
@@ -191,10 +195,14 @@ original and fixed code. Only a 0→1 flip with unchanged normal behavior is
 
 ### `docker/` — air-gapped sandbox images + in-sandbox harnesses
 
-- Three images from pinned `python:3.12-alpine3.22` digest: `Dockerfile.target`
+- Five images from pinned `python:3.12-alpine3.22` digest: `Dockerfile.target`
   (nodejs 22.23.4 + php84, non-root 10001), `Dockerfile.verifier` (stdlib
   only + `runner.py`), `Dockerfile.binary` (`file`/`binutils`/`xxd`,
-  static reversing only, no compilers/network).
+  static reversing only, no compilers/network), `Dockerfile.clone`
+  (git-only staging), `Dockerfile.polyglot` (MISSION OMNI-INGEST: thick
+  image — gcc 14.2 + make 4.4 + cmake 3.31 + go 1.24 + rust/cargo 1.87 +
+  node/php, all pinned; Wave 2 `provision_toolchains` fetches project
+  deps with network attached, then seals: execution runs network NONE).
 - **`runner.py`** (29 lines): runs `/verifier/verify.py`, maps
   `SystemExit(0/1/2)` verbatim, everything else → 2.
 - **`binary_harness.py`** (106 lines): `127.0.0.1:8080` argv/stdin harness
