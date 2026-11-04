@@ -140,8 +140,11 @@ def test_retry_budget_bounded_and_capped():
         _retry_delay_seconds,
     )
 
-    assert RETRY_MAX_ATTEMPTS == 2
-    assert _retry_delay_seconds(0, 3600.0) <= 6.0
+    # Ladder (2026-11-03 directive): 4 attempts, immediate → 10 s → 20 s.
+    assert RETRY_MAX_ATTEMPTS == 4
+    assert _retry_delay_seconds(1, 3600.0) <= 6.0
+    assert 10.0 <= _retry_delay_seconds(2) <= 11.0
+    assert 20.0 <= _retry_delay_seconds(3) <= 21.0
     assert _parse_retry_after("not-a-number") is None
 
 

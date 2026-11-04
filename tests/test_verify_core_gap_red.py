@@ -60,7 +60,8 @@ def test_config_rejects_bad_numeric_and_docker_name_bounds():
     for kw in (
         {"verifier_timeout_seconds": 0},
         {"docker_timeout_seconds": 601},
-        {"api_timeout_seconds": 301},
+        {"api_timeout_seconds": -1},
+        {"api_timeout_seconds": 3601},
         {"container_cpu_nano": 0},
         {"container_mem_limit": "10x"},
         {"target_base_image": ""},

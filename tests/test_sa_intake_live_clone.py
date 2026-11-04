@@ -214,13 +214,19 @@ def _run_clone(commit_hash, **kw):
 
 def test_clone_none_commit_omits_fetch_checkout():
     sandbox, snap = _run_clone(None)
-    ((image, command, _kwargs),) = sandbox.client.containers.run_calls
+    ((image, command, kwargs),) = sandbox.client.containers.run_calls
     script, argv = command[2], command[4:]
     assert "fetch" not in script
     assert "checkout" not in script
     assert argv == [URL]
     assert snap.commit_hash is None
     assert snap.files["repo.commit_hash"] == b""
+    # Docker 29 quirk: writable root (no read_only/tmpfs) so get_archive
+    # can see the staged tree; isolation via uid/caps/no-new-privileges.
+    assert kwargs.get("read_only") is not True
+    assert "tmpfs" not in kwargs
+    assert kwargs.get("user") == "10001"
+    assert kwargs.get("cap_drop") == ["ALL"]
 
 
 def test_clone_pinned_commit_keeps_fetch_checkout():

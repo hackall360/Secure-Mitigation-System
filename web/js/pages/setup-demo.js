@@ -24,9 +24,14 @@
   const pvKey = new MapKey($('pv-key'), { compact: true });
   document.body.dataset.explain = 'both';
 
-  const state = { link: null, targets: SMS.link.SAMPLE_TARGETS, key: localStorage.getItem('sms.v3.demo.key') || null, source: 'fake' };
+  // Recording presets (video plan): PHP target, sweep depth 2 (+ deep pass),
+  // threat intel on, Balanced profile. First visit seeds these; the user can
+  // still change anything — presets only fill unset stored values.
+  const DEMO_PRESETS = { key: 'php_command_sink', sweep_passes: 2, research: true, profile: 'balanced' };
+
+  const state = { link: null, targets: SMS.link.SAMPLE_TARGETS, key: localStorage.getItem('sms.v3.demo.key') || DEMO_PRESETS.key, source: 'fake' };
   const ctx = { page: 'demo', scanProfiles: [], models: [], defaultModel: '', source: 'fixture' };
-  const runOpts = new O.OptionForm($('demo-opts'), { keys: ['scan_profile', 'sweep_passes', 'research', 'profile'], ctx, storageKey: 'sms.v3.demo.run', onChange: refresh });
+  const runOpts = new O.OptionForm($('demo-opts'), { keys: ['scan_profile', 'sweep_passes', 'research', 'profile'], ctx, storageKey: 'sms.v3.demo.run', values: { sweep_passes: DEMO_PRESETS.sweep_passes, research: DEMO_PRESETS.research, profile: DEMO_PRESETS.profile }, onChange: refresh });
   const buildOpts = new O.OptionForm($('demo-build-opts'), { keys: ['build_brief', 'vulns', 'demo_size', 'flaw_count'], ctx: { page: 'demo', source: 'build' }, storageKey: 'sms.v3.demo.build', onChange: refresh });
 
   const grow = () => state.key === 'greenhouse';

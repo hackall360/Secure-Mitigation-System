@@ -25,7 +25,10 @@
       this.o = o;
       this.ctx = o.ctx || { page: 'console' };
       this.keys = o.keys.filter((k) => FIELDS[k]);
-      this.v = Object.assign(defaults(this.keys, this.ctx), this._load(), o.values || {});
+      // Merge order: schema defaults < presets (o.values: first-visit seeds
+      // like the demo recording setup) < stored user choices. A returning
+      // user's explicit pick always wins over a preset.
+      this.v = Object.assign(defaults(this.keys, this.ctx), o.values || {}, this._load());
       this.nodes = {};
       this.disabled = false;
       this.render();
@@ -145,7 +148,9 @@
           seg.append(b);
         });
         seg.addEventListener('keydown', (e) => {
-          const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+          // WAI-ARIA radiogroup: all four arrows move (vertical layouts,
+          // single-axis groups like demo Operational mode included).
+          const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
           if (!d) return;
           const opts = s.options.map((o) => o.v);
           const i = opts.indexOf(this.v[s.key]);
@@ -188,10 +193,14 @@
         // programmatic (keyboard/buttons), so echo the new value directly.
         input.value = String(next);
       };
-      // press-and-hold accelerates
+      // press-and-hold accelerates. Liveness guard: bump()->set() fires
+      // onChange->refresh->render(), which DESTROYS the pressed button
+      // mid-press — its pointerup clearer dies with it. Without the guard
+      // the pending timer fires on as a zombie, re-renders, reschedules,
+      // and fights later opposite-direction timers (1<->2 oscillation).
       const hold = (btn, dir) => {
         let t = 0; let n = 0;
-        const go = () => { bump(dir, n > 12 ? 10 : 1); n += 1; t = setTimeout(go, n < 3 ? 320 : 70); };
+        const go = () => { if (!btn.isConnected) return; bump(dir, n > 12 ? 10 : 1); n += 1; t = setTimeout(go, n < 3 ? 320 : 70); };
         btn.addEventListener('pointerdown', (e) => { e.preventDefault(); if (btn.disabled) return; n = 0; go(); });
         ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, () => clearTimeout(t)));
       };

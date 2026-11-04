@@ -847,6 +847,7 @@ async def scan_repo(
     commit_hash: str | None = None,
     contract: str = "",
     config: PurpleBoxConfig | None = None,
+    timeout_s: float | None = None,
 ):
     """Run the evidence-gated project loop over a remote repo (D7 surface).
 
@@ -885,6 +886,10 @@ async def scan_repo(
         {"repo_url": repo_url, "commit_hash": commit_hash, "contract": contract or ""}
     )
     settings = config or load_config()
+    if timeout_s is not None:
+        if not 0 <= timeout_s <= 3600:
+            raise ValueError("timeout_s must be 0 (no timeout) or 1-3600.")
+        settings = settings.__class__(**{**settings.__dict__, "api_timeout_seconds": timeout_s})
     require_api_key(settings)
 
     async def _emit(team: str, message: str) -> None:
@@ -968,7 +973,10 @@ async def scan_repo(
             dest.write_bytes(
                 content if isinstance(content, bytes) else str(content).encode("utf-8")
             )
-        runtime = detect_runtime(sorted(tree))
+        runtime = detect_runtime(
+            sorted(tree),
+            str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+        )
         contract_text = (request.contract or "").strip() or (
             f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. "
             "Preserve the public API. Only sanitize untrusted input."

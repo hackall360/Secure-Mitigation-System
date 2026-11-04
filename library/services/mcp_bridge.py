@@ -318,6 +318,12 @@ def sms_scan_repo_tool_definition() -> dict[str, Any]:
                 "repo_url": {"type": "string", "minLength": 1, "maxLength": 2048},
                 "commit_hash": {"type": ["string", "null"], "pattern": SCAN_REPO_COMMIT_RE},
                 "contract": {"type": "string", "maxLength": MCP_CONTRACT_MAX_CHARS},
+                "timeout_s": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "maximum": 3600,
+                    "description": "Per-call model timeout, 0 = no read timeout",
+                },
             },
             "required": ["repo_url"],
             "additionalProperties": False,
@@ -635,6 +641,9 @@ class McpScanRepoArguments(BaseModel):
     repo_url: str = Field(min_length=1, max_length=SCAN_REPO_MAX_URL_CHARS)
     commit_hash: str | None = Field(default=None, max_length=40)
     contract: str = Field(default="", max_length=MCP_CONTRACT_MAX_CHARS)
+    timeout_s: float | None = Field(
+        default=None, ge=0, le=3600, description="Per-call model timeout, 0 = no read timeout"
+    )
 
 
 def validate_scan_repo_arguments(raw: dict[str, Any]) -> McpScanRepoArguments:

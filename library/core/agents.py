@@ -153,24 +153,46 @@ def _extract_json_object(text: str) -> str:
 
 
 # Bounded transient-retry discipline for the Muse transport.
-# RETRY_MAX_ATTEMPTS bounds total tries (never loop forever); backoff is
-# exponential (RETRY_BASE_SECONDS * 2**retry_index) plus uniform jitter up to
-# RETRY_JITTER_SECONDS. A server Retry-After on 429 is honored but capped at
+# Same model, same provider, no fallback (SPEC strict model lock): a
+# transport blip (timeout/DNS/reset) or transient HTTP status climbs one
+# ladder — immediate re-try, then ~10 s, then ~20 s — then fails closed.
+# RETRY_MAX_ATTEMPTS bounds total tries (never loop forever); the first
+# step keeps the old exponential base+jitter; steps 2+ use the fixed
+# ladder below. A server Retry-After on 429 is honored but capped at
 # RETRY_AFTER_MAX_SECONDS so one header cannot stall the scan.
 TRANSIENT_STATUS_CODES = (429, 502, 503, 504)
-RETRY_MAX_ATTEMPTS = 2
+RETRY_MAX_ATTEMPTS = 4
 RETRY_BASE_SECONDS = 0.5
 RETRY_JITTER_SECONDS = 0.5
 RETRY_AFTER_MAX_SECONDS = 5.0
+# Fixed waits (seconds) before attempts 3 and 4 for transport blips and
+# retried transient statuses: fail fast first, then 10 s, then 20 s.
+RETRY_LADDER_SECONDS = (10.0, 20.0)
 
 
-def _retry_delay_seconds(retry_index: int, retry_after: float | None = None) -> float:
-    """Jittered backoff for retry number `retry_index` (0-based)."""
-    delay = RETRY_BASE_SECONDS * (2**retry_index) + random.uniform(0, RETRY_JITTER_SECONDS)
+def _retry_delay_seconds(failures: int, retry_after: float | None = None) -> float:
+    """Backoff after `failures` consecutive failures (1-based: 1st failure, 2nd, ...).
+
+    After the 1st failure: immediate re-try (exponential base + jitter,
+    unchanged). After the 2nd: ~10 s + jitter. After the 3rd+: ~20 s +
+    jitter. A 429 Retry-After is still honored but capped, and never
+    below the ladder floor for its step — a `Retry-After: 0` must not
+    collapse the 10 s / 20 s waits.
+    """
+    if retry_after is None and failures >= 2:
+        ladder_pos = min(failures - 2, len(RETRY_LADDER_SECONDS) - 1)
+        return RETRY_LADDER_SECONDS[ladder_pos] + random.uniform(0, RETRY_JITTER_SECONDS)
+    delay = RETRY_BASE_SECONDS * (2 ** (failures - 1)) + random.uniform(0, RETRY_JITTER_SECONDS)
     if retry_after is not None:
-        delay = min(max(retry_after, 0.0), RETRY_AFTER_MAX_SECONDS) + random.uniform(
-            0, RETRY_JITTER_SECONDS
+        floor = (
+            RETRY_LADDER_SECONDS[min(failures - 2, len(RETRY_LADDER_SECONDS) - 1)]
+            if failures >= 2
+            else 0.0
         )
+        delay = max(
+            min(max(retry_after, 0.0), RETRY_AFTER_MAX_SECONDS),
+            floor,
+        ) + random.uniform(0, RETRY_JITTER_SECONDS)
     return delay
 
 
@@ -204,6 +226,18 @@ def _obs_report_call(role: str, calls: list[CallUsage]) -> None:
         _obs_metric(_OBS_AGENTS, "cost_usd", last.cost_usd, unit="usd")
 
 
+def _httpx_timeout(timeout_s: float) -> httpx.Timeout | float:
+    """Map the timeout knob to an httpx timeout.
+
+    0 = no read timeout: connect/write/pool stay bounded (30 s), only the
+    read wait is uncapped — "wait as long as the model needs" without
+    parking the connect phase forever.
+    """
+    if timeout_s == 0:
+        return httpx.Timeout(connect=30.0, read=None, write=30.0, pool=30.0)
+    return timeout_s
+
+
 class MetaMuseClient:
     def __init__(
         self, config: PurpleBoxConfig, *, transport: httpx.AsyncBaseTransport | None = None
@@ -215,7 +249,7 @@ class MetaMuseClient:
             headers=(
                 {"Authorization": f"Bearer {config.meta_api_key}"} if config.meta_api_key else {}
             ),
-            timeout=config.api_timeout_seconds,
+            timeout=_httpx_timeout(config.api_timeout_seconds),
             follow_redirects=False,
             trust_env=False,
             transport=transport,
@@ -252,13 +286,19 @@ class MetaMuseClient:
         schema: type[ResponseModel],
         role: str = "",
         max_payload_bytes: int = 256_000,
+        timeout_s: float | None = None,
     ) -> ResponseModel:
+        # Per-call timeout override (WS ?timeout_s=, 0 = no read timeout).
+        # Falls back to config when unset; applied per attempt via the
+        # stream options so a late override never leaks across calls.
+        effective_timeout = self.config.api_timeout_seconds if timeout_s is None else timeout_s
         # Bounded retry for transient HTTP codes while recording every completed response.
         last_error: Exception | None = None
         throttled = False
         # F-217b: enforce the caller-supplied payload budget here too, so a
         # direct _request caller cannot bypass the demo_gen pre-check.
         check_payload_budget(payload, max_payload_bytes, "Model request")
+        consecutive_failures = 0
         for attempt in range(RETRY_MAX_ATTEMPTS):
             started = time.monotonic()
             # Meta's Chat Completions endpoint constrains decoding through response_format,
@@ -289,8 +329,12 @@ class MetaMuseClient:
                     "POST",
                     "chat/completions",
                     json=request_body,
+                    timeout=_httpx_timeout(effective_timeout),
                 ) as response:
-                    if response.status_code in TRANSIENT_STATUS_CODES and attempt == 0:
+                    if (
+                        response.status_code in TRANSIENT_STATUS_CODES
+                        and attempt < RETRY_MAX_ATTEMPTS - 1
+                    ):
                         # Record usage if possible before retrying.
                         try:
                             body = await _read_capped(response)
@@ -318,7 +362,8 @@ class MetaMuseClient:
                         )
                         if response.status_code == 429:
                             throttled = True
-                        await asyncio.sleep(_retry_delay_seconds(attempt, retry_after))
+                        consecutive_failures += 1
+                        await asyncio.sleep(_retry_delay_seconds(consecutive_failures, retry_after))
                         continue
                     if response.status_code != 200:
                         if response.status_code == 429 or throttled:
@@ -389,7 +434,16 @@ class MetaMuseClient:
                         "Muse returned invalid JSON or an unexpected response schema."
                     ) from exc
             except httpx.HTTPError as exc:
-                last_error = exc
+                # Transport blip (timeout, DNS hiccup, reset): climb the same
+                # ladder as transient statuses — immediate re-try, then 10 s,
+                # then 20 s. SPEC strict model lock holds: the SAME model is
+                # re-called through the SAME provider; no fallback provider
+                # is contacted. The last attempt still raises below.
+                if attempt < RETRY_MAX_ATTEMPTS - 1:
+                    last_error = exc
+                    consecutive_failures += 1
+                    await asyncio.sleep(_retry_delay_seconds(consecutive_failures, None))
+                    continue
                 raise AgentError(
                     "Muse request failed or timed out; no fallback provider was contacted."
                 ) from exc

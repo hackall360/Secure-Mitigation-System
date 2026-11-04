@@ -144,12 +144,15 @@ def test_clone_uses_run_with_positional_argv_and_hardening():
     assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GIT_LFS_SKIP_SMUDGE"] == "1"
     assert kwargs["detach"] is True
     assert kwargs["user"] == "10001"
-    assert "/work" in kwargs["tmpfs"]
+    # Docker 29 quirk: writable root (no read_only/tmpfs) so get_archive
+    # can see the staged tree; isolation via uid/caps/no-new-privileges.
+    assert kwargs.get("read_only") is not True
+    assert "tmpfs" not in kwargs
     assert not kwargs.get("volumes") and not kwargs.get("mounts")
     assert kwargs.get("pids_limit") and kwargs.get("mem_limit")
     assert containers.container.waited == 30
     assert containers.container.removed
-    assert snap.files["tree/repo/app.py"] == b"print(1)\n"
+    assert snap.files["tree/app.py"] == b"print(1)\n"
     assert not any(".git" in k for k in snap.files if k.startswith("tree/"))
 
 

@@ -57,6 +57,7 @@
     const p = [];
     if (opts.profile) p.push(`profile=${encodeURIComponent(opts.profile)}`);
     if (opts.sweep && String(opts.sweep) !== '1') p.push(`sweep_passes=${encodeURIComponent(opts.sweep)}`);
+    if (opts.timeout_s !== undefined && opts.timeout_s !== null && String(opts.timeout_s) !== '' && Number(opts.timeout_s) !== 300) p.push(`timeout_s=${encodeURIComponent(opts.timeout_s)}`);
     if (opts.research) {
       p.push('research=on');
       if (opts.scanners) p.push(`research_scanners=${encodeURIComponent('trivy,grype,osv-scanner,dependency-check,dependency-track')}`);
