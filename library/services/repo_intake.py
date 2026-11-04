@@ -167,6 +167,115 @@ def _manifest_digest(spec: RepoIntakeSpec, runtime_command: tuple) -> str:
     return digest.hexdigest()
 
 
+# The harness probes http://target-service:8080 for readiness and for every
+# verifier check. A staged repo is arbitrary code — it may serve nothing, or
+# serve on other ports. The service wrapper bridges the two: a tiny stdlib
+# HTTP server (port 8080) that serves every staged text file and answers /,
+# /health, and /files. The file map rides as tree/.wrapper_files.json (a
+# staged file like any other); the argv is a fixed small loader, so no
+# command line ever approaches ARG_MAX. Red/blue probes hit REAL staged
+# bytes over the real probe surface; the original entrypoint is never
+# executed by the harness.
+_WRAPPER_MAP_NAME = ".wrapper_files.json"
+_WRAPPER_LOADER = """\
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+_MAP_CANDIDATES = ("wrapper_files.json", "/workspace/.wrapper_files.json")
+for _map_path in _MAP_CANDIDATES:
+    try:
+        with open(_map_path, encoding="utf-8") as _fh:
+            FILES = json.load(_fh)
+        break
+    except OSError:
+        continue
+else:
+    raise SystemExit("sms-ingest wrapper: wrapper_files.json not found")
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "sms-ingest/1.0"
+
+    def _send(self, code, body, ctype="application/json"):
+        data = body if isinstance(body, bytes) else body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            return self._send(200, json.dumps({"status": "ok", "files": len(FILES)}))
+        if path == "/files":
+            return self._send(200, json.dumps(sorted(FILES)))
+        # "/" serves the tree's own index page when one exists (the app's
+        # front door, not a directory listing) — otherwise the file map.
+        if path == "/":
+            for _index in ("index.html", "index.htm", "static/index.html"):
+                if _index in FILES:
+                    return self._send(200, FILES[_index], "text/html; charset=utf-8")
+            return self._send(200, json.dumps(sorted(FILES)))
+        name = path.lstrip("/")
+        if name in FILES:
+            ctype = "text/html; charset=utf-8" if name.endswith((".html", ".htm")) else "text/plain; charset=utf-8"
+            return self._send(200, FILES[name], ctype)
+        return self._send(404, json.dumps({"status": "not_found"}))
+
+    def log_message(self, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+"""
+
+
+def build_service_wrapper(snapshot: RepoIntakeSnapshot) -> RepoIntakeSnapshot:
+    """Wrap a cloned snapshot as a plain HTTP service on 8080.
+
+    Serves every decodable staged text file (binary blobs skipped, same rule
+    as the ingest workflow). The wrapper REPLACES the runtime argv — the
+    original entrypoint is recorded in the manifest but never executed by
+    the harness. Repos with no servable text still fail closed (ValueError).
+    """
+    text_files: dict[str, str] = {}
+    for key, content in dict(snapshot.files).items():
+        if not key.startswith("tree/"):
+            continue
+        name = key[5:]
+        # The map rides as tree/.wrapper_files.json but must not list
+        # itself (self-reference bloats every listing and confuses probes).
+        if name == _WRAPPER_MAP_NAME:
+            continue
+        if not name or name.startswith(".git/") or "/.git/" in name:
+            continue
+        if isinstance(content, bytes):
+            try:
+                text = content.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = str(content)
+        text_files[name] = text
+    if not text_files:
+        raise ValueError(
+            "could not serve staged tree: no decodable text files; " + _ACTIONABLE_SUFFIX
+        )
+    wrapper_argv = ("python3", "-c", _WRAPPER_LOADER)
+    files = dict(snapshot.files)
+    files["tree/.wrapper_files.json"] = json.dumps(text_files).encode("utf-8")
+    files["repo.runtime_command"] = json.dumps(list(wrapper_argv)).encode("utf-8")
+    files["repo.service_wrapper"] = b"http-8080"
+    return RepoIntakeSnapshot(
+        files=MappingProxyType(files),
+        url=snapshot.url,
+        commit_hash=snapshot.commit_hash,
+        runtime_command=wrapper_argv,
+        digest=snapshot.digest,
+    )
+
+
 def _normalise_file_entries(source) -> tuple[tuple[str, str | None], ...]:
     """Normalise the accepted ``detect_runtime`` inputs to (name, content)."""
     if source is None:

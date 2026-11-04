@@ -486,3 +486,44 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   unchallenged until a real app arrived. Any "real project" target needs
   a writable scratch cwd by default — pristine source and working state
   are different directories, always.
+
+## Ingest service wrapper (2026-11-04, Part 2 dry run)
+
+- **Trap: the harness only probes 8080, but real repos serve nothing there.**
+  Wrong assumption: "detect_runtime finds the entrypoint, the target runs
+  it, readiness passes." AnyCam IS a server — but on 8443/MJPEG/portal
+  paths, with cert generation that needs openssl + LAN. The entrypoint
+  runs, serves everything except 8080, and the 10 s readiness probe fails
+  closed. Correct refusal, wrong outcome for the video: the harness can
+  only verify HTTP-on-8080 targets.
+  Evidence: Part 2 dry run attempt 4, "Ingested target did not become
+  ready", target logs showing AnyCam alive on its own ports.
+  Fix: with no explicit argv, the WS ingest path wraps the staged tree as
+  a plain stdlib HTTP service on 8080 — every decodable staged text file
+  served at /<path>, /files lists, /health answers, / serves index or
+  listing. Red/blue work against REAL staged bytes over the REAL probe
+  surface; the original entrypoint is never executed by the harness
+  (explicit argv still runs the real thing).
+  Lesson: the probe surface is the contract. A target that cannot speak
+  it must be ADAPTED to it (serve its bytes), not executed and hoped.
+  The day a second probe shape exists, the wrapper gains a sibling —
+  not a flag.
+- **Trap: ARG_MAX kills the inline wrapper.**
+  Wrong assumption: "the file map fits in argv." AnyCam's 41 text files
+  serialize to 447 KB — triple the 128 KB exec limit. OSError E2BIG, no
+  fallback. Fix: the map rides as tree/.wrapper_files.json (a staged file
+  like any other, hidden from its own listing); the argv is a fixed small
+  loader (~2 KB). Data travels as files, never as arguments.
+  Lesson: bytes that scale with the repo must never ride the command
+  line. If it grows with input size, it is a file.
+- **Trap: TMPDIR vs cwd breaks map-relative loading in tests.**
+  Wrong assumption: "cwd=tmp_path means relative opens see tmp_path."
+  On this box pytest's tmp_path honors $TMPDIR (~/.jcode/scratch, mounted
+  volume) while the loader child resolved relatives against the process
+  cwd — map file present on disk, "not found" at boot. Production is
+  unaffected (sandbox cwd IS the staged tree). The test passes the map by
+  absolute path; the loader keeps its relative candidates.
+  Lesson: a test that boots a subprocess must not assume tmp_path and
+  child-cwd agree — or it will fail only on machines with redirected
+  TMPDIR. Prefer absolute paths in test harnesses; keep relatives in
+  shipped code.

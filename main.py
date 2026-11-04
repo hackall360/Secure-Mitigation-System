@@ -1160,13 +1160,16 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                         try:
                             staging = _SandboxMgr(scan_config)
                             if intake_files is None and intake_command is None:
-                                # No explicit argv: clone with a placeholder,
-                                # then resolve the real runtime from the
-                                # cloned tree (same detect_runtime the
-                                # library path uses). Host paths never
-                                # honored; tree bytes decide.
+                                # No explicit argv: run the staged tree as a
+                                # plain HTTP service on 8080 (the harness's
+                                # probe surface). The wrapper serves every
+                                # staged text file and reports the runtime
+                                # argv it replaced — red/blue work against
+                                # real staged bytes over HTTP. Undetectable
+                                # trees (no servable content) still fail
+                                # closed asking for an explicit argv.
                                 from modules.services.repo_intake import (
-                                    detect_runtime as _detect_runtime,
+                                    build_service_wrapper as _build_wrapper,
                                 )
 
                                 try:
@@ -1176,22 +1179,7 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                                         clone=True,
                                         sandbox=staging,
                                     )
-                                    tree_names = [
-                                        k[5:] for k in snapshot.files if k.startswith("tree/")
-                                    ]
-                                    _repo_stub = (
-                                        (intake_spec.url or "").rstrip("/").rsplit("/", 1)[-1]
-                                    )
-                                    if _repo_stub.endswith(".git"):
-                                        _repo_stub = _repo_stub[:-4]
-                                    _real_runtime = _detect_runtime(sorted(tree_names), _repo_stub)
-                                    snapshot = snapshot.__class__(
-                                        files=snapshot.files,
-                                        url=snapshot.url,
-                                        commit_hash=snapshot.commit_hash,
-                                        runtime_command=tuple(_real_runtime),
-                                        digest=snapshot.digest,
-                                    )
+                                    snapshot = _build_wrapper(snapshot)
                                 except (ValueError, TypeError) as exc:
                                     raise ValueError(f"Invalid ingest settings ({exc}).") from exc
                             elif intake_files is not None:
