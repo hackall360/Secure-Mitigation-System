@@ -758,3 +758,21 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   observer correctly returns `c-cmake`. The pin was wrong, the code right.
   Lesson: when a RED pin fails, check whether the pin or the code is wrong
   before "fixing" the implementation.
+
+## MISSION OMNI-INGEST cop-out kill traps (Wave 1 follow-through)
+- **Trap: the same refusal lives in N surfaces, not one.**
+  Removing UNSUPPORTED from detect_runtime left the identical shape in
+  `submit_code_snippet` (3-language gate), the CLI `--snippet-language`
+  choices, the TUI inference tuple + choices, the filename/suffix maps,
+  and the mcp_snippet baseline. Lesson: grep the CONCEPT ("which
+  languages may enter"), not the function — refusals replicate per
+  surface by design.
+- **Trap: the baseline script needs a branch for the new key.**
+  `normal_behavior_script("mcp_snippet")` falls to `else: raise
+  Unknown fixture` — compiled snippets reach the workflow but die at the
+  trusted baseline unless a branch exists. Every new execution path
+  needs its normal-behavior contract, not just its command.
+- **Trap: single-source pins guard map drift — extend them, don't bypass.**
+  `SNIPPET_FILENAME_BY_LANGUAGE` is asserted value-for-value in two
+  files. Adding c/rust/go broke both pins exactly as designed. The fix
+  is extending the pins, never weakening them to subset checks.
