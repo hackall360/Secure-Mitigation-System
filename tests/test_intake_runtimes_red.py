@@ -39,3 +39,15 @@ def test_bare_js_detects_node_serve():
 
     assert detect_runtime(["server.js"], "someapp") == ["node", "server.js"]
     assert detect_runtime(["tree/index.js"], "") == ["node", "tree/index.js"]
+
+
+def test_bare_name_beats_unsupported_manifest():
+    # AnyCam regression (Q17): tree/anycam.py + rust/Cargo.lock must
+    # resolve to the runnable entry — the unsupported manifest only wins
+    # when NO runnable entry exists.
+    from modules.services.repo_intake import detect_runtime
+
+    assert detect_runtime(["tree/anycam.py", "tree/rust/Cargo.lock"], "AnyCam") == [
+        "python3",
+        "tree/anycam.py",
+    ]

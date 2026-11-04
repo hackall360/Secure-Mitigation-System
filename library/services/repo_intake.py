@@ -478,6 +478,7 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
 
     candidates: dict[str, list[str]] = {}
     _unsupported_hit = basenames & _UNSUPPORTED_MANIFESTS
+    _slug_bare = f"{_repo_slug(repo_name)}.py" if repo_name else ""
     _has_supported = (
         "package.json" in basenames
         or "requirements.txt" in basenames
@@ -487,6 +488,9 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         or any(_basename(n) in _PYTHON_ENTRY_CANDIDATES for n in names)
         or any(_basename(n) in _NODE_ENTRY_CANDIDATES for n in names)
         or any(_basename(n) in _PHP_ENTRY_CANDIDATES for n in names)
+        # Bare-name fallback (anycam.py in AnyCam): the repo IS runnable
+        # even though no manifest or entry-candidate names it.
+        or (_slug_bare and _slug_bare in basenames)
     )
     if _unsupported_hit and not _has_supported:
         raise ValueError(
