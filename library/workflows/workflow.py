@@ -40,6 +40,8 @@ from modules.shared.sms_observability import (
 from modules.shared.sms_observability import (
     trace as _obs_trace,
 )
+from modules.shared.sms_progress import blue_attempt_progress as _blue_attempt
+from modules.shared.sms_progress import verify_traced as _verify_traced
 
 _OBS_FIXTURE = _get_aspect("workflows.fixture")
 
@@ -381,8 +383,13 @@ async def execute_purple_workflow(
             container, snapshot = await blocking(
                 sandbox.start_cloneable_target, network, target, source
             )
-            baseline = await blocking(
-                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+            baseline = await _verify_traced(
+                log,
+                "baseline",
+                blocking,
+                sandbox.run_isolated_verifier,
+                network,
+                normal_behavior_script(target_key),
             )
             result.traces["baseline"] = baseline.output
             _obs_log(
@@ -450,8 +457,13 @@ async def execute_purple_workflow(
                 "red",
                 f"{finding.vulnerability_class} at {finding.sink_location}: {finding.analysis_summary}",
             )
-            pre = await blocking(
-                sandbox.run_isolated_verifier, network, finding.verification_script_python
+            pre = await _verify_traced(
+                log,
+                "pre",
+                blocking,
+                sandbox.run_isolated_verifier,
+                network,
+                finding.verification_script_python,
             )
             result.pre_exit_code = pre.exit_code
             _obs_log(
@@ -499,6 +511,9 @@ async def execute_purple_workflow(
                     "blue",
                     chatter("blue_start", persona="Bastion", path=target.filename, seed=3),
                 )
+                # Slice E: single-attempt fixture patch, indexed so long-run
+                # feeds show progress the same way multi-attempt runs do.
+                await log("blue", f"{_blue_attempt(1, 1)}: {settings.blue_team_model}.")
                 patch = await muse.run_blue_team_sanitizer(
                     target.filename,
                     source,
@@ -535,8 +550,13 @@ async def execute_purple_workflow(
                     target,
                     patch.patched_file_content,
                 )
-                regression = await blocking(
-                    sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                regression = await _verify_traced(
+                    log,
+                    "regression",
+                    blocking,
+                    sandbox.run_isolated_verifier,
+                    network,
+                    normal_behavior_script(target_key),
                 )
                 result.traces["regression"] = regression.output
                 if regression.exit_code != 0:
@@ -544,8 +564,13 @@ async def execute_purple_workflow(
                         "Patched fixture failed trusted normal-input regression checks."
                     )
                 result.regression_passed = True
-                post = await blocking(
-                    sandbox.run_isolated_verifier, network, finding.verification_script_python
+                post = await _verify_traced(
+                    log,
+                    "post",
+                    blocking,
+                    sandbox.run_isolated_verifier,
+                    network,
+                    finding.verification_script_python,
                 )
                 result.post_exit_code = post.exit_code
                 result.traces["after"] = post.output
@@ -568,8 +593,13 @@ async def execute_purple_workflow(
                         "Post-patch verifier was inconclusive; this is not a successful fix."
                     )
                 # A probe must not earn success by leaving the application broken afterward.
-                final_health = await blocking(
-                    sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                final_health = await _verify_traced(
+                    log,
+                    "final",
+                    blocking,
+                    sandbox.run_isolated_verifier,
+                    network,
+                    normal_behavior_script(target_key),
                 )
                 result.traces["after_probe_regression"] = final_health.output
                 if final_health.exit_code != 0:

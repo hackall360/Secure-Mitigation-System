@@ -4,7 +4,9 @@
 
 `blocking` joins in-flight Docker/thread work before propagating
 cancellation to cleanup. `make_log` wraps any emit callable so logging (or a
-closed UI socket) can never break resource cleanup. No imports from this
+closed UI socket) can never break resource cleanup — errors are swallowed
+and each emit is bounded by EMIT_TIMEOUT_S so a backpressured socket cannot
+serialize the scan tail or cleanup behind it. No imports from this
 repo: leaf module, zero cycle risk.
 """
 
@@ -16,6 +18,12 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 Emit = Callable[[str, str], Awaitable[None]]
+
+# Slice E: per-emit latency bound. A backpressured WS consumer must never
+# serialize the scan tail (or cleanup) behind one slow frame. Kept well under
+# the model-retry ladder (10 s+) so slow sockets degrade to dropped frames,
+# never slow verdicts. LAW 10I: every I/O call gets a timeout.
+EMIT_TIMEOUT_S = 0.5
 
 
 async def blocking(function, *args, **kwargs):
@@ -31,12 +39,17 @@ async def blocking(function, *args, **kwargs):
         raise
 
 
-def make_log(emit: Emit) -> Emit:
-    """Wrap emit so logging failures never break cleanup or scans."""
+def make_log(emit: Emit, *, timeout_s: float = EMIT_TIMEOUT_S) -> Emit:
+    """Wrap emit so logging failures AND slow consumers never break cleanup.
+
+    Errors are swallowed (closed socket) and each emit is bounded by
+    ``timeout_s`` (backpressured socket): on timeout the frame is dropped and
+    the scan continues. LAW 4 cleanup invariant holds under both.
+    """
 
     async def log(team: str, message: str) -> None:
         try:
-            await emit(team, message)
+            await asyncio.wait_for(emit(team, message), timeout=timeout_s)
         except Exception:
             pass
 

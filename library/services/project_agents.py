@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -622,6 +622,7 @@ class ProjectAgentRunner:
         coverage_notes: Sequence[str] = (),
         max_payload_bytes: int = 256_000,
         prior_verified_history: Sequence[Mapping[str, object]] = (),
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> RedAnalysisArtifacts:
         fixed_overhead = len(contract.encode("utf-8")) + len(
             json.dumps(list(prior_verified_history), ensure_ascii=False).encode("utf-8")
@@ -680,6 +681,11 @@ class ProjectAgentRunner:
         )
         evidence: list[RedBatchEvidence] = []
         for batch in batches:
+            # Slice E: progress fires BEFORE the awaited model call so the UI
+            # shows movement during the gap, not after it. Optional callback:
+            # direct unit callers pass nothing and see zero behavior change.
+            if on_progress is not None:
+                await on_progress(batch.batch_index + 1, len(batches))
             for assignment in assignments:
                 payload = {
                     "project": project_name,
@@ -833,6 +839,7 @@ class ProjectAgentRunner:
         max_changed_files: int,
         max_changed_bytes: int,
         max_payload_bytes: int = 256_000,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> BlueProposal:
         by_path = {document.path: document for document in documents}
         protected = set(protected_paths)
@@ -902,6 +909,9 @@ class ProjectAgentRunner:
 
         proposals: list[BlueProposal] = []
         for index, documents in enumerate(groups):
+            # Slice E: same await-gap progress as the red batch loop above.
+            if on_progress is not None:
+                await on_progress(index + 1, len(groups))
             payload = dict(base_payload)
             payload["safe_snapshot_files"] = [
                 document.model_dump() | {"sha256": document.sha256} for document in documents
