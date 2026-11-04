@@ -2542,7 +2542,18 @@ async def ai_demo_runner(
     )
 
 
-async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, settings=None):
+async def _ingest_repo_to_project(
+    ingest_repo,
+    commit_hash,
+    emit_progress,
+    settings=None,
+    *,
+    runtime_command: list | tuple | None = None,
+    test_command: list | tuple | None = None,
+    contract: str | None = None,
+    scan_profile: str = "custom",
+    cycles: int = 1,
+):
     """Clone an intake repo in Docker staging and build a ProjectSpec.
 
     Fail closed (LAW 4/10J): validation errors, clone failures, and empty
@@ -2597,23 +2608,33 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
         dest = staged.joinpath(*parts)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content if isinstance(content, bytes) else str(content).encode())
-    runtime = detect_runtime(
-        sorted(tree),
-        (ingest_repo or "").rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
-    )
-    test_command = list(runtime)
+    if runtime_command is not None:
+        if not isinstance(runtime_command, (list, tuple)) or not runtime_command:
+            raise ValueError("explicit --command must be a non-empty argv list")
+        runtime = list(runtime_command)
+    else:
+        runtime = detect_runtime(
+            sorted(tree),
+            (ingest_repo or "").rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+        )
+    test_argv = list(test_command) if test_command is not None else list(runtime)
     # Brief 2026-11-03-repo-intake-live D3: the explicit repo action IS the
     # remote-inference grant — the operator asked for this repo's bytes to be
     # scanned, so the derived spec carries consent (hosted inference would
     # otherwise refuse before the first model call).
+    contract_text = (
+        contract
+        if isinstance(contract, str) and contract
+        else f"Ingest scan of {spec.url} at commit {(spec.commit_hash or 'HEAD')[:12]}. Preserve the public API. Only sanitize untrusted input."
+    )
     return ProjectSpec.model_validate(
         {
             "path": str(staged),
             "command": runtime,
-            "test_command": test_command,
-            "contract": f"Ingest scan of {spec.url} at commit {(spec.commit_hash or 'HEAD')[:12]}. Preserve the public API. Only sanitize untrusted input.",
-            "scan_profile": "custom",
-            "cycles": 1,
+            "test_command": test_argv,
+            "contract": contract_text,
+            "scan_profile": scan_profile,
+            "cycles": max(1, min(20, int(cycles))),
             "allow_remote_inference": True,
         }
     )
@@ -2732,6 +2753,11 @@ async def cli_runner(
     sweep_passes: int | None = None,
     show_cycles: bool = False,
     show_intel: bool = False,
+    command: list | tuple | None = None,
+    test_command: list | tuple | None = None,
+    contract: str | None = None,
+    scan_profile: str = "custom",
+    cycles: int | None = None,
 ) -> int:
     use_color: bool | None = None
     json_mode = out_format == "json"
@@ -2741,11 +2767,22 @@ async def cli_runner(
         # inside Docker staging (fail closed on any error), materialize the
         # cloned tree into a 0700 temp dir, detect the runtime, and continue
         # down the existing project-scan path on the CLONED bytes.
+        # Overnight Q3: --command/--test-command/--contract/--cycles/
+        # --scan-profile thread through (explicit --command wins over
+        # detect, matching the WS explicit-argv path).
         def _ingest_emit(team, message):
             print(f"[{team.upper():6}] {message}", flush=True, file=sys.stderr)
 
         project = await _ingest_repo_to_project(
-            ingest_repo, commit_hash, _ingest_emit, settings=None
+            ingest_repo,
+            commit_hash,
+            _ingest_emit,
+            settings=None,
+            runtime_command=command,
+            test_command=test_command,
+            contract=contract,
+            scan_profile=scan_profile,
+            cycles=1 if cycles is None else cycles,
         )
         return await cli_runner(
             target_key,
@@ -3802,6 +3839,7 @@ def main() -> int:
         and not args.mcp_snippet
         and not args.mcp
         and not args.binary_target
+        and not args.ingest_repo
         and (
             args.image
             or args.command
@@ -4154,6 +4192,13 @@ def main() -> int:
                     out_format=out_format,
                     show_usage=args.show_usage,
                     show_cycles=args.show_cycles,
+                    command=json.loads(args.command) if args.command else None,
+                    test_command=(
+                        json.loads(args.test_command) if args.test_command else None
+                    ),
+                    contract=args.contract,
+                    scan_profile=args.scan_profile,
+                    cycles=args.cycles,
                 )
             )
         # No command given: serve, same as --serve (kept so bare `python main.py` still opens the dashboard).
