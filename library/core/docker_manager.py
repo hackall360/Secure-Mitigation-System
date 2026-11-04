@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+import requests
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.types import LogConfig, Ulimit
 from requests.exceptions import ReadTimeout
@@ -1009,6 +1010,38 @@ class DockerSandboxManager:
                 except (TimeoutError, ReadTimeout):
                     stdout, stderr = self._bounded_logs(container)
                     return ProjectCheckResult(None, stdout, stderr, timed_out=True)
+                except requests.exceptions.ConnectionError as exc:
+                    # Docker SDK quirk: container.wait(timeout) on a STILL-
+                    # RUNNING container raises a timeout-shaped error, not
+                    # TimeoutError — urllib3 surfaces it as
+                    # ReadTimeoutError, requests as ReadTimeout /
+                    # ConnectionError("Read timed out"). Any of those means
+                    # the command is alive past the budget: rule out a
+                    # SIGKILL mid-wait (OOM), else report timed_out.
+                    msg = f"{type(exc).__name__}: {exc}"
+                    timeout_shaped = (
+                        "Read timed out" in msg
+                        or "ReadTimeout" in type(exc).__name__
+                        or "Timeout" in type(exc).__name__
+                    )
+                    if timeout_shaped:
+                        try:
+                            container.reload()
+                            state = container.attrs.get("State", {})
+                            oom = bool(state.get("OOMKilled")) or state.get("ExitCode") == 137
+                            running = bool(state.get("Running"))
+                        except Exception:
+                            oom, running = False, False
+                        if oom:
+                            raise SandboxError(
+                                "Project check container was OOM-killed (exit 137) "
+                                f"at memory limit {self.config.container_mem_limit}; "
+                                "raise PURPLEBOX_CONTAINER_MEM_LIMIT and re-run."
+                            ) from exc
+                        if running or state.get("Status") == "running":
+                            stdout, stderr = self._bounded_logs(container)
+                            return ProjectCheckResult(None, stdout, stderr, timed_out=True)
+                    raise SandboxError("Project check failed before producing a result.") from exc
                 except Exception as exc:
                     # OOM diagnostics (found live 2026-11-04): a SIGKILLed
                     # container (exit 137) wedges the wait call itself. Name

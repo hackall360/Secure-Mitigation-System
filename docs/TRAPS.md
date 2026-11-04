@@ -594,3 +594,29 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: "dead" is a temporary property. When a knob goes live, its pins
   must flip from pinned-dead to pinned-live in the same commit — or the
   gate enforces the old world.
+
+## wait() timeout means alive, not failed (2026-11-04, Part 2 dry run)
+
+- **Trap: the wrong ConnectionError.**
+  Wrong assumption: "the codebase has one ConnectionError." The
+  `except ConnectionError` in run_project_check caught the BUILTIN — but
+  the Docker SDK raises `requests.exceptions.ConnectionError` (urllib3
+  ReadTimeoutError underneath). The branch never fired; every still-
+  running baseline fell through to the generic SandboxError. The code was
+  right, the exception type was wrong — verified by printing the actual
+  type (`requests.exceptions.ConnectionError: ... Read timed out`).
+  Evidence: sleeper test (300 s sleep) raised SandboxError pre-fix,
+  timed_out post-fix; quick-exit still returns 0 fast.
+  Lesson: `except ConnectionError` in a file that talks HTTP is a trap —
+  requests, urllib3, and builtin all define one. Name the module
+  (`requests.exceptions.ConnectionError`) or catch the behavior (message
+  match), never the bare name.
+- **Trap: fixing it twice.**
+  Wrong assumption: the first edit (bare ConnectionError + message match)
+  was sufficient. It was not — the handler never ran at all. Always
+  re-run the LIVE repro after the fix, not just the unit pin: the pin
+  asserted source text ("STILL-"), which passed while the runtime path
+  still failed. The sleeper/baseline repro is the real gate.
+  Lesson: a source-text pin proves the comment exists. Only a live
+  behavioral repro proves the branch runs. Both are needed — neither
+  alone.

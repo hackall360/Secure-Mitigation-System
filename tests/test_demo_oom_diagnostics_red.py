@@ -41,3 +41,11 @@ def test_oom_error_points_at_the_knob():
     src = _run_project_check_src()
     assert "PURPLEBOX_CONTAINER_MEM_LIMIT" in src
     assert "container_mem_limit" in src
+
+
+def test_wait_timeout_means_still_running():
+    src = _run_project_check_src()
+    assert "STILL-" in src or "still-" in src.lower(), (
+        "wait() timeout on a live container must report timed_out, not "
+        "SandboxError — a long-running service is alive, not failed"
+    )
