@@ -15,7 +15,7 @@ read-only roots) is untouched.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -318,6 +318,13 @@ def sms_scan_repo_tool_definition() -> dict[str, Any]:
                 "repo_url": {"type": "string", "minLength": 1, "maxLength": 2048},
                 "commit_hash": {"type": ["string", "null"], "pattern": SCAN_REPO_COMMIT_RE},
                 "contract": {"type": "string", "maxLength": MCP_CONTRACT_MAX_CHARS},
+                "runtime_command": {
+                    "type": ["array", "null"],
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 512},
+                    "description": "Explicit runtime argv; omitted keeps auto-detect",
+                },
                 "timeout_s": {
                     "type": ["number", "null"],
                     "minimum": 0,
@@ -641,6 +648,9 @@ class McpScanRepoArguments(BaseModel):
     repo_url: str = Field(min_length=1, max_length=SCAN_REPO_MAX_URL_CHARS)
     commit_hash: str | None = Field(default=None, max_length=40)
     contract: str = Field(default="", max_length=MCP_CONTRACT_MAX_CHARS)
+    runtime_command: list[Annotated[str, Field(min_length=1, max_length=512)]] | None = Field(
+        default=None, min_length=1, max_length=16
+    )
     timeout_s: float | None = Field(
         default=None, ge=0, le=3600, description="Per-call model timeout, 0 = no read timeout"
     )

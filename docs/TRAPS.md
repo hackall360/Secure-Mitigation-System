@@ -698,3 +698,29 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   `test_cli_parity.py`, `test_audit_m_drift.py`,
   `test_truth_sweep_fixes.py`, `test_verify_r2_svc_red.py`.
   Miss one and the gate fails, not the feature.
+
+## Overnight hackathon-complete traps (2026-11-04, branch feature/overnight-hackathon-complete)
+- **Trap: adding a kwarg to `_ingest_repo_to_project` breaks 5 strict mocks.**
+  New `runtime_command=` forwarding (Q3/Q7) raised TypeError in every
+  test double with a fixed signature. Fix: `**kwargs` on all fake
+  ingest helpers (`test_sa_intake_mcp_repo.py` x3,
+  `test_sa_intake_flow_live_32.py` x3). Lesson: when widening a seam,
+  grep ALL fakes, not just production callers.
+- **Trap: schema `type: ["array","null"]` vs pin `== "array"`.**
+  The MCP repo schema follows the nullable-list convention; a pin
+  asserting exact `"array"` fails. Assert membership (`"array" in type`).
+- **Trap: case-sensitive manifest sets.**
+  `_UNSUPPORTED_MANIFESTS` listed `cargo.toml` lowercase; real file is
+  `Cargo.toml`. Basename comparison is exact — match the real case.
+- **Trap: the chain pass eats 9 verifier codes, not 4.**
+  Live 5-pass proof needs per-pass code math: standard/deep/threat
+  `[pre,patch-reg,post,health]`, chain
+  `[pre,linkA,linkB,reg,post,linkA-post,linkB-post,health]`
+  (unified script without the `# --- link b ---` marker replays the
+  unified probe for both links). Coverage closes with the standard 4.
+  Full unit-level sequence: 1 + 4*3 + 8 + 4 = 25 codes.
+- **Trap: a fake blue patch cannot hold a real probe.**
+  The Q1 real-Docker run verdicts `failed` (not `verified`) because the
+  test double appends a comment while the real probe still reaches the
+  sink. That IS the correct terminal behavior — `failed` proves the
+  loop decides instead of going silent.

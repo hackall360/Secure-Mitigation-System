@@ -38,7 +38,11 @@ _SHELL_METACHARS = frozenset("$`;&|(){}[]!#*?~<>\\'\"\n\r\t ")
 _MAKE_TARGET_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.\-]*)\s*:(?![=:])", re.MULTILINE)
 _MAKEFILE_NAMES = frozenset({"Makefile", "makefile", "GNUmakefile"})
 _PYTHON_ENTRY_CANDIDATES = ("main.py", "app.py", "src/main.py", "src/app.py")
+_NODE_ENTRY_CANDIDATES = ("server.js", "index.js", "src/server.js", "src/index.js")
 _PHP_ENTRY_CANDIDATES = ("public/index.php", "index.php", "src/index.php")
+# Toolchains the target image cannot run (python:3.12-alpine + node + php
+# only): refuse as UNSUPPORTED, never ask for argv that cannot succeed.
+_UNSUPPORTED_MANIFESTS = frozenset({"go.mod", "Cargo.toml", "Cargo.lock", "go.sum"})
 # Bare-name fallback: a repo whose only Python file shares its name with the
 # repo dir (anycam.py in AnyCam) or is the lone top-level entry point.
 _PYTHON_BARE_FALLBACK = ("__main__.py",)
@@ -55,7 +59,7 @@ def _repo_slug(repo_name: str) -> str:
 
 # Deterministic precedence when several manifests are present: the most
 # specific ecosystem manifest wins; a generic Makefile loses to all of them.
-_DETECT_PRECEDENCE = ("package.json", "composer.json", "python", "makefile")
+_DETECT_PRECEDENCE = ("package.json", "composer.json", "python", "node", "makefile")
 
 _ACTIONABLE_SUFFIX = (
     "pass an explicit runtime_command argv (e.g. ['python3', 'main.py']) to intake_repo_to_snapshot"
@@ -473,6 +477,23 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
         return None
 
     candidates: dict[str, list[str]] = {}
+    _unsupported_hit = basenames & _UNSUPPORTED_MANIFESTS
+    _has_supported = (
+        "package.json" in basenames
+        or "requirements.txt" in basenames
+        or "pyproject.toml" in basenames
+        or "composer.json" in basenames
+        or bool(basenames & _MAKEFILE_NAMES)
+        or any(_basename(n) in _PYTHON_ENTRY_CANDIDATES for n in names)
+        or any(_basename(n) in _NODE_ENTRY_CANDIDATES for n in names)
+        or any(_basename(n) in _PHP_ENTRY_CANDIDATES for n in names)
+    )
+    if _unsupported_hit and not _has_supported:
+        raise ValueError(
+            "unsupported runtime: this repo needs a toolchain the harness "
+            f"image cannot run ({sorted(_unsupported_hit)[0]}); the target "
+            "image runs python3 + node + php only. " + _ACTIONABLE_SUFFIX
+        )
     if "package.json" in basenames:
         candidates["package.json"] = _package_json_command(_content_for("package.json"))
     if "requirements.txt" in basenames or "pyproject.toml" in basenames:
@@ -503,6 +524,19 @@ def detect_runtime(file_list_or_snapshot, repo_name: str = "") -> list[str]:
                 ]
         if _bare_hit is not None:
             candidates["python"] = _bare_hit
+    if "node" not in candidates:
+        # Bare JS entries the image can run directly (server.js/index.js
+        # without package.json scripts): node serve argv.
+        for _cand in _NODE_ENTRY_CANDIDATES:
+            if _cand in names:
+                candidates["node"] = ["node", _cand]
+                break
+            if "/" not in _cand and _cand in basenames:
+                candidates["node"] = [
+                    "node",
+                    sorted(n for n in names if _basename(n) == _cand)[0],
+                ]
+                break
     makefile_hit = basenames & _MAKEFILE_NAMES
     if makefile_hit:
         candidates["makefile"] = _makefile_command(_content_for(*sorted(makefile_hit)))

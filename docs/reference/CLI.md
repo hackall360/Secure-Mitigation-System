@@ -32,9 +32,9 @@ Generated from `main.py` argparse (`main()`), 2026-10-30. Run
 | `--mcp-snippet PATH` (TUI spelling: `--snippet PATH`) | Verify one source snippet file through the red/blue Docker loop; prints the VerdictReceipt JSON (MCP submit_code_snippet over CLI). Flags are not renamed: CLI uses `--mcp-snippet`, TUI uses `--snippet` (dest `snippet_path`) |
 | `--mcp` | MCP STDIO transport: JSON-RPC on stdin/stdout (tools: submit_code_snippet, sms_scan_source, sms_scan_binary, sms_scan_repo, sms_query_vault_stats, sms_list_vault_namespaces, sms_replay_vault_record, sms_verify_receipt, sms_scan_status, sms_ops_status, sms_showcase_status — pollable scan status) |
 | `--snippet-language {javascript,python,php}` | Snippet language for `--mcp-snippet` (default: inferred from file extension) |
-| `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor, 4=+chain (default: single finding loop) |
+| `--sweep-passes N` | Multi-pass sweep depth for `--scan`: 1=standard only, 2=+deep, 3=+threat-actor, 4=+chain, 5=+coverage secrets/deps/crypto/auth/config (default: single finding loop) |
 | `--binary-target PATH` | Sweep one compiled binary (ELF/Mach-O/PE) through the trusted harness 4-pass loop; prints per-pass exits + mitigation rules (`binary_argv_echo` resolves to the bundled fixture) |
-| `--ingest-repo URL` (`--commit-hash HEX`) | Validated repo intake at a pinned commit (CLI refuses after validation — see refusal text; TUI `ingest` mode stages via Docker) |
+| `--ingest-repo URL` (`--commit-hash HEX`, `--command JSON`, `--test-command JSON`, `--contract TEXT`, `--cycles N`, `--scan-profile NAME`) | Live repo intake: clone in Docker staging, scan the cloned bytes. Explicit `--command` wins over auto-detect (node/python/php entries + bare-name fallback; go/rust refuse as unsupported) |
 
 > Engine leaves (`sms_compress`, `sms_vault`, `sms_api`) are library modules, not CLI flags.
 
@@ -82,7 +82,8 @@ through `_run_state_scan` + `dispatch_scan`.
 | `--output-dir PATH` | — | Save scan JSON + candidate diff to a new run dir (includes `receipt.json`) |
 | `--research` | off | Opt-in research sidecars for `--scan` (keyless OSV/CIRCL/GHSA/EPSS) |
 | `--research-scanners LIST` | — | Comma-separated local scanners for `--research` grounding (requires `--research`) |
-| `--commit-hash HEX` | — | Pinned 40-hex commit for `--ingest-repo` (required with `--ingest-repo`) |
+| `--commit-hash HEX` | — | Pinned 40-hex commit for `--ingest-repo` (optional; omitted = HEAD as-is) |
+| `--ingest-command JSON` (TUI) | — | Explicit runtime argv for TUI ingest mode, e.g. `["node", "server.js"]` (omitted = auto-detect; mirrors `--project-command`) |
 | `--cve-scan` | off | Deep static+CVE scan (OSV lookup) instead of probe/patch verification |
 | `--deep-assessment` | off | Muse triage of static signals and CVE context |
 | `--offline-cve` | off | Skip OSV network lookup; static signals only |
