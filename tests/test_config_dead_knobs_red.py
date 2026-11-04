@@ -230,6 +230,8 @@ def test_dead_max_source_bytes_unsettable_and_unused(monkeypatch):
 
 
 # 10. TRUE-DEAD: docker/infra knobs pinned — no env var can move them
+# (container_mem_limit + container_cpu_nano are LIVE since 2026-11-04:
+# PURPLEBOX_CONTAINER_MEM_LIMIT/_CPU_NANO — see test_live_infra_knobs below.)
 @pytest.mark.parametrize(
     "env_name,field,probe",
     [
@@ -237,8 +239,6 @@ def test_dead_max_source_bytes_unsettable_and_unused(monkeypatch):
         ("PURPLEBOX_VERIFIER_IMAGE", "verifier_base_image", "sentinel-verifier:9"),
         ("PURPLEBOX_BINARY_IMAGE", "binary_base_image", "sentinel-binary:9"),
         ("PURPLEBOX_CLONE_PREFIX", "clone_repo_prefix", "sentinel-prefix"),
-        ("PURPLEBOX_MEM_LIMIT", "container_mem_limit", "9m"),
-        ("PURPLEBOX_CPU_NANO", "container_cpu_nano", 111_111),
         ("PURPLEBOX_NETWORK_PREFIX", "network_prefix", "sentinel-net"),
     ],
 )
@@ -250,3 +250,21 @@ def test_dead_infra_knob_pinned_to_default(monkeypatch, env_name, field, probe):
     settings = load_config()
     assert getattr(settings, field) != probe, f"{env_name} must move {field}"
     assert field not in inspect.getsource(config_mod.load_config), f"{field} unread (dead)"
+
+
+# 10b. LIVE: container budget knobs move via env (OOM fix 2026-11-04).
+@pytest.mark.parametrize(
+    "env_name,field,probe",
+    [
+        ("PURPLEBOX_CONTAINER_MEM_LIMIT", "container_mem_limit", "9m"),
+        ("PURPLEBOX_CONTAINER_CPU_NANO", "container_cpu_nano", 111_111),
+    ],
+)
+def test_live_infra_knob_moves_from_env(monkeypatch, env_name, field, probe):
+    _clean_env(monkeypatch)
+    import inspect
+
+    monkeypatch.setenv(env_name, str(probe))
+    settings = load_config()
+    assert getattr(settings, field) == probe, f"{env_name} must move {field}"
+    assert field in inspect.getsource(config_mod.load_config), f"{field} must be read (live)"

@@ -567,3 +567,30 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   ConnectionError underneath is infrastructure, not logic — check daemon
   health (`docker system df`, orphans, port squatters) before touching
   workflow code.
+
+## OOM naming + container budget knobs (2026-11-04, Part 2 dry run)
+
+- **Trap: exit 137 masquerades as a generic check failure.**
+  Wrong assumption: "the wait call failed, so the check failed." A
+  SIGKILLed container (OOMKilled, exit 137) wedges `container.wait` with a
+  ConnectionError — and the old code reported only "Project check failed
+  before producing a result." 20 minutes of daemon debugging before the
+  events log showed `die ... exitCode=137`. The fix names the killer:
+  inspect OOMKilled/ExitCode on wait failure and say the memory limit +
+  the knob (PURPLEBOX_CONTAINER_MEM_LIMIT). A SIGKILL must never read as
+  a logic failure.
+  Evidence: warmed-up wrapper container, `die execDuration=20 exitCode=137`
+  in docker events; baseline direct-repro then passed at 1g after failing
+  at 256m.
+  Lesson: every fail-closed error should name the most likely resource
+  cause when one exists. "Check failed" with no resource hint is a trap
+  that burns the next debugger's night.
+- **Trap: raising a default breaks the dead-knob pins.**
+  Wrong assumption: "256m → 1g is a one-line change." Two TRUE-DEAD pins
+  asserted the mem/cpu env vars do NOT exist — they were written when the
+  knobs were dead, and the OOM fix made them live (PURPLEBOX_CONTAINER_
+  MEM_LIMIT/_CPU_NANO). Retargeted: dead list shrinks, new LIVE test pins
+  the env wiring. Same commit, same gate.
+  Lesson: "dead" is a temporary property. When a knob goes live, its pins
+  must flip from pinned-dead to pinned-live in the same commit — or the
+  gate enforces the old world.

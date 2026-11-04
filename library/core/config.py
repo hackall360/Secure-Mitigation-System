@@ -80,7 +80,7 @@ class PurpleBoxConfig:
     binary_base_image: str = "purplebox-binary-base:latest"
     clone_base_image: str = "purplebox-clone-base:latest"
     clone_repo_prefix: str = "purplebox-clone-cache"
-    container_mem_limit: str = "256m"
+    container_mem_limit: str = "1g"
     container_cpu_nano: int = 500_000_000
     network_prefix: str = "purplebox_isolated_net"
     api_timeout_seconds: float = 300.0
@@ -220,6 +220,8 @@ def load_config() -> PurpleBoxConfig:
             ),
             verifier_timeout_seconds=int(os.getenv("PURPLEBOX_VERIFIER_TIMEOUT_SECONDS", "20")),
             docker_timeout_seconds=int(os.getenv("PURPLEBOX_DOCKER_TIMEOUT_SECONDS", "120")),
+            container_mem_limit=os.getenv("PURPLEBOX_CONTAINER_MEM_LIMIT", "1g").strip() or "1g",
+            container_cpu_nano=int(os.getenv("PURPLEBOX_CONTAINER_CPU_NANO", "500000000")),
         )
         config.validate()
         return config

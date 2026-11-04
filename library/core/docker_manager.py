@@ -1010,6 +1010,22 @@ class DockerSandboxManager:
                     stdout, stderr = self._bounded_logs(container)
                     return ProjectCheckResult(None, stdout, stderr, timed_out=True)
                 except Exception as exc:
+                    # OOM diagnostics (found live 2026-11-04): a SIGKILLed
+                    # container (exit 137) wedges the wait call itself. Name
+                    # the killer — memory limit + knob — instead of a generic
+                    # failure. Best-effort state read; never masks the error.
+                    try:
+                        container.reload()
+                        state = container.attrs.get("State", {})
+                        oom = bool(state.get("OOMKilled")) or state.get("ExitCode") == 137
+                    except Exception:
+                        oom = False
+                    if oom:
+                        raise SandboxError(
+                            "Project check container was OOM-killed (exit 137) "
+                            f"at memory limit {self.config.container_mem_limit}; "
+                            "raise PURPLEBOX_CONTAINER_MEM_LIMIT and re-run."
+                        ) from exc
                     raise SandboxError("Project check failed before producing a result.") from exc
                 stdout, stderr = self._bounded_logs(container)
                 _obs_result = ProjectCheckResult(int(status["StatusCode"]), stdout, stderr)
