@@ -33,6 +33,34 @@ dynamic-expression sink), `node_chain_link` (chained two-link fixture),
 (MySQL config audit), and `binary_argv_echo` (compiled-ELF fixture for the
 binary path).
 
+## Live progress lines (additive, parser-safe)
+
+Long scans emit progress on the same `(team, message)` stream the
+dashboard, TUI, and CLI already render — no new channel, no new schema:
+
+- Red source batches: `[phase red review] batch i/N` before each awaited
+  model call (project workflow; `library/services/project_agents.py`
+  `on_progress` hook).
+- Blue proposal attempts: `[phase blue patch] attempt i/N` (project
+  workflow; `1/1` on the single-attempt fixture loop).
+- Sandbox verifies: `[phase verify] start (<stage>)` /
+  `[phase verify] done (<stage>)` brackets around every isolated verifier
+  run (fixture, sweep, binary sweep, project loops).
+- Await-gap chatter: persona-voice lines (`library/services/chatter.py`)
+  while model calls are in flight, rate-limited to one per 4 batches and
+  at most 8 per run (`library/shared/sms_progress.py` `ChatterBudget`).
+
+Parser contract: every new line reuses the exact `[phase ...]` tag shape
+and carries no exit-code token, so `web/js/stream/rules.js` `stageOf()`
+and the exit entity (`web/js/model/extract.js`) behave exactly as before —
+only the pre-existing exit-code lines drive findings/patches counts
+(pinned by `tests/test_slice_e_feedback_red.py`, including a live stream
+through the real node-vm interpreter). Backpressure: `make_log`
+(`library/shared/sms_async.py`) swallows emit errors AND bounds each emit
+at `EMIT_TIMEOUT_S` (0.5 s), so a dead/slow socket degrades to dropped
+frames — cleanup always runs. UI feeds stay capped (comms 120 / activity
+1500 / timeline 900 / events 2000), so long runs cannot overflow the DOM.
+
 ## Where things live
 
 - `library/core/` — the engine room: Muse transport, prompts, Docker

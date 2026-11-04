@@ -49,6 +49,24 @@ from modules.shared.sms_observability import get_aspect as _get_aspect
 from modules.shared.sms_observability import log as _obs_log
 from modules.shared.sms_observability import record_metric as _obs_metric
 from modules.shared.sms_observability import trace as _obs_trace
+from modules.shared.sms_progress import (
+    CHATTER_EVERY_N_BATCHES as _CHATTER_EVERY,
+)
+from modules.shared.sms_progress import (
+    CHATTER_MAX_PER_RUN as _CHATTER_CAP,
+)
+from modules.shared.sms_progress import (
+    ChatterBudget as _ChatterBudget,
+)
+from modules.shared.sms_progress import (
+    blue_attempt_progress as _blue_attempt,
+)
+from modules.shared.sms_progress import (
+    red_batch_progress as _red_batch,
+)
+from modules.shared.sms_progress import (
+    verify_traced as _verify_traced,
+)
 from modules.shared.sms_text import bounded as _bounded
 
 _OBS_PROJECT = _get_aspect("workflows.project")
@@ -1519,6 +1537,9 @@ async def execute_project_workflow(
     verified_history: list[dict[str, object]] = []
 
     log = make_log(emit)
+    # Slice E: one chatter budget per run — await-gap persona lines stay
+    # minor summaries no matter how many batches/cycles a long scan needs.
+    _chatter_budget = _ChatterBudget(every=_CHATTER_EVERY, cap=_CHATTER_CAP)
 
     _obs_workflow_started = time.monotonic()
     with _obs_trace(_OBS_PROJECT, "project"):
@@ -1655,7 +1676,10 @@ async def execute_project_workflow(
                 "system",
                 "[phase baseline] Running original-project baseline checks in isolated containers.",
             )
-            baseline_raw = await blocking(
+            baseline_raw = await _verify_traced(
+                log,
+                "baseline",
+                blocking,
                 sandbox.verify_project_snapshot,
                 safe_project,
                 dict(cumulative_files),
@@ -1725,6 +1749,35 @@ async def execute_project_workflow(
                     except Exception:
                         pass
                     documents = documents_from_mapping(cumulative_files)
+
+                    # Slice E: per-batch progress + rate-limited await-gap
+                    # chatter. The budget is per-run (shared across cycles);
+                    # the callback fires before each model call so the UI
+                    # moves during the gap. Additive: log() never raises.
+                    # Loop vars bound as defaults: the runner may hold the
+                    # callback across awaits, so it must not see rebinding.
+                    async def _red_batch_progress(
+                        done: int,
+                        total: int,
+                        _persona: str = red_persona((round_index % 5) + 1).name,
+                        _project: str = safe_project.name,
+                        _seed: int = cycle * 10 + pass_number,
+                    ) -> None:
+                        await log("red", _red_batch(done, total))
+                        if _chatter_budget.should_chatter(done):
+                            try:
+                                await log(
+                                    "red",
+                                    chatter(
+                                        "red_start",
+                                        persona=_persona,
+                                        path=_project,
+                                        seed=_seed,
+                                    ),
+                                )
+                            except Exception:
+                                pass
+
                     red = await agents.analyze_red(
                         documents,
                         project_name=safe_project.name,
@@ -1738,6 +1791,7 @@ async def execute_project_workflow(
                         coverage_notes=coverage_notes,
                         max_payload_bytes=payload_budget,
                         prior_verified_history=verified_history,
+                        on_progress=_red_batch_progress,
                     )
                     result.context_coverage.append(red.coverage)
                     evidence = CycleEvidence(red=red)
@@ -1780,7 +1834,10 @@ async def execute_project_workflow(
                         f"pass {pass_number}/{passes_per_cycle}: "
                         "proving the finding before requesting changes.",
                     )
-                    pre_raw = await blocking(
+                    pre_raw = await _verify_traced(
+                        log,
+                        "pre",
+                        blocking,
                         sandbox.verify_project_snapshot,
                         safe_project,
                         dict(cumulative_files),
@@ -1885,6 +1942,34 @@ async def execute_project_workflow(
                         f"pass {pass_number}/{passes_per_cycle}: "
                         "requesting bounded sanitation-only replacements.",
                     )
+
+                    # Slice E: per-attempt progress + rate-limited chatter,
+                    # same shape as the red batch callback above. Loop vars
+                    # bound as defaults (see above).
+                    async def _blue_attempt_progress(
+                        done: int,
+                        total: int,
+                        _persona: str = blue_persona(((round_index) % 5) + 1).name,
+                        _path: str = (
+                            red.report.affected_paths[0] if red.report.affected_paths else ""
+                        ),
+                        _seed: int = cycle * 10 + pass_number,
+                    ) -> None:
+                        await log("blue", _blue_attempt(done, total))
+                        if _chatter_budget.should_chatter(done):
+                            try:
+                                await log(
+                                    "blue",
+                                    chatter(
+                                        "blue_start",
+                                        persona=_persona,
+                                        path=_path,
+                                        seed=_seed,
+                                    ),
+                                )
+                            except Exception:
+                                pass
+
                     proposal = await agents.propose_blue(
                         documents,
                         project_name=safe_project.name,
@@ -1896,6 +1981,7 @@ async def execute_project_workflow(
                         max_changed_files=bounds.max_changed_files,
                         max_changed_bytes=bounds.max_changed_bytes,
                         max_payload_bytes=payload_budget,
+                        on_progress=_blue_attempt_progress,
                     )
                     evidence.blue_proposal = proposal
                     validation, replacements = validate_replacements(
@@ -1954,7 +2040,10 @@ async def execute_project_workflow(
                         f"[phase verify] Cycle {cycle}/{requested_cycles} pass {pass_number}/{passes_per_cycle}: "
                         "verifying a fresh target with the original probe and regression command.",
                     )
-                    patched_raw = await blocking(
+                    patched_raw = await _verify_traced(
+                        log,
+                        "post",
+                        blocking,
                         sandbox.verify_project_snapshot,
                         safe_project,
                         candidate_files,
@@ -2007,6 +2096,7 @@ async def execute_project_workflow(
                             coverage_notes=coverage_notes,
                             max_payload_bytes=payload_budget,
                             prior_verified_history=verified_history,
+                            on_progress=_red_batch_progress,
                         )
                         evidence.independent_red = independent_red
                         result.context_coverage.append(independent_red.coverage)
@@ -2016,7 +2106,10 @@ async def execute_project_workflow(
                                 == red.report.vulnerability.strip().casefold()
                             )
                             if independent_same_finding:
-                                independent_raw = await blocking(
+                                independent_raw = await _verify_traced(
+                                    log,
+                                    "independent",
+                                    blocking,
                                     sandbox.verify_project_snapshot,
                                     safe_project,
                                     candidate_files,

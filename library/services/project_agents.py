@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -622,6 +623,8 @@ class ProjectAgentRunner:
         coverage_notes: Sequence[str] = (),
         max_payload_bytes: int = 256_000,
         prior_verified_history: Sequence[Mapping[str, object]] = (),
+        max_parallel_batches: int | None = None,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> RedAnalysisArtifacts:
         fixed_overhead = len(contract.encode("utf-8")) + len(
             json.dumps(list(prior_verified_history), ensure_ascii=False).encode("utf-8")
@@ -678,7 +681,25 @@ class ProjectAgentRunner:
         assignments: Sequence[ReviewAssignment | None] = (
             leader_plan.assignments if leader_plan is not None else (None,)
         )
-        evidence: list[RedBatchEvidence] = []
+        # Slices C+E: bounded-parallel evidence fan-out with per-batch
+        # progress. Units keep sequential indices so the merge point below
+        # is order-stable; failures surface through the existing error path
+        # (fail closed). Progress fires (done, total) matching the workflow
+        # callbacks; direct unit callers pass nothing and see zero change.
+        bound = (
+            max_parallel_batches
+            if max_parallel_batches is not None
+            else (
+                self.config.red_evidence_parallelism
+                if isinstance(getattr(self.config, "red_evidence_parallelism", None), int)
+                else 4
+            )
+        )
+        if not 1 <= bound <= 8:
+            raise AgentError(
+                "Red evidence parallelism must be between 1 and 8; no evidence was collected."
+            )
+        units: list[tuple[int, dict, str, str]] = []
         for batch in batches:
             for assignment in assignments:
                 payload = {
@@ -696,22 +717,51 @@ class ProjectAgentRunner:
                 role = f"project_red_{phase}_evidence_cycle_{cycle}_batch_{batch.batch_index}"
                 if assignment is not None:
                     role += f"_worker_{assignment.agent_index}"
-                evidence.append(
-                    await self._call(
+                system = (
+                    (red_persona_prompt(assignment.agent_index) + "\n" + RED_WORKER_SYSTEM_PROMPT)
+                    if assignment is not None
+                    else RED_BATCH_SYSTEM_PROMPT
+                )
+                units.append((len(units), payload, role, system))
+        total_units = len(units)
+        semaphore = asyncio.Semaphore(bound)
+
+        async def _collect(
+            position: int, payload: dict, role: str, system: str
+        ) -> RedBatchEvidence:
+            async with semaphore:
+                try:
+                    return await self._call(
                         self.config.red_team_model,
-                        (
-                            red_persona_prompt(assignment.agent_index)
-                            + "\n"
-                            + RED_WORKER_SYSTEM_PROMPT
-                        )
-                        if assignment is not None
-                        else RED_BATCH_SYSTEM_PROMPT,
+                        system,
                         payload,
                         RedBatchEvidence,
                         role=role,
                         max_payload_bytes=max_payload_bytes,
                     )
-                )
+                finally:
+                    if on_progress is not None:
+                        await on_progress(position + 1, total_units)
+
+        gathered = await asyncio.gather(
+            *(
+                _collect(position, payload, role, system)
+                for position, payload, role, system in units
+            ),
+            return_exceptions=True,
+        )
+        evidence: list[RedBatchEvidence] = []
+        for position, outcome in enumerate(gathered):
+            if isinstance(outcome, BaseException):
+                raise (
+                    outcome
+                    if isinstance(outcome, AgentError)
+                    else AgentError(
+                        f"Red evidence batch {position + 1}/{total_units} failed "
+                        f"({type(outcome).__name__}); no evidence was collected."
+                    )
+                ) from outcome
+            evidence.append(outcome)
 
         digests: list[RedEvidenceDigest] = []
         pending = [item.model_dump() for item in evidence]
@@ -835,6 +885,7 @@ class ProjectAgentRunner:
         max_payload_bytes: int = 256_000,
         model_override: str | None = None,
         role_suffix: str = "",
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> BlueProposal:
         """Request one bounded blue proposal. The escalation path must pass an explicit override.
 
@@ -987,6 +1038,9 @@ class ProjectAgentRunner:
 
         proposals: list[BlueProposal] = []
         for index, documents in enumerate(groups):
+            # Slice E: same await-gap progress as the red batch loop above.
+            if on_progress is not None:
+                await on_progress(index + 1, len(groups))
             payload = dict(base_payload)
             payload["safe_snapshot_files"] = [
                 document.model_dump() | {"sha256": document.sha256} for document in documents
