@@ -118,6 +118,10 @@ def test_snippet_filename_map_single_sourced():
         "javascript": "app.js",
         "python": "app.py",
         "php": "index.php",
+        # OMNI-INGEST: compiled snippet filenames (single-sourced).
+        "c": "snippet.c",
+        "rust": "snippet.rs",
+        "go": "snippet.go",
     }
     import tui
 

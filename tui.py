@@ -173,7 +173,14 @@ def _state_field(state: TuiState, *names: str, default: str = "") -> str:
 
 
 def _infer_snippet_language(filename: str, explicit: str = "") -> str:
-    if explicit and str(explicit).strip().lower() in ("javascript", "python", "php"):
+    if explicit and str(explicit).strip().lower() in (
+        "javascript",
+        "python",
+        "php",
+        "c",
+        "rust",
+        "go",
+    ):
         return str(explicit).strip().lower()
     import os as _os
 
@@ -1099,7 +1106,7 @@ def _add_dispatch_flags(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--snippet-language",
-        choices=["javascript", "python", "php"],
+        choices=["javascript", "python", "php", "c", "rust", "go"],
         default="",
         help="Snippet language (default: inferred from file extension)",
     )

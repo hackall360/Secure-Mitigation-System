@@ -425,6 +425,12 @@ def build_service_wrapper(snapshot: RepoIntakeSnapshot) -> RepoIntakeSnapshot:
     files["repo.runtime_command"] = json.dumps(list(wrapper_argv)).encode("utf-8")
     files["repo.smoke_command"] = json.dumps(list(smoke_argv)).encode("utf-8")
     files["repo.service_wrapper"] = b"http-8080"
+    # MISSION OMNI-INGEST: record the PreScanObserver verdict so Wave 2
+    # (DynamicProvisioner) knows what to install without re-scanning.
+    # Serve path unchanged — sources stay the probe surface.
+    eco = observe_ecosystem([k[5:] for k in files if k.startswith("tree/")])
+    files["repo.ecosystem"] = eco.ecosystem.encode("utf-8")
+    files["repo.toolchains"] = ",".join(eco.toolchains).encode("utf-8")
     return RepoIntakeSnapshot(
         files=MappingProxyType(files),
         url=snapshot.url,
