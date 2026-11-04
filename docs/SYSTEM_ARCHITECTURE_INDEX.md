@@ -63,8 +63,8 @@ original and fixed code. Only a 0→1 flip with unchanged normal behavior is
   (compress → vault recall → baseline → one red/blue cycle → regression +
   re-probe → receipt); `ScanResult`, `VerdictReceipt`,
   `build_verdict_receipt`, `redact_fixture_result_for_user`.
-- **`sweep.py` — `execute_sweep_scan`**: 4-pass ladder (standard → deep →
-  threat-actor → chain); `SweepScanResult`, `ChainLink`, vault-status
+- **`sweep.py` — `execute_sweep_scan`**: 5-pass ladder (standard → deep →
+  threat-actor → chain → coverage); `SweepScanResult`, `ChainLink`, vault-status
   classification, unified 2-link chain probes (`_chain_link_probes`).
 - **`deep_scan.py`**: edge/encoding/coercion/truncation handling for pass 2.
 - **`project_workflow.py` — `execute_project_workflow`**: up-to-20
