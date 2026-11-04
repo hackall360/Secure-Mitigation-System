@@ -415,3 +415,31 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: when a branch grows a third case, rewrite the condition as an
   explicit three-way from the start — `if/else` with a hidden middle case
   is a bug waiting for the next slice.
+
+## Docker 29 get_archive vs read-only/tmpfs (2026-11-03, Part 2 dry run)
+
+- **Trap: get_archive 404s on read-only/tmpfs-mounted containers.**
+  Wrong assumption: "the clone wrote bytes, so get_archive can read them."
+  On Docker 29 (overlay2 here), archiving ANY path inside a `read_only`
+  and/or tmpfs-mounted container 404s ("Could not find the file") — even
+  though the same archive call works on plain containers. Bisected across
+  5 variants (baseline/user/readonly/tmpfs/combos): baseline + user-only
+  pass, every readonly/tmpfs combination fails. The clone DID succeed
+  (exit 0, bytes on disk, verified via logs) — only the extraction lied.
+  Evidence: `/work/repo` 404s but `/work` and `/` return; `/work` tar holds
+  a single `work` dir entry (tmpfs contents invisible to the daemon's
+  archive path).
+  Fix: clone container runs with a WRITABLE root (still no host mounts,
+  still uid 10001, still all-caps-dropped, still no-new-privileges) and
+  clones into plain `/work`. Only the staged tree leaves via get_archive.
+  Lesson: the "hardened container" checklist (read-only + tmpfs) breaks
+  Docker's own archive API on this storage driver. Harden the PROBE
+  containers (they never export bytes); the CLONE container must stay
+  readable. Bisect isolation flags against the extraction API, not just
+  the workload.
+- **Trap: the tree prefix moved and nobody told the pins.**
+  Wrong assumption: "tree/ paths are stable." Stripping the repo dir
+  (`tree/repo/app.js` → `tree/app.js`) broke 3 pins across 3 files that
+  asserted the old prefix. Retargeted in the same commit.
+  Lesson: a path-shape change is a contract change — grep `tree/` across
+  tests/ in the same commit.

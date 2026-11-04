@@ -1166,7 +1166,12 @@ def create_app(config: PurpleBoxConfig | None = None) -> FastAPI:
                                     tree_names = [
                                         k[5:] for k in snapshot.files if k.startswith("tree/")
                                     ]
-                                    _real_runtime = _detect_runtime(sorted(tree_names))
+                                    _repo_stub = (
+                                        (intake_spec.url or "").rstrip("/").rsplit("/", 1)[-1]
+                                    )
+                                    if _repo_stub.endswith(".git"):
+                                        _repo_stub = _repo_stub[:-4]
+                                    _real_runtime = _detect_runtime(sorted(tree_names), _repo_stub)
                                     snapshot = snapshot.__class__(
                                         files=snapshot.files,
                                         url=snapshot.url,
@@ -2583,7 +2588,10 @@ async def _ingest_repo_to_project(ingest_repo, commit_hash, emit_progress, setti
         dest = staged.joinpath(*parts)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content if isinstance(content, bytes) else str(content).encode())
-    runtime = detect_runtime(sorted(tree))
+    runtime = detect_runtime(
+        sorted(tree),
+        (ingest_repo or "").rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+    )
     test_command = list(runtime)
     # Brief 2026-11-03-repo-intake-live D3: the explicit repo action IS the
     # remote-inference grant — the operator asked for this repo's bytes to be

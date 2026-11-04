@@ -973,7 +973,10 @@ async def scan_repo(
             dest.write_bytes(
                 content if isinstance(content, bytes) else str(content).encode("utf-8")
             )
-        runtime = detect_runtime(sorted(tree))
+        runtime = detect_runtime(
+            sorted(tree),
+            str(spec.url).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git"),
+        )
         contract_text = (request.contract or "").strip() or (
             f"Ingest scan of {spec.url} at commit {spec.commit_hash[:12]}. "
             "Preserve the public API. Only sanitize untrusted input."
