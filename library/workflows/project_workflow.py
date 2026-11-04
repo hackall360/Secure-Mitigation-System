@@ -434,6 +434,7 @@ class ProjectWorkflowLimits(BaseModel):
     max_context_files: int = Field(default=512, ge=1, le=4096)
     max_context_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=32 * 1024 * 1024)
     max_payload_bytes: int = Field(default=256_000, ge=16_384, le=4_000_000)
+    max_blue_payload_bytes: int = Field(default=64_000, ge=16_384, le=4_000_000)
 
 
 def validate_safe_path(path: str) -> None:
@@ -1981,6 +1982,7 @@ async def execute_project_workflow(
                         max_changed_files=bounds.max_changed_files,
                         max_changed_bytes=bounds.max_changed_bytes,
                         max_payload_bytes=payload_budget,
+                        max_blue_payload_bytes=bounds.max_blue_payload_bytes,
                         on_progress=_blue_attempt_progress,
                     )
                     evidence.blue_proposal = proposal

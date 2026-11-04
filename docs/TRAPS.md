@@ -816,6 +816,7 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   effort `max` on the default red model risks HTTP 400. Lesson: an enum in
   config is the union of per-model capabilities; check the per-model
   matrix before raising the knob globally.
+
 ## Slice E live-feedback emits (2026-11-04, branch feature/slice-e-feedback)
 - **Trap: a verify "done" line carrying an exit code double-counts findings in the v3 interpreter.**
   Wrong assumption: "`[phase verify] done (pre) exited 0` is a harmless progress bracket — the parser only reads the canonical exit lines." The interpreter's exit entity regex (`web/js/model/extract.js` EXIT_RE) matches ANY `exit(ed) N` token: a done-line with `exited 0` fires the `probe-reachable` beat and inflates `stats.findings` (live full-verified stream went 1 -> 2 findings with exit-coded done lines). Fix shipped: done brackets carry the stage label only (`[phase verify] done (pre)`), never codes; the existing exit-code line stays the single source of truth. Pinned by `test_new_lines_do_not_change_interpreter_counts` (live stream through real node vm Interpreter, counts pinned).
@@ -826,3 +827,17 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Wrong assumption: "EMIT_TIMEOUT_S=0.5 bounds backpressure cost to 0.5 s." Twenty sequential `await log(...)` calls under a dead socket cost 20 x 0.5 s = ~10-14 s before cleanup. The bound guarantees cleanup is never blocked FOREVER (the actual LAW 4 invariant), not that it is fast. The RED pin therefore uses a hanging emit + `wait_for(30 s)` asserting completion + `sandbox.closed`, not a wall-clock budget. Lesson: timeout-per-call bounds liveness, not latency; pin the invariant (cleanup runs), not the budget.
 - **Trap: `run_project` test helper hardcodes `silent_emit` — capturing emits needs a direct `execute_*` call.**
   Wrong assumption: "the helper forwards my emit." `tests/helpers.py::run_project` has no emit parameter; a progress test using it sees zero lines and fails for the wrong reason. Fix: call `execute_project_workflow(..., emit, ...)` directly in emit-asserting tests. Same for fixture RED: `run_fixture(codes, emit=emit)` does forward — check the helper signature before assuming.
+## Slice B dossier traps (branch feature/slice-b-dossier)
+- **Trap: `ruff format` reflows the tail re-export shim and breaks its `noqa`.**
+  `library/workflows/project_workflow.py` ends with single-line
+  `from ... import X as X  # noqa: E402` re-exports. The formatter
+  rewrites them multi-line, which moves the `noqa` so E402 fires (3 new
+  errors that were clean before). Wrong assumption: "format is always
+  safe to run tree-wide". Evidence: `ruff check` delta clean tree 2
+  errors -> 4 after format; reverting only the shim hunk restored the
+  baseline. Lesson: keep that shim byte-identical; run `ruff format`
+  on touched regions only and diff the tail.
+- **Trap: `RedReport` has no `confidence` field — do not invent one.**
+  Slice B grounds the dossier finding with probe/regression exit codes
+  plus bounded output digests instead. Fabricating a confidence value
+  the red stage never produced would be ungrounded model input.
