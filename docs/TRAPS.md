@@ -841,3 +841,34 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Slice B grounds the dossier finding with probe/regression exit codes
   plus bounded output digests instead. Fabricating a confidence value
   the red stage never produced would be ungrounded model input.
+
+## Docs accuracy pass (2026-11-04, branch feature/testing-2026-11-04)
+
+- **Trap: red reports bare repo paths, the snapshot stages `tree/`-prefixed keys.**
+  Wrong assumption: "affected_paths match snapshot keys verbatim." Ingest
+  stages `tree/<relpath>` (+ `repo.*` service keys); red legitimately reports
+  `app/app.py` and the lookup misses. Fix: `resolve_snapshot_paths`
+  (`library/services/project_agents.py:639`; callers at
+  `project_agents.py:789`, `project_workflow.py:1843`) — exact match wins,
+  else one unique `tree/`-stripped suffix match resolves, `repo.*` never
+  resolves, 0 or 2+ matches stay unknown (fail closed).
+- **Trap: a red probe with a syntax error kills the run before blue.**
+  Wrong assumption: "the sandbox verifier's rejection is the repair path."
+  It ends the run with no patch. Fix: one bounded repair
+  (`library/services/project_agents.py:1279-1301`) — `ast.parse` the probe,
+  re-ask the report step ONCE with the parse error; a second bad probe is
+  returned unchanged so the sandbox guard still fails closed.
+- **Trap: `--sweep-passes` is fixture-only, not a project-scan ladder.**
+  Wrong assumption: "N passes deepens an ingest run." The CLI requires
+  `--scan` (`main.py:3804` errors otherwise) and only the fixture branch
+  honors it (`main.py:2911-2912`); the project path
+  (`main.py:2924`) runs the standard project loop unchanged. Ingest depth
+  comes from the source review passes, not this flag.
+- **Trap: `demo_run.py` takes no args but still spawns a live run.**
+  Wrong assumption: "`--help` is safe on a wrapper script." `demo_run.py`
+  has no argparse (`main()` at `demo_run.py:81`); an unknown flag is
+  ignored and the pinned insecure-web ingest launches, burning API credit.
+  (Verified live this session: had to `kill` the child scan and
+  `docker rm -f` its clone container.) Check `scale_run.py` (which DOES
+  take `--early-exit/--parallelism/--commit`) vs `demo_run.py` before
+  passing flags to either.
