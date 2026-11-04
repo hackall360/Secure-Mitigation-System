@@ -91,12 +91,18 @@ async def test_red_parallelism_respects_configured_bound():
 
 
 async def test_red_progress_emits_per_batch_start_and_finish():
-    """WS stream never goes dark: one started+finished line per batch unit."""
+    """WS stream never goes dark: one finished line per batch unit.
+
+    Merged contract (slices C+E): progress fires on unit COMPLETION only,
+    not start+finish. Start+finish double-spends the shared per-run chatter
+    budget (each multiple-of-every done fires twice), breaking E's rate-limit
+    pin on real trees. Completion lines arrive throughout the parallel run,
+    so the liveness intent is preserved with half the budget spend.
+    """
     _muse, _artifacts, progress = await _run(max_parallel_batches=2)
-    started = [m for _t, m in progress if m.startswith("[phase red evidence]") and "started" in m]
     finished = [m for _t, m in progress if m.startswith("[phase red evidence]") and "finished" in m]
     # Fixture data yields 2 batches x 1 (no leader plan) = 2 units.
-    assert len(started) == 2 and len(finished) == 2, f"progress lines missing: {progress!r}"
+    assert len(finished) == 2, f"progress lines missing: {progress!r}"
     for team, _message in progress:
         assert team == "red"
 

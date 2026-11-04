@@ -1761,13 +1761,23 @@ async def execute_project_workflow(
                     # Loop vars bound as defaults: the runner may hold the
                     # callback across awaits, so it must not see rebinding.
                     async def _red_batch_progress(
-                        done: int,
-                        total: int,
+                        team: str,
+                        message: str,
                         _persona: str = red_persona((round_index % 5) + 1).name,
                         _project: str = safe_project.name,
                         _seed: int = cycle * 10 + pass_number,
                     ) -> None:
-                        await log("red", _red_batch(done, total))
+                        # Agent emits "[phase red evidence] batch i/N started/finished";
+                        # translate to the workflow's batch-fraction line + chatter.
+                        try:
+                            tail = message.rsplit("batch", 1)[1].strip()
+                            fraction, _ = tail.split(" ", 1)
+                            done_s, total_s = fraction.split("/")
+                            done, total = int(done_s), int(total_s)
+                        except Exception:
+                            done, total = 0, 0
+                        if total:
+                            await log("red", _red_batch(done, total))
                         if _chatter_budget.should_chatter(done):
                             try:
                                 await log(
@@ -1958,15 +1968,25 @@ async def execute_project_workflow(
                     # same shape as the red batch callback above. Loop vars
                     # bound as defaults (see above).
                     async def _blue_attempt_progress(
-                        done: int,
-                        total: int,
+                        team: str,
+                        message: str,
                         _persona: str = blue_persona(((round_index) % 5) + 1).name,
                         _path: str = (
                             red.report.affected_paths[0] if red.report.affected_paths else ""
                         ),
                         _seed: int = cycle * 10 + pass_number,
                     ) -> None:
-                        await log("blue", _blue_attempt(done, total))
+                        try:
+                            tail = message.rsplit("batch", 1)[1].strip()
+                            if "worker" in message:
+                                tail = message.rsplit("worker", 1)[1].strip()
+                            fraction, _ = tail.split(" ", 1)
+                            done_s, total_s = fraction.split("/")
+                            done, total = int(done_s), int(total_s)
+                        except Exception:
+                            done, total = 0, 0
+                        if total:
+                            await log("blue", _blue_attempt(done, total))
                         if _chatter_budget.should_chatter(done):
                             try:
                                 await log(

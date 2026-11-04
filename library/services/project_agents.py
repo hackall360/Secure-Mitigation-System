@@ -1080,7 +1080,10 @@ class ProjectAgentRunner:
                     )
                 finally:
                     if on_progress is not None:
-                        await on_progress(position + 1, total_units)
+                        await on_progress(
+                            "red",
+                            f"[phase red evidence] batch {position + 1}/{total_units} finished",
+                        )
 
         gathered = await asyncio.gather(
             *(
@@ -1225,7 +1228,7 @@ class ProjectAgentRunner:
         max_blue_payload_bytes: int = 64_000,
         model_override: str | None = None,
         role_suffix: str = "",
-        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        on_progress: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> BlueProposal:
         """Request one bounded blue proposal from the finding dossier.
 
@@ -1268,7 +1271,7 @@ class ProjectAgentRunner:
         max_changed_bytes: int,
         max_payload_bytes: int = 256_000,
         max_blue_payload_bytes: int = 64_000,
-        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        on_progress: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> BlueProposal:
         """Separate explicit escalation call: one stronger-model retry, never silent.
 
@@ -1316,7 +1319,7 @@ class ProjectAgentRunner:
         max_blue_payload_bytes: int = 64_000,
         model: str = "",
         role_suffix: str = "",
-        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        on_progress: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> BlueProposal:
         model = model or self.config.blue_team_model
         # Non-escalated roles keep the legacy "proposal" spelling; the escalated
@@ -1373,7 +1376,7 @@ class ProjectAgentRunner:
         ]
         if leader_plan is None:
             if on_progress is not None:
-                await on_progress(1, 1)
+                await on_progress("blue", "[phase blue evidence] batch 1/1 started")
             return await self._call(
                 model,
                 BLUE_PROPOSAL_SYSTEM_PROMPT,
@@ -1385,7 +1388,10 @@ class ProjectAgentRunner:
         worker_proposals: list[BlueProposal] = []
         for worker_index, assignment in enumerate(leader_plan.assignments):
             if on_progress is not None:
-                await on_progress(worker_index + 1, len(leader_plan.assignments))
+                await on_progress(
+                    "blue",
+                    f"[phase blue evidence] worker {worker_index + 1}/{len(leader_plan.assignments)} started",
+                )
             worker_payload = dict(payload)
             worker_payload["leader_assignment"] = assignment.model_dump()
             worker_proposals.append(
