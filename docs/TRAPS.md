@@ -527,3 +527,43 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   child-cwd agree — or it will fail only on machines with redirected
   TMPDIR. Prefer absolute paths in test harnesses; keep relatives in
   shipped code.
+
+## Staged service wrapper + Docker timeouts (2026-11-04, Part 2 dry run)
+
+- **Trap: non-HTTP repos cannot pass an HTTP readiness gate.**
+  Wrong assumption: "detect the entrypoint, run it, probe 8080." AnyCam
+  binds 8443/MJPEG/portal paths and needs openssl + LAN for its cert —
+  none of which is 8080. The 10 s readiness probe failed closed, correctly
+  but uselessly for the video: the harness could only verify HTTP-shaped
+  targets, so "any repo" really meant "any web app."
+  Evidence: Part 2 attempt 5, "Ingested target did not become ready",
+  AnyCam alive on its own ports in the sandbox (verified via exec).
+  Fix: with no explicit argv, the WS ingest path wraps the staged tree as
+  a plain stdlib HTTP service on 8080 — every decodable staged text file
+  served at /<path>, /files lists, /health answers, / serves the tree's
+  own index page when one exists (the app's front door, not a listing).
+  Red/blue work against REAL staged bytes over the REAL probe surface;
+  the original entrypoint is never executed by the harness (explicit argv
+  still runs the real thing — same three-way branch as auto-detect).
+  Any repo is now verifiable for static content exposure; behaviour-level
+  verification of non-HTTP runtimes stays an explicit-argv job.
+  Lesson: the probe surface is the contract. Adapt the target TO it
+  (serve its bytes) rather than executing arbitrary code and hoping.
+- **Trap: ARG_MAX kills inline file maps.**
+  Wrong assumption: "the file map fits in argv." 41 files → 447 KB of
+  JSON, triple the 128 KB exec limit (E2BIG). Fix: the map rides as
+  tree/.wrapper_files.json (a staged file, hidden from its own listing);
+  the argv is a fixed ~2 KB loader. Data that scales with input travels
+  as files, never as arguments.
+- **Trap: Docker daemon timeouts under image-build load.**
+  Wrong assumption: "30 s docker timeout is plenty." The baseline check
+  failed with UnixHTTPConnectionPool Read timed out — not a code bug, a
+  wedged daemon (build cache pressure + orphaned containers + a stray
+  system AnyCam squatting on 8080 during tests). Fix: default
+  docker_timeout_seconds 30 → 120 (env + example.env), pruned orphans,
+  and the wrapper unit test uses a random free port with a stale-server
+  guard instead of assuming 8080 is free.
+  Lesson: "project check failed before producing a result" with a
+  ConnectionError underneath is infrastructure, not logic — check daemon
+  health (`docker system df`, orphans, port squatters) before touching
+  workflow code.
