@@ -35,7 +35,7 @@ Read this before touching the scan loop, Docker lifecycle, MCP busy paths, or th
 
 ## 5. Config & secrets
 
-- `load_config()` (`library/core/config.py:153`) reads ONLY: `META_MUSE_API_KEY/BASE_URL/RED_MODEL/BLUE_MODEL/TIMEOUT_SECONDS/MAX_TOKENS/REASONING_EFFORT`, `PURPLEBOX_RESEARCH/_SCANNERS`, `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS`, `PURPLEBOX_INFERENCE_MODE`. Everything else (images, mem, cpu, network, docker-timeout, max-source-bytes) is validated but NOT env-settable — pinned dataclass defaults by design (audit refuted the "dead knobs" claim; only unknown-scanner swallowing was real and is fixed: unknown names now reach `validate()` → `ConfigurationError`).
+- `load_config()` (`library/core/config.py:153`) reads ONLY: `META_MUSE_API_KEY/BASE_URL/RED_MODEL/BLUE_MODEL/BLUE_ESCALATION_MODEL/TIMEOUT_SECONDS/MAX_TOKENS/REASONING_EFFORT`, `PURPLEBOX_RESEARCH/_SCANNERS`, `PURPLEBOX_VERIFIER_TIMEOUT_SECONDS`, `PURPLEBOX_INFERENCE_MODE`. Everything else (images, mem, cpu, network, docker-timeout, max-source-bytes) is validated but NOT env-settable — pinned dataclass defaults by design (audit refuted the "dead knobs" claim; only unknown-scanner swallowing was real and is fixed: unknown names now reach `validate()` → `ConfigurationError`). `BLUE_ESCALATION_MODEL` empty = off; keyed = one explicit stronger-model blue retry per project rollback.
 - `.env` is git-ignored, owner-only 0600; `main.py` never loads it (zero dotenv refs — key lands via shell export; same for `serve_up`). Health reports `api_key_configured` presence, never the key.
 - Profiles: model pairs in `library/core/profiles.py` (`apply_profile`, unknown → `ProfileError`); scan knobs in `library/core/scan_profiles.py`. `custom` preserves server models.
 

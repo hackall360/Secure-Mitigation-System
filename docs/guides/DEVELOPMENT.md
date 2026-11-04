@@ -268,7 +268,12 @@ Not yet exercised: real Muse inference, which is blocked until a key is supplied
 
 ## Model configuration
 
-**Current defaults (2026-10-28, user has no Baseten key):** `https://api.meta.ai/v1`, red
+**Current defaults (Slice A, 2026-11-04):** `https://api.meta.ai/v1`, red
+`muse-spark-1.3-contributor`, blue `muse-spark-1.3-contributor`, timeout 300 s;
+`META_MUSE_BLUE_ESCALATION_MODEL` empty (off) — key `muse-wonder-1.0` for one
+explicit stronger-model blue retry after a project rollback.
+
+Historical (2026-10-28, user has no Baseten key): `https://api.meta.ai/v1`, red
 `muse-spark-1.3-contributor`, blue `muse-wonder-1.0`, timeout 180 s. Real scans with the user's Meta key:
 node_query_sink, php_command_sink (Spark for both roles) and mysql_insecure_conf all `verified`,
 exit 0, 0 leftovers, 58-75 s each. Pricing per 1M output tokens: Spark $4.25, Wonder $20.
@@ -404,7 +409,7 @@ Traps hit while building it:
 
 ## Per-scan model profiles
 
-`profiles.py` defines Economy (Spark/Spark), Balanced (Spark/Wonder), and Quality
+`profiles.py` defines Economy (Spark/Spark), Balanced (Spark/Spark with a keyed Wonder escalation in reserve), and Quality
 (Wonder/Wonder). `custom` preserves the server's configured model pair. Profiles are
 only offered for the Meta API hostname, not other providers. `/api/health` exposes
 `profiles` and `default_profile`. The dashboard sends a fixed key via

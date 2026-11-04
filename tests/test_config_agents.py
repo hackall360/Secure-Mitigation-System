@@ -31,7 +31,8 @@ def test_key_only_required_for_inference(monkeypatch, tmp_path):
     settings = load_config()
     assert settings.meta_base_url == "https://api.meta.ai/v1"
     assert settings.red_team_model == "muse-spark-1.3-contributor"
-    assert settings.blue_team_model == "muse-wonder-1.0"
+    assert settings.blue_team_model == "muse-spark-1.3-contributor"
+    assert settings.blue_escalation_model == ""
     with pytest.raises(ConfigurationError, match="META_MUSE_API_KEY"):
         require_api_key(settings)
     assert "secret-value" not in repr(PurpleBoxConfig(meta_api_key="secret-value"))
@@ -167,8 +168,9 @@ def test_meta_defaults_and_open_model_on_baseten():
     assert config.meta_base_url == "https://api.meta.ai/v1"
     assert (config.red_team_model, config.blue_team_model) == (
         "muse-spark-1.3-contributor",
-        "muse-wonder-1.0",
+        "muse-spark-1.3-contributor",
     )
+    assert config.blue_escalation_model == ""
     config.validate()
     replace(
         config,

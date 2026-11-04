@@ -62,7 +62,7 @@ Correctly no Step 1 widget.
 ### 1.5 Model profile (`profile`, from `profiles.py`)
 
 Param `profile` = `economy` (`muse-spark-1.3-contributor`/`muse-spark-1.3-contributor`) |
-`balanced` (`muse-spark-1.3-contributor`/`muse-wonder-1.0`, default) |
+`balanced` (`muse-spark-1.3-contributor`/`muse-spark-1.3-contributor`, default; keyed Wonder escalation in reserve) |
 `quality` (`muse-wonder-1.0`/`muse-wonder-1.0`) | `custom` (server
 configured models; also the default when nothing matches). Transport: WS
 `?profile=` query param on all three sockets, CLI `--profile`. Widget exists

@@ -19,7 +19,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 LINES = [
-    ["system", "Connected: muse-spark-1.3-contributor vs muse-wonder-1.0 (profile balanced)."],
+    [
+        "system",
+        "Connected: muse-spark-1.3-contributor vs muse-spark-1.3-contributor (profile balanced).",
+    ],
     [
         "system",
         "[phase baseline] Creating an internal Docker network and immutable target snapshot.",
@@ -27,7 +30,7 @@ LINES = [
     ["system", "[phase baseline] Original fixture is ready; normal-input checks passed."],
     ["red", "[phase red probe] Analyzing app.js with muse-spark-1.3-contributor."],
     ["red", "[phase red probe] Boundary check exited 0."],
-    ["blue", "[phase blue patch] Requesting a sanitization patch from muse-wonder-1.0."],
+    ["blue", "[phase blue patch] Requesting a sanitization patch from muse-spark-1.3-contributor."],
     ["blue", "Known minimal sanitization (offline check)"],
     [
         "blue",

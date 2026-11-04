@@ -39,6 +39,7 @@ and asserts the knob had an effect. A test that FAILS proves the knob (or
 that dimension) is truly dead-or-unenforced.
 """
 
+import inspect
 import json
 
 import httpx
@@ -56,6 +57,7 @@ KNOB_ENVS = (
     "PURPLEBOX_INFERENCE_MODE",
     "META_MUSE_RED_MODEL",
     "META_MUSE_BLUE_MODEL",
+    "META_MUSE_BLUE_ESCALATION_MODEL",
     "META_MUSE_TIMEOUT_SECONDS",
     "META_MUSE_MAX_TOKENS",
     "META_MUSE_REASONING_EFFORT",
@@ -120,6 +122,19 @@ def test_knob_blue_model_reaches_wire(monkeypatch):
 
         anyio.run(client.aclose)
     assert body["model"] == "muse-wonder-9.9", "blue knob must reach the wire model"
+
+
+# 2b. blue_escalation_model: env -> load_config -> propose_blue_escalated model
+def test_knob_blue_escalation_model_reaches_runner(monkeypatch):
+    from modules.services import project_agents as pa_mod
+
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("META_MUSE_API_KEY", "unit-test-key")
+    monkeypatch.setenv("META_MUSE_BLUE_ESCALATION_MODEL", "muse-wonder-1.0")
+    settings = load_config()
+    assert settings.blue_escalation_model == "muse-wonder-1.0"
+    src = inspect.getsource(pa_mod.ProjectAgentRunner.propose_blue_escalated)
+    assert "blue_escalation_model" in src, "escalation knob must gate the explicit call"
 
 
 # 3. max_output_tokens: env -> load_config -> _body max_tokens

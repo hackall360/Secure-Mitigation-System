@@ -37,6 +37,7 @@ from modules.shared.sms_observability import get_aspect as _get_aspect
 from modules.shared.sms_observability import log as _obs_log
 from modules.shared.sms_observability import record_metric as _obs_metric
 from modules.shared.sms_observability import trace as _obs_trace
+from modules.shared.sms_progress import verify_traced as _verify_traced
 from modules.shared.sms_redact import EXPLOIT_REDACTED, PROBE_OUTPUT_WITHHELD
 from modules.workflows.workflow import build_verdict_receipt
 
@@ -383,8 +384,13 @@ async def execute_sweep_scan(
             container, snapshot = await blocking(
                 sandbox.start_cloneable_target, network, target, source
             )
-            baseline = await blocking(
-                sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+            baseline = await _verify_traced(
+                log,
+                "baseline",
+                blocking,
+                sandbox.run_isolated_verifier,
+                network,
+                normal_behavior_script(target_key),
             )
             result.traces["baseline"] = baseline.output
             _obs_log(
@@ -433,8 +439,13 @@ async def execute_sweep_scan(
                         f"[sweep {pass_id}] {finding.vulnerability_class} at "
                         f"{finding.sink_location}: {finding.analysis_summary}",
                     )
-                    pre = await blocking(
-                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    pre = await _verify_traced(
+                        log,
+                        f"{pass_id}-pre",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        finding.verification_script_python,
                     )
                     passed.pre_exit_code = pre.exit_code
                     result.traces[f"{pass_id}:before"] = pre.output
@@ -486,8 +497,13 @@ async def execute_sweep_scan(
                     )
                     link_a_pre = link_b_pre = None
                     if link_scripts is not None:
-                        link_a_pre = await blocking(
-                            sandbox.run_isolated_verifier, network, link_scripts[0]
+                        link_a_pre = await _verify_traced(
+                            log,
+                            f"{pass_id}-link-a-pre",
+                            blocking,
+                            sandbox.run_isolated_verifier,
+                            network,
+                            link_scripts[0],
                         )
                         result.traces[f"{pass_id}:link_a_pre"] = link_a_pre.output
                         await log(
@@ -498,8 +514,13 @@ async def execute_sweep_scan(
                             raise SandboxError(
                                 f"Sweep pass {pass_id} link-A probe was inconclusive."
                             )
-                        link_b_pre = await blocking(
-                            sandbox.run_isolated_verifier, network, link_scripts[1]
+                        link_b_pre = await _verify_traced(
+                            log,
+                            f"{pass_id}-link-b-pre",
+                            blocking,
+                            sandbox.run_isolated_verifier,
+                            network,
+                            link_scripts[1],
                         )
                         result.traces[f"{pass_id}:link_b_pre"] = link_b_pre.output
                         await log(
@@ -545,8 +566,13 @@ async def execute_sweep_scan(
                         target,
                         patch.patched_file_content,
                     )
-                    regression = await blocking(
-                        sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                    regression = await _verify_traced(
+                        log,
+                        f"{pass_id}-regression",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        normal_behavior_script(target_key),
                     )
                     result.traces[f"{pass_id}:regression"] = regression.output
                     if regression.exit_code != 0:
@@ -554,14 +580,24 @@ async def execute_sweep_scan(
                             f"Sweep pass {pass_id} patched fixture failed trusted normal-input regression."
                         )
                     passed.regression_passed = True
-                    post = await blocking(
-                        sandbox.run_isolated_verifier, network, finding.verification_script_python
+                    post = await _verify_traced(
+                        log,
+                        f"{pass_id}-post",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        finding.verification_script_python,
                     )
                     passed.post_exit_code = post.exit_code
                     if pass_id == "chain":
                         assert link_a_pre is not None and link_b_pre is not None
-                        link_a_post = await blocking(
-                            sandbox.run_isolated_verifier, network, link_scripts[0]
+                        link_a_post = await _verify_traced(
+                            log,
+                            f"{pass_id}-link-a-post",
+                            blocking,
+                            sandbox.run_isolated_verifier,
+                            network,
+                            link_scripts[0],
                         )
                         result.traces[f"{pass_id}:link_a_post"] = link_a_post.output
                         await log(
@@ -572,8 +608,13 @@ async def execute_sweep_scan(
                             raise SandboxError(
                                 f"Sweep pass {pass_id} link-A post-patch probe was inconclusive."
                             )
-                        link_b_post = await blocking(
-                            sandbox.run_isolated_verifier, network, link_scripts[1]
+                        link_b_post = await _verify_traced(
+                            log,
+                            f"{pass_id}-link-b-post",
+                            blocking,
+                            sandbox.run_isolated_verifier,
+                            network,
+                            link_scripts[1],
                         )
                         result.traces[f"{pass_id}:link_b_post"] = link_b_post.output
                         await log(
@@ -616,8 +657,13 @@ async def execute_sweep_scan(
                         raise SandboxError(
                             f"Sweep pass {pass_id} post-patch verifier was inconclusive."
                         )
-                    final_health = await blocking(
-                        sandbox.run_isolated_verifier, network, normal_behavior_script(target_key)
+                    final_health = await _verify_traced(
+                        log,
+                        f"{pass_id}-final",
+                        blocking,
+                        sandbox.run_isolated_verifier,
+                        network,
+                        normal_behavior_script(target_key),
                     )
                     result.traces[f"{pass_id}:after_probe_regression"] = final_health.output
                     if final_health.exit_code != 0:
