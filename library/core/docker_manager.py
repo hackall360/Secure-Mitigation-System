@@ -291,8 +291,16 @@ class DockerSandboxManager:
         "go": ("sh", "-c", "go mod download || true"),
         "c": ("sh", "-c", "true"),
         "c-cmake": ("sh", "-c", "true"),
-        "python": ("sh", "-c", "pip download --no-deps -r requirements.txt -d /tmp/depwheel || true"),
-        "node": ("sh", "-c", "npm ci --no-audit --no-fund || npm install --no-audit --no-fund || true"),
+        "python": (
+            "sh",
+            "-c",
+            "pip download --no-deps -r requirements.txt -d /tmp/depwheel || true",
+        ),
+        "node": (
+            "sh",
+            "-c",
+            "npm ci --no-audit --no-fund || npm install --no-audit --no-fund || true",
+        ),
         "php": ("sh", "-c", "composer install --no-dev --no-interaction || true"),
         "make": ("sh", "-c", "true"),
         "generic": ("sh", "-c", "true"),
@@ -326,14 +334,22 @@ class DockerSandboxManager:
                     **{k: v for k, v in self._options("target").items() if k != "use_config_proxy"},
                 )
             except Exception as exc:
-                evidence["notes"].append(f"provision container failed to start: {type(exc).__name__}")
+                evidence["notes"].append(
+                    f"provision container failed to start: {type(exc).__name__}"
+                )
                 return evidence
             self.containers.append(container)
             try:
                 try:
-                    self.client.networks.get(provisioning_network.id if hasattr(provisioning_network, "id") else provisioning_network).connect(container)
+                    self.client.networks.get(
+                        provisioning_network.id
+                        if hasattr(provisioning_network, "id")
+                        else provisioning_network
+                    ).connect(container)
                 except Exception as exc:
-                    evidence["notes"].append(f"provision network attach failed: {type(exc).__name__}")
+                    evidence["notes"].append(
+                        f"provision network attach failed: {type(exc).__name__}"
+                    )
                     return evidence
                 try:
                     status = container.wait(timeout=300)
