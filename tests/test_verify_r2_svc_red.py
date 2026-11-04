@@ -339,7 +339,7 @@ def test_snippet_schema_definitions():
     assert src["inputSchema"]["properties"]["max_passes"] == {
         "type": "integer",
         "minimum": 1,
-        "maximum": 3,
+        "maximum": 5,
     }
     binary = B.sms_scan_binary_tool_definition()
     assert "blob_b64" in binary["inputSchema"]["properties"]

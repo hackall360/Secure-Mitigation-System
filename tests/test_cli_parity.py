@@ -1037,12 +1037,15 @@ def test_h3_sweep_passes_4_accepted(monkeypatch):
 
 
 def test_h3_sweep_passes_5_rejected(monkeypatch):
-    """H3: CLI rejects --sweep-passes 5 (out of 1..4 range), exit 2."""
+    """H3 (superseded by 5-pass coverage): CLI now ACCEPTS --sweep-passes 5.
+
+    Kept as a characterization pin: 6 is still rejected (out of 1..5).
+    """
     import pytest as _pytest
 
     import main as _main
 
-    monkeypatch.setattr("sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "5"])
+    monkeypatch.setattr("sys.argv", ["main.py", "--scan", "node_query_sink", "--sweep-passes", "6"])
     with _pytest.raises(SystemExit) as exited:
         _main.main()
     assert exited.value.code == 2

@@ -42,14 +42,15 @@ from modules.workflows.workflow import build_verdict_receipt
 
 _OBS_SWEEP = _get_aspect("workflows.sweep")
 
-SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor", "chain")
-SweepPassId = Literal["standard", "deep", "threat_actor", "chain"]
+SWEEP_PASSES: tuple[str, ...] = ("standard", "deep", "threat_actor", "chain", "coverage")
+SweepPassId = Literal["standard", "deep", "threat_actor", "chain", "coverage"]
 
 _PASS_LABEL: dict[str, str] = {
     "standard": "Standard sweep (common CVE patterns)",
     "deep": "Deep sweep (edge cases, input-mutation handling)",
     "threat_actor": "Threat-actor sweep (logic abuse + technical exploitation)",
     "chain": "Chain sweep (multi-step logic-abuse chains)",
+    "coverage": "Coverage sweep (secrets, deps, crypto, auth, config)",
 }
 
 
@@ -321,14 +322,14 @@ async def execute_sweep_scan(
     Exit 1 clears the pass (no blue call). Exit 0 requests a blue patch
     against the CURRENT source (carrying prior passes' patches), then
     regression + re-probe + final health. Exit 2 fails the sweep closed.
-    `max_passes` 1..4 selects a prefix of SWEEP_PASSES (CLI/deep-link).
+    `max_passes` 1..5 selects a prefix of SWEEP_PASSES (CLI/deep-link).
     """
     result = SweepScanResult(target=target_key)
     sandbox = None
     muse = None
     log = make_log(emit)
     selected = [
-        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(4, max_passes))
+        p for p in SWEEP_PASSES if 0 < SWEEP_PASSES.index(p) + 1 <= max(1, min(5, max_passes))
     ]
 
     _obs_sweep_started = _time.monotonic()

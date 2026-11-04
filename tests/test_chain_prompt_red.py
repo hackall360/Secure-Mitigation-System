@@ -61,7 +61,7 @@ def test_chain_pass_dispatches_to_chain_prompt(monkeypatch):
 def test_sweep_passes_include_chain():
     from modules.workflows.sweep import SWEEP_PASSES
 
-    assert tuple(SWEEP_PASSES) == ("standard", "deep", "threat_actor", "chain")
+    assert tuple(SWEEP_PASSES) == ("standard", "deep", "threat_actor", "chain", "coverage")
 
 
 def test_sweep_max_passes_accepts_four():

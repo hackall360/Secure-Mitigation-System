@@ -662,3 +662,39 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Lesson: an unadvertised capability is an unused capability. The network
   plumbing existed; the prompt was the lock. When expanding a surface,
   check what the sandbox ALREADY permits before building new pipes.
+
+## Overnight full-spectrum traps (2026-11-04, branch feature/overnight-full-spectrum)
+- **Trap: target image has no git, so HEAD pin fails exit 127.** Wrong
+  assumption: `target_base_image` can run `git ls-remote`. It cannot
+  (`which git` empty). Fix: pin resolution runs in `clone_base_image`
+  (purplebox-clone-base has git 2.49.1). File: `library/services/sms_api.py`
+  `_resolve_head_commit`.
+- **Trap: basename vs relpath in runtime detect.** `detect_runtime` got
+  `tree/anycam.py` (staged relpath) but compared against bare `anycam.py`;
+  AnyCam fell through to ValueError. Fix: `_python_command` + bare-name
+  fallback compare basenames, return the staged relpath. Files:
+  `library/services/repo_intake.py`.
+- **Trap: scan_repo ran the raw entrypoint instead of the wrapper.**
+  The WS default wraps the staged tree as an HTTP service (serve argv +
+  `--smoke` regression); the library path ran `python3 tree/anycam.py`
+  (long-lived camera app) as the regression command and failed the
+  baseline. Fix: `scan_repo` calls `build_service_wrapper` (idempotent —
+  skips when `repo.smoke_command` present) and uses serve/smoke argv.
+  File: `library/services/sms_api.py`.
+- **Trap: binary sweep correctly caps at 3, source goes to 5.** The chain
+  pass (4) is refused fail-closed on binaries (chain verdicts need 3-link
+  evidence the harness cannot express), so coverage (5) is unreachable
+  there. Do not "fix" the binary 3-cap to 5. Files:
+  `library/workflows/binary_sweep.py`, `library/services/mcp_bridge.py`
+  (binary tool stays maximum 3).
+- **Trap: persona-count pins encode the roster size.** Adding red
+  personas (5→7: Bloodsniffer, Blacklight) breaks wrap-around math and
+  length asserts in 3 test files. Retarget all three together:
+  `test_deep_scan.py`, `test_verify_r2_redact_red.py`.
+- **Trap: pass-cap pins live in 4+ files.** Raising 4→5 touches
+  `main.py` (WS gate, CLI clamp ×2, help), `sms_api.py` (×2),
+  `tui.py` (×4), `mcp_bridge.py` (source tool only), `schema.js`
+  (max + labels), plus `test_chain_live_reach_red.py`,
+  `test_cli_parity.py`, `test_audit_m_drift.py`,
+  `test_truth_sweep_fixes.py`, `test_verify_r2_svc_red.py`.
+  Miss one and the gate fails, not the feature.

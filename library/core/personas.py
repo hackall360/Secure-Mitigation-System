@@ -64,6 +64,20 @@ RED_PERSONAS: tuple[Persona, ...] = (
         "Architecture seams, forgotten endpoints, and implicit trust zones.",
         "Map every entry point first, then pick the least-guarded road and walk it with a probe.",
     ),
+    Persona(
+        "bloodsniffer",
+        "Bloodsniffer",
+        "Paranoid quartermaster, sniffs every manifest and default. Trusts no version string.",
+        "Hardcoded secrets, dependency pins, weak crypto, missing auth checks, dangerous defaults.",
+        "Read the manifests and configs first, name the class, then prove the one live with a probe.",
+    ),
+    Persona(
+        "blacklight",
+        "Blacklight",
+        "Patient auditor, shines UV on what the code tries to hide. Reads comments as confessions.",
+        "Secrets in comments and fixtures, debug flags left on, overbroad binds, verbose errors.",
+        "Sweep the tree for what should never ship, then fetch it live over HTTP and bottle one proof.",
+    ),
 )
 
 BLUE_PERSONAS: tuple[Persona, ...] = (

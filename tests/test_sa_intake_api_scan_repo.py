@@ -62,6 +62,8 @@ class _FakeManager:
 
 class _FakeSnapshot:
     def __init__(self, url, commit_hash):
+        import json as _json
+
         self.url = url
         self.commit_hash = commit_hash
         self.runtime_command = ("true",)
@@ -69,6 +71,10 @@ class _FakeSnapshot:
             "repo.url": url.encode(),
             "tree/main.py": b"print('ok')\n",
             "tree/requirements.txt": b"requests\n",
+            # Wrapper manifest entries (build_service_wrapper would add
+            # these): the scan path reads them for serve/smoke argv.
+            "repo.runtime_command": _json.dumps(["python3", "-c", "wrapper"]).encode(),
+            "repo.smoke_command": _json.dumps(["python3", "-c", "wrapper", "--smoke"]).encode(),
         }
 
 
