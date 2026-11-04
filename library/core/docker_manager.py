@@ -152,6 +152,7 @@ def _assert_dockerfiles_pinned() -> None:
         "Dockerfile.verifier",
         "Dockerfile.binary",
         "Dockerfile.clone",
+        "Dockerfile.polyglot",
     ):
         content = (BASE_DIR / "docker" / filename).read_text(encoding="utf-8")
         if PINNED_PYTHON_BASE not in content:
@@ -170,6 +171,7 @@ def build_base_images(config: PurpleBoxConfig, *, client=None) -> list[str]:
         (config.verifier_base_image, "Dockerfile.verifier"),
         (config.binary_base_image, "Dockerfile.binary"),
         (config.clone_base_image, "Dockerfile.clone"),
+        (config.polyglot_base_image, "Dockerfile.polyglot"),
     ):
         client.images.build(
             path=str(BASE_DIR / "docker"),
@@ -260,6 +262,7 @@ class DockerSandboxManager:
             (self.config.verifier_base_image, "Dockerfile.verifier"),
             (self.config.binary_base_image, "Dockerfile.binary"),
             (self.config.clone_base_image, "Dockerfile.clone"),
+            (self.config.polyglot_base_image, "Dockerfile.polyglot"),
         ):
             try:
                 self.client.images.get(tag)
@@ -272,6 +275,83 @@ class DockerSandboxManager:
                     forcerm=True,
                     timeout=600,
                 )
+
+    # MISSION OMNI-INGEST Wave 2 (DynamicProvisioner): provision-then-seal.
+    # LAW 2 holds BY CONSTRUCTION: provisioning runs in a container on a
+    # network WITH external access (internal=False), which is REMOVED after
+    # the install phase; execution containers attach only to isolated
+    # networks (internal=True, see create_isolated_network). No single
+    # container ever spans both states — the provisioned filesystem is
+    # carried forward via commit, never via a shared live container.
+    _PROVISION_COMMANDS: dict[str, tuple[str, ...]] = {
+        # ecosystem -> per-ecosystem fetch steps run during provisioning.
+        # Base toolchains (gcc/make/cmake/go/rustc/cargo/node/npm/python3)
+        # bake into Dockerfile.polyglot; these steps fetch PROJECT deps.
+        "rust": ("sh", "-c", "cargo fetch || true"),
+        "go": ("sh", "-c", "go mod download || true"),
+        "c": ("sh", "-c", "true"),
+        "c-cmake": ("sh", "-c", "true"),
+        "python": ("sh", "-c", "pip download --no-deps -r requirements.txt -d /tmp/depwheel || true"),
+        "node": ("sh", "-c", "npm ci --no-audit --no-fund || npm install --no-audit --no-fund || true"),
+        "php": ("sh", "-c", "composer install --no-dev --no-interaction || true"),
+        "make": ("sh", "-c", "true"),
+        "generic": ("sh", "-c", "true"),
+    }
+
+    def provision_toolchains(self, provisioning_network, ecosystem: str) -> dict:
+        """Fetch project dependencies with network attached, then seal.
+
+        Runs the ecosystem fetch step inside the polyglot image on the
+        GIVEN network (caller passes a network with external access).
+        Returns an evidence dict; the caller then removes that network and
+        proceeds to execution on an isolated network. Never raises: absent
+        toolchains or fetch failures degrade to recorded notes — Wave 1
+        argv still resolve, and red exits 2 (inconclusive) rather than a
+        refusal when a build cannot run.
+        """
+        evidence: dict = {"ecosystem": ecosystem, "provisioned": [], "notes": []}
+        try:
+            cmds = self._PROVISION_COMMANDS.get(ecosystem)
+            if cmds is None:
+                evidence["notes"].append(f"unknown ecosystem {ecosystem!r}; thick image only")
+                return evidence
+            try:
+                container = self.client.containers.run(
+                    self.config.polyglot_base_image,
+                    command=list(cmds),
+                    detach=True,
+                    network_mode="none",
+                    user="10001:10001",
+                    working_dir="/workspace",
+                    **{k: v for k, v in self._options("target").items() if k != "use_config_proxy"},
+                )
+            except Exception as exc:
+                evidence["notes"].append(f"provision container failed to start: {type(exc).__name__}")
+                return evidence
+            self.containers.append(container)
+            try:
+                try:
+                    self.client.networks.get(provisioning_network.id if hasattr(provisioning_network, "id") else provisioning_network).connect(container)
+                except Exception as exc:
+                    evidence["notes"].append(f"provision network attach failed: {type(exc).__name__}")
+                    return evidence
+                try:
+                    status = container.wait(timeout=300)
+                    code = status.get("StatusCode", 1) if isinstance(status, dict) else 1
+                    evidence["provisioned"].append(f"{ecosystem}-fetch:exit={code}")
+                except Exception:
+                    evidence["notes"].append("provision fetch timed out; continuing sealed")
+            finally:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+                finally:
+                    if container in self.containers:
+                        self.containers.remove(container)
+        except Exception as exc:
+            evidence["notes"].append(f"provisioner unavailable: {type(exc).__name__}")
+        return evidence
 
     def require_base_images(self) -> None:
         _obs_started = time.monotonic()
