@@ -86,11 +86,13 @@ class _Client:
 
 
 def _expected_pairs(config):
+    # OMNI-INGEST Wave 2: polyglot image joins the build matrix.
     return {
         (config.target_base_image, "Dockerfile.target"),
         (config.verifier_base_image, "Dockerfile.verifier"),
         (config.binary_base_image, "Dockerfile.binary"),
         (config.clone_base_image, "Dockerfile.clone"),
+        (config.polyglot_base_image, "Dockerfile.polyglot"),
     }
 
 
@@ -106,6 +108,7 @@ def test_build_base_images_includes_clone_pair():
         config.verifier_base_image,
         config.binary_base_image,
         config.clone_base_image,
+        config.polyglot_base_image,
     }
 
 
@@ -129,6 +132,7 @@ def test_ensure_base_images_skips_present_clone():
             config.verifier_base_image,
             config.binary_base_image,
             config.clone_base_image,
+            config.polyglot_base_image,
         )
     )
     DockerSandboxManager(config, client=client).ensure_base_images()

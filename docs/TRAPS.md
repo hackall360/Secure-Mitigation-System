@@ -776,3 +776,19 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   `SNIPPET_FILENAME_BY_LANGUAGE` is asserted value-for-value in two
   files. Adding c/rust/go broke both pins exactly as designed. The fix
   is extending the pins, never weakening them to subset checks.
+
+## MISSION OMNI-INGEST Wave 2 traps (branch feature/omni-ingest-wave2)
+- **Trap: thick image needs live version verification, not memory.**
+  Pinned apk versions (gcc-14.2.0-r6 etc.) were verified with a live
+  `apk search` against the exact base BEFORE writing the Dockerfile —
+  training-data versions would fail the build or install the wrong ABI.
+- **Trap: volume-mount perms mask toolchain proof.**
+  The first C proof failed with "Permission denied" — not a missing gcc
+  but a read-only bind mount as uid 10001. Output to /tmp (writable
+  scratch, same rule as the harness) proved the toolchain in one retry.
+  Lesson: distinguish mount failures from toolchain failures before
+  concluding the image is broken.
+- **Trap: `command -v X || exit 2` is the honest absent-toolchain path.**
+  Compiled snippet argv probe for the toolchain first; absent => exit 2
+  (inconclusive, fail-closed verdict), never a language refusal. The
+  refusal shape must never re-enter through a missing binary.
