@@ -9,7 +9,13 @@ from starlette.websockets import WebSocketDisconnect
 
 from main import create_app
 from modules.core.config import PurpleBoxConfig
-from modules.core.profiles import ProfileError, apply_profile, available_profiles, default_profile
+from modules.core.profiles import (
+    META_PROFILES,
+    ProfileError,
+    apply_profile,
+    available_profiles,
+    default_profile,
+)
 
 BASETEN = replace(
     PurpleBoxConfig(),
@@ -23,7 +29,7 @@ BASETEN = replace(
     "key,red,blue",
     [
         ("economy", "muse-spark-1.3-contributor", "muse-spark-1.3-contributor"),
-        ("balanced", "muse-spark-1.3-contributor", "muse-wonder-1.0"),
+        ("balanced", "muse-spark-1.3-contributor", "muse-spark-1.3-contributor"),
         ("quality", "muse-wonder-1.0", "muse-wonder-1.0"),
     ],
 )
@@ -53,14 +59,23 @@ def test_meta_profiles_not_offered_for_other_endpoints():
 
 
 def test_default_profile_matches_configured_pair():
-    assert default_profile(PurpleBoxConfig()) == "balanced"
+    # Stock Spark/Spark matches economy first (dict order); balanced shares the pair.
+    assert default_profile(PurpleBoxConfig()) == "economy"
+
+
+def test_balanced_is_spark_spark_with_keyed_wonder_escalation_in_reserve():
+    from modules.core.config import PurpleBoxConfig as _Config
+
+    assert META_PROFILES["balanced"].blue_model == "muse-spark-1.3-contributor"
+    assert _Config().blue_escalation_model == ""
+    assert META_PROFILES["quality"].blue_model == "muse-wonder-1.0"
 
 
 def test_health_lists_profiles():
     with TestClient(create_app(PurpleBoxConfig()), base_url="http://localhost") as client:
         health = client.get("/api/health").json()
     assert [p["key"] for p in health["profiles"]] == ["economy", "balanced", "quality"]
-    assert health["default_profile"] == "balanced"
+    assert health["default_profile"] == "economy"
 
 
 def test_socket_uses_chosen_profile(monkeypatch):

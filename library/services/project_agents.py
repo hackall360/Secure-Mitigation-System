@@ -833,7 +833,92 @@ class ProjectAgentRunner:
         max_changed_files: int,
         max_changed_bytes: int,
         max_payload_bytes: int = 256_000,
+        model_override: str | None = None,
+        role_suffix: str = "",
     ) -> BlueProposal:
+        """Request one bounded blue proposal. The escalation path must pass an explicit override.
+
+        ``model_override`` names the model for this call (default: configured blue model);
+        ``role_suffix`` tags the call role (e.g. "-escalated") so the two attempts stay
+        distinguishable in audit. A silent same-model retry is never an escalation.
+        """
+        return await self._propose_blue_with_model(
+            documents,
+            project_name=project_name,
+            cycle=cycle,
+            red_report=red_report,
+            pre_verification=pre_verification,
+            contract=contract,
+            protected_paths=protected_paths,
+            max_changed_files=max_changed_files,
+            max_changed_bytes=max_changed_bytes,
+            max_payload_bytes=max_payload_bytes,
+            model=model_override or self.config.blue_team_model,
+            role_suffix=role_suffix,
+        )
+
+    async def propose_blue_escalated(
+        self,
+        documents: Sequence[SourceDocument],
+        *,
+        project_name: str,
+        cycle: int,
+        red_report: RedReport,
+        pre_verification: Mapping[str, object],
+        contract: str,
+        protected_paths: Sequence[str] = (),
+        max_changed_files: int,
+        max_changed_bytes: int,
+        max_payload_bytes: int = 256_000,
+    ) -> BlueProposal:
+        """Separate explicit escalation call: one stronger-model retry, never silent.
+
+        Uses ``config.blue_escalation_model`` (empty = off). Raises AgentError when
+        off or when no API key is configured, so the caller fails closed instead of
+        upgrading silently or calling a live API keyless.
+        """
+        escalation_model = (self.config.blue_escalation_model or "").strip()
+        if not escalation_model:
+            raise AgentError(
+                "Blue escalation is disabled: META_MUSE_BLUE_ESCALATION_MODEL is empty."
+            )
+        if self.config.inference_mode != "local" and not self.config.meta_api_key:
+            raise AgentError("Blue escalation needs an API key; refusing a keyless model call.")
+        return await self._propose_blue_with_model(
+            documents,
+            project_name=project_name,
+            cycle=cycle,
+            red_report=red_report,
+            pre_verification=pre_verification,
+            contract=contract,
+            protected_paths=protected_paths,
+            max_changed_files=max_changed_files,
+            max_changed_bytes=max_changed_bytes,
+            max_payload_bytes=max_payload_bytes,
+            model=escalation_model,
+            role_suffix="-escalated",
+        )
+
+    async def _propose_blue_with_model(
+        self,
+        documents: Sequence[SourceDocument],
+        *,
+        project_name: str,
+        cycle: int,
+        red_report: RedReport,
+        pre_verification: Mapping[str, object],
+        contract: str,
+        protected_paths: Sequence[str] = (),
+        max_changed_files: int,
+        max_changed_bytes: int,
+        max_payload_bytes: int = 256_000,
+        model: str = "",
+        role_suffix: str = "",
+    ) -> BlueProposal:
+        model = model or self.config.blue_team_model
+        # Non-escalated roles keep the legacy "proposal" spelling; the escalated
+        # retry uses "escalated" + "-escalated" so the two attempts never merge.
+        action = "escalated" if role_suffix else "proposal"
         by_path = {document.path: document for document in documents}
         protected = set(protected_paths)
         selected = [
@@ -909,11 +994,11 @@ class ProjectAgentRunner:
             if leader_plan is None:
                 proposals.append(
                     await self._call(
-                        self.config.blue_team_model,
+                        model,
                         BLUE_PROPOSAL_SYSTEM_PROMPT,
                         payload,
                         BlueProposal,
-                        role=f"project_blue_proposal_cycle_{cycle}_batch_{index}",
+                        role=(f"project_blue_{action}_cycle_{cycle}_batch_{index}{role_suffix}"),
                         max_payload_bytes=max_payload_bytes,
                     )
                 )
@@ -924,15 +1009,15 @@ class ProjectAgentRunner:
                 worker_payload["leader_assignment"] = assignment.model_dump()
                 worker_proposals.append(
                     await self._call(
-                        self.config.blue_team_model,
+                        model,
                         blue_persona_prompt(assignment.agent_index)
                         + "\n"
                         + BLUE_WORKER_SYSTEM_PROMPT,
                         worker_payload,
                         BlueProposal,
                         role=(
-                            f"project_blue_proposal_cycle_{cycle}_batch_{index}"
-                            f"_worker_{assignment.agent_index}"
+                            f"project_blue_{action}_cycle_{cycle}_batch_{index}"
+                            f"_worker_{assignment.agent_index}{role_suffix}"
                         ),
                         max_payload_bytes=max_payload_bytes,
                     )
@@ -944,11 +1029,13 @@ class ProjectAgentRunner:
             ]
             proposals.append(
                 await self._call(
-                    self.config.blue_team_model,
+                    model,
                     BLUE_LEADER_PERSONA.voice + "\n" + BLUE_LEADER_SYNTHESIS_SYSTEM_PROMPT,
                     synthesis_payload,
                     BlueProposal,
-                    role=f"project_blue_leader_synthesis_cycle_{cycle}_batch_{index}",
+                    role=(
+                        f"project_blue_leader_synthesis_cycle_{cycle}_batch_{index}{role_suffix}"
+                    ),
                     max_payload_bytes=max_payload_bytes,
                 )
             )

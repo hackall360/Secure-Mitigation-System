@@ -27,7 +27,7 @@ original and fixed code. Only a 0→1 flip with unchanged normal behavior is
   - Models: `RedTeamFinding`, `BlueTeamPatch`, `RedResearchDigest`,
     `BlueResearchDigest`; `_schema_for`, `_extract_json_object`;
     `CallUsage` cost accounting per call.
-  - Red default `muse-spark-1.3-contributor`, blue `muse-wonder-1.0`;
+  - Red default `muse-spark-1.3-contributor`, blue `muse-spark-1.3-contributor` (keyed Wonder escalation in reserve);
     `meta-models/muse-spark-open(-1026)` accepted with provisional pricing.
 - **`docker_manager.py` — `DockerSandboxManager`** (36 defs): per-session
   containers/snapshots/networks, `network_mode="none"`, non-root, capped

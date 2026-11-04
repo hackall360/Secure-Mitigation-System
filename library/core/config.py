@@ -3,8 +3,8 @@
 """Environment configuration. Loading the UI never requires an inference key.
 
 Model roles (judge guide): Muse Spark is the fast triage model and the default
-red-team pick; Muse Wonder is the deep-reasoning model and the default
-blue-team pick.
+red- and blue-team pick; Muse Wonder is the deep-reasoning model reserved for
+blue-team escalation (keyed) and the quality tier.
 """
 
 import os
@@ -72,9 +72,13 @@ class PurpleBoxConfig:
     meta_base_url: str = "https://api.meta.ai/v1"
     inference_mode: str = "hosted"
     observability_mode: str = "prod"
-    # Red team default is Spark (fast triage); blue team default is Wonder (deep patch).
+    # Red and blue defaults are both Spark (fast triage/patch). Wonder is
+    # reserved for the keyed one-shot blue escalation (META_MUSE_BLUE_ESCALATION_MODEL).
     red_team_model: str = "muse-spark-1.3-contributor"
-    blue_team_model: str = "muse-wonder-1.0"
+    blue_team_model: str = "muse-spark-1.3-contributor"
+    # Empty = escalation off. Keyed (e.g. muse-wonder-1.0) enables exactly one
+    # escalated blue retry per rollback from the project workflow.
+    blue_escalation_model: str = ""
     target_base_image: str = "purplebox-target-base:latest"
     verifier_base_image: str = "purplebox-verifier-base:latest"
     binary_base_image: str = "purplebox-binary-base:latest"
@@ -142,6 +146,15 @@ class PurpleBoxConfig:
                     "Only Muse Spark/Wonder or meta-models/muse-spark-open IDs are supported. "
                     "Muse Code is a coding agent, not a model ID."
                 )
+        if self.blue_escalation_model and not re.fullmatch(
+            r"muse-(?:spark|wonder)(?:-[a-z0-9]+(?:\.[0-9]+)*)*"
+            r"|meta-models/muse-spark-open(?:-[a-z0-9]+)*",
+            self.blue_escalation_model,
+        ):
+            raise ConfigurationError(
+                "META_MUSE_BLUE_ESCALATION_MODEL must be empty (off) or a Muse "
+                "Spark/Wonder / meta-models/muse-spark-open ID."
+            )
         if not 1_024 <= self.max_output_tokens <= 131_072:
             raise ConfigurationError("META_MUSE_MAX_TOKENS must be between 1024 and 131072.")
         if self.reasoning_effort not in ("", "minimal", "low", "medium", "high", "xhigh", "max"):
@@ -206,7 +219,8 @@ def load_config() -> PurpleBoxConfig:
             inference_mode=os.getenv("PURPLEBOX_INFERENCE_MODE", "hosted").strip().lower(),
             observability_mode=os.getenv("PURPLEBOX_OBSERVABILITY_MODE", "prod").strip().lower(),
             red_team_model=os.getenv("META_MUSE_RED_MODEL", "muse-spark-1.3-contributor").strip(),
-            blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-wonder-1.0").strip(),
+            blue_team_model=os.getenv("META_MUSE_BLUE_MODEL", "muse-spark-1.3-contributor").strip(),
+            blue_escalation_model=os.getenv("META_MUSE_BLUE_ESCALATION_MODEL", "").strip(),
             api_timeout_seconds=float(os.getenv("META_MUSE_TIMEOUT_SECONDS", "300")),
             max_output_tokens=int(os.getenv("META_MUSE_MAX_TOKENS", "32768")),
             reasoning_effort=os.getenv("META_MUSE_REASONING_EFFORT", "").strip().lower(),

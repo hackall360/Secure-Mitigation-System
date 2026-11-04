@@ -64,9 +64,9 @@ def test_economy_is_spark_spark_cheap_showcase():
     assert eco.blue_model == "muse-spark-1.3-contributor"
 
 
-def test_balanced_stays_spark_wonder():
+def test_balanced_is_spark_spark_with_wonder_escalation_in_reserve():
     from library.core.profiles import META_PROFILES
 
     bal = META_PROFILES["balanced"]
     assert bal.red_model == "muse-spark-1.3-contributor"
-    assert bal.blue_model == "muse-wonder-1.0"
+    assert bal.blue_model == "muse-spark-1.3-contributor"
