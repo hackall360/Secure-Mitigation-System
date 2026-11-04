@@ -1005,18 +1005,38 @@ def normalize_snapshot_verification(value: Any, limit: int) -> SnapshotVerificat
     )
 
 
-def _extract_signatures(source: str) -> tuple[dict[str, int], set[str]]:
+def _extract_signatures(source: str) -> tuple[dict[str, tuple], set[str]]:
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
         raise ValueError(f"Invalid Python syntax: {exc}") from exc
-    funcs: dict[str, int] = {}
+
+    def _shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple:
+        args = node.args
+        return (
+            len(args.args),
+            len(args.kwonlyargs),
+            len(args.defaults),
+            len(args.kw_defaults),
+            args.vararg is not None,
+            args.kwarg is not None,
+        )
+
+    funcs: dict[str, tuple] = {}
     classes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            classes.add(node.name)
+    # Module-level functions keep bare names (back-compat with the old
+    # guard's messages); methods qualify as Class.method so a deleted or
+    # renamed method rejects instead of passing silently.
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            funcs[node.name] = len(node.args.args)
+            funcs[node.name] = _shape(node)
         elif isinstance(node, ast.ClassDef):
-            classes.add(node.name)
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    funcs[f"{node.name}.{item.name}"] = _shape(item)
     return funcs, classes
 
 
