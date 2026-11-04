@@ -173,3 +173,11 @@ Final Part 1 takes (all seed 6420, skip-refine, break_6, padded tails):
 - `test_demo_part1_explainer.wav` (v10: v7 recipe + split breaths +
   spaced acronyms, closer dropped).
 - `test_demo_bridge.wav` (single thought, one lbreak, trailing lbreak).
+
+## Part 2 dry-run verdict (attempt 11, 2026-11-04, 16:04 wall-clock)
+
+- Target: AnyCam HEAD, wrapper service, sweep 4, timeout 0, economy (Spark/Spark), intel on. 430,278 tokens, $0.05.
+- Baseline passed (smoke regression exits 0). Red reviewed 22 batches, found ONE candidate: unbounded WebSocket publish frames (no size checks → snapshot/MJPEG poisoning + memory exhaustion), high confidence, in `tree/anycam.py`.
+- Blue wrote a patch. Post-patch probe: exit 0 (still reachable) → patch ROLLED BACK. Final: partial, no verified verdict. A miss called a miss.
+- TTS: `test_demo_part2_findings.wav` (17.1s) + `test_demo_outro.wav` (12.3s, Spark 1.3 sign-off), seed 6420, v7 recipe (soft uv, one lbreak, trailing lbreak, tails padded).
+- Edit note: Part 1 = "this works" (verified, exit 0→1, chained receipt). Part 2 = "no theater" (real finding, failed patch honestly discarded).
