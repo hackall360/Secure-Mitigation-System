@@ -792,3 +792,18 @@ Lesson: after `close()` returns success, a container that still shows `Up` is a 
   Compiled snippet argv probe for the toolchain first; absent => exit 2
   (inconclusive, fail-closed verdict), never a language refusal. The
   refusal shape must never re-enter through a missing binary.
+
+## Slice B dossier traps (branch feature/slice-b-dossier)
+- **Trap: `ruff format` reflows the tail re-export shim and breaks its `noqa`.**
+  `library/workflows/project_workflow.py` ends with single-line
+  `from ... import X as X  # noqa: E402` re-exports. The formatter
+  rewrites them multi-line, which moves the `noqa` so E402 fires (3 new
+  errors that were clean before). Wrong assumption: "format is always
+  safe to run tree-wide". Evidence: `ruff check` delta clean tree 2
+  errors -> 4 after format; reverting only the shim hunk restored the
+  baseline. Lesson: keep that shim byte-identical; run `ruff format`
+  on touched regions only and diff the tail.
+- **Trap: `RedReport` has no `confidence` field — do not invent one.**
+  Slice B grounds the dossier finding with probe/regression exit codes
+  plus bounded output digests instead. Fabricating a confidence value
+  the red stage never produced would be ungrounded model input.
