@@ -622,6 +622,19 @@ def _order_documents_by_rank(
     return ordered
 
 
+def _probe_syntax_error(script: str) -> str | None:
+    """Return a short ast.parse error for a red probe, or None when it parses."""
+    import ast
+
+    try:
+        ast.parse(script, filename="verify.py")
+    except SyntaxError as exc:
+        return f"{exc.msg} (line {exc.lineno})"[:300]
+    except ValueError as exc:
+        return str(exc)[:300]
+    return None
+
+
 def resolve_snapshot_paths(
     affected: Sequence[str], snapshot_keys: set[str] | frozenset[str] | Sequence[str]
 ) -> tuple[list[str], list[str]]:
@@ -1234,6 +1247,31 @@ class ProjectAgentRunner:
             ),
             max_payload_bytes=max_payload_bytes,
         )
+        # One bounded repair: a finding whose probe is not valid Python would
+        # be rejected by the sandbox verifier and end the run before blue.
+        # Re-ask the report step ONCE with the parse error. A second bad
+        # probe is returned unchanged so the sandbox guard still fails closed.
+        if report.outcome == "finding":
+            syntax_error = _probe_syntax_error(report.verification_script_python)
+            if syntax_error is not None:
+                repair_payload = dict(report_payload)
+                repair_payload["review"] = {
+                    **(review if isinstance(review, dict) else {}),
+                    "probe_syntax_error": syntax_error,
+                    "previous_report": report.model_dump(),
+                    "instruction": (
+                        "Your verification_script_python failed ast.parse. Return the "
+                        "same finding with a syntactically valid probe that exits 0/1/2."
+                    ),
+                }
+                report = await self._call(
+                    self.config.red_team_model,
+                    RED_REPORT_SYSTEM_PROMPT,
+                    repair_payload,
+                    RedReport,
+                    role=f"project_red_{phase}_probe_repair_cycle_{cycle}",
+                    max_payload_bytes=max_payload_bytes,
+                )
         return RedAnalysisArtifacts(
             batch_evidence=evidence,
             evidence_digests=digests,
