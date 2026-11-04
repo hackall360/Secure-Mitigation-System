@@ -185,7 +185,7 @@ Prior work is the fixture/loop skeleton; the hackathon turned it into a product.
   DawDreamer/Faust DSP score factory — built during the hackathon as dev tooling for
   the 3-minute demo (see `docs/DEMO_SCRIPT.md` for the timed beat sheet).
 - **Agentic autonomy.** Vault recall replays prior patches onto renamed schemas for
-  cents; the 4-pass sweep and chain synthesis run without human step-through; fail-closed
+  cents; the 5-pass sweep and chain synthesis run without human step-through; fail-closed
   contracts (honest refusals, JSON-stdout purity, per-session Docker cleanup) hold under
   fault. Human review gates every merge — the ship path is always:
 
