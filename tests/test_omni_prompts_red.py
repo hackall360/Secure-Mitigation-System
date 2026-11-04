@@ -40,8 +40,7 @@ def test_batch_prompt_allows_static_probes_for_compiled_trees():
     text = pa.RED_BATCH_SYSTEM_PROMPT.lower()
     assert "python" in text
     assert "static" in text or "pattern" in text, (
-        "batch prompt must define the static-evidence probe shape for trees "
-        "with no HTTP surface"
+        "batch prompt must define the static-evidence probe shape for trees with no HTTP surface"
     )
 
 
