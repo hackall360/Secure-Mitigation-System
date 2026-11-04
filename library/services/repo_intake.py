@@ -42,7 +42,7 @@ _NODE_ENTRY_CANDIDATES = ("server.js", "index.js", "src/server.js", "src/index.j
 _PHP_ENTRY_CANDIDATES = ("public/index.php", "index.php", "src/index.php")
 # Toolchains the target image cannot run (python:3.12-alpine + node + php
 # only): refuse as UNSUPPORTED, never ask for argv that cannot succeed.
-_UNSUPPORTED_MANIFESTS = frozenset({"go.mod", "cargo.toml", "cargo.lock", "go.sum"})
+_UNSUPPORTED_MANIFESTS = frozenset({"go.mod", "Cargo.toml", "Cargo.lock", "go.sum"})
 # Bare-name fallback: a repo whose only Python file shares its name with the
 # repo dir (anycam.py in AnyCam) or is the lone top-level entry point.
 _PYTHON_BARE_FALLBACK = ("__main__.py",)

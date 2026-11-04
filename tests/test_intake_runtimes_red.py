@@ -29,6 +29,7 @@ def test_go_rust_refuse_as_unsupported_not_missing_argv():
             assert "nnot detect" not in str(exc), (
                 f"{names}: must not ask for argv for an unrunnable toolchain"
             )
+            assert "nsupported" in str(exc), f"{names}: must name UNSUPPORTED, got: {exc}"
             continue
         raise AssertionError(f"{names}: unexpectedly detected (no toolchain in image)")
 
