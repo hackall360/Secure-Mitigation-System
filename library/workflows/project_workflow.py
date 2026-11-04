@@ -430,6 +430,77 @@ def validate_safe_path(path: str) -> None:
         raise ValueError(f"Unsafe project path: {path!r}")
 
 
+def _run_project_scanners(settings, files: dict, log_callable=None) -> list:
+    """Run enabled local scanners against the staged project tree. Never raises.
+
+    Project-loop twin of workflow._run_opt_in_scanners (which is fixture-
+    keyed). Materializes the staged files into a temp dir and runs each
+    enabled scanner binary on the host (never inside the sandbox). Absent
+    binaries, empty trees, and per-scanner failures degrade to fewer
+    records. Sync: called via blocking() from the async workflow.
+    """
+    import tempfile
+    from pathlib import Path
+
+    if not files or not isinstance(files, dict):
+        return []
+    wanted = set(getattr(settings, "research_scanners", None) or ())
+    if not wanted:
+        return []
+    out: list = []
+    with tempfile.TemporaryDirectory(prefix="purplebox-project-scan-") as tmp:
+        root = Path(tmp)
+        for rel, content in files.items():
+            try:
+                validate_safe_path(rel)
+            except ValueError:
+                continue
+            dest = root.joinpath(*rel.split("/"))
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(
+                    content if isinstance(content, bytes) else str(content).encode("utf-8")
+                )
+            except (OSError, ValueError):
+                continue
+        if "trivy" in wanted:
+            try:
+                import modules.intel.scanner_binaries as _sb
+
+                out.extend(_sb.run_trivy(tmp))
+            except Exception:
+                pass
+        if "grype" in wanted:
+            try:
+                import modules.intel.scanner_binaries as _sb
+
+                out.extend(_sb.run_grype(tmp))
+            except Exception:
+                pass
+        if "osv-scanner" in wanted:
+            try:
+                import modules.intel.scanner_binaries as _sb
+
+                out.extend(_sb.run_osv_scanner(tmp))
+            except Exception:
+                pass
+        if "dependency-check" in wanted:
+            try:
+                import modules.intel.scanner_binaries as _sb
+
+                out.extend(_sb.run_dependency_check(tmp))
+            except Exception:
+                pass
+        if "dependency-track" in wanted:
+            try:
+                import modules.intel.scanner_dtrack as _dt
+
+                out.extend(_dt.scan_packages("project", []))
+            except Exception:
+                pass
+    return out
+
+
 def coerce_project(project: ProjectWorkflowInput | Mapping[str, Any] | Any) -> ProjectWorkflowInput:
     """Accept the public model plus the simple objects emitted by project intake."""
     if isinstance(project, ProjectWorkflowInput):
@@ -1356,6 +1427,45 @@ async def execute_project_workflow(
                         f"[phase intel] Project intel pass complete: "
                         f"{len(project_records)} records stored on the report.",
                     )
+                    # Overnight Q14: opt-in local scanners ground the new
+                    # coverage pass (dependency triage needs scanner hits, not
+                    # guesses). Same never-raises shape as the fixture loop:
+                    # materialize cumulative_files, run each enabled binary,
+                    # thread hits into the red contract digest. Absent
+                    # binaries/empty tree => skip with a note, never fail.
+                    try:
+                        scanner_hits = await blocking(
+                            _run_project_scanners,
+                            settings,
+                            dict(cumulative_files),
+                            log,
+                        )
+                        if scanner_hits:
+                            scanner_lines = "\n".join(
+                                f"- {hit.get('scanner', '?')}: "
+                                f"{hit.get('summary', hit.get('cve_id', '?'))}"
+                                for hit in scanner_hits[:20]
+                            )
+                            project_digest = (
+                                (project_digest or "")
+                                + "\n\nLocal scanner hits:\n"
+                                + scanner_lines
+                            )
+                            project_records = list(project_records) + [
+                                {"scanner": True, **h} if isinstance(h, dict) else {"raw": h}
+                                for h in scanner_hits
+                            ]
+                            await log(
+                                "research",
+                                f"[phase intel] Local scanners: "
+                                f"{len(scanner_hits)} hits grounded into red contract.",
+                            )
+                    except Exception as exc:
+                        await log(
+                            "research",
+                            f"[phase intel] Local scanners unavailable "
+                            f"({type(exc).__name__}); continuing on intel digest.",
+                        )
                 except Exception as exc:
                     await log(
                         "research",
