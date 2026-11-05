@@ -288,3 +288,4 @@ video-demo/music-generation/*.wav
 
 # Demo video deliverables live here but never ship to git (large binaries).
 video/
+asset/
