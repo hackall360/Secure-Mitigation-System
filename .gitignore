@@ -285,3 +285,7 @@ Thumbs.db
 # Rendered music-generation fixture artifacts (regenerate via fixture venv,
 # e.g. video-demo/music-generation/.venv/bin/python <example>.py).
 video-demo/music-generation/*.wav
+
+# Demo video deliverables live here but never ship to git (large binaries).
+video/
+asset/
